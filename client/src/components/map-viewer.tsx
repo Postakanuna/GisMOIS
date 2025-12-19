@@ -156,7 +156,9 @@ export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
       }
 
       if (layerConfig.type === "wms") {
-        const wmsUrl = `/api/zulu/wms?host=${connection.host}&port=${connection.port}`;
+        const wmsUrl = connection.useZws 
+          ? `/api/zulu/zws/wms`
+          : `/api/zulu/wms?host=${connection.host}&port=${connection.port}`;
 
         if (!existingLayer) {
           const wmsLayer = new ImageLayer({
