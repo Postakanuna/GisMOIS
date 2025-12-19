@@ -1,8 +1,13 @@
-import { Layers, Map, Database, Building2, Users } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Accordion,
   AccordionContent,
@@ -14,7 +19,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronRight } from "lucide-react";
 import type { LayerConfig } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 
@@ -68,12 +72,19 @@ export function LayerPanel({
                     onCheckedChange={() => onToggleFilter(layer.id, "name_rso", value)}
                     data-testid={`checkbox-rso-${layer.id}-${value}`}
                   />
-                  <Label
-                    htmlFor={`${layer.id}-rso-${value}`}
-                    className="text-xs cursor-pointer truncate"
-                  >
-                    {value || "(не указано)"}
-                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Label
+                        htmlFor={`${layer.id}-rso-${value}`}
+                        className="text-xs cursor-pointer truncate max-w-[180px]"
+                      >
+                        {value || "(не указано)"}
+                      </Label>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-xs">
+                      <p className="text-xs">{value || "(не указано)"}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               ))}
             </CollapsibleContent>
@@ -96,12 +107,19 @@ export function LayerPanel({
                     onCheckedChange={() => onToggleFilter(layer.id, "muniz_obr", value)}
                     data-testid={`checkbox-muniz-${layer.id}-${value}`}
                   />
-                  <Label
-                    htmlFor={`${layer.id}-muniz-${value}`}
-                    className="text-xs cursor-pointer truncate"
-                  >
-                    {value || "(не указано)"}
-                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Label
+                        htmlFor={`${layer.id}-muniz-${value}`}
+                        className="text-xs cursor-pointer truncate max-w-[180px]"
+                      >
+                        {value || "(не указано)"}
+                      </Label>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-xs">
+                      <p className="text-xs">{value || "(не указано)"}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               ))}
             </CollapsibleContent>

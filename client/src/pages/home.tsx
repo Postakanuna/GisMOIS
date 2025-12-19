@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Map, Settings, Layers, Menu } from "lucide-react";
+import { Link } from "wouter";
+import { Map, Settings, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -13,37 +14,22 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ConnectionForm } from "@/components/connection-form";
 import { LayerPanel } from "@/components/layer-panel";
 import { MapViewer } from "@/components/map-viewer";
-import { useZuluConnection } from "@/hooks/use-zulu-connection";
+import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import type { ConnectionStatus } from "@shared/schema";
 
 function SidebarContentPanel({
-  connection,
-  status,
   layers,
-  error,
-  connect,
-  connectZws,
-  disconnect,
   toggleLayerVisibility,
   setLayerOpacity,
   layerFilters,
   activeFilters,
   toggleFilter,
-}: ReturnType<typeof useZuluConnection>) {
+}: Pick<ReturnType<typeof useZuluConnectionContext>, 'layers' | 'toggleLayerVisibility' | 'setLayerOpacity' | 'layerFilters' | 'activeFilters' | 'toggleFilter'>) {
   return (
     <ScrollArea className="h-full">
-      <div className="space-y-6 p-4">
-        <ConnectionForm
-          onConnect={connect}
-          onConnectZws={connectZws}
-          onDisconnect={disconnect}
-          status={status}
-          error={error}
-        />
-
+      <div className="p-4">
         <LayerPanel
           layers={layers}
           onToggleVisibility={toggleLayerVisibility}
@@ -78,7 +64,7 @@ function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
 }
 
 export default function Home() {
-  const zuluConnection = useZuluConnection();
+  const zuluConnection = useZuluConnectionContext();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const sidebarStyle = {
@@ -105,7 +91,14 @@ export default function Home() {
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupContent>
-                <SidebarContentPanel {...zuluConnection} />
+                <SidebarContentPanel
+                  layers={zuluConnection.layers}
+                  toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
+                  setLayerOpacity={zuluConnection.setLayerOpacity}
+                  layerFilters={zuluConnection.layerFilters}
+                  activeFilters={zuluConnection.activeFilters}
+                  toggleFilter={zuluConnection.toggleFilter}
+                />
               </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
@@ -137,7 +130,14 @@ export default function Home() {
                       <p className="text-xs text-muted-foreground">ZuluServer Client</p>
                     </div>
                   </div>
-                  <SidebarContentPanel {...zuluConnection} />
+                  <SidebarContentPanel
+                    layers={zuluConnection.layers}
+                    toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
+                    setLayerOpacity={zuluConnection.setLayerOpacity}
+                    layerFilters={zuluConnection.layerFilters}
+                    activeFilters={zuluConnection.activeFilters}
+                    toggleFilter={zuluConnection.toggleFilter}
+                  />
                 </SheetContent>
               </Sheet>
 
@@ -150,6 +150,11 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <ConnectionStatusBadge status={zuluConnection.status} />
               <div className="h-4 w-px bg-border" />
+              <Link href="/settings">
+                <Button variant="ghost" size="icon" data-testid="button-open-settings">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </Link>
               <ThemeToggle />
             </div>
           </header>
