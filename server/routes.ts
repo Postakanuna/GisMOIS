@@ -22,18 +22,14 @@ export async function registerRoutes(
       const xmlBody = `<?xml version="1.0" encoding="UTF-8"?>
 <zulu-server service="zws" version="1.0.0">
   <Command>
-    <LayerExecSql>
-      <Layer>LAYTERS:mosgaz</Layer>
-      <Query>SELECT * FROM sys.tables LIMIT 1</Query>
-      <CRS>EPSG:4326</CRS>
-    </LayerExecSql>
+    <GetLayerList />
   </Command>
 </zulu-server>`;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const response = await fetch(`${ZWS_BASE_URL}/LayerExecSQL`, {
+      const response = await fetch(`${ZWS_BASE_URL}/GetLayerList`, {
         method: "POST",
         headers: {
           "Content-Type": "application/xml",
@@ -45,18 +41,29 @@ export async function registerRoutes(
 
       clearTimeout(timeoutId);
 
+      const responseText = await response.text();
+      console.log("ZWS GetLayerList response:", responseText.substring(0, 500));
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("ZWS error response:", errorText);
+        console.error("ZWS error response:", responseText);
         return res.status(response.status).json({
           message: `ZWS server error: ${response.status} ${response.statusText}`,
         });
       }
 
-      const layers = [
-        { name: "mosgaz", title: "МосГаз - Газовые сети" },
-        { name: "ZR_TS_MO", title: "ЗР ТС МО" },
-      ];
+      const layers: { name: string; title: string }[] = [];
+      const layerRegex = /<Layer[^>]*>([^<]+)<\/Layer>/gi;
+      let match;
+      while ((match = layerRegex.exec(responseText)) !== null) {
+        const layerName = match[1];
+        layers.push({ name: layerName, title: layerName });
+      }
+
+      if (layers.length === 0) {
+        layers.push(
+          { name: "mosgaz", title: "МосГаз - Газовые сети" },
+        );
+      }
 
       return res.json({
         layers,
@@ -169,58 +176,61 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/zulu/zws/wms", async (req: Request, res: Response) => {
+  app.get("/api/zulu/zws/tile/:z/:x/:y", async (req: Request, res: Response) => {
     try {
-      const wmsParams = { ...req.query };
+      const { z, x, y } = req.params;
+      const { layer } = req.query;
 
-      const params = new URLSearchParams();
-      params.set("SERVICE", "WMS");
-      params.set("VERSION", (wmsParams.VERSION as string) || "1.1.1");
-      params.set("REQUEST", (wmsParams.REQUEST as string) || "GetMap");
+      if (!layer) {
+        return res.status(400).json({ message: "Layer parameter is required" });
+      }
 
-      Object.entries(wmsParams).forEach(([key, value]) => {
-        if (value) {
-          params.set(key.toUpperCase(), String(value));
-        }
+      const xmlBody = `<?xml version="1.0" encoding="UTF-8"?>
+<zulu-server service="zws" version="1.0.0">
+  <Command>
+    <GetLayerTile>
+      <X>${x}</X>
+      <Y>${y}</Y>
+      <Z>${z}</Z>
+      <Layer>${layer}</Layer>
+    </GetLayerTile>
+  </Command>
+</zulu-server>`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(`${ZWS_BASE_URL}/GetLayerTile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/xml",
+          "Authorization": getBasicAuthHeader(),
+        },
+        body: xmlBody,
+        signal: controller.signal,
       });
 
-      const wmsUrl = `https://is.arki.mosreg.ru/zws/wms?${params.toString()}`;
+      clearTimeout(timeoutId);
 
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-        const response = await fetch(wmsUrl, {
-          signal: controller.signal,
-          headers: {
-            "Authorization": getBasicAuthHeader(),
-          },
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("ZWS tile error:", response.status, errorText.substring(0, 200));
+        return res.status(response.status).json({
+          message: `ZWS tile error: ${response.statusText}`,
         });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          console.error("ZWS WMS error:", response.status, response.statusText);
-          return res.status(response.status).json({
-            message: `ZWS WMS error: ${response.statusText}`,
-          });
-        }
-
-        const contentType = response.headers.get("content-type") || "image/png";
-        res.setHeader("Content-Type", contentType);
-        res.setHeader("Cache-Control", "max-age=3600");
-
-        const buffer = await response.arrayBuffer();
-        return res.send(Buffer.from(buffer));
-      } catch (fetchError: any) {
-        if (fetchError.name === "AbortError") {
-          return res.status(504).json({ message: "ZWS WMS request timeout" });
-        }
-        console.error("ZWS WMS proxy error:", fetchError);
-        return res.status(502).json({ message: "Failed to fetch from ZWS WMS server" });
       }
-    } catch (error) {
-      console.error("ZWS WMS error:", error);
+
+      const contentType = response.headers.get("content-type") || "image/png";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "max-age=3600");
+
+      const buffer = await response.arrayBuffer();
+      return res.send(Buffer.from(buffer));
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        return res.status(504).json({ message: "ZWS tile request timeout" });
+      }
+      console.error("ZWS tile error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

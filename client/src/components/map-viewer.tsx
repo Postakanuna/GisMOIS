@@ -4,6 +4,7 @@ import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import ImageLayer from "ol/layer/Image";
 import OSM from "ol/source/OSM";
+import XYZ from "ol/source/XYZ";
 import ImageWMS from "ol/source/ImageWMS";
 import { fromLonLat, toLonLat } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
@@ -24,7 +25,7 @@ interface MapViewerProps {
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
 const DEFAULT_ZOOM = 10;
 
-type LayerType = TileLayer<OSM> | ImageLayer<ImageWMS>;
+type LayerType = TileLayer<OSM> | TileLayer<XYZ> | ImageLayer<ImageWMS>;
 
 export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -156,29 +157,42 @@ export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
       }
 
       if (layerConfig.type === "wms") {
-        const wmsUrl = connection.useZws 
-          ? `/api/zulu/zws/wms`
-          : `/api/zulu/wms?host=${connection.host}&port=${connection.port}`;
-
         if (!existingLayer) {
-          const wmsLayer = new ImageLayer({
-            source: new ImageWMS({
-              url: wmsUrl,
-              params: {
-                LAYERS: layerConfig.id,
-                FORMAT: "image/png",
-                TRANSPARENT: true,
-              },
-              ratio: 1,
-              serverType: "geoserver",
-            }),
-            properties: { id: layerConfig.id },
-            visible: layerConfig.visible,
-            opacity: layerConfig.opacity,
-          });
+          let newLayer: LayerType;
 
-          map.addLayer(wmsLayer);
-          layersRef.current[layerConfig.id] = wmsLayer;
+          if (connection.useZws) {
+            const xyzSource = new XYZ({
+              url: `/api/zulu/zws/tile/{z}/{x}/{-y}?layer=${encodeURIComponent(layerConfig.id)}`,
+            });
+
+            newLayer = new TileLayer({
+              source: xyzSource,
+              properties: { id: layerConfig.id },
+              visible: layerConfig.visible,
+              opacity: layerConfig.opacity,
+            });
+          } else {
+            const wmsUrl = `/api/zulu/wms?host=${connection.host}&port=${connection.port}`;
+
+            newLayer = new ImageLayer({
+              source: new ImageWMS({
+                url: wmsUrl,
+                params: {
+                  LAYERS: layerConfig.id,
+                  FORMAT: "image/png",
+                  TRANSPARENT: true,
+                },
+                ratio: 1,
+                serverType: "geoserver",
+              }),
+              properties: { id: layerConfig.id },
+              visible: layerConfig.visible,
+              opacity: layerConfig.opacity,
+            });
+          }
+
+          map.addLayer(newLayer);
+          layersRef.current[layerConfig.id] = newLayer;
         } else {
           existingLayer.setVisible(layerConfig.visible);
           existingLayer.setOpacity(layerConfig.opacity);
