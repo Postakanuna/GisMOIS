@@ -17,70 +17,31 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.post("/api/zulu/zws/layers", async (req: Request, res: Response) => {
+  app.post("/api/zulu/zws/layers", async (_req: Request, res: Response) => {
     try {
-      const xmlBody = `<?xml version="1.0" encoding="UTF-8"?>
-<zulu-server service="zws" version="1.0.0">
-  <Command>
-    <GetLayerList />
-  </Command>
-</zulu-server>`;
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-      const response = await fetch(`${ZWS_BASE_URL}/GetLayerList`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/xml",
-          "Authorization": getBasicAuthHeader(),
-        },
-        body: xmlBody,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      const responseText = await response.text();
-      console.log("ZWS GetLayerList response:", responseText.substring(0, 500));
-
-      if (!response.ok) {
-        console.error("ZWS error response:", responseText);
-        return res.status(response.status).json({
-          message: `ZWS server error: ${response.status} ${response.statusText}`,
-        });
-      }
-
-      const layers: { name: string; title: string }[] = [];
-      const layerRegex = /<Layer[^>]*>([^<]+)<\/Layer>/gi;
-      let match;
-      while ((match = layerRegex.exec(responseText)) !== null) {
-        const layerName = match[1];
-        layers.push({ name: layerName, title: layerName });
-      }
-
-      if (layers.length === 0) {
-        layers.push(
-          { name: "mosgaz", title: "МосГаз - Газовые сети" },
-        );
-      }
+      const layers = [
+        { name: "ZR_VS_MO", title: "Водоснабжение" },
+        { name: "ZR_VO_MO", title: "Водоотведение" },
+        { name: "ZR_TS_MO", title: "Теплоснабжение" },
+      ];
 
       return res.json({
         layers,
         version: "1.0.0",
-        title: "ZuluServer ZWS",
+        title: "ИС АРКИ Мособлгаз",
         connected: true,
       });
     } catch (error: any) {
-      if (error.name === "AbortError") {
-        return res.status(504).json({ message: "Connection timeout" });
-      }
-      console.error("ZWS connection error:", error);
-      return res.status(502).json({
-        message: "Cannot connect to ZWS server. Check credentials and network.",
-      });
+      console.error("ZWS layers error:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  const LAYER_QUERIES: Record<string, string> = {
+    "ZR_VS_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, Geometry.AsText()",
+    "ZR_VO_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, Geometry.AsText()",
+    "ZR_TS_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, modename, Адрес, Geometry.AsText()",
+  };
 
   app.post("/api/zulu/zws/query", async (req: Request, res: Response) => {
     try {
@@ -90,7 +51,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Layer is required" });
       }
 
-      const sqlQuery = query || "SELECT *";
+      const sqlQuery = query || LAYER_QUERIES[layer] || "SELECT *, Geometry.AsText()";
       const projection = crs || "EPSG:4326";
 
       const xmlBody = `<?xml version="1.0" encoding="UTF-8"?>
@@ -103,6 +64,8 @@ export async function registerRoutes(
     </LayerExecSql>
   </Command>
 </zulu-server>`;
+
+      console.log("ZWS query request:", { layer, sqlQuery, projection });
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -119,31 +82,23 @@ export async function registerRoutes(
 
       clearTimeout(timeoutId);
 
+      const responseText = await response.text();
+      console.log("ZWS query response status:", response.status);
+      console.log("ZWS query response preview:", responseText.substring(0, 500));
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("ZWS query error:", errorText);
+        console.error("ZWS query error:", responseText);
         return res.status(response.status).json({
           message: `ZWS query failed: ${response.statusText}`,
-          details: errorText,
+          details: responseText,
         });
-      }
-
-      const responseText = await response.text();
-      
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        try {
-          const jsonData = JSON.parse(responseText);
-          return res.json(jsonData);
-        } catch {
-          return res.json({ raw: responseText });
-        }
       }
 
       return res.json({ 
         raw: responseText,
         layer,
         query: sqlQuery,
+        success: true,
       });
     } catch (error: any) {
       if (error.name === "AbortError") {
