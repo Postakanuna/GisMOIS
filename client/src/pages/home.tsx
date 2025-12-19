@@ -76,7 +76,7 @@ export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const sidebarStyle = {
-    "--sidebar-width": "20rem",
+    "--sidebar-width": "24rem",
     "--sidebar-width-icon": "4rem",
   } as React.CSSProperties;
 

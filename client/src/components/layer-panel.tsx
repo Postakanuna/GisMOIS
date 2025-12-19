@@ -1,6 +1,7 @@
-import { Eye, EyeOff, Layers, Map, Database } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Layers, Map, Database } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Accordion,
   AccordionContent,
@@ -26,30 +27,30 @@ export function LayerPanel({
 
   const renderLayerItem = (layer: LayerConfig) => {
     const Icon = layer.type === "base" ? Map : layer.type === "wfs" ? Database : Layers;
+    const switchId = `switch-layer-${layer.id}`;
 
     return (
       <div
         key={layer.id}
-        className="space-y-2 rounded-md border border-sidebar-border p-3"
+        className="space-y-3 rounded-md border border-sidebar-border p-3"
         data-testid={`layer-item-${layer.id}`}
       >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="text-sm font-medium truncate">{layer.name}</span>
+            <Label 
+              htmlFor={switchId} 
+              className="text-sm font-medium truncate cursor-pointer flex-1"
+            >
+              {layer.name}
+            </Label>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onToggleVisibility(layer.id)}
-            data-testid={`button-toggle-layer-${layer.id}`}
-          >
-            {layer.visible ? (
-              <Eye className="h-4 w-4" />
-            ) : (
-              <EyeOff className="h-4 w-4 text-muted-foreground" />
-            )}
-          </Button>
+          <Switch
+            id={switchId}
+            checked={layer.visible}
+            onCheckedChange={() => onToggleVisibility(layer.id)}
+            data-testid={`switch-toggle-layer-${layer.id}`}
+          />
         </div>
 
         {layer.visible && (
