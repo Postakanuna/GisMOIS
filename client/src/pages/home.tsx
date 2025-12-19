@@ -163,9 +163,11 @@ export default function Home() {
             <MapViewer
               layers={zuluConnection.layers}
               connection={zuluConnection.connection}
-              isConnected={zuluConnection.status === "connected"}
+              isConnected={zuluConnection.status === "connected" || zuluConnection.status === "connecting"}
               activeFilters={zuluConnection.activeFilters}
               onFiltersDiscovered={zuluConnection.setLayerFilters}
+              onLayerLoadError={zuluConnection.handleLayerLoadError}
+              onLayerLoadSuccess={zuluConnection.handleLayerLoadSuccess}
               tickets={zuluConnection.tickets}
               ticketMode={zuluConnection.ticketMode}
               onToggleTicketMode={() => zuluConnection.setTicketMode(!zuluConnection.ticketMode)}

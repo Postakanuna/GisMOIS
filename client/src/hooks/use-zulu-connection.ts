@@ -32,6 +32,8 @@ interface UseZuluConnectionReturn {
   setTicketMode: (mode: boolean) => void;
   createTicket: (ticket: InsertTicket) => Promise<Ticket>;
   loadTickets: () => Promise<void>;
+  handleLayerLoadError: (error: string) => void;
+  handleLayerLoadSuccess: () => void;
 }
 
 export function useZuluConnection(): UseZuluConnectionReturn {
@@ -133,7 +135,8 @@ export function useZuluConnection(): UseZuluConnectionReturn {
 
       setLayers(newLayers);
       setConnection(zwsConnection);
-      setStatus("connected");
+      // Stay in "connecting" until layers actually load
+      setStatus("connecting");
       
       // Load tickets after successful connection
       try {
@@ -235,6 +238,17 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     return newTicket;
   }, []);
 
+  const handleLayerLoadError = useCallback((errorMessage: string) => {
+    setError(errorMessage);
+    setStatus("error");
+  }, []);
+
+  const handleLayerLoadSuccess = useCallback(() => {
+    // Only set connected if we're still in connecting state
+    setStatus((prev) => prev === "connecting" ? "connected" : prev);
+    setError(null);
+  }, []);
+
   return {
     connection,
     status,
@@ -255,5 +269,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     setTicketMode,
     createTicket,
     loadTickets,
+    handleLayerLoadError,
+    handleLayerLoadSuccess,
   };
 }

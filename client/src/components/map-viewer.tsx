@@ -31,6 +31,8 @@ interface MapViewerProps {
   isConnected: boolean;
   activeFilters?: Record<string, ActiveFilters>;
   onFiltersDiscovered?: (layerId: string, filters: LayerFilters) => void;
+  onLayerLoadError?: (error: string) => void;
+  onLayerLoadSuccess?: () => void;
   tickets: Ticket[];
   ticketMode: boolean;
   onToggleTicketMode: () => void;
@@ -116,7 +118,7 @@ function parseZwsResponse(xml: string): Feature[] {
   return features;
 }
 
-export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, tickets = [], ticketMode, onToggleTicketMode, onCreateTicket }: MapViewerProps) {
+export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, onLayerLoadError, onLayerLoadSuccess, tickets = [], ticketMode, onToggleTicketMode, onCreateTicket }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const layersRef = useRef<Record<string, LayerType>>({});
@@ -341,8 +343,16 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ layer: layerConfig.id }),
               })
-                .then((res) => res.json())
+                .then((res) => {
+                  if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}: Ошибка загрузки слоя`);
+                  }
+                  return res.json();
+                })
                 .then((data) => {
+                  if (data.message && !data.raw) {
+                    throw new Error(data.message);
+                  }
                   if (data.raw) {
                     const features = parseZwsResponse(data.raw);
                     console.log(`Loaded ${features.length} features for ${layerConfig.id}`);
@@ -376,9 +386,19 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
                       const extent = vectorSource.getExtent();
                       map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14 });
                     }
+                    
+                    // Notify success
+                    if (onLayerLoadSuccess) {
+                      onLayerLoadSuccess();
+                    }
                   }
                 })
-                .catch((err) => console.error("Failed to load layer:", err));
+                .catch((err) => {
+                  console.error("Failed to load layer:", err);
+                  if (onLayerLoadError) {
+                    onLayerLoadError(err.message || "Не удалось загрузить данные слоя");
+                  }
+                });
             }
           } else {
             const wmsUrl = `/api/zulu/wms?host=${connection.host}&port=${connection.port}`;
