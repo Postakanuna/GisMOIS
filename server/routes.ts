@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema } from "@shared/schema";
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
@@ -413,6 +413,50 @@ export async function registerRoutes(
       }
     } catch (error) {
       console.error("Feature info error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/tickets", async (_req: Request, res: Response) => {
+    try {
+      const tickets = await storage.getTickets();
+      return res.json(tickets);
+    } catch (error) {
+      console.error("Get tickets error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/tickets", async (req: Request, res: Response) => {
+    try {
+      const parseResult = insertTicketSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          message: "Invalid ticket data",
+          errors: parseResult.error.errors,
+        });
+      }
+      const ticket = await storage.createTicket(parseResult.data);
+      return res.status(201).json(ticket);
+    } catch (error) {
+      console.error("Create ticket error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/tickets/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid ticket ID" });
+      }
+      const deleted = await storage.deleteTicket(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Ticket not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Delete ticket error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

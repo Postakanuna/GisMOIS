@@ -93,6 +93,24 @@ export interface ProxyWmsRequest {
   info_format?: string;
 }
 
+// Ticket (marker point) schema
+export const ticketSchema = z.object({
+  id: z.number(),
+  lon: z.number(),
+  lat: z.number(),
+  status: z.enum(["bound", "unbound"]),
+  boundPolygonId: z.string().optional(),
+  boundLayerId: z.string().optional(),
+  nameIst: z.string().optional(),
+  notes: z.string().optional(),
+  createdAt: z.string(),
+});
+
+export type Ticket = z.infer<typeof ticketSchema>;
+
+export const insertTicketSchema = ticketSchema.omit({ id: true, createdAt: true, status: true });
+export type InsertTicket = z.infer<typeof insertTicketSchema>;
+
 // Keep existing user schema for compatibility
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar } from "drizzle-orm/pg-core";
