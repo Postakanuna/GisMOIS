@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Plug, PlugZap, Server } from "lucide-react";
+import { Loader2, Plug, PlugZap, Server, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -17,6 +17,7 @@ import { zuluConnectionSchema, type ZuluConnection, type ConnectionStatus } from
 
 interface ConnectionFormProps {
   onConnect: (config: ZuluConnection) => Promise<void>;
+  onConnectZws: () => Promise<void>;
   onDisconnect: () => void;
   status: ConnectionStatus;
   error: string | null;
@@ -24,6 +25,7 @@ interface ConnectionFormProps {
 
 export function ConnectionForm({
   onConnect,
+  onConnectZws,
   onDisconnect,
   status,
   error,
@@ -35,6 +37,7 @@ export function ConnectionForm({
       port: 8080,
       layerName: "",
       useWfs: false,
+      useZws: false,
     },
   });
 
@@ -45,11 +48,54 @@ export function ConnectionForm({
     await onConnect(data);
   };
 
+  const handleQuickConnect = async () => {
+    await onConnectZws();
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 pb-2 border-b border-sidebar-border">
         <Server className="h-4 w-4 text-muted-foreground" />
         <h2 className="text-lg font-medium">Подключение к серверу</h2>
+      </div>
+
+      <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium">МосОблГаз (ZWS)</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Быстрое подключение к is.arki.mosreg.ru
+        </p>
+        <Button
+          type="button"
+          variant="default"
+          className="w-full"
+          onClick={handleQuickConnect}
+          disabled={isConnected || isConnecting}
+          data-testid="button-quick-connect-zws"
+        >
+          {isConnecting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Подключение...
+            </>
+          ) : (
+            <>
+              <Zap className="mr-2 h-4 w-4" />
+              Подключиться к МосОблГаз
+            </>
+          )}
+        </Button>
+      </div>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-sidebar-border" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-sidebar px-2 text-muted-foreground">или</span>
+        </div>
       </div>
 
       <Form {...form}>
@@ -84,7 +130,8 @@ export function ConnectionForm({
                     type="number"
                     placeholder="8080"
                     {...field}
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                    value={field.value ?? ""}
+                    onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
                     disabled={isConnected || isConnecting}
                     data-testid="input-port"
                   />
@@ -151,6 +198,7 @@ export function ConnectionForm({
             {!isConnected ? (
               <Button
                 type="submit"
+                variant="outline"
                 className="flex-1"
                 disabled={isConnecting}
                 data-testid="button-connect"
@@ -163,7 +211,7 @@ export function ConnectionForm({
                 ) : (
                   <>
                     <Plug className="mr-2 h-4 w-4" />
-                    Подключиться
+                    Подключиться (WMS)
                   </>
                 )}
               </Button>

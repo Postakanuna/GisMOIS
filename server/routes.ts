@@ -3,10 +3,171 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { zuluConnectionSchema } from "@shared/schema";
 
+const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
+const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
+const ZWS_BASE_URL = "https://is.arki.mosreg.ru/zws";
+
+function getBasicAuthHeader(): string {
+  const credentials = Buffer.from(`${ZULU_USERNAME}:${ZULU_PASSWORD}`).toString("base64");
+  return `Basic ${credentials}`;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  app.post("/api/zulu/zws/layers", async (req: Request, res: Response) => {
+    try {
+      const xmlBody = `<?xml version="1.0" encoding="UTF-8"?>
+<zulu-server service="zws" version="1.0.0">
+  <Command>
+    <LayerExecSql>
+      <Layer>LAYTERS:mosgaz</Layer>
+      <Query>SELECT * FROM sys.tables LIMIT 1</Query>
+      <CRS>EPSG:4326</CRS>
+    </LayerExecSql>
+  </Command>
+</zulu-server>`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch(`${ZWS_BASE_URL}/LayerExecSQL`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/xml",
+          "Authorization": getBasicAuthHeader(),
+        },
+        body: xmlBody,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("ZWS error response:", errorText);
+        return res.status(response.status).json({
+          message: `ZWS server error: ${response.status} ${response.statusText}`,
+        });
+      }
+
+      const layers = [
+        { name: "mosgaz", title: "МосГаз - Газовые сети" },
+        { name: "ZR_TS_MO", title: "ЗР ТС МО" },
+      ];
+
+      return res.json({
+        layers,
+        version: "1.0.0",
+        title: "ZuluServer ZWS",
+        connected: true,
+      });
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        return res.status(504).json({ message: "Connection timeout" });
+      }
+      console.error("ZWS connection error:", error);
+      return res.status(502).json({
+        message: "Cannot connect to ZWS server. Check credentials and network.",
+      });
+    }
+  });
+
+  app.post("/api/zulu/zws/query", async (req: Request, res: Response) => {
+    try {
+      const { layer, query, crs } = req.body;
+
+      if (!layer) {
+        return res.status(400).json({ message: "Layer is required" });
+      }
+
+      const sqlQuery = query || "SELECT *";
+      const projection = crs || "EPSG:4326";
+
+      const xmlBody = `<?xml version="1.0" encoding="UTF-8"?>
+<zulu-server service="zws" version="1.0.0">
+  <Command>
+    <LayerExecSql>
+      <Layer>LAYTERS:${layer}</Layer>
+      <Query>${sqlQuery}</Query>
+      <CRS>${projection}</CRS>
+    </LayerExecSql>
+  </Command>
+</zulu-server>`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(`${ZWS_BASE_URL}/LayerExecSQL`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/xml",
+          "Authorization": getBasicAuthHeader(),
+        },
+        body: xmlBody,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("ZWS query error:", errorText);
+        return res.status(response.status).json({
+          message: `ZWS query failed: ${response.statusText}`,
+          details: errorText,
+        });
+      }
+
+      const responseText = await response.text();
+      
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        try {
+          const jsonData = JSON.parse(responseText);
+          return res.json(jsonData);
+        } catch {
+          return res.json({ raw: responseText });
+        }
+      }
+
+      return res.json({ 
+        raw: responseText,
+        layer,
+        query: sqlQuery,
+      });
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        return res.status(504).json({ message: "Query timeout" });
+      }
+      console.error("ZWS query error:", error);
+      return res.status(502).json({ message: "Failed to execute ZWS query" });
+    }
+  });
+
+  app.get("/api/zulu/zws/status", async (_req: Request, res: Response) => {
+    try {
+      const hasCredentials = ZULU_USERNAME && ZULU_PASSWORD;
+      
+      if (!hasCredentials) {
+        return res.json({
+          configured: false,
+          message: "ZWS credentials not configured",
+        });
+      }
+
+      return res.json({
+        configured: true,
+        baseUrl: ZWS_BASE_URL,
+        username: ZULU_USERNAME,
+      });
+    } catch (error) {
+      console.error("ZWS status error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
   
   app.post("/api/zulu/capabilities", async (req: Request, res: Response) => {
     try {

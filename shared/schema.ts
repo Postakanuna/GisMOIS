@@ -3,9 +3,11 @@ import { z } from "zod";
 // ZuluServer connection configuration
 export const zuluConnectionSchema = z.object({
   host: z.string().min(1, "Host is required"),
-  port: z.number().min(1).max(65535),
+  port: z.number().min(1).max(65535).optional(),
   layerName: z.string().min(1, "Layer name is required"),
   useWfs: z.boolean().default(false),
+  useZws: z.boolean().default(false),
+  baseUrl: z.string().optional(),
 });
 
 export type ZuluConnection = z.infer<typeof zuluConnectionSchema>;

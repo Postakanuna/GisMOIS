@@ -25,6 +25,7 @@ function SidebarContentPanel({
   layers,
   error,
   connect,
+  connectZws,
   disconnect,
   toggleLayerVisibility,
   setLayerOpacity,
@@ -34,6 +35,7 @@ function SidebarContentPanel({
       <div className="space-y-6 p-4">
         <ConnectionForm
           onConnect={connect}
+          onConnectZws={connectZws}
           onDisconnect={disconnect}
           status={status}
           error={error}
