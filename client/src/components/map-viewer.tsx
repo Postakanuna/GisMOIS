@@ -153,14 +153,56 @@ export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
       
       if (!currentConnection) return;
 
+      const coords = toLonLat(evt.coordinate);
+      setFeatureCoordinates([coords[0], coords[1]]);
+
+      // For ZWS mode - check vector features locally
+      if (currentConnection.useZws) {
+        let foundFeature: Feature | null = null;
+        let foundLayerId: string | null = null;
+
+        map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
+          if (!foundFeature && layer) {
+            foundFeature = feature as Feature;
+            foundLayerId = layer.get("id") as string;
+          }
+          return true; // stop after first feature
+        });
+
+        if (foundFeature && foundLayerId) {
+          const properties: Record<string, unknown> = {};
+          const keys = (foundFeature as Feature).getKeys();
+          
+          keys.forEach((key) => {
+            if (key !== "geometry") {
+              properties[key] = (foundFeature as Feature).get(key);
+            }
+          });
+
+          const layerConfig = currentLayers.find((l) => l.id === foundLayerId);
+          const featureId = (foundFeature as Feature).getId?.() || 
+            (foundFeature as Feature).get("id") || 
+            `feature-${Date.now()}`;
+          
+          setSelectedFeature({
+            id: String(featureId),
+            layerName: layerConfig?.name || foundLayerId || "Объект",
+            properties,
+            geometry: undefined,
+          });
+        } else {
+          setSelectedFeature(null);
+          setFeatureCoordinates(undefined);
+        }
+        return;
+      }
+
+      // For standard WMS mode - query server
       const viewResolution = map.getView().getResolution();
       if (!viewResolution) return;
 
       const wmsLayers = currentLayers.filter((l) => l.type === "wms" && l.visible);
       if (wmsLayers.length === 0) return;
-
-      const coords = toLonLat(evt.coordinate);
-      setFeatureCoordinates([coords[0], coords[1]]);
 
       try {
         setIsLoading(true);
