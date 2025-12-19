@@ -68,7 +68,7 @@ export async function registerRoutes(
       console.log("ZWS query request:", { layer, sqlQuery, projection });
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
       const response = await fetch(`${ZWS_BASE_URL}/LayerExecSQL`, {
         method: "POST",
@@ -78,6 +78,12 @@ export async function registerRoutes(
         },
         body: xmlBody,
         signal: controller.signal,
+        // @ts-ignore - undici dispatcher option for connection timeout
+        dispatcher: new (await import("undici")).Agent({
+          connectTimeout: 60000,
+          headersTimeout: 60000,
+          bodyTimeout: 60000,
+        }),
       });
 
       clearTimeout(timeoutId);
