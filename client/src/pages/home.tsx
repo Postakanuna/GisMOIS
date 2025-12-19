@@ -29,6 +29,9 @@ function SidebarContentPanel({
   disconnect,
   toggleLayerVisibility,
   setLayerOpacity,
+  layerFilters,
+  activeFilters,
+  toggleFilter,
 }: ReturnType<typeof useZuluConnection>) {
   return (
     <ScrollArea className="h-full">
@@ -45,6 +48,9 @@ function SidebarContentPanel({
           layers={layers}
           onToggleVisibility={toggleLayerVisibility}
           onOpacityChange={setLayerOpacity}
+          layerFilters={layerFilters}
+          activeFilters={activeFilters}
+          onToggleFilter={toggleFilter}
         />
       </div>
     </ScrollArea>
@@ -153,6 +159,8 @@ export default function Home() {
               layers={zuluConnection.layers}
               connection={zuluConnection.connection}
               isConnected={zuluConnection.status === "connected"}
+              activeFilters={zuluConnection.activeFilters}
+              onFiltersDiscovered={zuluConnection.setLayerFilters}
             />
           </main>
         </div>

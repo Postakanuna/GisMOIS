@@ -1,29 +1,115 @@
-import { Layers, Map, Database } from "lucide-react";
+import { Layers, Map, Database, Building2, Users } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronRight } from "lucide-react";
 import type { LayerConfig } from "@shared/schema";
+import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 
 interface LayerPanelProps {
   layers: LayerConfig[];
   onToggleVisibility: (layerId: string) => void;
   onOpacityChange: (layerId: string, opacity: number) => void;
+  layerFilters?: Record<string, LayerFilters>;
+  activeFilters?: Record<string, ActiveFilters>;
+  onToggleFilter?: (layerId: string, filterType: keyof ActiveFilters, value: string) => void;
 }
 
 export function LayerPanel({
   layers,
   onToggleVisibility,
   onOpacityChange,
+  layerFilters,
+  activeFilters,
+  onToggleFilter,
 }: LayerPanelProps) {
   const baseLayers = layers.filter((l) => l.type === "base");
   const wmsLayers = layers.filter((l) => l.type === "wms");
   const wfsLayers = layers.filter((l) => l.type === "wfs");
+
+  const renderSublayerFilters = (layer: LayerConfig) => {
+    const filters = layerFilters?.[layer.id];
+    const active = activeFilters?.[layer.id];
+    
+    if (!filters || !active || !onToggleFilter) return null;
+    
+    const rsoValues = Array.from(filters.name_rso).filter(v => v).sort();
+    const munizValues = Array.from(filters.muniz_obr).filter(v => v).sort();
+    
+    if (rsoValues.length === 0 && munizValues.length === 0) return null;
+
+    return (
+      <div className="mt-3 space-y-2 pl-2 border-l-2 border-sidebar-border">
+        {rsoValues.length > 0 && (
+          <Collapsible>
+            <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground w-full group">
+              <ChevronRight className="h-3 w-3 transition-transform group-data-[state=open]:rotate-90" />
+              <Users className="h-3 w-3" />
+              <span>По РСО ({rsoValues.length})</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-1 pl-5">
+              {rsoValues.map((value) => (
+                <div key={value} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`${layer.id}-rso-${value}`}
+                    checked={active.name_rso.includes(value)}
+                    onCheckedChange={() => onToggleFilter(layer.id, "name_rso", value)}
+                    data-testid={`checkbox-rso-${layer.id}-${value}`}
+                  />
+                  <Label
+                    htmlFor={`${layer.id}-rso-${value}`}
+                    className="text-xs cursor-pointer truncate"
+                  >
+                    {value || "(не указано)"}
+                  </Label>
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+        
+        {munizValues.length > 0 && (
+          <Collapsible>
+            <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground w-full group">
+              <ChevronRight className="h-3 w-3 transition-transform group-data-[state=open]:rotate-90" />
+              <Building2 className="h-3 w-3" />
+              <span>По муниципалитету ({munizValues.length})</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-1 pl-5">
+              {munizValues.map((value) => (
+                <div key={value} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`${layer.id}-muniz-${value}`}
+                    checked={active.muniz_obr.includes(value)}
+                    onCheckedChange={() => onToggleFilter(layer.id, "muniz_obr", value)}
+                    data-testid={`checkbox-muniz-${layer.id}-${value}`}
+                  />
+                  <Label
+                    htmlFor={`${layer.id}-muniz-${value}`}
+                    className="text-xs cursor-pointer truncate"
+                  >
+                    {value || "(не указано)"}
+                  </Label>
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </div>
+    );
+  };
 
   const renderLayerItem = (layer: LayerConfig) => {
     const Icon = layer.type === "base" ? Map : layer.type === "wfs" ? Database : Layers;
@@ -54,22 +140,25 @@ export function LayerPanel({
         </div>
 
         {layer.visible && (
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground shrink-0">
-              Непрозрачность
-            </span>
-            <Slider
-              value={[layer.opacity * 100]}
-              onValueChange={([value]) => onOpacityChange(layer.id, value / 100)}
-              max={100}
-              step={1}
-              className="flex-1"
-              data-testid={`slider-opacity-${layer.id}`}
-            />
-            <span className="text-xs text-muted-foreground w-8 text-right font-mono">
-              {Math.round(layer.opacity * 100)}%
-            </span>
-          </div>
+          <>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground shrink-0">
+                Непрозрачность
+              </span>
+              <Slider
+                value={[layer.opacity * 100]}
+                onValueChange={([value]) => onOpacityChange(layer.id, value / 100)}
+                max={100}
+                step={1}
+                className="flex-1"
+                data-testid={`slider-opacity-${layer.id}`}
+              />
+              <span className="text-xs text-muted-foreground w-8 text-right font-mono">
+                {Math.round(layer.opacity * 100)}%
+              </span>
+            </div>
+            {renderSublayerFilters(layer)}
+          </>
         )}
       </div>
     );

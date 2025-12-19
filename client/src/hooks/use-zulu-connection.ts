@@ -1,6 +1,16 @@
 import { useState, useCallback } from "react";
 import type { ZuluConnection, ConnectionStatus, LayerConfig } from "@shared/schema";
 
+export interface LayerFilters {
+  name_rso: Set<string>;
+  muniz_obr: Set<string>;
+}
+
+export interface ActiveFilters {
+  name_rso: string[];
+  muniz_obr: string[];
+}
+
 interface UseZuluConnectionReturn {
   connection: ZuluConnection | null;
   status: ConnectionStatus;
@@ -12,6 +22,10 @@ interface UseZuluConnectionReturn {
   toggleLayerVisibility: (layerId: string) => void;
   setLayerOpacity: (layerId: string, opacity: number) => void;
   getWmsUrl: () => string | null;
+  layerFilters: Record<string, LayerFilters>;
+  activeFilters: Record<string, ActiveFilters>;
+  setLayerFilters: (layerId: string, filters: LayerFilters) => void;
+  toggleFilter: (layerId: string, filterType: keyof ActiveFilters, value: string) => void;
 }
 
 export function useZuluConnection(): UseZuluConnectionReturn {
@@ -19,6 +33,8 @@ export function useZuluConnection(): UseZuluConnectionReturn {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [layers, setLayers] = useState<LayerConfig[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [layerFilters, setLayerFiltersState] = useState<Record<string, LayerFilters>>({});
+  const [activeFilters, setActiveFilters] = useState<Record<string, ActiveFilters>>({});
 
   const connect = useCallback(async (config: ZuluConnection) => {
     setStatus("connecting");
@@ -147,6 +163,39 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     return `http://${connection.host}:${connection.port}/ZuluServer/wms`;
   }, [connection]);
 
+  const setLayerFilters = useCallback((layerId: string, filters: LayerFilters) => {
+    setLayerFiltersState((prev) => ({
+      ...prev,
+      [layerId]: filters,
+    }));
+    // Initialize active filters with all values selected
+    setActiveFilters((prev) => ({
+      ...prev,
+      [layerId]: {
+        name_rso: Array.from(filters.name_rso),
+        muniz_obr: Array.from(filters.muniz_obr),
+      },
+    }));
+  }, []);
+
+  const toggleFilter = useCallback((layerId: string, filterType: keyof ActiveFilters, value: string) => {
+    setActiveFilters((prev) => {
+      const current = prev[layerId] || { name_rso: [], muniz_obr: [] };
+      const currentValues = current[filterType];
+      const newValues = currentValues.includes(value)
+        ? currentValues.filter((v) => v !== value)
+        : [...currentValues, value];
+      
+      return {
+        ...prev,
+        [layerId]: {
+          ...current,
+          [filterType]: newValues,
+        },
+      };
+    });
+  }, []);
+
   return {
     connection,
     status,
@@ -158,5 +207,9 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     toggleLayerVisibility,
     setLayerOpacity,
     getWmsUrl,
+    layerFilters,
+    activeFilters,
+    setLayerFilters,
+    toggleFilter,
   };
 }

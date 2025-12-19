@@ -15,6 +15,7 @@ import { Style, Fill, Stroke, Circle } from "ol/style";
 import "ol/ol.css";
 
 import type { LayerConfig, FeatureInfo, ZuluConnection } from "@shared/schema";
+import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { MapControls } from "./map-controls";
 import { CoordinateDisplay } from "./coordinate-display";
 import { FeatureInfoPanel } from "./feature-info";
@@ -24,6 +25,8 @@ interface MapViewerProps {
   layers: LayerConfig[];
   connection: ZuluConnection | null;
   isConnected: boolean;
+  activeFilters?: Record<string, ActiveFilters>;
+  onFiltersDiscovered?: (layerId: string, filters: LayerFilters) => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -89,13 +92,15 @@ function parseZwsResponse(xml: string): Feature[] {
   return features;
 }
 
-export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
+export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const layersRef = useRef<Record<string, LayerType>>({});
+  const allFeaturesRef = useRef<Record<string, Feature[]>>({});
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
   const layersStateRef = useRef<LayerConfig[]>(layers);
+  const activeFiltersRef = useRef<Record<string, ActiveFilters> | undefined>(activeFilters);
 
   const [mouseCoordinates, setMouseCoordinates] = useState<[number, number] | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
@@ -103,6 +108,10 @@ export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
   const [selectedFeature, setSelectedFeature] = useState<FeatureInfo | null>(null);
   const [featureCoordinates, setFeatureCoordinates] = useState<[number, number] | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    activeFiltersRef.current = activeFilters;
+  }, [activeFilters]);
 
   useEffect(() => {
     connectionRef.current = connection;
@@ -289,6 +298,30 @@ export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
                   if (data.raw) {
                     const features = parseZwsResponse(data.raw);
                     console.log(`Loaded ${features.length} features for ${layerConfig.id}`);
+                    
+                    // Store all features for filtering
+                    allFeaturesRef.current[layerConfig.id] = features;
+                    
+                    // Extract unique filter values
+                    const rsoValues = new Set<string>();
+                    const munizValues = new Set<string>();
+                    
+                    features.forEach((f) => {
+                      const rso = f.get("name_rso");
+                      const muniz = f.get("muniz_obr");
+                      if (rso) rsoValues.add(String(rso));
+                      if (muniz) munizValues.add(String(muniz));
+                    });
+                    
+                    // Notify about discovered filters
+                    if (onFiltersDiscovered && (rsoValues.size > 0 || munizValues.size > 0)) {
+                      onFiltersDiscovered(layerConfig.id, {
+                        name_rso: rsoValues,
+                        muniz_obr: munizValues,
+                      });
+                    }
+                    
+                    // Add all features initially
                     vectorSource.addFeatures(features);
                     
                     if (features.length > 0) {
@@ -335,7 +368,41 @@ export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
         delete layersRef.current[id];
       }
     });
-  }, [layers, connection]);
+  }, [layers, connection, onFiltersDiscovered]);
+
+  // Apply filters when activeFilters change
+  useEffect(() => {
+    if (!activeFilters || !mapRef.current) return;
+
+    Object.entries(activeFilters).forEach(([layerId, filters]) => {
+      const layer = layersRef.current[layerId];
+      const allFeatures = allFeaturesRef.current[layerId];
+      
+      if (!layer || !allFeatures || !(layer instanceof VectorLayer)) return;
+      
+      const vectorSource = layer.getSource();
+      if (!vectorSource) return;
+
+      // Filter features based on active filters
+      // Empty array means hide all (user unchecked everything)
+      const filteredFeatures = allFeatures.filter((feature) => {
+        const rso = feature.get("name_rso") || "";
+        const muniz = feature.get("muniz_obr") || "";
+        
+        // If filter array is empty, no features match (all hidden)
+        const rsoMatch = filters.name_rso.includes(String(rso));
+        const munizMatch = filters.muniz_obr.includes(String(muniz));
+        
+        return rsoMatch && munizMatch;
+      });
+
+      // Clear and re-add filtered features
+      vectorSource.clear();
+      vectorSource.addFeatures(filteredFeatures);
+      
+      console.log(`Filtered ${layerId}: ${filteredFeatures.length}/${allFeatures.length} features`);
+    });
+  }, [activeFilters]);
 
   const handleZoomIn = useCallback(() => {
     if (!mapRef.current) return;
