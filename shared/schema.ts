@@ -12,6 +12,16 @@ export const zuluConnectionSchema = z.object({
 
 export type ZuluConnection = z.infer<typeof zuluConnectionSchema>;
 
+// Sublayer filter for virtual layers
+export const sublayerFilterSchema = z.object({
+  field: z.string(),
+  value: z.string(),
+  label: z.string(),
+  visible: z.boolean().default(true),
+});
+
+export type SublayerFilter = z.infer<typeof sublayerFilterSchema>;
+
 // Layer configuration
 export const layerConfigSchema = z.object({
   id: z.string(),
@@ -20,6 +30,8 @@ export const layerConfigSchema = z.object({
   opacity: z.number().min(0).max(1).default(1),
   type: z.enum(["wms", "wfs", "base"]),
   url: z.string().optional(),
+  sublayers: z.array(sublayerFilterSchema).optional(),
+  activeFilters: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 export type LayerConfig = z.infer<typeof layerConfigSchema>;
