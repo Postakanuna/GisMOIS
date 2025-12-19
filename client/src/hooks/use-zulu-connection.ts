@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
-import type { ZuluConnection, ConnectionStatus, LayerConfig } from "@shared/schema";
+import type { ZuluConnection, ConnectionStatus, LayerConfig, Ticket, InsertTicket } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export interface LayerFilters {
   name_rso: Set<string>;
@@ -26,6 +27,11 @@ interface UseZuluConnectionReturn {
   activeFilters: Record<string, ActiveFilters>;
   setLayerFilters: (layerId: string, filters: LayerFilters) => void;
   toggleFilter: (layerId: string, filterType: keyof ActiveFilters, value: string) => void;
+  tickets: Ticket[];
+  ticketMode: boolean;
+  setTicketMode: (mode: boolean) => void;
+  createTicket: (ticket: InsertTicket) => Promise<Ticket>;
+  loadTickets: () => Promise<void>;
 }
 
 export function useZuluConnection(): UseZuluConnectionReturn {
@@ -35,6 +41,8 @@ export function useZuluConnection(): UseZuluConnectionReturn {
   const [error, setError] = useState<string | null>(null);
   const [layerFilters, setLayerFiltersState] = useState<Record<string, LayerFilters>>({});
   const [activeFilters, setActiveFilters] = useState<Record<string, ActiveFilters>>({});
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [ticketMode, setTicketMode] = useState(false);
 
   const connect = useCallback(async (config: ZuluConnection) => {
     setStatus("connecting");
@@ -196,6 +204,26 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     });
   }, []);
 
+  const loadTickets = useCallback(async () => {
+    try {
+      const response = await fetch("/api/tickets");
+      if (response.ok) {
+        const data = await response.json();
+        setTickets(data);
+      }
+    } catch (err) {
+      console.error("Failed to load tickets:", err);
+    }
+  }, []);
+
+  const createTicket = useCallback(async (ticketData: InsertTicket): Promise<Ticket> => {
+    const response = await apiRequest("POST", "/api/tickets", ticketData);
+    const newTicket = await response.json();
+    setTickets((prev) => [...prev, newTicket]);
+    queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+    return newTicket;
+  }, []);
+
   return {
     connection,
     status,
@@ -211,5 +239,10 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     activeFilters,
     setLayerFilters,
     toggleFilter,
+    tickets,
+    ticketMode,
+    setTicketMode,
+    createTicket,
+    loadTickets,
   };
 }

@@ -166,6 +166,10 @@ export default function Home() {
               isConnected={zuluConnection.status === "connected"}
               activeFilters={zuluConnection.activeFilters}
               onFiltersDiscovered={zuluConnection.setLayerFilters}
+              tickets={zuluConnection.tickets}
+              ticketMode={zuluConnection.ticketMode}
+              onToggleTicketMode={() => zuluConnection.setTicketMode(!zuluConnection.ticketMode)}
+              onCreateTicket={zuluConnection.createTicket}
             />
           </main>
         </div>

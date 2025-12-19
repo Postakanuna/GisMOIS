@@ -14,12 +14,16 @@ import Feature from "ol/Feature";
 import { Style, Fill, Stroke, Circle } from "ol/style";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { MapControls } from "./map-controls";
 import { CoordinateDisplay } from "./coordinate-display";
 import { FeatureInfoPanel } from "./feature-info";
 import { LoadingOverlay } from "./loading-overlay";
+import { getDistance } from "ol/sphere";
+import { Point as OlPoint, Polygon as OlPolygon, MultiPolygon as OlMultiPolygon } from "ol/geom";
+import Text from "ol/style/Text";
+import { useToast } from "@/hooks/use-toast";
 
 interface MapViewerProps {
   layers: LayerConfig[];
@@ -27,6 +31,10 @@ interface MapViewerProps {
   isConnected: boolean;
   activeFilters?: Record<string, ActiveFilters>;
   onFiltersDiscovered?: (layerId: string, filters: LayerFilters) => void;
+  tickets: Ticket[];
+  ticketMode: boolean;
+  onToggleTicketMode: () => void;
+  onCreateTicket: (ticket: InsertTicket) => Promise<Ticket>;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -49,6 +57,22 @@ function getLayerStyle(layerId: string) {
       radius: 6,
       fill: new Fill({ color }),
       stroke: new Stroke({ color: "#fff", width: 1 }),
+    }),
+  });
+}
+
+function getTicketStyle(status: "bound" | "unbound") {
+  const color = status === "bound" ? "#4CAF50" : "#FF9800";
+  return new Style({
+    image: new Circle({
+      radius: 10,
+      fill: new Fill({ color }),
+      stroke: new Stroke({ color: "#fff", width: 2 }),
+    }),
+    text: new Text({
+      text: status === "bound" ? "P" : "?",
+      fill: new Fill({ color: "#fff" }),
+      font: "bold 12px sans-serif",
     }),
   });
 }
@@ -92,15 +116,18 @@ function parseZwsResponse(xml: string): Feature[] {
   return features;
 }
 
-export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered }: MapViewerProps) {
+export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, tickets, ticketMode, onToggleTicketMode, onCreateTicket }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const layersRef = useRef<Record<string, LayerType>>({});
   const allFeaturesRef = useRef<Record<string, Feature[]>>({});
+  const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const { toast } = useToast();
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
   const layersStateRef = useRef<LayerConfig[]>(layers);
   const activeFiltersRef = useRef<Record<string, ActiveFilters> | undefined>(activeFilters);
+  const ticketModeRef = useRef(ticketMode);
 
   const [mouseCoordinates, setMouseCoordinates] = useState<[number, number] | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
@@ -112,6 +139,10 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
   useEffect(() => {
     activeFiltersRef.current = activeFilters;
   }, [activeFilters]);
+
+  useEffect(() => {
+    ticketModeRef.current = ticketMode;
+  }, [ticketMode]);
 
   useEffect(() => {
     connectionRef.current = connection;
@@ -143,6 +174,16 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
 
     layersRef.current["osm-base"] = osmLayer;
 
+    // Create tickets layer
+    const ticketsSource = new VectorSource();
+    const ticketsLayer = new VectorLayer({
+      source: ticketsSource,
+      properties: { id: "tickets-layer" },
+      zIndex: 1000,
+    });
+    map.addLayer(ticketsLayer);
+    ticketsLayerRef.current = ticketsLayer;
+
     map.on("pointermove", (evt) => {
       const coords = toLonLat(evt.coordinate);
       setMouseCoordinates([coords[0], coords[1]]);
@@ -159,11 +200,18 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     map.on("singleclick", async (evt) => {
       const currentConnection = connectionRef.current;
       const currentLayers = layersStateRef.current;
-      
-      if (!currentConnection) return;
+      const isTicketMode = ticketModeRef.current;
 
       const coords = toLonLat(evt.coordinate);
       setFeatureCoordinates([coords[0], coords[1]]);
+
+      // Ticket creation mode
+      if (isTicketMode && currentConnection?.useZws) {
+        handleTicketCreation(coords[0], coords[1], evt.coordinate);
+        return;
+      }
+      
+      if (!currentConnection) return;
 
       // For ZWS mode - check vector features locally
       if (currentConnection.useZws) {
@@ -370,6 +418,27 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     });
   }, [layers, connection, onFiltersDiscovered]);
 
+  // Update tickets on map when tickets array changes
+  useEffect(() => {
+    if (!ticketsLayerRef.current) return;
+    
+    const source = ticketsLayerRef.current.getSource();
+    if (!source) return;
+    
+    source.clear();
+    
+    tickets.forEach((ticket) => {
+      const ticketFeature = new Feature({
+        geometry: new OlPoint(fromLonLat([ticket.lon, ticket.lat])),
+        ticketId: ticket.id,
+        status: ticket.status,
+        nameIst: ticket.nameIst,
+      });
+      ticketFeature.setStyle(getTicketStyle(ticket.status));
+      source.addFeature(ticketFeature);
+    });
+  }, [tickets]);
+
   // Apply filters when activeFilters change
   useEffect(() => {
     if (!activeFilters || !mapRef.current) return;
@@ -445,6 +514,83 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     setFeatureCoordinates(undefined);
   }, []);
 
+  const findNearestPolygon = useCallback((clickCoord: number[], maxDistanceMeters: number = 10) => {
+    let nearestFeature: Feature | null = null;
+    let nearestLayerId: string | null = null;
+    let minDistance = Infinity;
+    let nearestNameIst: string | null = null;
+
+    Object.entries(allFeaturesRef.current).forEach(([layerId, features]) => {
+      features.forEach((feature) => {
+        const geom = feature.getGeometry();
+        if (!geom) return;
+
+        const clickPoint = toLonLat(clickCoord);
+        
+        if (geom instanceof OlPolygon || geom instanceof OlMultiPolygon) {
+          const closestPoint = geom.getClosestPoint(clickCoord);
+          const closestPointLonLat = toLonLat(closestPoint);
+          const distance = getDistance(clickPoint, closestPointLonLat);
+          
+          if (distance < minDistance && distance <= maxDistanceMeters) {
+            minDistance = distance;
+            nearestFeature = feature;
+            nearestLayerId = layerId;
+            nearestNameIst = feature.get("name_ist") || null;
+          }
+        }
+      });
+    });
+
+    return { nearestFeature, nearestLayerId, nearestNameIst, distance: minDistance };
+  }, []);
+
+  const handleTicketCreation = useCallback(async (lon: number, lat: number, mapCoord: number[]) => {
+    const { nearestNameIst, nearestLayerId, distance } = findNearestPolygon(mapCoord, 10);
+    
+    const ticketData: InsertTicket = {
+      lon,
+      lat,
+      boundLayerId: nearestLayerId || undefined,
+      nameIst: nearestNameIst || undefined,
+      notes: undefined,
+    };
+
+    try {
+      const newTicket = await onCreateTicket(ticketData);
+      
+      if (nearestNameIst) {
+        toast({
+          title: "Метка создана",
+          description: `Привязана к полигону: ${nearestNameIst} (${distance.toFixed(1)}м)`,
+        });
+      } else {
+        toast({
+          title: "Метка создана",
+          description: "Полигон в радиусе 10м не найден",
+          variant: "destructive",
+        });
+      }
+      
+      // Add ticket to map
+      if (ticketsLayerRef.current) {
+        const ticketFeature = new Feature({
+          geometry: new OlPoint(fromLonLat([lon, lat])),
+          ticketId: newTicket.id,
+          status: newTicket.status,
+        });
+        ticketFeature.setStyle(getTicketStyle(newTicket.status));
+        ticketsLayerRef.current.getSource()?.addFeature(ticketFeature);
+      }
+    } catch (err) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось создать метку",
+        variant: "destructive",
+      });
+    }
+  }, [findNearestPolygon, onCreateTicket, toast]);
+
   return (
     <div className="relative flex-1 h-full" data-testid="map-container">
       <div
@@ -460,6 +606,8 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         onResetView={handleResetView}
         onFullscreen={handleFullscreen}
         rotation={rotation}
+        ticketMode={ticketMode}
+        onToggleTicketMode={isConnected ? onToggleTicketMode : undefined}
       />
 
       <CoordinateDisplay coordinates={mouseCoordinates} zoom={zoom} />
