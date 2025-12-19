@@ -2,12 +2,16 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import OLMap from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
+import VectorLayer from "ol/layer/Vector";
 import ImageLayer from "ol/layer/Image";
 import OSM from "ol/source/OSM";
-import XYZ from "ol/source/XYZ";
+import VectorSource from "ol/source/Vector";
 import ImageWMS from "ol/source/ImageWMS";
 import { fromLonLat, toLonLat } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
+import WKT from "ol/format/WKT";
+import Feature from "ol/Feature";
+import { Style, Fill, Stroke, Circle } from "ol/style";
 import "ol/ol.css";
 
 import type { LayerConfig, FeatureInfo, ZuluConnection } from "@shared/schema";
@@ -25,7 +29,65 @@ interface MapViewerProps {
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
 const DEFAULT_ZOOM = 10;
 
-type LayerType = TileLayer<OSM> | TileLayer<XYZ> | ImageLayer<ImageWMS>;
+type LayerType = TileLayer<OSM> | VectorLayer<VectorSource> | ImageLayer<ImageWMS>;
+
+const LAYER_COLORS: Record<string, string> = {
+  "ZR_VS_MO": "#2196F3",
+  "ZR_VO_MO": "#4CAF50",
+  "ZR_TS_MO": "#FF5722",
+};
+
+function getLayerStyle(layerId: string) {
+  const color = LAYER_COLORS[layerId] || "#1976D2";
+  return new Style({
+    fill: new Fill({ color: color + "40" }),
+    stroke: new Stroke({ color, width: 2 }),
+    image: new Circle({
+      radius: 6,
+      fill: new Fill({ color }),
+      stroke: new Stroke({ color: "#fff", width: 1 }),
+    }),
+  });
+}
+
+function parseZwsResponse(xml: string): Feature[] {
+  const features: Feature[] = [];
+  const wktFormat = new WKT();
+  
+  const recordRegex = /<Record>([\s\S]*?)<\/Record>/gi;
+  let recordMatch;
+  
+  while ((recordMatch = recordRegex.exec(xml)) !== null) {
+    const recordContent = recordMatch[1];
+    
+    const geometryMatch = recordContent.match(/<Name>Geometry<\/Name><Value>([\s\S]*?)<\/Value>/i);
+    if (geometryMatch) {
+      const wkt = geometryMatch[1].trim();
+      try {
+        const geometry = wktFormat.readGeometry(wkt, {
+          dataProjection: "EPSG:4326",
+          featureProjection: "EPSG:3857",
+        });
+        
+        const feature = new Feature({ geometry });
+        
+        const fieldRegex = /<Field><Name>([^<]+)<\/Name><Value>([^<]*)<\/Value><\/Field>/gi;
+        let fieldMatch;
+        while ((fieldMatch = fieldRegex.exec(recordContent)) !== null) {
+          if (fieldMatch[1] !== "Geometry") {
+            feature.set(fieldMatch[1], fieldMatch[2]);
+          }
+        }
+        
+        features.push(feature);
+      } catch (e) {
+        console.warn("Failed to parse WKT:", wkt.substring(0, 50));
+      }
+    }
+  }
+  
+  return features;
+}
 
 export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -161,16 +223,40 @@ export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
           let newLayer: LayerType;
 
           if (connection.useZws) {
-            const xyzSource = new XYZ({
-              url: `/api/zulu/zws/tile/{z}/{x}/{-y}?layer=${encodeURIComponent(layerConfig.id)}`,
-            });
-
-            newLayer = new TileLayer({
-              source: xyzSource,
+            const vectorSource = new VectorSource();
+            
+            newLayer = new VectorLayer({
+              source: vectorSource,
+              style: getLayerStyle(layerConfig.id),
               properties: { id: layerConfig.id },
               visible: layerConfig.visible,
               opacity: layerConfig.opacity,
             });
+            
+            map.addLayer(newLayer);
+            layersRef.current[layerConfig.id] = newLayer;
+            
+            if (layerConfig.visible) {
+              fetch("/api/zulu/zws/query", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ layer: layerConfig.id }),
+              })
+                .then((res) => res.json())
+                .then((data) => {
+                  if (data.raw) {
+                    const features = parseZwsResponse(data.raw);
+                    console.log(`Loaded ${features.length} features for ${layerConfig.id}`);
+                    vectorSource.addFeatures(features);
+                    
+                    if (features.length > 0) {
+                      const extent = vectorSource.getExtent();
+                      map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14 });
+                    }
+                  }
+                })
+                .catch((err) => console.error("Failed to load layer:", err));
+            }
           } else {
             const wmsUrl = `/api/zulu/wms?host=${connection.host}&port=${connection.port}`;
 
@@ -189,10 +275,10 @@ export function MapViewer({ layers, connection, isConnected }: MapViewerProps) {
               visible: layerConfig.visible,
               opacity: layerConfig.opacity,
             });
+            
+            map.addLayer(newLayer);
+            layersRef.current[layerConfig.id] = newLayer;
           }
-
-          map.addLayer(newLayer);
-          layersRef.current[layerConfig.id] = newLayer;
         } else {
           existingLayer.setVisible(layerConfig.visible);
           existingLayer.setOpacity(layerConfig.opacity);
