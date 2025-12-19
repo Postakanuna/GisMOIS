@@ -87,8 +87,8 @@ export function FeatureInfoPanel({
           </div>
         )}
 
-        <ScrollArea className="max-h-64">
-          <div className="space-y-1">
+        <ScrollArea className="h-auto max-h-72 overflow-auto">
+          <div className="space-y-1 pr-3">
             {entries.length > 0 ? (
               entries.map(([key, value], index) => (
                 <div
@@ -98,7 +98,7 @@ export function FeatureInfoPanel({
                   }`}
                   data-testid={`row-property-${key}`}
                 >
-                  <span className="text-xs text-muted-foreground shrink-0 max-w-[40%] truncate">
+                  <span className="text-xs text-muted-foreground shrink-0 max-w-[40%]">
                     {key}
                   </span>
                   <span className="text-xs text-right break-all font-mono">
