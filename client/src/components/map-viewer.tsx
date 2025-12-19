@@ -116,7 +116,7 @@ function parseZwsResponse(xml: string): Feature[] {
   return features;
 }
 
-export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, tickets, ticketMode, onToggleTicketMode, onCreateTicket }: MapViewerProps) {
+export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, tickets = [], ticketMode, onToggleTicketMode, onCreateTicket }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const layersRef = useRef<Record<string, LayerType>>({});
@@ -420,7 +420,7 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
 
   // Update tickets on map when tickets array changes
   useEffect(() => {
-    if (!ticketsLayerRef.current) return;
+    if (!ticketsLayerRef.current || !tickets) return;
     
     const source = ticketsLayerRef.current.getSource();
     if (!source) return;

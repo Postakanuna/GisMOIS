@@ -134,6 +134,17 @@ export function useZuluConnection(): UseZuluConnectionReturn {
       setLayers(newLayers);
       setConnection(zwsConnection);
       setStatus("connected");
+      
+      // Load tickets after successful connection
+      try {
+        const ticketsResponse = await fetch("/api/tickets");
+        if (ticketsResponse.ok) {
+          const ticketsData = await ticketsResponse.json();
+          setTickets(ticketsData);
+        }
+      } catch (ticketErr) {
+        console.warn("Failed to load tickets:", ticketErr);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка подключения к ZWS");
       setStatus("error");
