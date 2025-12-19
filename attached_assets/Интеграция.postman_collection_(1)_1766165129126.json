@@ -1,0 +1,168 @@
+{
+	"info": {
+		"_postman_id": "a04a70df-0783-4ac9-a908-73dc9cc0e097",
+		"name": "Интеграция",
+		"description": "### Welcome to Postman! This is your first collection. \n\nCollections are your starting point for building and testing APIs. You can use this one to:\n\n• Group related requests\n• Test your API in real-world scenarios\n• Document and share your requests\n\nUpdate the name and overview whenever you’re ready to make it yours.\n\n[Learn more about Postman Collections.](https://learning.postman.com/docs/collections/collections-overview/)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "48449917",
+		"_collection_link": "https://cartofan74-1099619.postman.co/workspace/gegrr's-Workspace~590123a0-cc66-41ed-85c8-3926b037cde7/collection/48449917-a04a70df-0783-4ac9-a908-73dc9cc0e097?action=share&source=collection_link&creator=48449917"
+	},
+	"item": [
+		{
+			"name": "Водоснабжение",
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "password",
+							"value": "AzA$64034073%11524282",
+							"type": "string"
+						},
+						{
+							"key": "username",
+							"value": "sa",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/xml",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<zulu-server service=\"zws\" version=\"1.0.0\">\r\n\t<Command>\r\n\t\t<LayerExecSql>\r\n\t\t\t    <Layer>LAYTERS:ZR_VS_MO</Layer>\r\n\t\t\t    <Query>SELECT name_ist,P_ust,P_podk,P_svob, name_rso,muniz_obr, Geometry.AsText() </Query>\r\n            <CRS>EPSG:4326</CRS>\r\n\t\t</LayerExecSql>\r\n\t</Command>\r\n</zulu-server>",
+					"options": {
+						"raw": {
+							"language": "xml"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://is.arki.mosreg.ru/zws/LayerExecSQL",
+					"protocol": "https",
+					"host": [
+						"is",
+						"arki",
+						"mosreg",
+						"ru"
+					],
+					"path": [
+						"zws",
+						"LayerExecSQL"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Водоотведение",
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "password",
+							"value": "AzA$64034073%11524282",
+							"type": "string"
+						},
+						{
+							"key": "username",
+							"value": "sa",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/xml",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<zulu-server service=\"zws\" version=\"1.0.0\">\r\n\t<Command>\r\n\t\t<LayerExecSql>\r\n\t\t\t    <Layer>LAYTERS:ZR_VO_MO</Layer>\r\n\t\t\t    <Query>SELECT name_ist,P_ust,P_podk,P_svob, name_rso,muniz_obr,  Geometry.AsText()</Query>\r\n            <CRS>EPSG:4326</CRS>\r\n\t\t</LayerExecSql>\r\n\t</Command>\r\n</zulu-server>",
+					"options": {
+						"raw": {
+							"language": "xml"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://is.arki.mosreg.ru/zws/LayerExecSQL",
+					"protocol": "https",
+					"host": [
+						"is",
+						"arki",
+						"mosreg",
+						"ru"
+					],
+					"path": [
+						"zws",
+						"LayerExecSQL"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Теплоснабжение",
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "password",
+							"value": "AzA$64034073%11524282",
+							"type": "string"
+						},
+						{
+							"key": "username",
+							"value": "sa",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/xml",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<zulu-server service=\"zws\" version=\"1.0.0\">\r\n\t<Command>\r\n\t\t<LayerExecSql>\r\n\t\t\t    <Layer>LAYTERS:ZR_TS_MO</Layer>\r\n\t\t\t    <Query>SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, modename, Адрес, Geometry.AsText()  </Query>\r\n            <CRS>EPSG:4326</CRS>\r\n\t\t</LayerExecSql>\r\n\t</Command>\r\n</zulu-server>",
+					"options": {
+						"raw": {
+							"language": "xml"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://is.arki.mosreg.ru/zws/LayerExecSQL",
+					"protocol": "https",
+					"host": [
+						"is",
+						"arki",
+						"mosreg",
+						"ru"
+					],
+					"path": [
+						"zws",
+						"LayerExecSQL"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
