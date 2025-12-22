@@ -89,23 +89,37 @@ function getTicketStyle(status: "bound" | "unbound") {
   });
 }
 
+function createFacilityIcon(type: FacilityType, selected: boolean = false): string {
+  const size = selected ? 32 : 28;
+  const bgColor = FACILITY_COLORS[type];
+  const strokeColor = selected ? "#ffffff" : "#ffffff80";
+  const strokeWidth = selected ? 3 : 2;
+  
+  let iconPath = "";
+  if (type === "building") {
+    iconPath = `<path d="M5 20V9l7-5 7 5v11H5z M9 20v-5h6v5" fill="none" stroke="white" stroke-width="1.5"/>`;
+  } else if (type === "boilerhouse") {
+    iconPath = `<path d="M12 22c-4-3-7-6-7-10a7 7 0 0114 0c0 4-3 7-7 10z M12 14a2 2 0 100-4 2 2 0 000 4z" fill="white" fill-opacity="0.9"/>`;
+  } else if (type === "waterintake") {
+    iconPath = `<path d="M12 21c-4 0-7-3-7-7 0-3 7-11 7-11s7 8 7 11c0 4-3 7-7 7z" fill="white" fill-opacity="0.9"/>`;
+  }
+  
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${size/2}" cy="${size/2}" r="${size/2 - strokeWidth/2}" fill="${bgColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>
+      <g transform="translate(${(size-24)/2}, ${(size-24)/2})">
+        ${iconPath}
+      </g>
+    </svg>
+  `;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
 function getFacilityStyle(type: FacilityType, selected: boolean = false) {
-  const color = FACILITY_COLORS[type];
-  const icons: Record<FacilityType, string> = {
-    building: "B",
-    boilerhouse: "K",
-    waterintake: "B",
-  };
   return new Style({
-    image: new Circle({
-      radius: selected ? 14 : 12,
-      fill: new Fill({ color }),
-      stroke: new Stroke({ color: selected ? "#fff" : "#ffffff80", width: selected ? 3 : 2 }),
-    }),
-    text: new Text({
-      text: icons[type],
-      fill: new Fill({ color: "#fff" }),
-      font: "bold 12px sans-serif",
+    image: new Icon({
+      src: createFacilityIcon(type, selected),
+      anchor: [0.5, 0.5],
     }),
   });
 }
