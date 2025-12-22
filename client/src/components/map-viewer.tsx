@@ -121,6 +121,53 @@ function getTraceStyle(type: TraceType, selected: boolean = false) {
   });
 }
 
+function offsetLineStringConsistent(coords: number[][], offsetMeters: number): number[][] {
+  if (coords.length < 2) return coords;
+  
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  const needsReverse = first[0] > last[0] || (first[0] === last[0] && first[1] > last[1]);
+  const orderedCoords = needsReverse ? [...coords].reverse() : coords;
+  
+  const result: number[][] = [];
+  
+  for (let i = 0; i < orderedCoords.length; i++) {
+    const current = orderedCoords[i];
+    let dx = 0, dy = 0;
+    
+    if (i === 0) {
+      const next = orderedCoords[i + 1];
+      dx = next[0] - current[0];
+      dy = next[1] - current[1];
+    } else if (i === orderedCoords.length - 1) {
+      const prev = orderedCoords[i - 1];
+      dx = current[0] - prev[0];
+      dy = current[1] - prev[1];
+    } else {
+      const prev = orderedCoords[i - 1];
+      const next = orderedCoords[i + 1];
+      dx = next[0] - prev[0];
+      dy = next[1] - prev[1];
+    }
+    
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length === 0) {
+      result.push([...current]);
+      continue;
+    }
+    
+    const perpX = -dy / length;
+    const perpY = dx / length;
+    
+    result.push([
+      current[0] + perpX * offsetMeters,
+      current[1] + perpY * offsetMeters,
+    ]);
+  }
+  
+  return needsReverse ? result.reverse() : result;
+}
+
 function parseZwsResponse(xml: string): Feature[] {
   const features: Feature[] = [];
   const wktFormat = new WKT();
@@ -529,14 +576,37 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     
     source.clear();
     
+    const OFFSET_METERS = 5;
+    
     traces.forEach((trace) => {
-      const coords = trace.coordinates.map(c => fromLonLat(c));
+      const baseCoords = trace.coordinates.map(c => fromLonLat(c));
+      const isSelected = selectedTrace?.id === trace.id;
+      const color = trace.type === "heating" ? "#F97316" : "#06B6D4";
+      const offset = trace.type === "heating" ? -OFFSET_METERS : OFFSET_METERS;
+      
       const feature = new Feature({
-        geometry: new LineString(coords),
+        geometry: new LineString(baseCoords),
         traceId: trace.id,
         traceType: trace.type,
       });
-      feature.setStyle(getTraceStyle(trace.type, selectedTrace?.id === trace.id));
+      
+      feature.setStyle((feat) => {
+        const geom = feat.getGeometry() as LineString;
+        if (!geom) return new Style({});
+        
+        const coords = geom.getCoordinates();
+        const offsetCoords = offsetLineStringConsistent(coords, offset);
+        
+        return new Style({
+          geometry: new LineString(offsetCoords),
+          stroke: new Stroke({
+            color,
+            width: isSelected ? 4 : 3,
+            lineDash: [10, 6],
+          }),
+        });
+      });
+      
       source.addFeature(feature);
     });
   }, [traces, selectedTrace]);
