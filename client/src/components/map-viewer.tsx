@@ -267,6 +267,8 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   const [selectedTrace, setSelectedTrace] = useState<Trace | null>(null);
   const [isTracing, setIsTracing] = useState(false);
+  const [pendingPlacement, setPendingPlacement] = useState<{ lon: number; lat: number; type: FacilityType } | null>(null);
+  const [tracingError, setTracingError] = useState<string | null>(null);
 
   const placementModeRef = useRef<FacilityType | null>(null);
 
@@ -320,6 +322,16 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/traces"] });
       setSelectedTrace(null);
+    },
+  });
+
+  const updateFacilityMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: number; updates: Partial<InsertFacility> }) => {
+      const response = await apiRequest("PATCH", `/api/facilities/${id}`, updates);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
     },
   });
 
@@ -424,35 +436,12 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       setFeatureCoordinates([coords[0], coords[1]]);
 
       if (currentPlacementMode) {
-        const facilityNames: Record<FacilityType, string> = {
-          building: "Здание",
-          boilerhouse: "Котельная",
-          waterintake: "Водозабор",
-        };
-        
-        const existingFacilities = await queryClient.getQueryData<Facility[]>(["/api/facilities"]) || [];
-        const count = existingFacilities.filter(f => f.type === currentPlacementMode).length + 1;
-        
-        const newFacility: InsertFacility = {
-          type: currentPlacementMode,
-          name: `${facilityNames[currentPlacementMode]} ${count}`,
+        setPendingPlacement({
           lon: coords[0],
           lat: coords[1],
-        };
-
-        try {
-          await createFacilityMutation.mutateAsync(newFacility);
-          toast({
-            title: "Объект добавлен",
-            description: `${facilityNames[currentPlacementMode]} размещён на карте`,
-          });
-        } catch {
-          toast({
-            title: "Ошибка",
-            description: "Не удалось добавить объект",
-            variant: "destructive",
-          });
-        }
+          type: currentPlacementMode,
+        });
+        setPlacementMode(null);
         return;
       }
 
@@ -941,35 +930,114 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     }
   }, [findNearestPolygon, onCreateTicket, toast]);
 
+  const calculateDistance = useCallback((f1: Facility, f2: Facility): number => {
+    const dx = f1.lon - f2.lon;
+    const dy = f1.lat - f2.lat;
+    return Math.sqrt(dx * dx + dy * dy) * 111000;
+  }, []);
+
   const handleStartTracing = useCallback(async () => {
     if (!selectedFacility || selectedFacility.type !== "building") return;
 
-    const boilerhouse = facilities.find(f => f.type === "boilerhouse");
-    const waterintake = facilities.find(f => f.type === "waterintake");
+    setTracingError(null);
 
-    if (!boilerhouse && !waterintake) {
-      toast({
-        title: "Нет целей для трассировки",
-        description: "Добавьте котельную и/или водозабор на карту",
-        variant: "destructive",
+    const requiredHeat = selectedFacility.requiredHeatLoad || 0;
+    const requiredWater = selectedFacility.requiredWaterSupply || 0;
+
+    const freshFacilities = await queryClient.fetchQuery({
+      queryKey: ["/api/facilities"],
+      staleTime: 0,
+    }) as Facility[];
+
+    const boilerhouses = freshFacilities.filter(f => f.type === "boilerhouse");
+    const waterintakes = freshFacilities.filter(f => f.type === "waterintake");
+
+    if (boilerhouses.length === 0 && waterintakes.length === 0) {
+      setTracingError("Добавьте котельную и/или водозабор на карту");
+      return;
+    }
+
+    const qualifiedBoilerhouses = boilerhouses.filter(b => 
+      (b.freeHeatCapacity || 0) >= requiredHeat
+    );
+    const qualifiedWaterintakes = waterintakes.filter(w => 
+      (w.freeWaterCapacity || 0) >= requiredWater
+    );
+
+    const errors: string[] = [];
+
+    if (requiredHeat > 0 && qualifiedBoilerhouses.length === 0 && boilerhouses.length > 0) {
+      const maxCapacity = Math.max(...boilerhouses.map(b => b.freeHeatCapacity || 0));
+      errors.push(`Нет котельной с достаточной мощностью (нужно ${requiredHeat} Гкал/ч, макс. доступно ${maxCapacity} Гкал/ч)`);
+    }
+
+    if (requiredWater > 0 && qualifiedWaterintakes.length === 0 && waterintakes.length > 0) {
+      const maxCapacity = Math.max(...waterintakes.map(w => w.freeWaterCapacity || 0));
+      errors.push(`Нет водозабора с достаточной мощностью (нужно ${requiredWater} м³/ч, макс. доступно ${maxCapacity} м³/ч)`);
+    }
+
+    if (errors.length > 0) {
+      setTracingError(errors.join(". "));
+    }
+
+    let nearestBoilerhouse: Facility | null = null;
+    if (qualifiedBoilerhouses.length > 0) {
+      nearestBoilerhouse = qualifiedBoilerhouses.reduce((nearest, current) => {
+        const nearestDist = calculateDistance(selectedFacility, nearest);
+        const currentDist = calculateDistance(selectedFacility, current);
+        return currentDist < nearestDist ? current : nearest;
       });
+    }
+
+    let nearestWaterintake: Facility | null = null;
+    if (qualifiedWaterintakes.length > 0) {
+      nearestWaterintake = qualifiedWaterintakes.reduce((nearest, current) => {
+        const nearestDist = calculateDistance(selectedFacility, nearest);
+        const currentDist = calculateDistance(selectedFacility, current);
+        return currentDist < nearestDist ? current : nearest;
+      });
+    }
+
+    if (!nearestBoilerhouse && !nearestWaterintake) {
       return;
     }
 
     setIsTracing(true);
 
-    const routingTasks: { target: Facility; type: TraceType }[] = [];
-    if (boilerhouse) routingTasks.push({ target: boilerhouse, type: "heating" });
-    if (waterintake) routingTasks.push({ target: waterintake, type: "water" });
+    const routingTasks: { target: Facility; type: TraceType; requiredCapacity: number }[] = [];
+    if (nearestBoilerhouse && requiredHeat > 0) {
+      routingTasks.push({ target: nearestBoilerhouse, type: "heating", requiredCapacity: requiredHeat });
+    }
+    if (nearestWaterintake && requiredWater > 0) {
+      routingTasks.push({ target: nearestWaterintake, type: "water", requiredCapacity: requiredWater });
+    }
 
     try {
       for (const task of routingTasks) {
+        const currentFacilities = await queryClient.fetchQuery({
+          queryKey: ["/api/facilities"],
+          staleTime: 0,
+        }) as Facility[];
+        const currentTarget = currentFacilities.find(f => f.id === task.target.id);
+        
+        if (!currentTarget) {
+          throw new Error("Источник не найден");
+        }
+
+        const currentCapacity = task.type === "heating" 
+          ? (currentTarget.freeHeatCapacity || 0)
+          : (currentTarget.freeWaterCapacity || 0);
+
+        if (currentCapacity < task.requiredCapacity) {
+          throw new Error(`Недостаточно мощности у источника ${currentTarget.name}`);
+        }
+
         const response = await fetch("/api/routing", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             start: [selectedFacility.lon, selectedFacility.lat],
-            end: [task.target.lon, task.target.lat],
+            end: [currentTarget.lon, currentTarget.lat],
           }),
         });
 
@@ -982,12 +1050,27 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         const trace: InsertTrace = {
           type: task.type,
           buildingId: selectedFacility.id,
-          targetId: task.target.id,
+          targetId: currentTarget.id,
           coordinates: coords,
           length: lengthMeters,
         };
 
         await createTraceMutation.mutateAsync(trace);
+
+        const newCapacity = Math.max(0, currentCapacity - task.requiredCapacity);
+        if (task.type === "heating") {
+          await updateFacilityMutation.mutateAsync({
+            id: currentTarget.id,
+            updates: { freeHeatCapacity: newCapacity },
+          });
+        } else {
+          await updateFacilityMutation.mutateAsync({
+            id: currentTarget.id,
+            updates: { freeWaterCapacity: newCapacity },
+          });
+        }
+
+        await queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
 
         if (data.fallback) {
           toast({
@@ -1001,16 +1084,35 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         title: "Трассировка завершена",
         description: `Построено ${routingTasks.length} трассировок`,
       });
+      setTracingError(null);
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Не удалось построить трассировки";
       toast({
         title: "Ошибка трассировки",
-        description: "Не удалось построить трассировки",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsTracing(false);
     }
-  }, [selectedFacility, facilities, createTraceMutation, toast]);
+  }, [selectedFacility, createTraceMutation, updateFacilityMutation, calculateDistance, toast]);
+
+  const handleConfirmPlacement = useCallback(async (facility: InsertFacility) => {
+    try {
+      await createFacilityMutation.mutateAsync(facility);
+      toast({
+        title: "Объект добавлен",
+        description: `${facility.name} размещён на карте`,
+      });
+      setPendingPlacement(null);
+    } catch {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось добавить объект",
+        variant: "destructive",
+      });
+    }
+  }, [createFacilityMutation, toast]);
 
   return (
     <div className="relative flex-1 h-full" data-testid="map-container">
@@ -1050,6 +1152,11 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         selectedTrace={selectedTrace}
         onCloseTraceInfo={() => setSelectedTrace(null)}
         onDeleteTrace={(id) => deleteTraceMutation.mutate(id)}
+        pendingPlacement={pendingPlacement}
+        onConfirmPlacement={handleConfirmPlacement}
+        onCancelPendingPlacement={() => setPendingPlacement(null)}
+        facilities={facilities}
+        tracingError={tracingError}
       />
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />

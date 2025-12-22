@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Plus, Building2, Flame, Droplet, X, Route, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Popover,
@@ -15,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { FacilityType, Facility, Trace } from "@shared/schema";
+import type { FacilityType, Facility, Trace, InsertFacility } from "@shared/schema";
 
 interface InfrastructureToolsProps {
   placementMode: FacilityType | null;
@@ -28,6 +30,11 @@ interface InfrastructureToolsProps {
   selectedTrace: Trace | null;
   onCloseTraceInfo: () => void;
   onDeleteTrace: (id: number) => void;
+  pendingPlacement: { lon: number; lat: number; type: FacilityType } | null;
+  onConfirmPlacement: (facility: InsertFacility) => void;
+  onCancelPendingPlacement: () => void;
+  facilities: Facility[];
+  tracingError: string | null;
 }
 
 const facilityConfig: Record<FacilityType, { icon: typeof Building2; label: string; color: string }> = {
@@ -47,9 +54,20 @@ export function InfrastructureTools({
   selectedTrace,
   onCloseTraceInfo,
   onDeleteTrace,
+  pendingPlacement,
+  onConfirmPlacement,
+  onCancelPendingPlacement,
+  facilities,
+  tracingError,
 }: InfrastructureToolsProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  
+  const [facilityName, setFacilityName] = useState("");
+  const [freeHeatCapacity, setFreeHeatCapacity] = useState("");
+  const [freeWaterCapacity, setFreeWaterCapacity] = useState("");
+  const [requiredHeatLoad, setRequiredHeatLoad] = useState("");
+  const [requiredWaterSupply, setRequiredWaterSupply] = useState("");
 
   const handleSelectTool = (type: FacilityType) => {
     onSetPlacementMode(type);
@@ -72,6 +90,45 @@ export function InfrastructureTools({
       return `${(meters / 1000).toFixed(2)} км`;
     }
     return `${Math.round(meters)} м`;
+  };
+
+  const resetFormFields = () => {
+    setFacilityName("");
+    setFreeHeatCapacity("");
+    setFreeWaterCapacity("");
+    setRequiredHeatLoad("");
+    setRequiredWaterSupply("");
+  };
+
+  const handleConfirmPlacement = () => {
+    if (!pendingPlacement) return;
+
+    const existingCount = facilities.filter(f => f.type === pendingPlacement.type).length + 1;
+    const defaultName = `${facilityConfig[pendingPlacement.type].label} ${existingCount}`;
+
+    const facility: InsertFacility = {
+      type: pendingPlacement.type,
+      name: facilityName.trim() || defaultName,
+      lon: pendingPlacement.lon,
+      lat: pendingPlacement.lat,
+    };
+
+    if (pendingPlacement.type === "boilerhouse") {
+      facility.freeHeatCapacity = freeHeatCapacity ? parseFloat(freeHeatCapacity) : undefined;
+    } else if (pendingPlacement.type === "waterintake") {
+      facility.freeWaterCapacity = freeWaterCapacity ? parseFloat(freeWaterCapacity) : undefined;
+    } else if (pendingPlacement.type === "building") {
+      facility.requiredHeatLoad = requiredHeatLoad ? parseFloat(requiredHeatLoad) : undefined;
+      facility.requiredWaterSupply = requiredWaterSupply ? parseFloat(requiredWaterSupply) : undefined;
+    }
+
+    onConfirmPlacement(facility);
+    resetFormFields();
+  };
+
+  const handleCancelPendingPlacement = () => {
+    onCancelPendingPlacement();
+    resetFormFields();
   };
 
   return (
@@ -176,10 +233,40 @@ export function InfrastructureTools({
             </Button>
           </div>
 
-          <div className="text-xs text-muted-foreground mb-3">
+          <div className="text-xs text-muted-foreground mb-3 space-y-1">
             <p>Широта: {selectedFacility.lat.toFixed(6)}</p>
             <p>Долгота: {selectedFacility.lon.toFixed(6)}</p>
+            {selectedFacility.type === "boilerhouse" && selectedFacility.freeHeatCapacity !== undefined && (
+              <p className="text-orange-600 dark:text-orange-400 font-medium">
+                Свободная мощность: {selectedFacility.freeHeatCapacity} Гкал/ч
+              </p>
+            )}
+            {selectedFacility.type === "waterintake" && selectedFacility.freeWaterCapacity !== undefined && (
+              <p className="text-cyan-600 dark:text-cyan-400 font-medium">
+                Свободная мощность: {selectedFacility.freeWaterCapacity} м³/ч
+              </p>
+            )}
+            {selectedFacility.type === "building" && (
+              <>
+                {selectedFacility.requiredHeatLoad !== undefined && (
+                  <p className="text-orange-600 dark:text-orange-400 font-medium">
+                    Потребность тепла: {selectedFacility.requiredHeatLoad} Гкал/ч
+                  </p>
+                )}
+                {selectedFacility.requiredWaterSupply !== undefined && (
+                  <p className="text-cyan-600 dark:text-cyan-400 font-medium">
+                    Потребность воды: {selectedFacility.requiredWaterSupply} м³/ч
+                  </p>
+                )}
+              </>
+            )}
           </div>
+          
+          {tracingError && selectedFacility.type === "building" && (
+            <div className="text-xs text-destructive bg-destructive/10 rounded-md p-2 mb-3">
+              {tracingError}
+            </div>
+          )}
 
           <div className="flex gap-2">
             {selectedFacility.type === "building" && (
@@ -274,6 +361,104 @@ export function InfrastructureTools({
             </Button>
             <Button variant="destructive" onClick={handleConfirmDelete}>
               Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pendingPlacement} onOpenChange={(open) => !open && handleCancelPendingPlacement()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {pendingPlacement && facilityConfig[pendingPlacement.type].label}
+            </DialogTitle>
+            <DialogDescription>
+              Введите параметры объекта
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="facility-name">Название</Label>
+              <Input
+                id="facility-name"
+                placeholder={pendingPlacement ? `${facilityConfig[pendingPlacement.type].label} ${facilities.filter(f => f.type === pendingPlacement.type).length + 1}` : ""}
+                value={facilityName}
+                onChange={(e) => setFacilityName(e.target.value)}
+                data-testid="input-facility-name"
+              />
+            </div>
+
+            {pendingPlacement?.type === "boilerhouse" && (
+              <div className="space-y-2">
+                <Label htmlFor="heat-capacity">Свободная мощность (Гкал/ч)</Label>
+                <Input
+                  id="heat-capacity"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="Например: 10.5"
+                  value={freeHeatCapacity}
+                  onChange={(e) => setFreeHeatCapacity(e.target.value)}
+                  data-testid="input-heat-capacity"
+                />
+              </div>
+            )}
+
+            {pendingPlacement?.type === "waterintake" && (
+              <div className="space-y-2">
+                <Label htmlFor="water-capacity">Свободная мощность (м³/ч)</Label>
+                <Input
+                  id="water-capacity"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="Например: 100"
+                  value={freeWaterCapacity}
+                  onChange={(e) => setFreeWaterCapacity(e.target.value)}
+                  data-testid="input-water-capacity"
+                />
+              </div>
+            )}
+
+            {pendingPlacement?.type === "building" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="required-heat">Потребность тепла (Гкал/ч)</Label>
+                  <Input
+                    id="required-heat"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="Например: 2.5"
+                    value={requiredHeatLoad}
+                    onChange={(e) => setRequiredHeatLoad(e.target.value)}
+                    data-testid="input-required-heat"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="required-water">Потребность воды (м³/ч)</Label>
+                  <Input
+                    id="required-water"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="Например: 15"
+                    value={requiredWaterSupply}
+                    onChange={(e) => setRequiredWaterSupply(e.target.value)}
+                    data-testid="input-required-water"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={handleCancelPendingPlacement}>
+              Отмена
+            </Button>
+            <Button onClick={handleConfirmPlacement} data-testid="button-confirm-placement">
+              Создать
             </Button>
           </DialogFooter>
         </DialogContent>
