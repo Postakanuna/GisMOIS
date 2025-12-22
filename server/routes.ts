@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema } from "@shared/schema";
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
@@ -463,6 +463,178 @@ export async function registerRoutes(
       return res.status(204).send();
     } catch (error) {
       console.error("Delete ticket error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Facility routes
+  app.get("/api/facilities", async (_req: Request, res: Response) => {
+    try {
+      const facilities = await storage.getFacilities();
+      return res.json(facilities);
+    } catch (error) {
+      console.error("Get facilities error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/facilities", async (req: Request, res: Response) => {
+    try {
+      const parseResult = insertFacilitySchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          message: "Invalid facility data",
+          errors: parseResult.error.errors,
+        });
+      }
+      const facility = await storage.createFacility(parseResult.data);
+      return res.status(201).json(facility);
+    } catch (error) {
+      console.error("Create facility error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/facilities/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid facility ID" });
+      }
+      // Delete associated traces first
+      await storage.deleteTracesByBuilding(id);
+      const deleted = await storage.deleteFacility(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Facility not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Delete facility error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Trace routes
+  app.get("/api/traces", async (_req: Request, res: Response) => {
+    try {
+      const traces = await storage.getTraces();
+      return res.json(traces);
+    } catch (error) {
+      console.error("Get traces error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/traces", async (req: Request, res: Response) => {
+    try {
+      const parseResult = insertTraceSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          message: "Invalid trace data",
+          errors: parseResult.error.errors,
+        });
+      }
+      const trace = await storage.createTrace(parseResult.data);
+      return res.status(201).json(trace);
+    } catch (error) {
+      console.error("Create trace error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/traces/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid trace ID" });
+      }
+      const deleted = await storage.deleteTrace(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Trace not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Delete trace error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // OSRM routing proxy
+  app.post("/api/routing", async (req: Request, res: Response) => {
+    try {
+      const { start, end } = req.body;
+      
+      if (!start || !end || !Array.isArray(start) || !Array.isArray(end)) {
+        return res.status(400).json({ message: "Start and end coordinates are required" });
+      }
+
+      const [startLon, startLat] = start;
+      const [endLon, endLat] = end;
+
+      // Use OSRM public demo server for routing
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(osrmUrl, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": "GIS-Application/1.0",
+          },
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          console.error("OSRM error:", response.status);
+          // Fallback to straight line
+          return res.json({
+            success: false,
+            fallback: true,
+            coordinates: [[startLon, startLat], [endLon, endLat]],
+            message: "OSRM unavailable, using straight line",
+          });
+        }
+
+        const data = await response.json();
+
+        if (data.code !== "Ok" || !data.routes || data.routes.length === 0) {
+          return res.json({
+            success: false,
+            fallback: true,
+            coordinates: [[startLon, startLat], [endLon, endLat]],
+            message: "No route found, using straight line",
+          });
+        }
+
+        const route = data.routes[0];
+        return res.json({
+          success: true,
+          coordinates: route.geometry.coordinates,
+          distance: route.distance,
+          duration: route.duration,
+        });
+      } catch (fetchError: any) {
+        if (fetchError.name === "AbortError") {
+          return res.json({
+            success: false,
+            fallback: true,
+            coordinates: [[startLon, startLat], [endLon, endLat]],
+            message: "OSRM timeout, using straight line",
+          });
+        }
+        console.error("OSRM fetch error:", fetchError);
+        return res.json({
+          success: false,
+          fallback: true,
+          coordinates: [[startLon, startLat], [endLon, endLat]],
+          message: "OSRM error, using straight line",
+        });
+      }
+    } catch (error) {
+      console.error("Routing error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

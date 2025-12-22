@@ -111,6 +111,45 @@ export type Ticket = z.infer<typeof ticketSchema>;
 export const insertTicketSchema = ticketSchema.omit({ id: true, createdAt: true, status: true });
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
 
+// Facility types for infrastructure objects
+export const facilityTypeSchema = z.enum(["building", "boilerhouse", "waterintake"]);
+export type FacilityType = z.infer<typeof facilityTypeSchema>;
+
+// Facility (infrastructure object) schema
+export const facilitySchema = z.object({
+  id: z.number(),
+  type: facilityTypeSchema,
+  name: z.string(),
+  lon: z.number(),
+  lat: z.number(),
+  createdAt: z.string(),
+});
+
+export type Facility = z.infer<typeof facilitySchema>;
+
+export const insertFacilitySchema = facilitySchema.omit({ id: true, createdAt: true });
+export type InsertFacility = z.infer<typeof insertFacilitySchema>;
+
+// Trace types for routing
+export const traceTypeSchema = z.enum(["heating", "water"]);
+export type TraceType = z.infer<typeof traceTypeSchema>;
+
+// Trace (routing line) schema
+export const traceSchema = z.object({
+  id: z.number(),
+  type: traceTypeSchema,
+  buildingId: z.number(),
+  targetId: z.number(),
+  coordinates: z.array(z.tuple([z.number(), z.number()])),
+  length: z.number(),
+  createdAt: z.string(),
+});
+
+export type Trace = z.infer<typeof traceSchema>;
+
+export const insertTraceSchema = traceSchema.omit({ id: true, createdAt: true });
+export type InsertTrace = z.infer<typeof insertTraceSchema>;
+
 // Keep existing user schema for compatibility
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar } from "drizzle-orm/pg-core";

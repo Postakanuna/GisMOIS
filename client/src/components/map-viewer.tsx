@@ -11,19 +11,23 @@ import { fromLonLat, toLonLat } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
 import WKT from "ol/format/WKT";
 import Feature from "ol/Feature";
-import { Style, Fill, Stroke, Circle } from "ol/style";
+import { Style, Fill, Stroke, Circle, Icon } from "ol/style";
+import { LineString } from "ol/geom";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { MapControls } from "./map-controls";
 import { CoordinateDisplay } from "./coordinate-display";
 import { FeatureInfoPanel } from "./feature-info";
 import { LoadingOverlay } from "./loading-overlay";
-import { getDistance } from "ol/sphere";
+import { InfrastructureTools } from "./infrastructure-tools";
+import { getDistance, getLength } from "ol/sphere";
 import { Point as OlPoint, Polygon as OlPolygon, MultiPolygon as OlMultiPolygon } from "ol/geom";
 import Text from "ol/style/Text";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface MapViewerProps {
   layers: LayerConfig[];
@@ -48,6 +52,12 @@ const LAYER_COLORS: Record<string, string> = {
   "ZR_VS_MO": "#2196F3",
   "ZR_VO_MO": "#4CAF50",
   "ZR_TS_MO": "#FF5722",
+};
+
+const FACILITY_COLORS: Record<FacilityType, string> = {
+  building: "#3B82F6",
+  boilerhouse: "#F97316",
+  waterintake: "#06B6D4",
 };
 
 function getLayerStyle(layerId: string) {
@@ -75,6 +85,38 @@ function getTicketStyle(status: "bound" | "unbound") {
       text: status === "bound" ? "P" : "?",
       fill: new Fill({ color: "#fff" }),
       font: "bold 12px sans-serif",
+    }),
+  });
+}
+
+function getFacilityStyle(type: FacilityType, selected: boolean = false) {
+  const color = FACILITY_COLORS[type];
+  const icons: Record<FacilityType, string> = {
+    building: "B",
+    boilerhouse: "K",
+    waterintake: "B",
+  };
+  return new Style({
+    image: new Circle({
+      radius: selected ? 14 : 12,
+      fill: new Fill({ color }),
+      stroke: new Stroke({ color: selected ? "#fff" : "#ffffff80", width: selected ? 3 : 2 }),
+    }),
+    text: new Text({
+      text: icons[type],
+      fill: new Fill({ color: "#fff" }),
+      font: "bold 12px sans-serif",
+    }),
+  });
+}
+
+function getTraceStyle(type: TraceType, selected: boolean = false) {
+  const color = type === "heating" ? "#F97316" : "#06B6D4";
+  return new Style({
+    stroke: new Stroke({
+      color,
+      width: selected ? 4 : 3,
+      lineDash: [10, 6],
     }),
   });
 }
@@ -124,6 +166,8 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
   const layersRef = useRef<Record<string, LayerType>>({});
   const allFeaturesRef = useRef<Record<string, Feature[]>>({});
   const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const facilitiesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const tracesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const { toast } = useToast();
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
@@ -137,6 +181,66 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
   const [selectedFeature, setSelectedFeature] = useState<FeatureInfo | null>(null);
   const [featureCoordinates, setFeatureCoordinates] = useState<[number, number] | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  
+  const [placementMode, setPlacementMode] = useState<FacilityType | null>(null);
+  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
+  const [selectedTrace, setSelectedTrace] = useState<Trace | null>(null);
+  const [isTracing, setIsTracing] = useState(false);
+
+  const placementModeRef = useRef<FacilityType | null>(null);
+
+  useEffect(() => {
+    placementModeRef.current = placementMode;
+  }, [placementMode]);
+
+  const { data: facilities = [] } = useQuery<Facility[]>({
+    queryKey: ["/api/facilities"],
+  });
+
+  const { data: traces = [] } = useQuery<Trace[]>({
+    queryKey: ["/api/traces"],
+  });
+
+  const createFacilityMutation = useMutation({
+    mutationFn: async (facility: InsertFacility) => {
+      const response = await apiRequest("POST", "/api/facilities", facility);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
+    },
+  });
+
+  const deleteFacilityMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/facilities/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/traces"] });
+      setSelectedFacility(null);
+    },
+  });
+
+  const createTraceMutation = useMutation({
+    mutationFn: async (trace: InsertTrace) => {
+      const response = await apiRequest("POST", "/api/traces", trace);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/traces"] });
+    },
+  });
+
+  const deleteTraceMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/traces/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/traces"] });
+      setSelectedTrace(null);
+    },
+  });
 
   useEffect(() => {
     activeFiltersRef.current = activeFilters;
@@ -176,7 +280,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
 
     layersRef.current["osm-base"] = osmLayer;
 
-    // Create tickets layer
     const ticketsSource = new VectorSource();
     const ticketsLayer = new VectorLayer({
       source: ticketsSource,
@@ -186,9 +289,40 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     map.addLayer(ticketsLayer);
     ticketsLayerRef.current = ticketsLayer;
 
+    const tracesSource = new VectorSource();
+    const tracesLayer = new VectorLayer({
+      source: tracesSource,
+      properties: { id: "traces-layer" },
+      zIndex: 900,
+    });
+    map.addLayer(tracesLayer);
+    tracesLayerRef.current = tracesLayer;
+
+    const facilitiesSource = new VectorSource();
+    const facilitiesLayer = new VectorLayer({
+      source: facilitiesSource,
+      properties: { id: "facilities-layer" },
+      zIndex: 950,
+    });
+    map.addLayer(facilitiesLayer);
+    facilitiesLayerRef.current = facilitiesLayer;
+
     map.on("pointermove", (evt) => {
       const coords = toLonLat(evt.coordinate);
       setMouseCoordinates([coords[0], coords[1]]);
+      
+      if (placementModeRef.current) {
+        map.getTargetElement().style.cursor = "crosshair";
+      } else {
+        let hasFeature = false;
+        map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
+          if (layer === facilitiesLayerRef.current || layer === tracesLayerRef.current) {
+            hasFeature = true;
+          }
+          return true;
+        });
+        map.getTargetElement().style.cursor = hasFeature ? "pointer" : "";
+      }
     });
 
     map.getView().on("change:resolution", () => {
@@ -203,11 +337,78 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       const currentConnection = connectionRef.current;
       const currentLayers = layersStateRef.current;
       const isTicketMode = ticketModeRef.current;
+      const currentPlacementMode = placementModeRef.current;
 
       const coords = toLonLat(evt.coordinate);
       setFeatureCoordinates([coords[0], coords[1]]);
 
-      // Ticket creation mode
+      if (currentPlacementMode) {
+        const facilityNames: Record<FacilityType, string> = {
+          building: "Здание",
+          boilerhouse: "Котельная",
+          waterintake: "Водозабор",
+        };
+        
+        const existingFacilities = await queryClient.getQueryData<Facility[]>(["/api/facilities"]) || [];
+        const count = existingFacilities.filter(f => f.type === currentPlacementMode).length + 1;
+        
+        const newFacility: InsertFacility = {
+          type: currentPlacementMode,
+          name: `${facilityNames[currentPlacementMode]} ${count}`,
+          lon: coords[0],
+          lat: coords[1],
+        };
+
+        try {
+          await createFacilityMutation.mutateAsync(newFacility);
+          toast({
+            title: "Объект добавлен",
+            description: `${facilityNames[currentPlacementMode]} размещён на карте`,
+          });
+        } catch {
+          toast({
+            title: "Ошибка",
+            description: "Не удалось добавить объект",
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+
+      let clickedFacility: Facility | null = null;
+      let clickedTrace: Trace | null = null;
+
+      map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
+        if (layer === facilitiesLayerRef.current && !clickedFacility) {
+          const facilityId = feature.get("facilityId");
+          const allFacilities = queryClient.getQueryData<Facility[]>(["/api/facilities"]) || [];
+          clickedFacility = allFacilities.find(f => f.id === facilityId) || null;
+        }
+        if (layer === tracesLayerRef.current && !clickedTrace) {
+          const traceId = feature.get("traceId");
+          const allTraces = queryClient.getQueryData<Trace[]>(["/api/traces"]) || [];
+          clickedTrace = allTraces.find(t => t.id === traceId) || null;
+        }
+        return true;
+      });
+
+      if (clickedFacility) {
+        setSelectedFacility(clickedFacility);
+        setSelectedTrace(null);
+        setSelectedFeature(null);
+        return;
+      }
+
+      if (clickedTrace) {
+        setSelectedTrace(clickedTrace);
+        setSelectedFacility(null);
+        setSelectedFeature(null);
+        return;
+      }
+
+      setSelectedFacility(null);
+      setSelectedTrace(null);
+
       if (isTicketMode && currentConnection?.useZws) {
         handleTicketCreation(coords[0], coords[1], evt.coordinate);
         return;
@@ -215,17 +416,16 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       
       if (!currentConnection) return;
 
-      // For ZWS mode - check vector features locally
       if (currentConnection.useZws) {
         let foundFeature: Feature | null = null;
         let foundLayerId: string | null = null;
 
         map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
-          if (!foundFeature && layer) {
+          if (!foundFeature && layer && layer !== facilitiesLayerRef.current && layer !== tracesLayerRef.current && layer !== ticketsLayerRef.current) {
             foundFeature = feature as Feature;
             foundLayerId = layer.get("id") as string;
           }
-          return true; // stop after first feature
+          return true;
         });
 
         if (foundFeature && foundLayerId) {
@@ -256,7 +456,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         return;
       }
 
-      // For standard WMS mode - query server
       const viewResolution = map.getView().getResolution();
       if (!viewResolution) return;
 
@@ -302,6 +501,45 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!facilitiesLayerRef.current) return;
+    
+    const source = facilitiesLayerRef.current.getSource();
+    if (!source) return;
+    
+    source.clear();
+    
+    facilities.forEach((facility) => {
+      const feature = new Feature({
+        geometry: new OlPoint(fromLonLat([facility.lon, facility.lat])),
+        facilityId: facility.id,
+        facilityType: facility.type,
+      });
+      feature.setStyle(getFacilityStyle(facility.type, selectedFacility?.id === facility.id));
+      source.addFeature(feature);
+    });
+  }, [facilities, selectedFacility]);
+
+  useEffect(() => {
+    if (!tracesLayerRef.current) return;
+    
+    const source = tracesLayerRef.current.getSource();
+    if (!source) return;
+    
+    source.clear();
+    
+    traces.forEach((trace) => {
+      const coords = trace.coordinates.map(c => fromLonLat(c));
+      const feature = new Feature({
+        geometry: new LineString(coords),
+        traceId: trace.id,
+        traceType: trace.type,
+      });
+      feature.setStyle(getTraceStyle(trace.type, selectedTrace?.id === trace.id));
+      source.addFeature(feature);
+    });
+  }, [traces, selectedTrace]);
 
   useEffect(() => {
     if (!mapRef.current || !connection) return;
@@ -357,10 +595,8 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
                     const features = parseZwsResponse(data.raw);
                     console.log(`Loaded ${features.length} features for ${layerConfig.id}`);
                     
-                    // Store all features for filtering
                     allFeaturesRef.current[layerConfig.id] = features;
                     
-                    // Extract unique filter values
                     const rsoValues = new Set<string>();
                     const munizValues = new Set<string>();
                     
@@ -371,7 +607,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
                       if (muniz) munizValues.add(String(muniz));
                     });
                     
-                    // Notify about discovered filters
                     if (onFiltersDiscovered && (rsoValues.size > 0 || munizValues.size > 0)) {
                       onFiltersDiscovered(layerConfig.id, {
                         name_rso: rsoValues,
@@ -379,7 +614,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
                       });
                     }
                     
-                    // Add all features initially
                     vectorSource.addFeatures(features);
                     
                     if (features.length > 0) {
@@ -387,7 +621,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
                       map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14 });
                     }
                     
-                    // Notify success
                     if (onLayerLoadSuccess) {
                       onLayerLoadSuccess();
                     }
@@ -438,7 +671,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     });
   }, [layers, connection, onFiltersDiscovered]);
 
-  // Update tickets on map when tickets array changes
   useEffect(() => {
     if (!ticketsLayerRef.current || !tickets) return;
     
@@ -459,7 +691,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     });
   }, [tickets]);
 
-  // Apply filters when activeFilters change
   useEffect(() => {
     if (!activeFilters || !mapRef.current) return;
 
@@ -472,20 +703,16 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       const vectorSource = layer.getSource();
       if (!vectorSource) return;
 
-      // Filter features based on active filters
-      // Empty array means hide all (user unchecked everything)
       const filteredFeatures = allFeatures.filter((feature) => {
         const rso = feature.get("name_rso") || "";
         const muniz = feature.get("muniz_obr") || "";
         
-        // If filter array is empty, no features match (all hidden)
         const rsoMatch = filters.name_rso.includes(String(rso));
         const munizMatch = filters.muniz_obr.includes(String(muniz));
         
         return rsoMatch && munizMatch;
       });
 
-      // Clear and re-add filtered features
       vectorSource.clear();
       vectorSource.addFeatures(filteredFeatures);
       
@@ -592,7 +819,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         });
       }
       
-      // Add ticket to map
       if (ticketsLayerRef.current) {
         const ticketFeature = new Feature({
           geometry: new OlPoint(fromLonLat([lon, lat])),
@@ -610,6 +836,77 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       });
     }
   }, [findNearestPolygon, onCreateTicket, toast]);
+
+  const handleStartTracing = useCallback(async () => {
+    if (!selectedFacility || selectedFacility.type !== "building") return;
+
+    const boilerhouse = facilities.find(f => f.type === "boilerhouse");
+    const waterintake = facilities.find(f => f.type === "waterintake");
+
+    if (!boilerhouse && !waterintake) {
+      toast({
+        title: "Нет целей для трассировки",
+        description: "Добавьте котельную и/или водозабор на карту",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsTracing(true);
+
+    const routingTasks: { target: Facility; type: TraceType }[] = [];
+    if (boilerhouse) routingTasks.push({ target: boilerhouse, type: "heating" });
+    if (waterintake) routingTasks.push({ target: waterintake, type: "water" });
+
+    try {
+      for (const task of routingTasks) {
+        const response = await fetch("/api/routing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            start: [selectedFacility.lon, selectedFacility.lat],
+            end: [task.target.lon, task.target.lat],
+          }),
+        });
+
+        const data = await response.json();
+        
+        const coords = data.coordinates as [number, number][];
+        const lineString = new LineString(coords.map(c => fromLonLat(c)));
+        const lengthMeters = getLength(lineString);
+
+        const trace: InsertTrace = {
+          type: task.type,
+          buildingId: selectedFacility.id,
+          targetId: task.target.id,
+          coordinates: coords,
+          length: lengthMeters,
+        };
+
+        await createTraceMutation.mutateAsync(trace);
+
+        if (data.fallback) {
+          toast({
+            title: task.type === "heating" ? "Теплотрасса построена" : "Водопровод построен",
+            description: "Использована прямая линия (сервис маршрутизации недоступен)",
+          });
+        }
+      }
+
+      toast({
+        title: "Трассировка завершена",
+        description: `Построено ${routingTasks.length} трассировок`,
+      });
+    } catch (err) {
+      toast({
+        title: "Ошибка трассировки",
+        description: "Не удалось построить трассировки",
+        variant: "destructive",
+      });
+    } finally {
+      setIsTracing(false);
+    }
+  }, [selectedFacility, facilities, createTraceMutation, toast]);
 
   return (
     <div className="relative flex-1 h-full" data-testid="map-container">
@@ -638,19 +935,20 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         coordinates={featureCoordinates}
       />
 
-      <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
+      <InfrastructureTools
+        placementMode={placementMode}
+        onSetPlacementMode={setPlacementMode}
+        selectedFacility={selectedFacility}
+        onCloseSelection={() => setSelectedFacility(null)}
+        onStartTracing={handleStartTracing}
+        onDeleteFacility={(id) => deleteFacilityMutation.mutate(id)}
+        isTracing={isTracing}
+        selectedTrace={selectedTrace}
+        onCloseTraceInfo={() => setSelectedTrace(null)}
+        onDeleteTrace={(id) => deleteTraceMutation.mutate(id)}
+      />
 
-      {!isConnected && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm z-10">
-          <div className="text-center space-y-2 p-6 rounded-lg bg-card shadow-lg border border-card-border max-w-sm">
-            <h3 className="text-lg font-medium">Карта готова к работе</h3>
-            <p className="text-sm text-muted-foreground">
-              Подключитесь к ZuluServer, чтобы загрузить слои карты.
-              Базовая карта OpenStreetMap доступна для навигации.
-            </p>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
     </div>
   );
 }
