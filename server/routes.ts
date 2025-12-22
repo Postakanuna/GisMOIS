@@ -495,6 +495,23 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/facilities/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid facility ID" });
+      }
+      const facility = await storage.updateFacility(id, req.body);
+      if (!facility) {
+        return res.status(404).json({ message: "Facility not found" });
+      }
+      return res.json(facility);
+    } catch (error) {
+      console.error("Update facility error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.delete("/api/facilities/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);

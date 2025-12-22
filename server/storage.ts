@@ -12,6 +12,7 @@ export interface IStorage {
   getFacilities(): Promise<Facility[]>;
   getFacility(id: number): Promise<Facility | undefined>;
   createFacility(facility: InsertFacility): Promise<Facility>;
+  updateFacility(id: number, updates: Partial<InsertFacility>): Promise<Facility | undefined>;
   deleteFacility(id: number): Promise<boolean>;
   getTraces(): Promise<Trace[]>;
   getTrace(id: number): Promise<Trace | undefined>;
@@ -98,6 +99,18 @@ export class MemStorage implements IStorage {
     };
     this.facilities.set(id, facility);
     return facility;
+  }
+
+  async updateFacility(id: number, updates: Partial<InsertFacility>): Promise<Facility | undefined> {
+    const facility = this.facilities.get(id);
+    if (!facility) return undefined;
+    
+    const updatedFacility: Facility = {
+      ...facility,
+      ...updates,
+    };
+    this.facilities.set(id, updatedFacility);
+    return updatedFacility;
   }
 
   async deleteFacility(id: number): Promise<boolean> {

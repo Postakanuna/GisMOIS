@@ -122,6 +122,14 @@ export const facilitySchema = z.object({
   name: z.string(),
   lon: z.number(),
   lat: z.number(),
+  // Boilerhouse: free heat capacity in Gcal/h
+  freeHeatCapacity: z.number().optional(),
+  // Waterintake: free water capacity in m³/h
+  freeWaterCapacity: z.number().optional(),
+  // Building: required heat load in Gcal/h
+  requiredHeatLoad: z.number().optional(),
+  // Building: required water supply in m³/h
+  requiredWaterSupply: z.number().optional(),
   createdAt: z.string(),
 });
 
