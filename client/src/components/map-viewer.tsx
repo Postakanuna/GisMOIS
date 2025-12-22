@@ -133,36 +133,70 @@ function offsetLineStringConsistent(coords: number[][], offsetMeters: number): n
   
   for (let i = 0; i < orderedCoords.length; i++) {
     const current = orderedCoords[i];
-    let dx = 0, dy = 0;
     
     if (i === 0) {
       const next = orderedCoords[i + 1];
-      dx = next[0] - current[0];
-      dy = next[1] - current[1];
+      const dx = next[0] - current[0];
+      const dy = next[1] - current[1];
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length === 0) {
+        result.push([...current]);
+      } else {
+        const perpX = -dy / length;
+        const perpY = dx / length;
+        result.push([current[0] + perpX * offsetMeters, current[1] + perpY * offsetMeters]);
+      }
     } else if (i === orderedCoords.length - 1) {
       const prev = orderedCoords[i - 1];
-      dx = current[0] - prev[0];
-      dy = current[1] - prev[1];
+      const dx = current[0] - prev[0];
+      const dy = current[1] - prev[1];
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length === 0) {
+        result.push([...current]);
+      } else {
+        const perpX = -dy / length;
+        const perpY = dx / length;
+        result.push([current[0] + perpX * offsetMeters, current[1] + perpY * offsetMeters]);
+      }
     } else {
       const prev = orderedCoords[i - 1];
       const next = orderedCoords[i + 1];
-      dx = next[0] - prev[0];
-      dy = next[1] - prev[1];
+      
+      const dx1 = current[0] - prev[0];
+      const dy1 = current[1] - prev[1];
+      const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+      
+      const dx2 = next[0] - current[0];
+      const dy2 = next[1] - current[1];
+      const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+      
+      if (len1 === 0 || len2 === 0) {
+        result.push([...current]);
+        continue;
+      }
+      
+      const perp1X = -dy1 / len1;
+      const perp1Y = dx1 / len1;
+      const perp2X = -dy2 / len2;
+      const perp2Y = dx2 / len2;
+      
+      let bisectX = perp1X + perp2X;
+      let bisectY = perp1Y + perp2Y;
+      const bisectLen = Math.sqrt(bisectX * bisectX + bisectY * bisectY);
+      
+      if (bisectLen < 0.01) {
+        result.push([current[0] + perp1X * offsetMeters, current[1] + perp1Y * offsetMeters]);
+      } else {
+        bisectX /= bisectLen;
+        bisectY /= bisectLen;
+        
+        const dot = perp1X * bisectX + perp1Y * bisectY;
+        const scale = dot > 0.1 ? offsetMeters / dot : offsetMeters;
+        const limitedScale = Math.min(scale, offsetMeters * 2);
+        
+        result.push([current[0] + bisectX * limitedScale, current[1] + bisectY * limitedScale]);
+      }
     }
-    
-    const length = Math.sqrt(dx * dx + dy * dy);
-    if (length === 0) {
-      result.push([...current]);
-      continue;
-    }
-    
-    const perpX = -dy / length;
-    const perpY = dx / length;
-    
-    result.push([
-      current[0] + perpX * offsetMeters,
-      current[1] + perpY * offsetMeters,
-    ]);
   }
   
   return needsReverse ? result.reverse() : result;
@@ -576,7 +610,7 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     
     source.clear();
     
-    const OFFSET_METERS = 5;
+    const OFFSET_METERS = 3;
     
     traces.forEach((trace) => {
       const baseCoords = trace.coordinates.map(c => fromLonLat(c));
