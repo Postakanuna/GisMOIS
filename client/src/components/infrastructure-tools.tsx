@@ -133,45 +133,47 @@ export function InfrastructureTools({
 
   return (
     <>
-      <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2">
+      {/* Add facility button - positioned with map controls in top-right */}
+      <div className="absolute top-[220px] right-4 z-10 flex flex-col gap-2">
         {placementMode ? (
-          <div className="flex items-center gap-2 rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border p-2">
-            <div className="flex items-center gap-2 px-2">
-              {(() => {
-                const config = facilityConfig[placementMode];
-                const Icon = config.icon;
-                return (
-                  <>
-                    <Icon className={`h-4 w-4 ${config.color}`} />
-                    <span className="text-sm font-medium">
-                      Разместите {config.label.toLowerCase()} на карте
-                    </span>
-                  </>
-                );
-              })()}
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleCancelPlacement}
-              data-testid="button-cancel-placement"
-            >
-              <X className="h-4 w-4 mr-1" />
-              Отмена
-            </Button>
+          <div className="flex flex-col rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border overflow-hidden">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleCancelPlacement}
+                  className="rounded-none"
+                  data-testid="button-cancel-placement"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                Отмена: {facilityConfig[placementMode].label}
+              </TooltipContent>
+            </Tooltip>
           </div>
         ) : (
           <Popover open={toolsOpen} onOpenChange={setToolsOpen}>
             <PopoverTrigger asChild>
-              <Button
-                size="icon"
-                className="h-12 w-12 rounded-full shadow-lg"
-                data-testid="button-add-facility"
-              >
-                <Plus className="h-6 w-6" />
-              </Button>
+              <div className="flex flex-col rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border overflow-hidden">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="rounded-none"
+                      data-testid="button-add-facility"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Добавить объект</TooltipContent>
+                </Tooltip>
+              </div>
             </PopoverTrigger>
-            <PopoverContent side="top" align="start" className="w-auto p-2">
+            <PopoverContent side="left" align="start" className="w-auto p-2">
               <div className="flex flex-col gap-1">
                 <p className="text-xs text-muted-foreground px-2 py-1">
                   Добавить объект
@@ -196,14 +198,39 @@ export function InfrastructureTools({
             </PopoverContent>
           </Popover>
         )}
+      </div>
 
-        {isTracing && (
+      {/* Placement mode indicator */}
+      {placementMode && (
+        <div className="absolute bottom-4 left-4 z-10">
+          <div className="flex items-center gap-2 rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border p-2">
+            <div className="flex items-center gap-2 px-2">
+              {(() => {
+                const config = facilityConfig[placementMode];
+                const Icon = config.icon;
+                return (
+                  <>
+                    <Icon className={`h-4 w-4 ${config.color}`} />
+                    <span className="text-sm font-medium">
+                      Разместите {config.label.toLowerCase()} на карте
+                    </span>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tracing indicator */}
+      {isTracing && (
+        <div className="absolute bottom-4 left-4 z-10">
           <div className="flex items-center gap-2 rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border p-3">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <span className="text-sm">Построение трассировки...</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {selectedFacility && (
         <div className="absolute bottom-4 right-4 z-10 rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border p-4 min-w-64">
