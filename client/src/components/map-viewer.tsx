@@ -723,6 +723,19 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     });
   }, [uploadedLayers]);
 
+  // Handle OSM base layer visibility and opacity (works without connection)
+  useEffect(() => {
+    if (!mapRef.current) return;
+    
+    const osmLayerConfig = layers.find(l => l.id === "osm-base" && l.type === "base");
+    const osmLayer = layersRef.current["osm-base"];
+    
+    if (osmLayerConfig && osmLayer) {
+      osmLayer.setVisible(osmLayerConfig.visible);
+      osmLayer.setOpacity(osmLayerConfig.opacity);
+    }
+  }, [layers]);
+
   useEffect(() => {
     if (!mapRef.current || !connection) return;
 
@@ -731,11 +744,8 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     layers.forEach((layerConfig) => {
       const existingLayer = layersRef.current[layerConfig.id];
 
+      // Skip base layer - handled in separate effect above
       if (layerConfig.type === "base") {
-        if (existingLayer) {
-          existingLayer.setVisible(layerConfig.visible);
-          existingLayer.setOpacity(layerConfig.opacity);
-        }
         return;
       }
 
