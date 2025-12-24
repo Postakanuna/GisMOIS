@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Ticket, type InsertTicket, type Facility, type InsertFacility, type Trace, type InsertTrace } from "@shared/schema";
+import { type User, type InsertUser, type Ticket, type InsertTicket, type Facility, type InsertFacility, type Trace, type InsertTrace, type UploadedLayer, type InsertUploadedLayer } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -20,6 +20,11 @@ export interface IStorage {
   createTrace(trace: InsertTrace): Promise<Trace>;
   deleteTrace(id: number): Promise<boolean>;
   deleteTracesByBuilding(buildingId: number): Promise<boolean>;
+  getUploadedLayers(): Promise<UploadedLayer[]>;
+  getUploadedLayer(id: number): Promise<UploadedLayer | undefined>;
+  createUploadedLayer(layer: InsertUploadedLayer): Promise<UploadedLayer>;
+  updateUploadedLayer(id: number, updates: Partial<InsertUploadedLayer>): Promise<UploadedLayer | undefined>;
+  deleteUploadedLayer(id: number): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -30,6 +35,8 @@ export class MemStorage implements IStorage {
   private facilityIdCounter: number;
   private traces: Map<number, Trace>;
   private traceIdCounter: number;
+  private uploadedLayers: Map<number, UploadedLayer>;
+  private uploadedLayerIdCounter: number;
 
   constructor() {
     this.users = new Map();
@@ -39,6 +46,8 @@ export class MemStorage implements IStorage {
     this.facilityIdCounter = 1;
     this.traces = new Map();
     this.traceIdCounter = 1;
+    this.uploadedLayers = new Map();
+    this.uploadedLayerIdCounter = 1;
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -152,6 +161,41 @@ export class MemStorage implements IStorage {
     );
     tracesToDelete.forEach((trace) => this.traces.delete(trace.id));
     return tracesToDelete.length > 0;
+  }
+
+  async getUploadedLayers(): Promise<UploadedLayer[]> {
+    return Array.from(this.uploadedLayers.values());
+  }
+
+  async getUploadedLayer(id: number): Promise<UploadedLayer | undefined> {
+    return this.uploadedLayers.get(id);
+  }
+
+  async createUploadedLayer(insertLayer: InsertUploadedLayer): Promise<UploadedLayer> {
+    const id = this.uploadedLayerIdCounter++;
+    const layer: UploadedLayer = {
+      ...insertLayer,
+      id,
+      createdAt: new Date().toISOString(),
+    };
+    this.uploadedLayers.set(id, layer);
+    return layer;
+  }
+
+  async updateUploadedLayer(id: number, updates: Partial<InsertUploadedLayer>): Promise<UploadedLayer | undefined> {
+    const layer = this.uploadedLayers.get(id);
+    if (!layer) return undefined;
+    
+    const updatedLayer: UploadedLayer = {
+      ...layer,
+      ...updates,
+    };
+    this.uploadedLayers.set(id, updatedLayer);
+    return updatedLayer;
+  }
+
+  async deleteUploadedLayer(id: number): Promise<boolean> {
+    return this.uploadedLayers.delete(id);
   }
 }
 

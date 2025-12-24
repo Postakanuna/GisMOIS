@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema, insertUploadedLayerSchema } from "@shared/schema";
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
@@ -715,6 +715,68 @@ export async function registerRoutes(
       }
     } catch (error) {
       console.error("WFS error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Uploaded layers routes
+  app.get("/api/uploaded-layers", async (_req: Request, res: Response) => {
+    try {
+      const layers = await storage.getUploadedLayers();
+      return res.json(layers);
+    } catch (error) {
+      console.error("Get uploaded layers error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/uploaded-layers", async (req: Request, res: Response) => {
+    try {
+      const parseResult = insertUploadedLayerSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          message: "Invalid layer data",
+          errors: parseResult.error.errors,
+        });
+      }
+      const layer = await storage.createUploadedLayer(parseResult.data);
+      return res.status(201).json(layer);
+    } catch (error) {
+      console.error("Create uploaded layer error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/uploaded-layers/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid layer ID" });
+      }
+      const layer = await storage.updateUploadedLayer(id, req.body);
+      if (!layer) {
+        return res.status(404).json({ message: "Layer not found" });
+      }
+      return res.json(layer);
+    } catch (error) {
+      console.error("Update uploaded layer error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/uploaded-layers/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid layer ID" });
+      }
+      const deleted = await storage.deleteUploadedLayer(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Layer not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Delete uploaded layer error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

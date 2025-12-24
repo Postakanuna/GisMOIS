@@ -158,6 +158,24 @@ export type Trace = z.infer<typeof traceSchema>;
 export const insertTraceSchema = traceSchema.omit({ id: true, createdAt: true });
 export type InsertTrace = z.infer<typeof insertTraceSchema>;
 
+// Uploaded shapefile layer schema
+export const uploadedLayerSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  filename: z.string(),
+  visible: z.boolean().default(true),
+  opacity: z.number().min(0).max(1).default(1),
+  color: z.string().default("#1976D2"),
+  geojson: z.any(),
+  featureCount: z.number(),
+  createdAt: z.string(),
+});
+
+export type UploadedLayer = z.infer<typeof uploadedLayerSchema>;
+
+export const insertUploadedLayerSchema = uploadedLayerSchema.omit({ id: true, createdAt: true });
+export type InsertUploadedLayer = z.infer<typeof insertUploadedLayerSchema>;
+
 // Keep existing user schema for compatibility
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar } from "drizzle-orm/pg-core";
