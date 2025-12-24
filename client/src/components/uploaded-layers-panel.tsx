@@ -95,14 +95,122 @@ export function UploadedLayersPanel({
     setIsUploading(true);
 
     try {
-      const shpjs = await import("shpjs");
+      console.log("=== SHAPEFILE UPLOAD DEBUG ===");
+      console.log("File name:", file.name);
+      console.log("File size:", file.size, "bytes", `(${(file.size / 1024).toFixed(2)} KB)`);
+      console.log("File type:", file.type || "unknown");
+      
       const arrayBuffer = await file.arrayBuffer();
-      const geojson = await shpjs.default(arrayBuffer);
+      console.log("ArrayBuffer size:", arrayBuffer.byteLength, "bytes");
+      
+      // Analyze ZIP structure if it's a ZIP file
+      if (file.name.toLowerCase().endsWith(".zip")) {
+        try {
+          const JSZip = (await import("jszip")).default;
+          const zip = await JSZip.loadAsync(arrayBuffer);
+          
+          console.log("=== ZIP ARCHIVE CONTENTS ===");
+          const fileList: string[] = [];
+          const fileDetails: { name: string; size: number; ext: string }[] = [];
+          
+          zip.forEach((relativePath: string, zipEntry: any) => {
+            fileList.push(relativePath);
+            const ext = relativePath.split('.').pop()?.toLowerCase() || '';
+            fileDetails.push({
+              name: relativePath,
+              size: zipEntry._data?.uncompressedSize || 0,
+              ext: ext
+            });
+          });
+          
+          console.log("Total files in ZIP:", fileList.length);
+          console.log("Files:", fileList);
+          
+          // Check for required shapefile components
+          const extensions = fileDetails.map(f => f.ext);
+          const hasShp = extensions.includes('shp');
+          const hasShx = extensions.includes('shx');
+          const hasDbf = extensions.includes('dbf');
+          const hasPrj = extensions.includes('prj');
+          
+          console.log("=== SHAPEFILE COMPONENTS ===");
+          console.log(".shp (geometry):", hasShp ? "FOUND" : "MISSING");
+          console.log(".shx (index):", hasShx ? "FOUND" : "MISSING");
+          console.log(".dbf (attributes):", hasDbf ? "FOUND" : "MISSING");
+          console.log(".prj (projection):", hasPrj ? "FOUND" : "optional, missing");
+          
+          if (!hasShp) {
+            console.error("ERROR: No .shp file found in archive!");
+            toast({
+              title: "Ошибка формата",
+              description: "В архиве не найден .shp файл. Проверьте содержимое ZIP.",
+              variant: "destructive",
+            });
+            setIsUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            return;
+          }
+          
+          if (!hasDbf) {
+            console.warn("WARNING: No .dbf file - attributes may be missing");
+          }
+          
+          // List all files with sizes
+          console.log("=== FILE DETAILS ===");
+          fileDetails.forEach(f => {
+            console.log(`  ${f.name}: ${f.size} bytes (${f.ext})`);
+          });
+          
+        } catch (zipError) {
+          console.error("ZIP analysis error:", zipError);
+          console.log("Continuing with shpjs parsing anyway...");
+        }
+      }
+      
+      console.log("=== PARSING WITH SHPJS ===");
+      const shpjs = await import("shpjs");
+      
+      let geojson;
+      try {
+        geojson = await shpjs.default(arrayBuffer);
+        console.log("shpjs parse SUCCESS");
+      } catch (parseError: any) {
+        console.error("shpjs parse FAILED:", parseError);
+        console.error("Error name:", parseError?.name);
+        console.error("Error message:", parseError?.message);
+        console.error("Error stack:", parseError?.stack);
+        throw parseError;
+      }
+      
+      console.log("=== GEOJSON RESULT ===");
+      console.log("Result type:", typeof geojson);
+      console.log("Is array:", Array.isArray(geojson));
+      
+      if (Array.isArray(geojson)) {
+        console.log("Number of layers:", geojson.length);
+        geojson.forEach((layer: any, i: number) => {
+          console.log(`Layer ${i}:`, {
+            type: layer?.type,
+            featureCount: layer?.features?.length || 0,
+            crs: (layer as any)?.crs
+          });
+        });
+      } else if (geojson) {
+        console.log("GeoJSON type:", geojson.type);
+        console.log("Feature count:", geojson.features?.length || 0);
+        console.log("CRS:", (geojson as any).crs);
+        if (geojson.features?.length > 0) {
+          console.log("First feature geometry type:", geojson.features[0]?.geometry?.type);
+          console.log("First feature properties:", Object.keys(geojson.features[0]?.properties || {}));
+        }
+      }
 
       const features = Array.isArray(geojson)
         ? geojson.flatMap((g: any) => g.features || [])
         : geojson.features || [];
 
+      console.log("Total features extracted:", features.length);
+      
       const layerName = file.name.replace(/\.(zip|shp)$/i, "");
 
       await createLayerMutation.mutateAsync({
@@ -114,11 +222,23 @@ export function UploadedLayersPanel({
         geojson: Array.isArray(geojson) ? geojson : geojson,
         featureCount: features.length,
       });
-    } catch (error) {
-      console.error("Shapefile parse error:", error);
+      
+      console.log("=== UPLOAD COMPLETE ===");
+    } catch (error: any) {
+      console.error("=== SHAPEFILE PARSE ERROR ===");
+      console.error("Error object:", error);
+      console.error("Error name:", error?.name);
+      console.error("Error message:", error?.message);
+      console.error("Error stack:", error?.stack);
+      
+      let errorDescription = "Не удалось прочитать shapefile.";
+      if (error?.message) {
+        errorDescription += ` Ошибка: ${error.message}`;
+      }
+      
       toast({
         title: "Ошибка парсинга",
-        description: "Не удалось прочитать shapefile. Проверьте формат файла.",
+        description: errorDescription,
         variant: "destructive",
       });
     } finally {
