@@ -36,10 +36,19 @@ interface UseZuluConnectionReturn {
   handleLayerLoadSuccess: () => void;
 }
 
+// Default OSM base layer that is always available
+const DEFAULT_OSM_LAYER: LayerConfig = {
+  id: "osm-base",
+  name: "OpenStreetMap",
+  visible: true,
+  opacity: 1,
+  type: "base",
+};
+
 export function useZuluConnection(): UseZuluConnectionReturn {
   const [connection, setConnection] = useState<ZuluConnection | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
-  const [layers, setLayers] = useState<LayerConfig[]>([]);
+  const [layers, setLayers] = useState<LayerConfig[]>([DEFAULT_OSM_LAYER]);
   const [error, setError] = useState<string | null>(null);
   const [layerFilters, setLayerFiltersState] = useState<Record<string, LayerFilters>>({});
   const [activeFilters, setActiveFilters] = useState<Record<string, ActiveFilters>>({});
@@ -64,25 +73,21 @@ export function useZuluConnection(): UseZuluConnectionReturn {
 
       const data = await response.json();
 
-      const newLayers: LayerConfig[] = [
-        {
-          id: "osm-base",
-          name: "OpenStreetMap (Base)",
-          visible: true,
-          opacity: 1,
-          type: "base",
-        },
-        ...data.layers.map((layer: { name: string; title: string }) => ({
-          id: layer.name,
-          name: layer.title || layer.name,
-          visible: true,
-          opacity: 1,
-          type: config.useWfs ? "wfs" : "wms" as const,
-          url: `http://${config.host}:${config.port}/ZuluServer/wms`,
-        })),
-      ];
-
-      setLayers(newLayers);
+      setLayers((prev) => {
+        // Preserve current OSM layer state
+        const currentOsm = prev.find(l => l.id === "osm-base");
+        return [
+          currentOsm || DEFAULT_OSM_LAYER,
+          ...data.layers.map((layer: { name: string; title: string }) => ({
+            id: layer.name,
+            name: layer.title || layer.name,
+            visible: true,
+            opacity: 1,
+            type: config.useWfs ? "wfs" : "wms" as const,
+            url: `http://${config.host}:${config.port}/ZuluServer/wms`,
+          })),
+        ];
+      });
       setConnection(config);
       setStatus("connected");
     } catch (err) {
@@ -108,23 +113,6 @@ export function useZuluConnection(): UseZuluConnectionReturn {
 
       const data = await response.json();
 
-      const newLayers: LayerConfig[] = [
-        {
-          id: "osm-base",
-          name: "OpenStreetMap (Базовая карта)",
-          visible: true,
-          opacity: 1,
-          type: "base",
-        },
-        ...data.layers.map((layer: { name: string; title: string }) => ({
-          id: layer.name,
-          name: layer.title || layer.name,
-          visible: true,
-          opacity: 1,
-          type: "wms" as const,
-        })),
-      ];
-
       const zwsConnection: ZuluConnection = {
         host: "is.arki.mosreg.ru",
         layerName: "mosgaz",
@@ -133,7 +121,20 @@ export function useZuluConnection(): UseZuluConnectionReturn {
         baseUrl: "https://is.arki.mosreg.ru/zws",
       };
 
-      setLayers(newLayers);
+      setLayers((prev) => {
+        // Preserve current OSM layer state
+        const currentOsm = prev.find(l => l.id === "osm-base");
+        return [
+          currentOsm || DEFAULT_OSM_LAYER,
+          ...data.layers.map((layer: { name: string; title: string }) => ({
+            id: layer.name,
+            name: layer.title || layer.name,
+            visible: true,
+            opacity: 1,
+            type: "wms" as const,
+          })),
+        ];
+      });
       setConnection(zwsConnection);
       // Stay in "connecting" until layers actually load
       setStatus("connecting");
@@ -156,7 +157,11 @@ export function useZuluConnection(): UseZuluConnectionReturn {
 
   const disconnect = useCallback(() => {
     setConnection(null);
-    setLayers([]);
+    // Keep only the OSM base layer with its current visibility/opacity
+    setLayers((prev) => {
+      const osmLayer = prev.find(l => l.id === "osm-base");
+      return osmLayer ? [osmLayer] : [DEFAULT_OSM_LAYER];
+    });
     setStatus("disconnected");
     setError(null);
   }, []);
