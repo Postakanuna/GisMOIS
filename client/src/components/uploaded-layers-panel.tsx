@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
 import type { UploadedLayer } from "@shared/schema";
 
 const LAYER_COLORS = [
@@ -104,10 +105,10 @@ export function UploadedLayersPanel({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith(".zip") && !file.name.endsWith(".shp")) {
+    if (!file.name.toLowerCase().endsWith(".zip")) {
       toast({
         title: "Неверный формат",
-        description: "Выберите ZIP-архив с shapefile или .shp файл",
+        description: "Выберите ZIP-архив с shapefile файлами (.shp, .dbf, .shx, .prj)",
         variant: "destructive",
       });
       return;
@@ -116,178 +117,66 @@ export function UploadedLayersPanel({
     setIsUploading(true);
 
     try {
-      console.log("=== SHAPEFILE UPLOAD DEBUG ===");
-      console.log("File name:", file.name);
-      console.log("File size:", file.size, "bytes", `(${(file.size / 1024).toFixed(2)} KB)`);
-      console.log("File type:", file.type || "unknown");
+      console.log("=== SHAPEFILE UPLOAD ===");
+      console.log("File:", file.name, `(${(file.size / 1024).toFixed(2)} KB)`);
       
       const arrayBuffer = await file.arrayBuffer();
-      console.log("ArrayBuffer size:", arrayBuffer.byteLength, "bytes");
       
-      // Analyze ZIP structure if it's a ZIP file
-      if (file.name.toLowerCase().endsWith(".zip")) {
-        try {
-          const JSZip = (await import("jszip")).default;
-          const zip = await JSZip.loadAsync(arrayBuffer);
-          
-          console.log("=== ZIP ARCHIVE CONTENTS ===");
-          const fileList: string[] = [];
-          const fileDetails: { name: string; size: number; ext: string }[] = [];
-          
-          zip.forEach((relativePath: string, zipEntry: any) => {
-            fileList.push(relativePath);
-            const ext = relativePath.split('.').pop()?.toLowerCase() || '';
-            fileDetails.push({
-              name: relativePath,
-              size: zipEntry._data?.uncompressedSize || 0,
-              ext: ext
-            });
-          });
-          
-          console.log("Total files in ZIP:", fileList.length);
-          console.log("Files:", fileList);
-          
-          // Check for required shapefile components
-          const extensions = fileDetails.map(f => f.ext);
-          const hasShp = extensions.includes('shp');
-          const hasShx = extensions.includes('shx');
-          const hasDbf = extensions.includes('dbf');
-          const hasPrj = extensions.includes('prj');
-          
-          console.log("=== SHAPEFILE COMPONENTS ===");
-          console.log(".shp (geometry):", hasShp ? "FOUND" : "MISSING");
-          console.log(".shx (index):", hasShx ? "FOUND" : "MISSING");
-          console.log(".dbf (attributes):", hasDbf ? "FOUND" : "MISSING");
-          console.log(".prj (projection):", hasPrj ? "FOUND" : "optional, missing");
-          
-          if (!hasShp) {
-            console.error("ERROR: No .shp file found in archive!");
-            toast({
-              title: "Ошибка формата",
-              description: "В архиве не найден .shp файл. Проверьте содержимое ZIP.",
-              variant: "destructive",
-            });
-            setIsUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = "";
-            return;
-          }
-          
-          if (!hasDbf) {
-            console.warn("WARNING: No .dbf file - attributes may be missing");
-          }
-          
-          // List all files with sizes
-          console.log("=== FILE DETAILS ===");
-          fileDetails.forEach(f => {
-            console.log(`  ${f.name}: ${f.size} bytes (${f.ext})`);
-          });
-          
-        } catch (zipError) {
-          console.error("ZIP analysis error:", zipError);
-          console.log("Continuing with shpjs parsing anyway...");
-        }
-      }
+      const parsedLayers = await parseShapefileWithEncoding(arrayBuffer, file.name);
       
-      console.log("=== PARSING WITH SHPJS ===");
-      const shpjs = await import("shpjs");
+      console.log(`Parsed ${parsedLayers.length} layer(s)`);
       
-      let geojson;
-      try {
-        geojson = await shpjs.default(arrayBuffer);
-        console.log("shpjs parse SUCCESS");
-      } catch (parseError: any) {
-        console.error("shpjs parse FAILED:", parseError);
-        console.error("Error name:", parseError?.name);
-        console.error("Error message:", parseError?.message);
-        console.error("Error stack:", parseError?.stack);
-        throw parseError;
-      }
-      
-      console.log("=== GEOJSON RESULT ===");
-      console.log("Result type:", typeof geojson);
-      console.log("Is array:", Array.isArray(geojson));
-      
-      // Helper function to extract layer name from fileName property
-      const extractLayerName = (fc: any, index: number): string => {
-        if (fc.fileName) {
-          // fileName looks like "shape/тс и гвс_type_Участки"
-          const parts = fc.fileName.split('/');
-          const lastPart = parts[parts.length - 1];
-          // Clean up encoding issues and extract meaningful name
-          return lastPart || `Layer ${index + 1}`;
-        }
-        return `Layer ${index + 1}`;
-      };
-
-      if (Array.isArray(geojson) && geojson.length > 1) {
-        // Multiple shapefiles in ZIP - create separate layers for each
-        console.log("=== CREATING MULTIPLE LAYERS ===");
-        console.log("Number of layers:", geojson.length);
-        
-        const layersToCreate: Omit<UploadedLayer, "id" | "createdAt">[] = [];
-        
-        geojson.forEach((fc: any, i: number) => {
-          const layerName = extractLayerName(fc, i);
-          const featureCount = fc.features?.length || 0;
-          const color = LAYER_COLORS[(layers.length + i) % LAYER_COLORS.length];
-          
-          console.log(`Layer ${i}:`, {
-            name: layerName,
-            featureCount: featureCount,
-            color: color
-          });
-          
-          layersToCreate.push({
-            name: layerName,
-            filename: file.name,
-            visible: true,
-            opacity: 1,
-            color: color,
-            geojson: fc,
-            featureCount: featureCount,
-          });
+      if (parsedLayers.length === 0) {
+        toast({
+          title: "Ошибка формата",
+          description: "В архиве не найдены shapefile данные",
+          variant: "destructive",
         });
+        return;
+      }
+
+      const hasReprojectionFailures = parsedLayers.some(p => p.reprojectionFailed);
+      
+      if (parsedLayers.length > 1) {
+        const layersToCreate: Omit<UploadedLayer, "id" | "createdAt">[] = parsedLayers.map((parsed, i) => ({
+          name: parsed.name,
+          filename: file.name,
+          visible: true,
+          opacity: 1,
+          color: LAYER_COLORS[(layers.length + i) % LAYER_COLORS.length],
+          geojson: parsed.geojson,
+          featureCount: parsed.geojson.features?.length || 0,
+        }));
         
         await createLayersBatchMutation.mutateAsync(layersToCreate);
-        console.log(`=== CREATED ${layersToCreate.length} LAYERS ===`);
+        console.log(`Created ${layersToCreate.length} layers`);
       } else {
-        // Single shapefile - create one layer
-        console.log("=== CREATING SINGLE LAYER ===");
-        
-        const singleGeojson = Array.isArray(geojson) ? geojson[0] : geojson;
-        const features = singleGeojson?.features || [];
-        const layerName = file.name.replace(/\.(zip|shp)$/i, "");
-        
-        console.log("GeoJSON type:", singleGeojson?.type);
-        console.log("Feature count:", features.length);
-        
+        const parsed = parsedLayers[0];
         await createLayerMutation.mutateAsync({
-          name: layerName,
+          name: parsed.name,
           filename: file.name,
           visible: true,
           opacity: 1,
           color: LAYER_COLORS[layers.length % LAYER_COLORS.length],
-          geojson: singleGeojson,
-          featureCount: features.length,
+          geojson: parsed.geojson,
+          featureCount: parsed.geojson.features?.length || 0,
         });
-        
-        console.log("=== CREATED 1 LAYER ===");
+        console.log("Created 1 layer");
+      }
+      
+      if (hasReprojectionFailures) {
+        toast({
+          title: "Предупреждение о координатах",
+          description: "Не удалось преобразовать координаты некоторых слоёв. Объекты могут отображаться в неправильном месте.",
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
-      console.error("=== SHAPEFILE PARSE ERROR ===");
-      console.error("Error object:", error);
-      console.error("Error name:", error?.name);
-      console.error("Error message:", error?.message);
-      console.error("Error stack:", error?.stack);
-      
-      let errorDescription = "Не удалось прочитать shapefile.";
-      if (error?.message) {
-        errorDescription += ` Ошибка: ${error.message}`;
-      }
+      console.error("Shapefile parse error:", error);
       
       toast({
         title: "Ошибка парсинга",
-        description: errorDescription,
+        description: error?.message || "Не удалось прочитать shapefile",
         variant: "destructive",
       });
     } finally {
@@ -321,7 +210,7 @@ export function UploadedLayersPanel({
         <Input
           ref={fileInputRef}
           type="file"
-          accept=".zip,.shp"
+          accept=".zip"
           onChange={handleFileSelect}
           className="hidden"
           data-testid="input-shapefile-upload"
@@ -337,7 +226,7 @@ export function UploadedLayersPanel({
           {isUploading ? "Загрузка..." : "Загрузить Shapefile"}
         </Button>
         <p className="text-xs text-muted-foreground mt-2">
-          Поддерживается ZIP-архив с .shp, .shx, .dbf файлами
+          ZIP-архив должен содержать .shp, .shx, .dbf и .prj файлы
         </p>
       </div>
 
