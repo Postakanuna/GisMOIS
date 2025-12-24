@@ -747,6 +747,39 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/uploaded-layers/batch", async (req: Request, res: Response) => {
+    try {
+      if (!Array.isArray(req.body)) {
+        return res.status(400).json({ message: "Request body must be an array of layers" });
+      }
+      
+      const validLayers: any[] = [];
+      const errors: any[] = [];
+      
+      for (let i = 0; i < req.body.length; i++) {
+        const parseResult = insertUploadedLayerSchema.safeParse(req.body[i]);
+        if (parseResult.success) {
+          validLayers.push(parseResult.data);
+        } else {
+          errors.push({ index: i, errors: parseResult.error.errors });
+        }
+      }
+      
+      if (errors.length > 0) {
+        return res.status(400).json({
+          message: "Some layers have invalid data",
+          errors,
+        });
+      }
+      
+      const layers = await storage.createUploadedLayersBatch(validLayers);
+      return res.status(201).json(layers);
+    } catch (error) {
+      console.error("Create uploaded layers batch error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.patch("/api/uploaded-layers/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);

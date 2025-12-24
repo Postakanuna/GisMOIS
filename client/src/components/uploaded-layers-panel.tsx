@@ -56,6 +56,27 @@ export function UploadedLayersPanel({
     },
   });
 
+  const createLayersBatchMutation = useMutation({
+    mutationFn: async (data: Omit<UploadedLayer, "id" | "createdAt">[]) => {
+      const res = await apiRequest("POST", "/api/uploaded-layers/batch", data);
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/uploaded-layers"] });
+      toast({
+        title: "Слои загружены",
+        description: `Добавлено ${variables.length} слоёв из архива`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Ошибка загрузки",
+        description: "Не удалось загрузить слои",
+        variant: "destructive",
+      });
+    },
+  });
+
   const updateLayerMutation = useMutation({
     mutationFn: async ({ id, ...data }: { id: number } & Partial<UploadedLayer>) => {
       const res = await apiRequest("PATCH", `/api/uploaded-layers/${id}`, data);
@@ -186,44 +207,72 @@ export function UploadedLayersPanel({
       console.log("Result type:", typeof geojson);
       console.log("Is array:", Array.isArray(geojson));
       
-      if (Array.isArray(geojson)) {
+      // Helper function to extract layer name from fileName property
+      const extractLayerName = (fc: any, index: number): string => {
+        if (fc.fileName) {
+          // fileName looks like "shape/тс и гвс_type_Участки"
+          const parts = fc.fileName.split('/');
+          const lastPart = parts[parts.length - 1];
+          // Clean up encoding issues and extract meaningful name
+          return lastPart || `Layer ${index + 1}`;
+        }
+        return `Layer ${index + 1}`;
+      };
+
+      if (Array.isArray(geojson) && geojson.length > 1) {
+        // Multiple shapefiles in ZIP - create separate layers for each
+        console.log("=== CREATING MULTIPLE LAYERS ===");
         console.log("Number of layers:", geojson.length);
-        geojson.forEach((layer: any, i: number) => {
+        
+        const layersToCreate: Omit<UploadedLayer, "id" | "createdAt">[] = [];
+        
+        geojson.forEach((fc: any, i: number) => {
+          const layerName = extractLayerName(fc, i);
+          const featureCount = fc.features?.length || 0;
+          const color = LAYER_COLORS[(layers.length + i) % LAYER_COLORS.length];
+          
           console.log(`Layer ${i}:`, {
-            type: layer?.type,
-            featureCount: layer?.features?.length || 0,
-            crs: (layer as any)?.crs
+            name: layerName,
+            featureCount: featureCount,
+            color: color
+          });
+          
+          layersToCreate.push({
+            name: layerName,
+            filename: file.name,
+            visible: true,
+            opacity: 1,
+            color: color,
+            geojson: fc,
+            featureCount: featureCount,
           });
         });
-      } else if (geojson) {
-        console.log("GeoJSON type:", geojson.type);
-        console.log("Feature count:", geojson.features?.length || 0);
-        console.log("CRS:", (geojson as any).crs);
-        if (geojson.features?.length > 0) {
-          console.log("First feature geometry type:", geojson.features[0]?.geometry?.type);
-          console.log("First feature properties:", Object.keys(geojson.features[0]?.properties || {}));
-        }
+        
+        await createLayersBatchMutation.mutateAsync(layersToCreate);
+        console.log(`=== CREATED ${layersToCreate.length} LAYERS ===`);
+      } else {
+        // Single shapefile - create one layer
+        console.log("=== CREATING SINGLE LAYER ===");
+        
+        const singleGeojson = Array.isArray(geojson) ? geojson[0] : geojson;
+        const features = singleGeojson?.features || [];
+        const layerName = file.name.replace(/\.(zip|shp)$/i, "");
+        
+        console.log("GeoJSON type:", singleGeojson?.type);
+        console.log("Feature count:", features.length);
+        
+        await createLayerMutation.mutateAsync({
+          name: layerName,
+          filename: file.name,
+          visible: true,
+          opacity: 1,
+          color: LAYER_COLORS[layers.length % LAYER_COLORS.length],
+          geojson: singleGeojson,
+          featureCount: features.length,
+        });
+        
+        console.log("=== CREATED 1 LAYER ===");
       }
-
-      const features = Array.isArray(geojson)
-        ? geojson.flatMap((g: any) => g.features || [])
-        : geojson.features || [];
-
-      console.log("Total features extracted:", features.length);
-      
-      const layerName = file.name.replace(/\.(zip|shp)$/i, "");
-
-      await createLayerMutation.mutateAsync({
-        name: layerName,
-        filename: file.name,
-        visible: true,
-        opacity: 1,
-        color: LAYER_COLORS[layers.length % LAYER_COLORS.length],
-        geojson: Array.isArray(geojson) ? geojson : geojson,
-        featureCount: features.length,
-      });
-      
-      console.log("=== UPLOAD COMPLETE ===");
     } catch (error: any) {
       console.error("=== SHAPEFILE PARSE ERROR ===");
       console.error("Error object:", error);
@@ -281,7 +330,7 @@ export function UploadedLayersPanel({
           variant="outline"
           className="w-full"
           onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading || createLayerMutation.isPending}
+          disabled={isUploading || createLayerMutation.isPending || createLayersBatchMutation.isPending}
           data-testid="button-upload-shapefile"
         >
           <Upload className="h-4 w-4 mr-2" />

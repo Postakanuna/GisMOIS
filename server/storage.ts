@@ -23,6 +23,7 @@ export interface IStorage {
   getUploadedLayers(): Promise<UploadedLayer[]>;
   getUploadedLayer(id: number): Promise<UploadedLayer | undefined>;
   createUploadedLayer(layer: InsertUploadedLayer): Promise<UploadedLayer>;
+  createUploadedLayersBatch(layers: InsertUploadedLayer[]): Promise<UploadedLayer[]>;
   updateUploadedLayer(id: number, updates: Partial<InsertUploadedLayer>): Promise<UploadedLayer | undefined>;
   deleteUploadedLayer(id: number): Promise<boolean>;
 }
@@ -180,6 +181,21 @@ export class MemStorage implements IStorage {
     };
     this.uploadedLayers.set(id, layer);
     return layer;
+  }
+
+  async createUploadedLayersBatch(insertLayers: InsertUploadedLayer[]): Promise<UploadedLayer[]> {
+    const createdLayers: UploadedLayer[] = [];
+    for (const insertLayer of insertLayers) {
+      const id = this.uploadedLayerIdCounter++;
+      const layer: UploadedLayer = {
+        ...insertLayer,
+        id,
+        createdAt: new Date().toISOString(),
+      };
+      this.uploadedLayers.set(id, layer);
+      createdLayers.push(layer);
+    }
+    return createdLayers;
   }
 
   async updateUploadedLayer(id: number, updates: Partial<InsertUploadedLayer>): Promise<UploadedLayer | undefined> {
