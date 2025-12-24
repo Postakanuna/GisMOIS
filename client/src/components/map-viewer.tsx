@@ -15,7 +15,8 @@ import { Style, Fill, Stroke, Circle, Icon } from "ol/style";
 import { LineString } from "ol/geom";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, UploadedLayer } from "@shared/schema";
+import GeoJSON from "ol/format/GeoJSON";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { MapControls } from "./map-controls";
 import { CoordinateDisplay } from "./coordinate-display";
@@ -41,6 +42,7 @@ interface MapViewerProps {
   ticketMode: boolean;
   onToggleTicketMode: () => void;
   onCreateTicket: (ticket: InsertTicket) => Promise<Ticket>;
+  uploadedLayers?: UploadedLayer[];
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -255,7 +257,7 @@ function parseZwsResponse(xml: string): Feature[] {
   return features;
 }
 
-export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, onLayerLoadError, onLayerLoadSuccess, tickets = [], ticketMode, onToggleTicketMode, onCreateTicket }: MapViewerProps) {
+export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, onLayerLoadError, onLayerLoadSuccess, tickets = [], ticketMode, onToggleTicketMode, onCreateTicket, uploadedLayers = [] }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const layersRef = useRef<Record<string, LayerType>>({});
@@ -263,6 +265,7 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
   const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const facilitiesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const tracesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const uploadedLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const { toast } = useToast();
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
@@ -647,6 +650,78 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       source.addFeature(feature);
     });
   }, [traces, selectedTrace]);
+
+  // Manage uploaded shapefile layers
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    
+    const currentLayerIds = new Set(uploadedLayers.map(l => l.id));
+    
+    // Remove layers that no longer exist
+    uploadedLayersRef.current.forEach((layer, id) => {
+      if (!currentLayerIds.has(id)) {
+        map.removeLayer(layer);
+        uploadedLayersRef.current.delete(id);
+      }
+    });
+    
+    // Add or update layers
+    uploadedLayers.forEach((uploadedLayer) => {
+      let vectorLayer = uploadedLayersRef.current.get(uploadedLayer.id);
+      
+      if (!vectorLayer) {
+        const vectorSource = new VectorSource();
+        const geojsonFormat = new GeoJSON();
+        
+        try {
+          const geojsonData = Array.isArray(uploadedLayer.geojson) 
+            ? { type: "FeatureCollection", features: uploadedLayer.geojson.flatMap((g: any) => g.features || []) }
+            : uploadedLayer.geojson;
+            
+          const features = geojsonFormat.readFeatures(geojsonData, {
+            dataProjection: "EPSG:4326",
+            featureProjection: "EPSG:3857",
+          });
+          vectorSource.addFeatures(features);
+        } catch (e) {
+          console.error("Failed to parse uploaded layer GeoJSON:", e);
+        }
+        
+        vectorLayer = new VectorLayer({
+          source: vectorSource,
+          style: new Style({
+            fill: new Fill({ color: uploadedLayer.color + "40" }),
+            stroke: new Stroke({ color: uploadedLayer.color, width: 2 }),
+            image: new Circle({
+              radius: 6,
+              fill: new Fill({ color: uploadedLayer.color }),
+              stroke: new Stroke({ color: "#fff", width: 1 }),
+            }),
+          }),
+          properties: { uploadedLayerId: uploadedLayer.id },
+        });
+        
+        map.addLayer(vectorLayer);
+        uploadedLayersRef.current.set(uploadedLayer.id, vectorLayer);
+      }
+      
+      // Update visibility and opacity
+      vectorLayer.setVisible(uploadedLayer.visible);
+      vectorLayer.setOpacity(uploadedLayer.opacity);
+      
+      // Update style if color changed
+      vectorLayer.setStyle(new Style({
+        fill: new Fill({ color: uploadedLayer.color + "40" }),
+        stroke: new Stroke({ color: uploadedLayer.color, width: 2 }),
+        image: new Circle({
+          radius: 6,
+          fill: new Fill({ color: uploadedLayer.color }),
+          stroke: new Stroke({ color: "#fff", width: 1 }),
+        }),
+      }));
+    });
+  }, [uploadedLayers]);
 
   useEffect(() => {
     if (!mapRef.current || !connection) return;

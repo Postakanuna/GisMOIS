@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Map, Settings, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -15,9 +17,10 @@ import {
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LayerPanel } from "@/components/layer-panel";
+import { UploadedLayersPanel } from "@/components/uploaded-layers-panel";
 import { MapViewer } from "@/components/map-viewer";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
-import type { ConnectionStatus } from "@shared/schema";
+import type { ConnectionStatus, UploadedLayer } from "@shared/schema";
 
 function SidebarContentPanel({
   layers,
@@ -29,7 +32,9 @@ function SidebarContentPanel({
 }: Pick<ReturnType<typeof useZuluConnectionContext>, 'layers' | 'toggleLayerVisibility' | 'setLayerOpacity' | 'layerFilters' | 'activeFilters' | 'toggleFilter'>) {
   return (
     <ScrollArea className="h-full">
-      <div className="p-4">
+      <div className="p-4 space-y-6">
+        <UploadedLayersPanel />
+        <Separator />
         <LayerPanel
           layers={layers}
           onToggleVisibility={toggleLayerVisibility}
@@ -66,6 +71,11 @@ function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
 export default function Home() {
   const zuluConnection = useZuluConnectionContext();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const { data: uploadedLayers = [] } = useQuery<UploadedLayer[]>({
+    queryKey: ["/api/uploaded-layers"],
+    refetchOnWindowFocus: false,
+  });
 
   const sidebarStyle = {
     "--sidebar-width": "24rem",
@@ -172,6 +182,7 @@ export default function Home() {
               ticketMode={zuluConnection.ticketMode}
               onToggleTicketMode={() => zuluConnection.setTicketMode(!zuluConnection.ticketMode)}
               onCreateTicket={zuluConnection.createTicket}
+              uploadedLayers={uploadedLayers}
             />
           </main>
         </div>
