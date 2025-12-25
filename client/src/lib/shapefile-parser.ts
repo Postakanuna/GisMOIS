@@ -23,6 +23,142 @@ function decodeCP1251(buffer: ArrayBuffer): string {
   return CP1251_DECODER.decode(buffer);
 }
 
+// WGS84 ellipsoid parameters
+const WGS84_A = 6378137.0; // semi-major axis (meters)
+const WGS84_F = 1 / 298.257223563; // flattening
+const WGS84_E = Math.sqrt(2 * WGS84_F - WGS84_F * WGS84_F); // eccentricity = 0.0818191908426
+
+/**
+ * Correct latitude from ZULU's spherical Mercator to WGS84 ellipsoidal coordinates.
+ * 
+ * ZULU uses a perfect sphere (R=6378137m) for Mercator projection,
+ * then exports coordinates as degrees using spherical formulas.
+ * OpenLayers/OSM uses WGS84 ellipsoid for EPSG:4326.
+ * 
+ * This function converts "spherical degrees" to "ellipsoidal degrees".
+ * 
+ * Math:
+ * 1. Calculate y in spherical Mercator meters: y = R * ln(tan(π/4 + φ_sphere/2))
+ * 2. Solve for φ_ellipse using iterative inverse Mercator with ellipsoid
+ */
+function correctSphericalLatitude(latDeg: number): number {
+  const R = WGS84_A; // sphere radius used by ZULU
+  const DEG2RAD = Math.PI / 180;
+  const RAD2DEG = 180 / Math.PI;
+  
+  // Convert spherical latitude to radians
+  const latRad = latDeg * DEG2RAD;
+  
+  // Calculate y in spherical Mercator (meters)
+  // y = R * ln(tan(π/4 + φ/2))
+  const y = R * Math.log(Math.tan(Math.PI / 4 + latRad / 2));
+  
+  // Now inverse: find ellipsoidal latitude from y
+  // This requires iteration because the ellipsoidal formula is implicit
+  // φ = 2 * atan(exp(y/R) * ((1-e*sin(φ))/(1+e*sin(φ)))^(e/2)) - π/2
+  
+  // Initial guess from spherical formula
+  let phi = 2 * Math.atan(Math.exp(y / R)) - Math.PI / 2;
+  
+  // Iterative refinement (typically converges in 3-4 iterations)
+  for (let i = 0; i < 10; i++) {
+    const sinPhi = Math.sin(phi);
+    const eSinPhi = WGS84_E * sinPhi;
+    const conformalFactor = Math.pow((1 - eSinPhi) / (1 + eSinPhi), WGS84_E / 2);
+    const phiNew = 2 * Math.atan(Math.exp(y / R) * conformalFactor) - Math.PI / 2;
+    
+    if (Math.abs(phiNew - phi) < 1e-12) break;
+    phi = phiNew;
+  }
+  
+  return phi * RAD2DEG;
+}
+
+/**
+ * Apply spherical-to-ellipsoidal latitude correction to a coordinate pair.
+ * Only corrects latitude (Y); longitude (X) is unchanged.
+ */
+function correctZuluCoordinates(coords: Position): Position {
+  const correctedLat = correctSphericalLatitude(coords[1]);
+  return coords.length > 2 
+    ? [coords[0], correctedLat, coords[2]] 
+    : [coords[0], correctedLat];
+}
+
+/**
+ * Get the first coordinate from any geometry type (for debugging/logging)
+ */
+function getFirstCoordinate(geometry: Geometry | null | undefined): Position | null {
+  if (!geometry) return null;
+  switch (geometry.type) {
+    case 'Point':
+      return geometry.coordinates;
+    case 'MultiPoint':
+    case 'LineString':
+      return geometry.coordinates[0] || null;
+    case 'MultiLineString':
+    case 'Polygon':
+      return geometry.coordinates[0]?.[0] || null;
+    case 'MultiPolygon':
+      return geometry.coordinates[0]?.[0]?.[0] || null;
+    case 'GeometryCollection':
+      return geometry.geometries[0] ? getFirstCoordinate(geometry.geometries[0]) : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Recursively correct all coordinates in a geometry
+ */
+function correctGeometryCoordinates(geometry: Geometry): Geometry {
+  switch (geometry.type) {
+    case 'Point':
+      return {
+        type: 'Point',
+        coordinates: correctZuluCoordinates(geometry.coordinates)
+      };
+    case 'MultiPoint':
+      return {
+        type: 'MultiPoint',
+        coordinates: geometry.coordinates.map(c => correctZuluCoordinates(c))
+      };
+    case 'LineString':
+      return {
+        type: 'LineString',
+        coordinates: geometry.coordinates.map(c => correctZuluCoordinates(c))
+      };
+    case 'MultiLineString':
+      return {
+        type: 'MultiLineString',
+        coordinates: geometry.coordinates.map(line => 
+          line.map(c => correctZuluCoordinates(c))
+        )
+      };
+    case 'Polygon':
+      return {
+        type: 'Polygon',
+        coordinates: geometry.coordinates.map(ring => 
+          ring.map(c => correctZuluCoordinates(c))
+        )
+      };
+    case 'MultiPolygon':
+      return {
+        type: 'MultiPolygon',
+        coordinates: geometry.coordinates.map(polygon => 
+          polygon.map(ring => ring.map(c => correctZuluCoordinates(c)))
+        )
+      };
+    case 'GeometryCollection':
+      return {
+        type: 'GeometryCollection',
+        geometries: geometry.geometries.map(g => correctGeometryCoordinates(g))
+      };
+    default:
+      return geometry;
+  }
+}
+
 function transformCoordinates(coords: Position, transform: proj4.Converter): Position {
   const [x, y] = transform.forward([coords[0], coords[1]]);
   return coords.length > 2 ? [x, y, coords[2]] : [x, y];
@@ -255,8 +391,49 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
   const coordType = analyzeCoordinates(fc);
   
   if (coordType === 'degrees') {
-    console.log('Coordinates are already in degrees - NO transformation needed');
-    console.log('(PRJ file may incorrectly describe projection, but actual data is lat/lon)');
+    console.log('Coordinates are already in degrees');
+    
+    // Check if this is a ZULU export with spherical Mercator
+    // ZULU uses a perfect sphere (sradiusa=sradiusb=6378137) for its Mercator projection
+    // When exporting to degrees, it uses spherical formulas which produce incorrect
+    // latitude values when rendered on an ellipsoidal basemap (OpenStreetMap)
+    const isZuluSpherical = prjContent && (
+      prjContent.includes('Auxiliary_Sphere') ||
+      prjContent.includes('sradiusa=6378137') ||
+      (prjContent.includes('SPHEROID["WGS_84"') && prjContent.includes('sradiusb=6378137'))
+    );
+    
+    if (isZuluSpherical || prjContent?.includes('Mercator')) {
+      console.log('Detected ZULU spherical Mercator export - applying latitude correction');
+      console.log('Converting spherical degrees to WGS84 ellipsoidal degrees...');
+      
+      // Apply spherical-to-ellipsoidal latitude correction
+      const correctedFeatures: Feature[] = fc.features.map(feature => ({
+        ...feature,
+        geometry: feature.geometry ? correctGeometryCoordinates(feature.geometry) : feature.geometry
+      }));
+      
+      // Log sample correction for debugging
+      if (fc.features.length > 0 && fc.features[0].geometry) {
+        const origCoord = getFirstCoordinate(fc.features[0].geometry);
+        const corrCoord = getFirstCoordinate(correctedFeatures[0].geometry!);
+        if (origCoord && corrCoord) {
+          const latDiff = (origCoord[1] - corrCoord[1]) * 111; // km
+          console.log(`  Sample correction: [${origCoord[0].toFixed(6)}, ${origCoord[1].toFixed(6)}] -> [${corrCoord[0].toFixed(6)}, ${corrCoord[1].toFixed(6)}]`);
+          console.log(`  Latitude shift: ${latDiff.toFixed(2)} km southward (correcting ZULU offset)`);
+        }
+      }
+      
+      return { 
+        featureCollection: {
+          type: 'FeatureCollection',
+          features: correctedFeatures
+        }, 
+        failed: false 
+      };
+    }
+    
+    console.log('(Standard WGS84 degrees - no correction needed)');
     return { featureCollection: fc, failed: false };
   }
   
@@ -438,25 +615,6 @@ export async function parseShapefileZip(arrayBuffer: ArrayBuffer): Promise<Parse
   }
   
   return results;
-}
-
-function getFirstCoordinate(geometry: Geometry | null): Position | null {
-  if (!geometry) return null;
-  
-  switch (geometry.type) {
-    case 'Point':
-      return geometry.coordinates;
-    case 'MultiPoint':
-    case 'LineString':
-      return geometry.coordinates[0];
-    case 'MultiLineString':
-    case 'Polygon':
-      return geometry.coordinates[0]?.[0];
-    case 'MultiPolygon':
-      return geometry.coordinates[0]?.[0]?.[0];
-    default:
-      return null;
-  }
 }
 
 export async function parseShapefileWithEncoding(arrayBuffer: ArrayBuffer, fileName: string): Promise<ParsedShapefile[]> {
