@@ -78,6 +78,11 @@ function transformGeometry(geometry: Geometry, transform: proj4.Converter): Geom
 
 proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
 
+// Web Mercator (Google Maps, OSM tile projection) - coordinates in meters
+proj4.defs('EPSG:3857', '+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs');
+proj4.defs('EPSG:102100', proj4.defs('EPSG:3857')); // Esri alias for Web Mercator
+
+// Pulkovo 1942 Gauss-Kruger zones
 proj4.defs('EPSG:28406', '+proj=tmerc +lat_0=0 +lon_0=33 +k=1 +x_0=6500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs');
 proj4.defs('EPSG:28407', '+proj=tmerc +lat_0=0 +lon_0=39 +k=1 +x_0=7500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs');
 proj4.defs('EPSG:28408', '+proj=tmerc +lat_0=0 +lon_0=45 +k=1 +x_0=8500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs');
@@ -86,29 +91,69 @@ proj4.defs('Pulkovo_1942_GK_Zone_6', proj4.defs('EPSG:28406'));
 proj4.defs('Pulkovo_1942_GK_Zone_7', proj4.defs('EPSG:28407'));
 proj4.defs('Pulkovo_1942_GK_Zone_8', proj4.defs('EPSG:28408'));
 
+// Moscow Oblast local CRS
 proj4.defs('MSK_50_Zone_1', '+proj=tmerc +lat_0=0 +lon_0=38.48333333333333 +k=1 +x_0=1300000 +y_0=-4511057.628 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs');
 proj4.defs('MSK_50_Zone_2', '+proj=tmerc +lat_0=0 +lon_0=41.48333333333333 +k=1 +x_0=2300000 +y_0=-4511057.628 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs');
 
 function detectProjection(prjContent: string): string | null {
   const prjLower = prjContent.toLowerCase();
   
-  if (prjLower.includes('wgs') && prjLower.includes('84')) {
-    return 'EPSG:4326';
+  console.log('PRJ content sample:', prjContent.substring(0, 200));
+  
+  // Check for Web Mercator FIRST (before WGS84, because Web Mercator includes WGS84 as datum)
+  // Web Mercator identifiers: Pseudo_Mercator, Web_Mercator, Auxiliary_Sphere, EPSG:3857, EPSG:102100
+  if (prjLower.includes('pseudo_mercator') || 
+      prjLower.includes('web_mercator') || 
+      prjLower.includes('auxiliary_sphere') ||
+      prjLower.includes('mercator_auxiliary') ||
+      prjLower.includes('popular visualisation')) {
+    console.log('Detected Web Mercator from projection name');
+    return 'EPSG:3857';
   }
   
-  const epsgMatch = prjContent.match(/AUTHORITY\s*\[\s*"EPSG"\s*,\s*"?(\d+)"?\s*\]/i);
-  if (epsgMatch) {
-    const code = epsgMatch[1];
+  // Check for EPSG codes - find ALL AUTHORITY blocks
+  const epsgRegex = /AUTHORITY\s*\[\s*"EPSG"\s*,\s*"?(\d+)"?\s*\]/gi;
+  const epsgCodes: string[] = [];
+  let epsgMatch;
+  while ((epsgMatch = epsgRegex.exec(prjContent)) !== null) {
+    epsgCodes.push(epsgMatch[1]);
+  }
+  console.log('Found EPSG codes:', epsgCodes);
+  
+  // Check for Web Mercator EPSG codes
+  if (epsgCodes.includes('3857') || epsgCodes.includes('102100') || epsgCodes.includes('900913')) {
+    console.log('Detected Web Mercator from EPSG code');
+    return 'EPSG:3857';
+  }
+  
+  // Check for Pulkovo codes
+  for (const code of epsgCodes) {
     if (['28406', '28407', '28408'].includes(code)) {
+      console.log(`Detected Pulkovo from EPSG:${code}`);
       return `EPSG:${code}`;
     }
   }
   
+  // If it's a projected CRS with Mercator projection (not just lon/lat WGS84)
+  if (prjLower.includes('projcs') && prjLower.includes('mercator')) {
+    console.log('Detected Mercator projection in PROJCS');
+    return 'EPSG:3857';
+  }
+  
+  // Only now check for pure WGS84 (geographic, not projected)
+  // WGS84 geographic should have GEOGCS but NOT PROJCS
+  if (!prjLower.includes('projcs') && prjLower.includes('wgs') && prjLower.includes('84')) {
+    console.log('Detected WGS84 geographic (no PROJCS)');
+    return 'EPSG:4326';
+  }
+  
+  // Pulkovo 1942 detection
   if (prjLower.includes('pulkovo') || prjLower.includes('krassowsky') || prjLower.includes('krass')) {
     const zoneMatch = prjContent.match(/zone[_\s]*(\d+)/i);
     if (zoneMatch) {
       const zone = parseInt(zoneMatch[1]);
       if (zone >= 6 && zone <= 8) {
+        console.log(`Detected Pulkovo zone ${zone}`);
         return `EPSG:2840${zone}`;
       }
     }
@@ -122,6 +167,7 @@ function detectProjection(prjContent: string): string | null {
     }
   }
   
+  // MSK-50 (Moscow Oblast) detection
   if (prjLower.includes('msk') || prjLower.includes('moskovsk') || prjLower.includes('moscow_oblast')) {
     const cmMatch = prjContent.match(/central_meridian["\s,]+(\d+\.?\d*)/i);
     if (cmMatch) {
@@ -132,6 +178,7 @@ function detectProjection(prjContent: string): string | null {
     return 'MSK_50_Zone_1';
   }
   
+  console.log('Could not detect projection, will attempt WKT parsing');
   return null;
 }
 
