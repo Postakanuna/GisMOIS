@@ -678,12 +678,16 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
           const geojsonData = Array.isArray(uploadedLayer.geojson) 
             ? { type: "FeatureCollection", features: uploadedLayer.geojson.flatMap((g: any) => g.features || []) }
             : uploadedLayer.geojson;
-            
+          
+          // Read features without featureProjection - the map view will handle projection
+          // Data is in EPSG:4326 (degrees), map view is in EPSG:3857 (meters)
+          // OpenLayers will automatically reproject when rendering
           const features = geojsonFormat.readFeatures(geojsonData, {
             dataProjection: "EPSG:4326",
-            featureProjection: "EPSG:3857",
+            featureProjection: mapRef.current?.getView().getProjection() || "EPSG:3857",
           });
           vectorSource.addFeatures(features);
+          console.log(`Loaded ${features.length} features for layer: ${uploadedLayer.name}`);
         } catch (e) {
           console.error("Failed to parse uploaded layer GeoJSON:", e);
         }
