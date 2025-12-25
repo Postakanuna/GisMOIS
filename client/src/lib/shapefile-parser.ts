@@ -100,12 +100,31 @@ function detectProjection(prjContent: string): string | null {
   
   console.log('PRJ content sample:', prjContent.substring(0, 200));
   
-  // Check for Web Mercator FIRST (before WGS84, because Web Mercator includes WGS84 as datum)
+  // CRITICAL: Check if the UNIT is Degree - if so, coordinates are already in lat/lon
+  // This handles ZULU exports that use PROJCS with Mercator but store coords in degrees
+  // Look for UNIT["Degree" in PROJCS context (not in GEOGCS which always has degrees)
+  const projcsMatch = prjContent.match(/PROJCS\[[\s\S]*$/i);
+  if (projcsMatch) {
+    // Check the UNIT after PROJECTION (the linear/coordinate unit, not the angular unit in GEOGCS)
+    // In WKT, the UNIT after PROJECTION applies to coordinates
+    const afterProjection = prjContent.match(/PROJECTION\[[\s\S]*/i);
+    if (afterProjection) {
+      const unitMatch = afterProjection[0].match(/UNIT\s*\[\s*"([^"]+)"/i);
+      if (unitMatch) {
+        const unit = unitMatch[1].toLowerCase();
+        console.log('Coordinate UNIT detected:', unit);
+        if (unit === 'degree' || unit === 'degrees') {
+          console.log('Coordinates stored in degrees - treating as WGS84 lat/lon');
+          return 'EPSG:4326';
+        }
+      }
+    }
+  }
+  
+  // Check for Web Mercator with METER units
   // Web Mercator identifiers: Pseudo_Mercator, Web_Mercator, Auxiliary_Sphere, EPSG:3857, EPSG:102100
   if (prjLower.includes('pseudo_mercator') || 
-      prjLower.includes('web_mercator') || 
-      prjLower.includes('auxiliary_sphere') ||
-      prjLower.includes('mercator_auxiliary') ||
+      prjLower.includes('web_mercator') ||
       prjLower.includes('popular visualisation')) {
     console.log('Detected Web Mercator from projection name');
     return 'EPSG:3857';
@@ -134,9 +153,9 @@ function detectProjection(prjContent: string): string | null {
     }
   }
   
-  // If it's a projected CRS with Mercator projection (not just lon/lat WGS84)
-  if (prjLower.includes('projcs') && prjLower.includes('mercator')) {
-    console.log('Detected Mercator projection in PROJCS');
+  // If it's a projected CRS with Mercator projection and METER units
+  if (prjLower.includes('projcs') && prjLower.includes('mercator') && prjLower.includes('meter')) {
+    console.log('Detected Mercator projection with meters in PROJCS');
     return 'EPSG:3857';
   }
   
