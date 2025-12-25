@@ -206,52 +206,112 @@ interface TransformResult {
   failed: boolean;
 }
 
+// Analyze actual coordinate values to determine if they're degrees or meters
+function analyzeCoordinates(fc: FeatureCollection): 'degrees' | 'meters' | 'unknown' {
+  // Sample first few features to analyze coordinate ranges
+  const sampleCoords: number[][] = [];
+  
+  for (let i = 0; i < Math.min(fc.features?.length || 0, 10); i++) {
+    const feature = fc.features[i];
+    if (!feature?.geometry) continue;
+    
+    const coord = getFirstCoordinate(feature.geometry);
+    if (coord) {
+      sampleCoords.push(coord);
+    }
+  }
+  
+  if (sampleCoords.length === 0) return 'unknown';
+  
+  // Calculate coordinate ranges
+  const xValues = sampleCoords.map(c => Math.abs(c[0]));
+  const yValues = sampleCoords.map(c => Math.abs(c[1]));
+  const avgX = xValues.reduce((a, b) => a + b, 0) / xValues.length;
+  const avgY = yValues.reduce((a, b) => a + b, 0) / yValues.length;
+  
+  console.log(`Coordinate analysis: avgX=${avgX.toFixed(2)}, avgY=${avgY.toFixed(2)}`);
+  
+  // Degrees: typically -180 to 180 for lon, -90 to 90 for lat
+  // For Russia/Moscow region: lon ~30-45, lat ~50-60
+  // Web Mercator meters: X ~2,000,000 to 20,000,000, Y ~2,000,000 to 20,000,000
+  
+  // If both X and Y are less than 200, they're almost certainly degrees
+  if (avgX < 200 && avgY < 200) {
+    console.log('Coordinates appear to be in DEGREES (values < 200)');
+    return 'degrees';
+  }
+  
+  // If values are in millions, they're meters
+  if (avgX > 100000 || avgY > 100000) {
+    console.log('Coordinates appear to be in METERS (values > 100,000)');
+    return 'meters';
+  }
+  
+  return 'unknown';
+}
+
 function transformFeatureCollection(fc: FeatureCollection, prjContent: string | null): TransformResult {
+  // FIRST: Analyze actual coordinate values - this is the most reliable method
+  const coordType = analyzeCoordinates(fc);
+  
+  if (coordType === 'degrees') {
+    console.log('Coordinates are already in degrees - NO transformation needed');
+    console.log('(PRJ file may incorrectly describe projection, but actual data is lat/lon)');
+    return { featureCollection: fc, failed: false };
+  }
+  
   if (!prjContent) {
     console.log('No .prj file found, assuming WGS84');
     return { featureCollection: fc, failed: false };
   }
 
-  try {
-    console.log('PRJ content:', prjContent.substring(0, 300));
-    
-    const knownProj = detectProjection(prjContent);
-    let sourceProj: string;
-    
-    if (knownProj) {
-      console.log('Detected known projection:', knownProj);
-      sourceProj = knownProj;
-    } else {
-      console.log('No known projection detected, trying to parse WKT directly');
-      sourceProj = prjContent;
-    }
-    
-    if (sourceProj === 'EPSG:4326') {
-      console.log('Already WGS84, no transformation needed');
-      return { featureCollection: fc, failed: false };
-    }
-    
-    const transform = proj4(sourceProj, 'EPSG:4326');
-    
-    const transformedFeatures: Feature[] = fc.features.map(feature => ({
-      ...feature,
-      geometry: feature.geometry ? transformGeometry(feature.geometry, transform) : feature.geometry
-    }));
+  // Only transform if coordinates appear to be in meters
+  if (coordType === 'meters') {
+    try {
+      console.log('PRJ content:', prjContent.substring(0, 300));
+      
+      const knownProj = detectProjection(prjContent);
+      let sourceProj: string;
+      
+      if (knownProj) {
+        console.log('Detected known projection:', knownProj);
+        sourceProj = knownProj;
+      } else {
+        console.log('No known projection detected, trying to parse WKT directly');
+        sourceProj = prjContent;
+      }
+      
+      if (sourceProj === 'EPSG:4326') {
+        console.log('Already WGS84, no transformation needed');
+        return { featureCollection: fc, failed: false };
+      }
+      
+      const transform = proj4(sourceProj, 'EPSG:4326');
+      
+      const transformedFeatures: Feature[] = fc.features.map(feature => ({
+        ...feature,
+        geometry: feature.geometry ? transformGeometry(feature.geometry, transform) : feature.geometry
+      }));
 
-    console.log('Coordinate transformation successful');
-    
-    return {
-      featureCollection: {
-        type: 'FeatureCollection',
-        features: transformedFeatures
-      },
-      failed: false
-    };
-  } catch (error: any) {
-    console.error('Coordinate reprojection FAILED:', error?.message || error);
-    console.warn('Layer coordinates may be incorrect - could not transform from source CRS to WGS84');
-    return { featureCollection: fc, failed: true };
+      console.log('Coordinate transformation successful');
+      
+      return {
+        featureCollection: {
+          type: 'FeatureCollection',
+          features: transformedFeatures
+        },
+        failed: false
+      };
+    } catch (error: any) {
+      console.error('Coordinate reprojection FAILED:', error?.message || error);
+      console.warn('Layer coordinates may be incorrect - could not transform from source CRS to WGS84');
+      return { featureCollection: fc, failed: true };
+    }
   }
+  
+  // Unknown coordinate type - don't transform
+  console.log('Coordinate type unknown - passing through without transformation');
+  return { featureCollection: fc, failed: false };
 }
 
 function decodeCP1251Filename(rawBytes: Uint8Array | string[] | ArrayBuffer): string {
