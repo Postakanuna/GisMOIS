@@ -679,13 +679,42 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
             ? { type: "FeatureCollection", features: uploadedLayer.geojson.flatMap((g: any) => g.features || []) }
             : uploadedLayer.geojson;
           
-          // Read features without featureProjection - the map view will handle projection
-          // Data is in EPSG:4326 (degrees), map view is in EPSG:3857 (meters)
-          // OpenLayers will automatically reproject when rendering
+          // DEBUG: Log sample coordinates before transformation
+          const sampleFeature = geojsonData.features?.[0];
+          if (sampleFeature?.geometry?.coordinates) {
+            const coords = sampleFeature.geometry.coordinates;
+            const flatCoords = Array.isArray(coords[0]) 
+              ? (Array.isArray(coords[0][0]) ? coords[0][0] : coords[0])
+              : coords;
+            console.log(`=== OpenLayers Projection Debug for: ${uploadedLayer.name} ===`);
+            console.log(`  Input GeoJSON coords: [${flatCoords[0]}, ${flatCoords[1]}]`);
+            console.log(`  Map projection: ${mapRef.current?.getView().getProjection()?.getCode()}`);
+          }
+          
+          // EXPERIMENT: Try reading as EPSG:3857 directly (no transformation)
+          // ZULU stores in Spherical Mercator, exports degrees using spherical formulas
+          // Maybe we should NOT transform at all - just use coordinates as-is
           const features = geojsonFormat.readFeatures(geojsonData, {
-            dataProjection: "EPSG:4326",
-            featureProjection: mapRef.current?.getView().getProjection() || "EPSG:3857",
+            dataProjection: "EPSG:3857",
+            featureProjection: "EPSG:3857",
           });
+          
+          // DEBUG: Log transformed coordinates
+          if (features.length > 0) {
+            const firstFeature = features[0];
+            const geom = firstFeature.getGeometry();
+            if (geom) {
+              const extent = geom.getExtent();
+              console.log(`  Output EPSG:3857 extent: [${extent[0].toFixed(2)}, ${extent[1].toFixed(2)}, ${extent[2].toFixed(2)}, ${extent[3].toFixed(2)}]`);
+              
+              // Convert back to lon/lat for comparison
+              const centerX = (extent[0] + extent[2]) / 2;
+              const centerY = (extent[1] + extent[3]) / 2;
+              const lonLat = toLonLat([centerX, centerY]);
+              console.log(`  Center in EPSG:4326: [${lonLat[0].toFixed(6)}, ${lonLat[1].toFixed(6)}]`);
+            }
+          }
+          
           vectorSource.addFeatures(features);
           console.log(`Loaded ${features.length} features for layer: ${uploadedLayer.name}`);
         } catch (e) {
