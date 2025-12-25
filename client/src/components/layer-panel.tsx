@@ -1,8 +1,8 @@
-import { Layers, Map, Database, Building2, Users, ChevronRight } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -131,53 +131,33 @@ export function LayerPanel({
 
   const renderLayerItem = (layer: LayerConfig) => {
     const Icon = layer.type === "base" ? Map : layer.type === "wfs" ? Database : Layers;
-    const switchId = `switch-layer-${layer.id}`;
 
     return (
       <div
         key={layer.id}
-        className="space-y-3 rounded-md border border-sidebar-border p-3"
+        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1"
         data-testid={`layer-item-${layer.id}`}
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <Label 
-              htmlFor={switchId} 
-              className="text-sm font-medium truncate cursor-pointer flex-1"
-            >
-              {layer.name}
-            </Label>
-          </div>
-          <Switch
-            id={switchId}
-            checked={layer.visible}
-            onCheckedChange={() => onToggleVisibility(layer.id)}
-            data-testid={`switch-toggle-layer-${layer.id}`}
-          />
-        </div>
-
-        {layer.visible && (
-          <>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground shrink-0">
-                Непрозрачность
-              </span>
-              <Slider
-                value={[layer.opacity * 100]}
-                onValueChange={([value]) => onOpacityChange(layer.id, value / 100)}
-                max={100}
-                step={1}
-                className="flex-1"
-                data-testid={`slider-opacity-${layer.id}`}
-              />
-              <span className="text-xs text-muted-foreground w-8 text-right font-mono">
-                {Math.round(layer.opacity * 100)}%
-              </span>
-            </div>
-            {renderSublayerFilters(layer)}
-          </>
-        )}
+        <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+        <span 
+          className="text-xs font-medium truncate flex-1 min-w-0"
+          title={layer.name}
+        >
+          {layer.name}
+        </span>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 shrink-0"
+          onClick={() => onToggleVisibility(layer.id)}
+          data-testid={`button-toggle-layer-${layer.id}`}
+        >
+          {layer.visible ? (
+            <Eye className="h-3 w-3" />
+          ) : (
+            <EyeOff className="h-3 w-3 text-muted-foreground" />
+          )}
+        </Button>
       </div>
     );
   };
@@ -208,19 +188,19 @@ export function LayerPanel({
         <h2 className="text-lg font-medium">Слои карты</h2>
       </div>
 
-      <Accordion type="multiple" defaultValue={["base", "wms", "wfs"]} className="space-y-2">
+      <Accordion type="multiple" defaultValue={["base", "wms", "wfs"]} className="space-y-1">
         {baseLayers.length > 0 && (
           <AccordionItem value="base" className="border-none">
-            <AccordionTrigger className="py-2 hover:no-underline" data-testid="accordion-base-layers">
+            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-base-layers">
               <div className="flex items-center gap-2">
-                <Map className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Базовые слои</span>
-                <span className="text-xs text-muted-foreground">
+                <Map className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs font-medium">Базовые слои</span>
+                <span className="text-[10px] text-muted-foreground">
                   ({baseLayers.length})
                 </span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="space-y-2 pt-2">
+            <AccordionContent className="space-y-1 pt-1">
               {baseLayers.map(renderLayerItem)}
             </AccordionContent>
           </AccordionItem>
@@ -228,16 +208,16 @@ export function LayerPanel({
 
         {wmsLayers.length > 0 && (
           <AccordionItem value="wms" className="border-none">
-            <AccordionTrigger className="py-2 hover:no-underline" data-testid="accordion-wms-layers">
+            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-wms-layers">
               <div className="flex items-center gap-2">
-                <Layers className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">WMS слои</span>
-                <span className="text-xs text-muted-foreground">
+                <Layers className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs font-medium">WMS слои</span>
+                <span className="text-[10px] text-muted-foreground">
                   ({wmsLayers.length})
                 </span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="space-y-2 pt-2">
+            <AccordionContent className="space-y-1 pt-1">
               {wmsLayers.map(renderLayerItem)}
             </AccordionContent>
           </AccordionItem>
@@ -245,16 +225,16 @@ export function LayerPanel({
 
         {wfsLayers.length > 0 && (
           <AccordionItem value="wfs" className="border-none">
-            <AccordionTrigger className="py-2 hover:no-underline" data-testid="accordion-wfs-layers">
+            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-wfs-layers">
               <div className="flex items-center gap-2">
-                <Database className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">WFS слои</span>
-                <span className="text-xs text-muted-foreground">
+                <Database className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs font-medium">WFS слои</span>
+                <span className="text-[10px] text-muted-foreground">
                   ({wfsLayers.length})
                 </span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="space-y-2 pt-2">
+            <AccordionContent className="space-y-1 pt-1">
               {wfsLayers.map(renderLayerItem)}
             </AccordionContent>
           </AccordionItem>
