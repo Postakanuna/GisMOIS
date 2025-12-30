@@ -183,15 +183,23 @@ export function LayerPanel({
         throw new Error("Не найдено слоёв в архиве");
       }
 
-      const layersToCreate = parsedLayers.map((layer, index) => ({
-        name: layer.name,
-        filename: file.name,
-        geojson: layer.geojson,
-        color: LAYER_COLORS[index % LAYER_COLORS.length],
-        visible: true,
-        opacity: 1,
-        featureCount: layer.geojson.features.length,
-      }));
+      const layersToCreate = parsedLayers.map((layer, index) => {
+        const geomType = layer.geojson.features?.[0]?.geometry?.type;
+        const isPoint = geomType === "Point" || geomType === "MultiPoint";
+        const isLine = geomType === "LineString" || geomType === "MultiLineString";
+        
+        return {
+          name: layer.name,
+          filename: file.name,
+          geojson: layer.geojson,
+          color: LAYER_COLORS[index % LAYER_COLORS.length],
+          visible: true,
+          opacity: 1,
+          featureCount: layer.geojson.features.length,
+          pointStyle: "circle" as const,
+          lineStyle: "solid" as const,
+        };
+      });
 
       await createLayersBatchMutation.mutateAsync(layersToCreate);
     } catch (error) {

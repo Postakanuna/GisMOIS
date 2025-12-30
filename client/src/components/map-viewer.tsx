@@ -17,7 +17,8 @@ import { DragBox, Select } from "ol/interaction";
 import { platformModifierKeyOnly } from "ol/events/condition";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, UploadedLayer } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, UploadedLayer, PointStyle, LineStyle } from "@shared/schema";
+import RegularShape from "ol/style/RegularShape";
 import GeoJSON from "ol/format/GeoJSON";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { MapControls } from "./map-controls";
@@ -72,6 +73,89 @@ const FACILITY_COLORS: Record<FacilityType, string> = {
   boilerhouse: "#F97316",
   waterintake: "#06B6D4",
 };
+
+// Helper function to create point image style based on pointStyle
+function createPointImageStyle(color: string, pointStyle: PointStyle = "circle"): Circle | RegularShape {
+  const fill = new Fill({ color });
+  const stroke = new Stroke({ color: "#fff", width: 1 });
+  
+  switch (pointStyle) {
+    case "square":
+      return new RegularShape({
+        fill,
+        stroke,
+        points: 4,
+        radius: 6,
+        angle: Math.PI / 4,
+      });
+    case "triangle":
+      return new RegularShape({
+        fill,
+        stroke,
+        points: 3,
+        radius: 7,
+        angle: 0,
+      });
+    case "cloud":
+      return new RegularShape({
+        fill,
+        stroke,
+        points: 5,
+        radius: 7,
+        radius2: 4,
+        angle: 0,
+      });
+    case "circle":
+    default:
+      return new Circle({
+        radius: 6,
+        fill,
+        stroke,
+      });
+  }
+}
+
+// Helper function to create stroke style based on lineStyle
+function createLineStroke(color: string, lineStyle: LineStyle = "solid"): Stroke | Stroke[] {
+  switch (lineStyle) {
+    case "dashed":
+      return new Stroke({ color, width: 2, lineDash: [8, 4] });
+    case "double":
+      // For double lines, we return a single stroke since OpenLayers 
+      // will be using style function for double line effect
+      return new Stroke({ color, width: 4 });
+    case "solid":
+    default:
+      return new Stroke({ color, width: 2 });
+  }
+}
+
+// Create complete layer style based on layer properties
+function createUploadedLayerStyle(layer: UploadedLayer): Style | Style[] {
+  const color = layer.color || "#1976D2";
+  const pointStyle = layer.pointStyle || "circle";
+  const lineStyle = layer.lineStyle || "solid";
+  
+  // For double lines, return array of styles
+  if (lineStyle === "double") {
+    return [
+      new Style({
+        stroke: new Stroke({ color, width: 4 }),
+        fill: new Fill({ color: color + "40" }),
+        image: createPointImageStyle(color, pointStyle),
+      }),
+      new Style({
+        stroke: new Stroke({ color: "#fff", width: 1.5 }),
+      }),
+    ];
+  }
+  
+  return new Style({
+    fill: new Fill({ color: color + "40" }),
+    stroke: createLineStroke(color, lineStyle) as Stroke,
+    image: createPointImageStyle(color, pointStyle),
+  });
+}
 
 function getLayerStyle(layerId: string) {
   const color = LAYER_COLORS[layerId] || "#1976D2";
@@ -843,16 +927,14 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         
         vectorLayer = new VectorLayer({
           source: vectorSource,
-          style: new Style({
-            fill: new Fill({ color: uploadedLayer.color + "40" }),
-            stroke: new Stroke({ color: uploadedLayer.color, width: 2 }),
-            image: new Circle({
-              radius: 6,
-              fill: new Fill({ color: uploadedLayer.color }),
-              stroke: new Stroke({ color: "#fff", width: 1 }),
-            }),
-          }),
-          properties: { uploadedLayerId: uploadedLayer.id, featureCount: uploadedLayer.featureCount },
+          style: createUploadedLayerStyle(uploadedLayer),
+          properties: { 
+            uploadedLayerId: uploadedLayer.id, 
+            featureCount: uploadedLayer.featureCount,
+            layerColor: uploadedLayer.color,
+            pointStyle: uploadedLayer.pointStyle,
+            lineStyle: uploadedLayer.lineStyle,
+          },
         });
         
         map.addLayer(vectorLayer);
@@ -883,16 +965,19 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       vectorLayer.setVisible(uploadedLayer.visible);
       vectorLayer.setOpacity(uploadedLayer.opacity);
       
-      // Update style if color changed
-      vectorLayer.setStyle(new Style({
-        fill: new Fill({ color: uploadedLayer.color + "40" }),
-        stroke: new Stroke({ color: uploadedLayer.color, width: 2 }),
-        image: new Circle({
-          radius: 6,
-          fill: new Fill({ color: uploadedLayer.color }),
-          stroke: new Stroke({ color: "#fff", width: 1 }),
-        }),
-      }));
+      // Update style only if color, pointStyle, or lineStyle changed
+      const storedColor = vectorLayer.get("layerColor");
+      const storedPointStyle = vectorLayer.get("pointStyle");
+      const storedLineStyle = vectorLayer.get("lineStyle");
+      
+      if (storedColor !== uploadedLayer.color || 
+          storedPointStyle !== uploadedLayer.pointStyle || 
+          storedLineStyle !== uploadedLayer.lineStyle) {
+        vectorLayer.setStyle(createUploadedLayerStyle(uploadedLayer));
+        vectorLayer.set("layerColor", uploadedLayer.color);
+        vectorLayer.set("pointStyle", uploadedLayer.pointStyle);
+        vectorLayer.set("lineStyle", uploadedLayer.lineStyle);
+      }
     });
   }, [uploadedLayers]);
 
