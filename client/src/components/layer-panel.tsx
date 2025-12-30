@@ -491,9 +491,9 @@ export function LayerPanel({
         </Tooltip>
         {uploadedLayers.length >= 2 && pointLayers.length > 0 && lineLayers.length > 0 && (
           <Dialog open={analyticsOpen} onOpenChange={setAnalyticsOpen}>
-            <DialogTrigger asChild>
-              <Tooltip>
-                <TooltipTrigger asChild>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DialogTrigger asChild>
                   <Button
                     size="icon"
                     variant="ghost"
@@ -501,12 +501,12 @@ export function LayerPanel({
                   >
                     <BarChart3 className="h-4 w-4" />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Анализ аварий</p>
-                </TooltipContent>
-              </Tooltip>
-            </DialogTrigger>
+                </DialogTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Анализ аварий</p>
+              </TooltipContent>
+            </Tooltip>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle>Привязка аварий к трубопроводам</DialogTitle>
