@@ -43,16 +43,32 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { LayerConfig, UploadedLayer } from "@shared/schema";
+import type { LayerConfig, UploadedLayer, PointStyle, LineStyle } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
+import { Circle, Square, Triangle, Cloud, Minus, MoreHorizontal } from "lucide-react";
 
 const LAYER_COLORS = [
   "#1976D2", "#D32F2F", "#388E3C", "#7B1FA2",
   "#F57C00", "#0097A7", "#C2185B", "#512DA8",
 ];
+
+const POINT_STYLES: { value: PointStyle; label: string; icon: typeof Circle }[] = [
+  { value: "circle", label: "Круг", icon: Circle },
+  { value: "square", label: "Квадрат", icon: Square },
+  { value: "triangle", label: "Треугольник", icon: Triangle },
+  { value: "cloud", label: "Облачко", icon: Cloud },
+];
+
+const LINE_STYLES: { value: LineStyle; label: string }[] = [
+  { value: "solid", label: "Сплошная" },
+  { value: "dashed", label: "Пунктирная" },
+  { value: "double", label: "Двойная" },
+];
+
+type LayerGeometryType = "point" | "line" | "polygon" | "unknown";
 
 interface LayerPanelProps {
   layers: LayerConfig[];
@@ -199,6 +215,22 @@ export function LayerPanel({
 
   const setColor = (layer: UploadedLayer, color: string) => {
     updateLayerMutation.mutate({ id: layer.id, color });
+  };
+
+  const setPointStyle = (layer: UploadedLayer, pointStyle: PointStyle) => {
+    updateLayerMutation.mutate({ id: layer.id, pointStyle });
+  };
+
+  const setLineStyle = (layer: UploadedLayer, lineStyle: LineStyle) => {
+    updateLayerMutation.mutate({ id: layer.id, lineStyle });
+  };
+
+  const getLayerGeometryType = (layer: UploadedLayer): LayerGeometryType => {
+    const geom = layer.geojson?.features?.[0]?.geometry?.type;
+    if (geom === "Point" || geom === "MultiPoint") return "point";
+    if (geom === "LineString" || geom === "MultiLineString") return "line";
+    if (geom === "Polygon" || geom === "MultiPolygon") return "polygon";
+    return "unknown";
   };
 
   const pointLayers = uploadedLayers.filter(l => {
@@ -444,22 +476,93 @@ export function LayerPanel({
               size="icon"
               variant="ghost"
               className="h-6 w-6 shrink-0"
-              data-testid={`button-color-picker-${layer.id}`}
+              data-testid={`button-style-picker-${layer.id}`}
             >
               <Palette className="h-3 w-3" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-2" align="end">
-            <div className="grid grid-cols-4 gap-1">
-              {LAYER_COLORS.map((color) => (
-                <button
-                  key={color}
-                  className="h-6 w-6 rounded-md border hover:scale-110 transition-transform"
-                  style={{ backgroundColor: color }}
-                  onClick={() => setColor(layer, color)}
-                  data-testid={`button-select-color-${color}`}
-                />
-              ))}
+          <PopoverContent className="w-auto p-3" align="end">
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Цвет</p>
+                <div className="grid grid-cols-4 gap-1">
+                  {LAYER_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      className={`h-6 w-6 rounded-md border-2 hover:scale-110 transition-transform ${layer.color === color ? "border-foreground" : "border-transparent"}`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setColor(layer, color)}
+                      data-testid={`button-select-color-${layer.id}-${color}`}
+                    />
+                  ))}
+                </div>
+              </div>
+              {getLayerGeometryType(layer) === "point" && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Форма точки</p>
+                  <div className="flex gap-1">
+                    {POINT_STYLES.map((style) => {
+                      const IconComponent = style.icon;
+                      const isActive = (layer.pointStyle || "circle") === style.value;
+                      return (
+                        <Tooltip key={style.value}>
+                          <TooltipTrigger asChild>
+                            <button
+                              className={`h-7 w-7 rounded-md border flex items-center justify-center hover:scale-110 transition-transform ${isActive ? "bg-accent border-foreground" : "border-border"}`}
+                              onClick={() => setPointStyle(layer, style.value)}
+                              data-testid={`button-point-style-${layer.id}-${style.value}`}
+                            >
+                              <IconComponent className="h-4 w-4" style={{ color: layer.color }} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p className="text-xs">{style.label}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {getLayerGeometryType(layer) === "line" && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Стиль линии</p>
+                  <div className="flex gap-1">
+                    {LINE_STYLES.map((style) => {
+                      const isActive = (layer.lineStyle || "solid") === style.value;
+                      return (
+                        <Tooltip key={style.value}>
+                          <TooltipTrigger asChild>
+                            <button
+                              className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1 hover:scale-105 transition-transform ${isActive ? "bg-accent border-foreground" : "border-border"}`}
+                              onClick={() => setLineStyle(layer, style.value)}
+                              data-testid={`button-line-style-${layer.id}-${style.value}`}
+                            >
+                              <svg width="24" height="4" viewBox="0 0 24 4">
+                                {style.value === "solid" && (
+                                  <line x1="0" y1="2" x2="24" y2="2" stroke={layer.color} strokeWidth="2" />
+                                )}
+                                {style.value === "dashed" && (
+                                  <line x1="0" y1="2" x2="24" y2="2" stroke={layer.color} strokeWidth="2" strokeDasharray="4 2" />
+                                )}
+                                {style.value === "double" && (
+                                  <>
+                                    <line x1="0" y1="1" x2="24" y2="1" stroke={layer.color} strokeWidth="1" />
+                                    <line x1="0" y1="3" x2="24" y2="3" stroke={layer.color} strokeWidth="1" />
+                                  </>
+                                )}
+                              </svg>
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p className="text-xs">{style.label}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </PopoverContent>
         </Popover>
