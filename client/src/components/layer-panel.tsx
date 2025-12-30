@@ -139,7 +139,6 @@ export function LayerPanel({
     try {
       const arrayBuffer = await file.arrayBuffer();
       const parsedLayers = await parseShapefileWithEncoding(arrayBuffer, file.name);
-      console.log(`Parsed ${parsedLayers.length} layer(s)`);
 
       if (parsedLayers.length === 0) {
         throw new Error("Не найдено слоёв в архиве");

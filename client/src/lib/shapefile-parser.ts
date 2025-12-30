@@ -234,7 +234,6 @@ proj4.defs('MSK_50_Zone_2', '+proj=tmerc +lat_0=0 +lon_0=41.48333333333333 +k=1 
 function detectProjection(prjContent: string): string | null {
   const prjLower = prjContent.toLowerCase();
   
-  console.log('PRJ content sample:', prjContent.substring(0, 200));
   
   // CRITICAL: Check if the UNIT is Degree - if so, coordinates are already in lat/lon
   // This handles ZULU exports that use PROJCS with Mercator but store coords in degrees
@@ -248,9 +247,7 @@ function detectProjection(prjContent: string): string | null {
       const unitMatch = afterProjection[0].match(/UNIT\s*\[\s*"([^"]+)"/i);
       if (unitMatch) {
         const unit = unitMatch[1].toLowerCase();
-        console.log('Coordinate UNIT detected:', unit);
         if (unit === 'degree' || unit === 'degrees') {
-          console.log('Coordinates stored in degrees - treating as WGS84 lat/lon');
           return 'EPSG:4326';
         }
       }
@@ -262,7 +259,6 @@ function detectProjection(prjContent: string): string | null {
   if (prjLower.includes('pseudo_mercator') || 
       prjLower.includes('web_mercator') ||
       prjLower.includes('popular visualisation')) {
-    console.log('Detected Web Mercator from projection name');
     return 'EPSG:3857';
   }
   
@@ -273,32 +269,27 @@ function detectProjection(prjContent: string): string | null {
   while ((epsgMatch = epsgRegex.exec(prjContent)) !== null) {
     epsgCodes.push(epsgMatch[1]);
   }
-  console.log('Found EPSG codes:', epsgCodes);
   
   // Check for Web Mercator EPSG codes
   if (epsgCodes.includes('3857') || epsgCodes.includes('102100') || epsgCodes.includes('900913')) {
-    console.log('Detected Web Mercator from EPSG code');
     return 'EPSG:3857';
   }
   
   // Check for Pulkovo codes
   for (const code of epsgCodes) {
     if (['28406', '28407', '28408'].includes(code)) {
-      console.log(`Detected Pulkovo from EPSG:${code}`);
       return `EPSG:${code}`;
     }
   }
   
   // If it's a projected CRS with Mercator projection and METER units
   if (prjLower.includes('projcs') && prjLower.includes('mercator') && prjLower.includes('meter')) {
-    console.log('Detected Mercator projection with meters in PROJCS');
     return 'EPSG:3857';
   }
   
   // Only now check for pure WGS84 (geographic, not projected)
   // WGS84 geographic should have GEOGCS but NOT PROJCS
   if (!prjLower.includes('projcs') && prjLower.includes('wgs') && prjLower.includes('84')) {
-    console.log('Detected WGS84 geographic (no PROJCS)');
     return 'EPSG:4326';
   }
   
@@ -308,7 +299,6 @@ function detectProjection(prjContent: string): string | null {
     if (zoneMatch) {
       const zone = parseInt(zoneMatch[1]);
       if (zone >= 6 && zone <= 8) {
-        console.log(`Detected Pulkovo zone ${zone}`);
         return `EPSG:2840${zone}`;
       }
     }
@@ -333,7 +323,6 @@ function detectProjection(prjContent: string): string | null {
     return 'MSK_50_Zone_1';
   }
   
-  console.log('Could not detect projection, will attempt WKT parsing');
   return null;
 }
 
@@ -365,7 +354,6 @@ function analyzeCoordinates(fc: FeatureCollection): 'degrees' | 'meters' | 'unkn
   const avgX = xValues.reduce((a, b) => a + b, 0) / xValues.length;
   const avgY = yValues.reduce((a, b) => a + b, 0) / yValues.length;
   
-  console.log(`Coordinate analysis: avgX=${avgX.toFixed(2)}, avgY=${avgY.toFixed(2)}`);
   
   // Degrees: typically -180 to 180 for lon, -90 to 90 for lat
   // For Russia/Moscow region: lon ~30-45, lat ~50-60
@@ -373,13 +361,11 @@ function analyzeCoordinates(fc: FeatureCollection): 'degrees' | 'meters' | 'unkn
   
   // If both X and Y are less than 200, they're almost certainly degrees
   if (avgX < 200 && avgY < 200) {
-    console.log('Coordinates appear to be in DEGREES (values < 200)');
     return 'degrees';
   }
   
   // If values are in millions, they're meters
   if (avgX > 100000 || avgY > 100000) {
-    console.log('Coordinates appear to be in METERS (values > 100,000)');
     return 'meters';
   }
   
@@ -391,7 +377,6 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
   const coordType = analyzeCoordinates(fc);
   
   if (coordType === 'degrees') {
-    console.log('Coordinates are already in degrees');
     
     // Check if this is a ZULU export with spherical Mercator
     // ZULU uses a perfect sphere (sradiusa=sradiusb=6378137) for its Mercator projection
@@ -404,8 +389,6 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
     );
     
     if (isZuluSpherical || prjContent?.includes('Mercator')) {
-      console.log('Detected ZULU spherical Mercator export - applying latitude correction');
-      console.log('Converting spherical degrees to WGS84 ellipsoidal degrees...');
       
       // Apply spherical-to-ellipsoidal latitude correction
       const correctedFeatures: Feature[] = fc.features.map(feature => ({
@@ -419,8 +402,6 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
         const corrCoord = getFirstCoordinate(correctedFeatures[0].geometry!);
         if (origCoord && corrCoord) {
           const latDiff = (origCoord[1] - corrCoord[1]) * 111; // km
-          console.log(`  Sample correction: [${origCoord[0].toFixed(6)}, ${origCoord[1].toFixed(6)}] -> [${corrCoord[0].toFixed(6)}, ${corrCoord[1].toFixed(6)}]`);
-          console.log(`  Latitude shift: ${latDiff.toFixed(2)} km southward (correcting ZULU offset)`);
         }
       }
       
@@ -433,33 +414,27 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
       };
     }
     
-    console.log('(Standard WGS84 degrees - no correction needed)');
     return { featureCollection: fc, failed: false };
   }
   
   if (!prjContent) {
-    console.log('No .prj file found, assuming WGS84');
     return { featureCollection: fc, failed: false };
   }
 
   // Only transform if coordinates appear to be in meters
   if (coordType === 'meters') {
     try {
-      console.log('PRJ content:', prjContent.substring(0, 300));
       
       const knownProj = detectProjection(prjContent);
       let sourceProj: string;
       
       if (knownProj) {
-        console.log('Detected known projection:', knownProj);
         sourceProj = knownProj;
       } else {
-        console.log('No known projection detected, trying to parse WKT directly');
         sourceProj = prjContent;
       }
       
       if (sourceProj === 'EPSG:4326') {
-        console.log('Already WGS84, no transformation needed');
         return { featureCollection: fc, failed: false };
       }
       
@@ -470,7 +445,6 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
         geometry: feature.geometry ? transformGeometry(feature.geometry, transform) : feature.geometry
       }));
 
-      console.log('Coordinate transformation successful');
       
       return {
         featureCollection: {
@@ -487,7 +461,6 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
   }
   
   // Unknown coordinate type - don't transform
-  console.log('Coordinate type unknown - passing through without transformation');
   return { featureCollection: fc, failed: false };
 }
 
@@ -519,8 +492,6 @@ export async function parseShapefileZip(arrayBuffer: ArrayBuffer): Promise<Parse
     entries.push({ path, entry });
   });
   
-  console.log('=== PARSING ZIP WITH CP1251 SUPPORT ===');
-  console.log('Found', entries.length, 'entries in ZIP');
   
   for (const { path, entry } of entries) {
     if (entry.dir) continue;
@@ -567,9 +538,6 @@ export async function parseShapefileZip(arrayBuffer: ArrayBuffer): Promise<Parse
       continue;
     }
     
-    console.log(`Processing shapefile: ${set.baseName}`);
-    console.log(`  - PRJ: ${set.prj ? 'found' : 'missing'}`);
-    console.log(`  - CPG: ${set.cpg || 'missing (defaulting to CP1251)'}`);
     
     try {
       const shapefileObj: any = {
@@ -588,18 +556,15 @@ export async function parseShapefileZip(arrayBuffer: ArrayBuffer): Promise<Parse
       
       const rawGeojson = await shpjs.default(shapefileObj) as FeatureCollection;
       
-      console.log(`  - Features: ${rawGeojson.features?.length || 0}`);
       
       if (rawGeojson.features?.length > 0) {
         const firstCoord = getFirstCoordinate(rawGeojson.features[0].geometry);
-        console.log(`  - Sample coord before transform: [${firstCoord?.join(', ')}]`);
       }
       
       const transformResult = transformFeatureCollection(rawGeojson, set.prj);
       
       if (transformResult.featureCollection.features?.length > 0) {
         const firstCoord = getFirstCoordinate(transformResult.featureCollection.features[0].geometry);
-        console.log(`  - Sample coord after transform: [${firstCoord?.join(', ')}]`);
       }
       
       results.push({
