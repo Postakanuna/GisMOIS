@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Map, Settings, Menu } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -18,7 +18,7 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LayerPanel } from "@/components/layer-panel";
 import { UploadedLayersPanel } from "@/components/uploaded-layers-panel";
-import { MapViewer } from "@/components/map-viewer";
+import { MapViewer, type SelectedFeatureData } from "@/components/map-viewer";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import type { ConnectionStatus, UploadedLayer } from "@shared/schema";
 
@@ -48,6 +48,52 @@ function SidebarContentPanel({
   );
 }
 
+function FeatureInfoSidebarPanel({
+  features,
+  onBack,
+}: {
+  features: SelectedFeatureData[];
+  onBack: () => void;
+}) {
+  return (
+    <ScrollArea className="h-full w-full min-w-0">
+      <div className="p-4 space-y-4 min-w-0 max-w-full overflow-hidden">
+        <div className="flex items-center gap-2">
+          <Button size="icon" variant="ghost" onClick={onBack} data-testid="button-back-to-layers">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h2 className="text-sm font-semibold">Атрибуты объектов</h2>
+        </div>
+        <Separator />
+        {features.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Нет выбранных объектов</p>
+        ) : (
+          <div className="space-y-4">
+            {features.map((feature, idx) => (
+              <div key={`${feature.layerId}-${feature.featureIndex}`} className="space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  {feature.layerName} (объект {feature.featureIndex + 1})
+                </div>
+                <div className="rounded-md border border-border bg-muted/30 p-2 space-y-1">
+                  {Object.entries(feature.properties)
+                    .filter(([key]) => key !== 'geometry')
+                    .map(([key, value]) => (
+                      <div key={key} className="flex gap-2 text-xs">
+                        <span className="font-medium text-muted-foreground min-w-0 break-all">{key}:</span>
+                        <span className="min-w-0 break-all">{String(value ?? '-')}</span>
+                      </div>
+                    ))}
+                </div>
+                {idx < features.length - 1 && <Separator />}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </ScrollArea>
+  );
+}
+
 function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
   const statusConfig = {
     disconnected: { color: "bg-muted-foreground", text: "Не подключено" },
@@ -71,11 +117,25 @@ function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
 export default function Home() {
   const zuluConnection = useZuluConnectionContext();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo">("layers");
+  const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
 
   const { data: uploadedLayers = [] } = useQuery<UploadedLayer[]>({
     queryKey: ["/api/uploaded-layers"],
     refetchOnWindowFocus: false,
   });
+
+  const handleSelectedFeaturesChange = useCallback((features: SelectedFeatureData[]) => {
+    setSelectedFeatures(features);
+  }, []);
+
+  const handleShowFeatureInfo = useCallback(() => {
+    setSidebarView("featureInfo");
+  }, []);
+
+  const handleBackToLayers = useCallback(() => {
+    setSidebarView("layers");
+  }, []);
 
   const sidebarStyle = {
     "--sidebar-width": "24rem",
@@ -101,14 +161,21 @@ export default function Home() {
           <SidebarContent className="min-w-0 overflow-hidden">
             <SidebarGroup className="min-w-0 overflow-hidden">
               <SidebarGroupContent className="min-w-0 overflow-hidden">
-                <SidebarContentPanel
-                  layers={zuluConnection.layers}
-                  toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
-                  setLayerOpacity={zuluConnection.setLayerOpacity}
-                  layerFilters={zuluConnection.layerFilters}
-                  activeFilters={zuluConnection.activeFilters}
-                  toggleFilter={zuluConnection.toggleFilter}
-                />
+                {sidebarView === "layers" ? (
+                  <SidebarContentPanel
+                    layers={zuluConnection.layers}
+                    toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
+                    setLayerOpacity={zuluConnection.setLayerOpacity}
+                    layerFilters={zuluConnection.layerFilters}
+                    activeFilters={zuluConnection.activeFilters}
+                    toggleFilter={zuluConnection.toggleFilter}
+                  />
+                ) : (
+                  <FeatureInfoSidebarPanel
+                    features={selectedFeatures}
+                    onBack={handleBackToLayers}
+                  />
+                )}
               </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
@@ -183,6 +250,8 @@ export default function Home() {
               onToggleTicketMode={() => zuluConnection.setTicketMode(!zuluConnection.ticketMode)}
               onCreateTicket={zuluConnection.createTicket}
               uploadedLayers={uploadedLayers}
+              onSelectedFeaturesChange={handleSelectedFeaturesChange}
+              onShowFeatureInfo={handleShowFeatureInfo}
             />
           </main>
         </div>

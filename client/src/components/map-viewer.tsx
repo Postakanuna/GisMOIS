@@ -32,6 +32,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
+export interface SelectedFeatureData {
+  layerId: number;
+  layerName: string;
+  featureIndex: number;
+  properties: Record<string, unknown>;
+}
+
 interface MapViewerProps {
   layers: LayerConfig[];
   connection: ZuluConnection | null;
@@ -45,6 +52,8 @@ interface MapViewerProps {
   onToggleTicketMode: () => void;
   onCreateTicket: (ticket: InsertTicket) => Promise<Ticket>;
   uploadedLayers?: UploadedLayer[];
+  onSelectedFeaturesChange?: (features: SelectedFeatureData[]) => void;
+  onShowFeatureInfo?: () => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -259,7 +268,7 @@ function parseZwsResponse(xml: string): Feature[] {
   return features;
 }
 
-export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, onLayerLoadError, onLayerLoadSuccess, tickets = [], ticketMode, onToggleTicketMode, onCreateTicket, uploadedLayers = [] }: MapViewerProps) {
+export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, onLayerLoadError, onLayerLoadSuccess, tickets = [], ticketMode, onToggleTicketMode, onCreateTicket, uploadedLayers = [], onSelectedFeaturesChange, onShowFeatureInfo }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const layersRef = useRef<Record<string, LayerType>>({});
@@ -901,6 +910,22 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     });
   }, [selectedMapFeatures]);
 
+  useEffect(() => {
+    if (!onSelectedFeaturesChange) return;
+    
+    const featureData: SelectedFeatureData[] = selectedMapFeatures.map(({ layerId, featureIndex, feature }) => {
+      const layer = uploadedLayers.find(l => l.id === layerId);
+      return {
+        layerId,
+        layerName: layer?.name || `Layer ${layerId}`,
+        featureIndex,
+        properties: feature.getProperties() || {},
+      };
+    });
+    
+    onSelectedFeaturesChange(featureData);
+  }, [selectedMapFeatures, uploadedLayers, onSelectedFeaturesChange]);
+
   const handleDeleteSelectedFeatures = useCallback(() => {
     if (selectedMapFeatures.length === 0) return;
     
@@ -1468,6 +1493,7 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         onClearSelection={clearSelection}
         onDeleteSelected={handleDeleteSelectedFeatures}
         isDeleting={deleteFeaturesMutation.isPending}
+        onShowFeatureInfo={onShowFeatureInfo}
       />
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
