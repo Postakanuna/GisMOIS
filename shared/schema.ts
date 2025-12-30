@@ -158,6 +158,14 @@ export type Trace = z.infer<typeof traceSchema>;
 export const insertTraceSchema = traceSchema.omit({ id: true, createdAt: true });
 export type InsertTrace = z.infer<typeof insertTraceSchema>;
 
+// Point style options for shapefile layers
+export const pointStyleSchema = z.enum(["circle", "square", "triangle", "cloud"]);
+export type PointStyle = z.infer<typeof pointStyleSchema>;
+
+// Line style options for shapefile layers
+export const lineStyleSchema = z.enum(["solid", "dashed", "double"]);
+export type LineStyle = z.infer<typeof lineStyleSchema>;
+
 // Uploaded shapefile layer schema
 export const uploadedLayerSchema = z.object({
   id: z.number(),
@@ -166,6 +174,8 @@ export const uploadedLayerSchema = z.object({
   visible: z.boolean().default(true),
   opacity: z.number().min(0).max(1).default(1),
   color: z.string().default("#1976D2"),
+  pointStyle: pointStyleSchema.default("circle"),
+  lineStyle: lineStyleSchema.default("solid"),
   geojson: z.any(),
   featureCount: z.number(),
   createdAt: z.string(),
