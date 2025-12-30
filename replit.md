@@ -1,8 +1,8 @@
-# GIS ZULU Web Application
+# ГИС МО "Инженерные сети"
 
 ## Overview
 
-GIS ZULU Web is a web-based geospatial information system for connecting to and visualizing map data from ZuluServer through WMS/WFS APIs. The application provides an interactive map viewer with layer management, feature information display, and server connection configuration. The interface is designed with a map-first layout where the interactive map occupies the primary viewport space, with supporting controls in a sidebar.
+ГИС МО "Инженерные сети" — веб-приложение для управления инженерной инфраструктурой. Система позволяет визуализировать данные карт через WMS/WFS API, управлять слоями, отображать информацию об объектах и загружать shapefile-слои. Интерфейс построен по принципу "карта в центре внимания", где интерактивная карта занимает основное пространство, а управляющие элементы расположены в боковой панели.
 
 ## User Preferences
 

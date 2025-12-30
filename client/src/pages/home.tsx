@@ -152,8 +152,8 @@ export default function Home() {
                 <Map className="h-4 w-4 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-sm font-semibold">GIS ZULU Web</h1>
-                <p className="text-xs text-muted-foreground">ZuluServer Client</p>
+                <h1 className="text-sm font-semibold">ГИС МО</h1>
+                <p className="text-xs text-muted-foreground">Инженерные сети</p>
               </div>
             </div>
           </SidebarHeader>
@@ -203,8 +203,8 @@ export default function Home() {
                       <Map className="h-4 w-4 text-primary-foreground" />
                     </div>
                     <div>
-                      <h1 className="text-sm font-semibold">GIS ZULU Web</h1>
-                      <p className="text-xs text-muted-foreground">ZuluServer Client</p>
+                      <h1 className="text-sm font-semibold">ГИС МО</h1>
+                      <p className="text-xs text-muted-foreground">Инженерные сети</p>
                     </div>
                   </div>
                   <SidebarContentPanel
@@ -220,7 +220,7 @@ export default function Home() {
 
               <div className="flex items-center gap-2 md:hidden">
                 <Map className="h-5 w-5 text-muted-foreground" />
-                <span className="font-semibold">GIS ZULU</span>
+                <span className="font-semibold">ГИС МО</span>
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-# Design Guidelines: GIS ZULU Web Application
+# Design Guidelines: ГИС МО "Инженерные сети"
 
 ## Design Approach
 **System**: Material Design 3  
