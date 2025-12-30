@@ -31,8 +31,8 @@ function SidebarContentPanel({
   toggleFilter,
 }: Pick<ReturnType<typeof useZuluConnectionContext>, 'layers' | 'toggleLayerVisibility' | 'setLayerOpacity' | 'layerFilters' | 'activeFilters' | 'toggleFilter'>) {
   return (
-    <ScrollArea className="h-full">
-      <div className="p-4 space-y-6">
+    <ScrollArea className="h-full w-full min-w-0">
+      <div className="p-4 space-y-6 min-w-0 max-w-full overflow-hidden">
         <UploadedLayersPanel />
         <Separator />
         <LayerPanel
@@ -98,9 +98,9 @@ export default function Home() {
             </div>
           </SidebarHeader>
 
-          <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupContent>
+          <SidebarContent className="min-w-0 overflow-hidden">
+            <SidebarGroup className="min-w-0 overflow-hidden">
+              <SidebarGroupContent className="min-w-0 overflow-hidden">
                 <SidebarContentPanel
                   layers={zuluConnection.layers}
                   toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
