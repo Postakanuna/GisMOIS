@@ -812,45 +812,19 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     uploadedLayers.forEach((uploadedLayer) => {
       let vectorLayer = uploadedLayersRef.current.get(uploadedLayer.id);
       
+      const geojsonFormat = new GeoJSON();
+      const geojsonData = Array.isArray(uploadedLayer.geojson) 
+        ? { type: "FeatureCollection", features: uploadedLayer.geojson.flatMap((g: any) => g.features || []) }
+        : uploadedLayer.geojson;
+      
       if (!vectorLayer) {
         const vectorSource = new VectorSource();
-        const geojsonFormat = new GeoJSON();
         
         try {
-          const geojsonData = Array.isArray(uploadedLayer.geojson) 
-            ? { type: "FeatureCollection", features: uploadedLayer.geojson.flatMap((g: any) => g.features || []) }
-            : uploadedLayer.geojson;
-          
-          // Read features with standard EPSG:4326 -> EPSG:3857 transformation
           const features = geojsonFormat.readFeatures(geojsonData, {
             dataProjection: "EPSG:4326",
             featureProjection: "EPSG:3857",
           });
-          
-          // DEBUG: Log transformation results
-          if (features.length > 0) {
-            const sampleFeature = geojsonData.features?.[0];
-            if (sampleFeature?.geometry?.coordinates) {
-              const coords = sampleFeature.geometry.coordinates;
-              const flatCoords = Array.isArray(coords[0]) 
-                ? (Array.isArray(coords[0][0]) ? coords[0][0] : coords[0])
-                : coords;
-              
-              const firstFeature = features[0];
-              const geom = firstFeature.getGeometry();
-              if (geom) {
-                const extent = geom.getExtent();
-                const centerX = (extent[0] + extent[2]) / 2;
-                const centerY = (extent[1] + extent[3]) / 2;
-                const lonLatBack = toLonLat([centerX, centerY]);
-                
-                console.log(`=== Layer: ${uploadedLayer.name} ===`);
-                console.log(`  Input (degrees): [${flatCoords[0].toFixed(6)}, ${flatCoords[1].toFixed(6)}]`);
-                console.log(`  Output (EPSG:3857 meters): [${centerX.toFixed(2)}, ${centerY.toFixed(2)}]`);
-                console.log(`  Back to degrees: [${lonLatBack[0].toFixed(6)}, ${lonLatBack[1].toFixed(6)}]`);
-              }
-            }
-          }
           
           vectorSource.addFeatures(features);
           console.log(`Loaded ${features.length} features for layer: ${uploadedLayer.name}`);
@@ -869,11 +843,31 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
               stroke: new Stroke({ color: "#fff", width: 1 }),
             }),
           }),
-          properties: { uploadedLayerId: uploadedLayer.id },
+          properties: { uploadedLayerId: uploadedLayer.id, featureCount: uploadedLayer.featureCount },
         });
         
         map.addLayer(vectorLayer);
         uploadedLayersRef.current.set(uploadedLayer.id, vectorLayer);
+      } else {
+        // Check if feature count changed - need to refresh the source
+        const storedCount = vectorLayer.get("featureCount");
+        if (storedCount !== uploadedLayer.featureCount) {
+          const vectorSource = vectorLayer.getSource();
+          if (vectorSource) {
+            vectorSource.clear();
+            try {
+              const features = geojsonFormat.readFeatures(geojsonData, {
+                dataProjection: "EPSG:4326",
+                featureProjection: "EPSG:3857",
+              });
+              vectorSource.addFeatures(features);
+              vectorLayer.set("featureCount", uploadedLayer.featureCount);
+              console.log(`Refreshed layer ${uploadedLayer.name}: ${features.length} features`);
+            } catch (e) {
+              console.error("Failed to refresh layer features:", e);
+            }
+          }
+        }
       }
       
       // Update visibility and opacity
