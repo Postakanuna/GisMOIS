@@ -112,9 +112,32 @@ export function LayerPanel({
       const res = await apiRequest("PATCH", `/api/uploaded-layers/${id}`, data);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/uploaded-layers"] });
+    onMutate: async (variables) => {
+      // Отменяем текущие запросы чтобы не перезаписали наше оптимистичное обновление
+      await queryClient.cancelQueries({ queryKey: ["/api/uploaded-layers"] });
+      
+      // Сохраняем предыдущее состояние для возможного отката
+      const previousLayers = queryClient.getQueryData<UploadedLayer[]>(["/api/uploaded-layers"]);
+      
+      // Оптимистично обновляем кэш — UI обновится мгновенно
+      queryClient.setQueryData<UploadedLayer[]>(["/api/uploaded-layers"], (old) => 
+        old?.map(layer => layer.id === variables.id ? { ...layer, ...variables } : layer) ?? []
+      );
+      
+      return { previousLayers };
     },
+    onError: (_err, _variables, context) => {
+      // При ошибке откатываем к предыдущему состоянию
+      if (context?.previousLayers) {
+        queryClient.setQueryData(["/api/uploaded-layers"], context.previousLayers);
+      }
+      toast({
+        title: "Ошибка обновления",
+        description: "Не удалось обновить слой",
+        variant: "destructive",
+      });
+    },
+    // Не вызываем invalidateQueries — данные уже актуальны
   });
 
   const deleteLayerMutation = useMutation({
