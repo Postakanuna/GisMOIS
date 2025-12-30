@@ -193,10 +193,10 @@ export function UploadedLayersPanel({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0 w-full overflow-hidden">
       <div className="flex items-center gap-2 pb-2 border-b border-sidebar-border">
         <FileArchive className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-lg font-medium">Загруженные слои</h2>
+        <h2 className="text-lg font-medium truncate">Загруженные слои</h2>
       </div>
 
       <div>
@@ -231,11 +231,11 @@ export function UploadedLayersPanel({
           </p>
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-1 min-w-0 overflow-hidden">
           {layers.map((layer) => (
             <div
               key={layer.id}
-              className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1"
+              className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 min-w-0"
               data-testid={`uploaded-layer-item-${layer.id}`}
             >
               <div 
