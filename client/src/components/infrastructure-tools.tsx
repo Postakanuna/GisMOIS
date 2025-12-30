@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Building2, Flame, Droplet, X, Route, Trash2 } from "lucide-react";
+import { Plus, Building2, Flame, Droplet, X, Route, Trash2, MousePointer2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +35,12 @@ interface InfrastructureToolsProps {
   onCancelPendingPlacement: () => void;
   facilities: Facility[];
   tracingError: string | null;
+  selectionMode?: boolean;
+  onToggleSelectionMode?: () => void;
+  selectedCount?: number;
+  onClearSelection?: () => void;
+  onDeleteSelected?: () => void;
+  isDeleting?: boolean;
 }
 
 const facilityConfig: Record<FacilityType, { icon: typeof Building2; label: string; color: string }> = {
@@ -59,9 +65,16 @@ export function InfrastructureTools({
   onCancelPendingPlacement,
   facilities,
   tracingError,
+  selectionMode = false,
+  onToggleSelectionMode,
+  selectedCount = 0,
+  onClearSelection,
+  onDeleteSelected,
+  isDeleting = false,
 }: InfrastructureToolsProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteSelectedDialogOpen, setDeleteSelectedDialogOpen] = useState(false);
   
   const [facilityName, setFacilityName] = useState("");
   const [freeHeatCapacity, setFreeHeatCapacity] = useState("");
@@ -135,8 +148,27 @@ export function InfrastructureTools({
     <>
       {/* Add facility button - positioned with map controls in top-right */}
       <div className="absolute top-[220px] right-4 z-10 flex flex-col gap-2">
-        {placementMode ? (
-          <div className="flex flex-col rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border overflow-hidden">
+        <div className="flex flex-col rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border overflow-hidden">
+          {onToggleSelectionMode && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant={selectionMode ? "default" : "ghost"}
+                  onClick={onToggleSelectionMode}
+                  className="rounded-none"
+                  data-testid="button-selection-mode"
+                >
+                  <MousePointer2 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                {selectionMode ? "Отключить выделение" : "Выделение объектов (Ctrl+тянуть для прямоугольника)"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+          
+          {placementMode ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -153,51 +185,45 @@ export function InfrastructureTools({
                 Отмена: {facilityConfig[placementMode].label}
               </TooltipContent>
             </Tooltip>
-          </div>
-        ) : (
-          <Popover open={toolsOpen} onOpenChange={setToolsOpen}>
-            <PopoverTrigger asChild>
-              <div className="flex flex-col rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border overflow-hidden">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="rounded-none"
-                      data-testid="button-add-facility"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">Добавить объект</TooltipContent>
-                </Tooltip>
-              </div>
-            </PopoverTrigger>
-            <PopoverContent side="left" align="start" className="w-auto p-2">
-              <div className="flex flex-col gap-1">
-                <p className="text-xs text-muted-foreground px-2 py-1">
-                  Добавить объект
-                </p>
-                {(Object.keys(facilityConfig) as FacilityType[]).map((type) => {
-                  const config = facilityConfig[type];
-                  const Icon = config.icon;
-                  return (
-                    <Button
-                      key={type}
-                      variant="ghost"
-                      className="justify-start gap-2"
-                      onClick={() => handleSelectTool(type)}
-                      data-testid={`button-add-${type}`}
-                    >
-                      <Icon className={`h-4 w-4 ${config.color}`} />
-                      {config.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            </PopoverContent>
-          </Popover>
-        )}
+          ) : (
+            <Popover open={toolsOpen} onOpenChange={setToolsOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="rounded-none"
+                  data-testid="button-add-facility"
+                  title="Добавить объект"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent side="left" align="start" className="w-auto p-2">
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs text-muted-foreground px-2 py-1">
+                    Добавить объект
+                  </p>
+                  {(Object.keys(facilityConfig) as FacilityType[]).map((type) => {
+                    const config = facilityConfig[type];
+                    const Icon = config.icon;
+                    return (
+                      <Button
+                        key={type}
+                        variant="ghost"
+                        className="justify-start gap-2"
+                        onClick={() => handleSelectTool(type)}
+                        data-testid={`button-add-${type}`}
+                      >
+                        <Icon className={`h-4 w-4 ${config.color}`} />
+                        {config.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
       </div>
 
       {/* Placement mode indicator */}
@@ -486,6 +512,65 @@ export function InfrastructureTools({
             </Button>
             <Button onClick={handleConfirmPlacement} data-testid="button-confirm-placement">
               Создать
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {selectedCount > 0 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+          <div className="flex items-center gap-2 rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border p-2">
+            <span className="text-sm px-2" data-testid="text-selected-count">
+              Выбрано: {selectedCount}
+            </span>
+            {onClearSelection && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onClearSelection}
+                data-testid="button-clear-selection"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Снять
+              </Button>
+            )}
+            {onDeleteSelected && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setDeleteSelectedDialogOpen(true)}
+                disabled={isDeleting}
+                data-testid="button-delete-selected"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                {isDeleting ? "Удаление..." : "Удалить"}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <Dialog open={deleteSelectedDialogOpen} onOpenChange={setDeleteSelectedDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Удалить выбранные объекты?</DialogTitle>
+            <DialogDescription>
+              Вы собираетесь удалить {selectedCount} объектов. Это действие нельзя отменить.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteSelectedDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                onDeleteSelected?.();
+                setDeleteSelectedDialogOpen(false);
+              }}
+              data-testid="button-confirm-delete-selected"
+            >
+              Удалить
             </Button>
           </DialogFooter>
         </DialogContent>

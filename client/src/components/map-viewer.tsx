@@ -31,80 +31,6 @@ import Text from "ol/style/Text";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Button } from "@/components/ui/button";
-import { MousePointer2, Square, Trash2, X } from "lucide-react";
-
-interface SelectionToolbarProps {
-  selectionMode: "none" | "click" | "box";
-  onToggleSelectionMode: (mode: "none" | "click" | "box") => void;
-  selectedCount: number;
-  onClearSelection: () => void;
-  onDeleteSelected: () => void;
-  isDeleting: boolean;
-}
-
-function SelectionToolbar({
-  selectionMode,
-  onToggleSelectionMode,
-  selectedCount,
-  onClearSelection,
-  onDeleteSelected,
-  isDeleting,
-}: SelectionToolbarProps) {
-  return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg p-2">
-      <Button
-        size="sm"
-        variant={selectionMode === "click" ? "default" : "outline"}
-        onClick={() => onToggleSelectionMode(selectionMode === "click" ? "none" : "click")}
-        data-testid="button-selection-click"
-        title="Выделение кликом"
-      >
-        <MousePointer2 className="h-4 w-4 mr-1" />
-        Клик
-      </Button>
-      <Button
-        size="sm"
-        variant={selectionMode === "box" ? "default" : "outline"}
-        onClick={() => onToggleSelectionMode(selectionMode === "box" ? "none" : "box")}
-        data-testid="button-selection-box"
-        title="Выделение прямоугольником (Ctrl+перетаскивание)"
-      >
-        <Square className="h-4 w-4 mr-1" />
-        Прямоугольник
-      </Button>
-      
-      {selectedCount > 0 && (
-        <>
-          <div className="h-6 w-px bg-border mx-1" />
-          <span className="text-sm text-muted-foreground px-2" data-testid="text-selected-count">
-            Выбрано: {selectedCount}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onClearSelection}
-            data-testid="button-clear-selection"
-            title="Снять выделение"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={onDeleteSelected}
-            disabled={isDeleting}
-            data-testid="button-delete-selected"
-            title="Удалить выбранные объекты"
-          >
-            <Trash2 className="h-4 w-4 mr-1" />
-            {isDeleting ? "Удаление..." : "Удалить"}
-          </Button>
-        </>
-      )}
-    </div>
-  );
-}
 
 interface MapViewerProps {
   layers: LayerConfig[];
@@ -363,11 +289,11 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
   const [pendingPlacement, setPendingPlacement] = useState<{ lon: number; lat: number; type: FacilityType } | null>(null);
   const [tracingError, setTracingError] = useState<string | null>(null);
   
-  const [selectionMode, setSelectionMode] = useState<"none" | "click" | "box">("none");
+  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMapFeatures, setSelectedMapFeatures] = useState<Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }>>([]);
   const selectionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const dragBoxRef = useRef<DragBox | null>(null);
-  const selectionModeRef = useRef<"none" | "click" | "box">("none");
+  const selectionModeRef = useRef(false);
 
   const placementModeRef = useRef<FacilityType | null>(null);
 
@@ -550,7 +476,7 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     });
     
     dragBox.on("boxend", () => {
-      if (selectionModeRef.current !== "box") return;
+      if (!selectionModeRef.current) return;
       
       const extent = dragBox.getGeometry().getExtent();
       const newSelectedFeatures: Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }> = [];
@@ -620,7 +546,7 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         return;
       }
 
-      if (currentSelectionMode === "click") {
+      if (currentSelectionMode) {
         let foundUploadedFeature: Feature<Geometry> | null = null;
         let foundLayerId: number | null = null;
         let foundFeatureIndex: number = -1;
@@ -1000,11 +926,13 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     setSelectedMapFeatures([]);
   }, []);
 
-  const toggleSelectionMode = useCallback((mode: "none" | "click" | "box") => {
-    setSelectionMode(mode);
-    if (mode === "none") {
-      setSelectedMapFeatures([]);
-    }
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionMode(prev => {
+      if (prev) {
+        setSelectedMapFeatures([]);
+      }
+      return !prev;
+    });
   }, []);
 
   // Handle OSM base layer visibility and opacity (works without connection)
@@ -1540,9 +1468,6 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         onCancelPendingPlacement={() => setPendingPlacement(null)}
         facilities={facilities}
         tracingError={tracingError}
-      />
-
-      <SelectionToolbar
         selectionMode={selectionMode}
         onToggleSelectionMode={toggleSelectionMode}
         selectedCount={selectedMapFeatures.length}
