@@ -8,6 +8,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
@@ -242,13 +247,19 @@ export function UploadedLayersPanel({
                 className="h-2.5 w-2.5 rounded-full shrink-0" 
                 style={{ backgroundColor: layer.color }}
               />
-              <span 
-                className="text-xs font-medium truncate flex-1 min-w-0"
-                title={layer.name}
-              >
-                {layer.name}
-              </span>
-              <span className="text-[10px] text-muted-foreground shrink-0">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span 
+                    className="text-xs font-medium truncate min-w-0 max-w-[80px] cursor-default"
+                  >
+                    {layer.name}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[250px]">
+                  <p className="text-xs break-words">{layer.name}</p>
+                </TooltipContent>
+              </Tooltip>
+              <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">
                 {layer.featureCount}
               </span>
               <Button
