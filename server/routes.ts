@@ -984,9 +984,10 @@ export async function registerRoutes(
         });
       }
 
-      rows.sort((a, b) => b.accident_count - a.accident_count);
+      const filteredRows = rows.filter(r => r.accident_count > 0);
+      filteredRows.sort((a, b) => b.accident_count - a.accident_count);
 
-      for (const row of rows) {
+      for (const row of filteredRows) {
         worksheet.addRow(row);
       }
 
