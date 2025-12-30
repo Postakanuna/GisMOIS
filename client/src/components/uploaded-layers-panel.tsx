@@ -1,8 +1,25 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, FileArchive, Trash2, Eye, EyeOff, Palette } from "lucide-react";
+import { Upload, FileArchive, Trash2, Eye, EyeOff, Palette, BarChart3, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
@@ -32,6 +49,11 @@ export function UploadedLayersPanel({
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [accidentLayerId, setAccidentLayerId] = useState<string>("");
+  const [pipelineLayerId, setPipelineLayerId] = useState<string>("");
+  const [maxDistance, setMaxDistance] = useState<string>("15");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const { data: layers = [] } = useQuery<UploadedLayer[]>({
     queryKey: ["/api/uploaded-layers"],
@@ -197,6 +219,81 @@ export function UploadedLayersPanel({
     updateLayerMutation.mutate({ id: layer.id, color });
   };
 
+  const pointLayers = layers.filter(l => {
+    const geom = l.geojson?.features?.[0]?.geometry?.type;
+    return geom === "Point" || geom === "MultiPoint";
+  });
+
+  const lineLayers = layers.filter(l => {
+    const geom = l.geojson?.features?.[0]?.geometry?.type;
+    return geom === "LineString" || geom === "MultiLineString";
+  });
+
+  const runAnalysis = async () => {
+    if (!accidentLayerId || !pipelineLayerId) {
+      toast({
+        title: "Ошибка",
+        description: "Выберите оба слоя для анализа",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const distanceNum = parseFloat(maxDistance);
+    if (isNaN(distanceNum) || distanceNum <= 0) {
+      toast({
+        title: "Ошибка",
+        description: "Укажите корректный порог расстояния",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsAnalyzing(true);
+
+    try {
+      const response = await fetch("/api/analytics/accident-pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accidentLayerId: parseInt(accidentLayerId),
+          pipelineLayerId: parseInt(pipelineLayerId),
+          maxDistanceMeters: distanceNum,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Ошибка анализа");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `accident_analysis_${Date.now()}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "Анализ завершён",
+        description: "Файл XLSX загружен",
+      });
+
+      setAnalyticsOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Ошибка анализа",
+        description: error.message || "Не удалось выполнить анализ",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
     <div className="space-y-4 min-w-0 w-full overflow-hidden">
       <div className="flex items-center gap-2 pb-2 border-b border-sidebar-border">
@@ -227,6 +324,95 @@ export function UploadedLayersPanel({
           ZIP-архив должен содержать .shp, .shx, .dbf и .prj файлы
         </p>
       </div>
+
+      {layers.length >= 2 && pointLayers.length > 0 && lineLayers.length > 0 && (
+        <Dialog open={analyticsOpen} onOpenChange={setAnalyticsOpen}>
+          <DialogTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full"
+              data-testid="button-open-analytics"
+            >
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Анализ аварий
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Привязка аварий к трубопроводам</DialogTitle>
+              <DialogDescription>
+                Сопоставление точек аварий с ближайшими участками трубопроводов и экспорт в XLSX
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="accident-layer">Слой аварий (точки)</Label>
+                <Select value={accidentLayerId} onValueChange={setAccidentLayerId}>
+                  <SelectTrigger id="accident-layer" data-testid="select-accident-layer">
+                    <SelectValue placeholder="Выберите слой" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pointLayers.map(layer => (
+                      <SelectItem key={layer.id} value={String(layer.id)}>
+                        {layer.name} ({layer.featureCount} объектов)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pipeline-layer">Слой трубопроводов (линии)</Label>
+                <Select value={pipelineLayerId} onValueChange={setPipelineLayerId}>
+                  <SelectTrigger id="pipeline-layer" data-testid="select-pipeline-layer">
+                    <SelectValue placeholder="Выберите слой" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lineLayers.map(layer => (
+                      <SelectItem key={layer.id} value={String(layer.id)}>
+                        {layer.name} ({layer.featureCount} объектов)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="max-distance">Порог расстояния (метры)</Label>
+                <Input
+                  id="max-distance"
+                  type="number"
+                  value={maxDistance}
+                  onChange={e => setMaxDistance(e.target.value)}
+                  min="1"
+                  max="1000"
+                  data-testid="input-max-distance"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Аварии дальше порога не будут привязаны к трубопроводам
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={runAnalysis}
+                disabled={isAnalyzing || !accidentLayerId || !pipelineLayerId}
+                data-testid="button-run-analysis"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Анализ...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-2" />
+                    Выполнить и скачать XLSX
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {layers.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-4 text-center">

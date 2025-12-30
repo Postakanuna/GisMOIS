@@ -2,6 +2,8 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema, insertUploadedLayerSchema } from "@shared/schema";
+import * as turf from "@turf/turf";
+import ExcelJS from "exceljs";
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
@@ -852,6 +854,169 @@ export async function registerRoutes(
       return res.json(updatedLayer);
     } catch (error) {
       console.error("Delete features error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/analytics/accident-pipeline", async (req: Request, res: Response) => {
+    try {
+      const { accidentLayerId, pipelineLayerId, maxDistanceMeters = 15 } = req.body;
+
+      if (!accidentLayerId || !pipelineLayerId) {
+        return res.status(400).json({ message: "accidentLayerId and pipelineLayerId are required" });
+      }
+
+      const accidentLayer = await storage.getUploadedLayer(accidentLayerId);
+      const pipelineLayer = await storage.getUploadedLayer(pipelineLayerId);
+
+      if (!accidentLayer) {
+        return res.status(404).json({ message: "Accident layer not found" });
+      }
+      if (!pipelineLayer) {
+        return res.status(404).json({ message: "Pipeline layer not found" });
+      }
+
+      const accidentFeatures = accidentLayer.geojson?.features || [];
+      const pipelineFeatures = pipelineLayer.geojson?.features || [];
+
+      if (accidentFeatures.length === 0) {
+        return res.status(422).json({ message: "Accident layer has no features" });
+      }
+      if (pipelineFeatures.length === 0) {
+        return res.status(422).json({ message: "Pipeline layer has no features" });
+      }
+
+      const pipelineAccidentCounts: Map<number, number> = new Map();
+      let unmatchedCount = 0;
+
+      for (const accidentFeature of accidentFeatures) {
+        if (!accidentFeature.geometry || accidentFeature.geometry.type !== "Point") {
+          continue;
+        }
+
+        const accidentPoint = turf.point(accidentFeature.geometry.coordinates);
+        let nearestPipelineIndex = -1;
+        let nearestDistance = Infinity;
+
+        for (let i = 0; i < pipelineFeatures.length; i++) {
+          const pipelineFeature = pipelineFeatures[i];
+          if (!pipelineFeature.geometry) continue;
+
+          const geomType = pipelineFeature.geometry.type;
+          if (geomType !== "LineString" && geomType !== "MultiLineString") {
+            continue;
+          }
+
+          try {
+            let minDistForThisLine = Infinity;
+            
+            if (geomType === "LineString") {
+              const line = turf.lineString(pipelineFeature.geometry.coordinates);
+              const nearestPoint = turf.nearestPointOnLine(line, accidentPoint);
+              if (nearestPoint.properties.dist !== undefined) {
+                minDistForThisLine = nearestPoint.properties.dist;
+              }
+            } else {
+              const coords = pipelineFeature.geometry.coordinates as number[][][];
+              for (const lineCoords of coords) {
+                if (lineCoords.length < 2) continue;
+                const line = turf.lineString(lineCoords);
+                const nearestPoint = turf.nearestPointOnLine(line, accidentPoint);
+                if (nearestPoint.properties.dist !== undefined && nearestPoint.properties.dist < minDistForThisLine) {
+                  minDistForThisLine = nearestPoint.properties.dist;
+                }
+              }
+            }
+
+            if (minDistForThisLine < nearestDistance) {
+              nearestDistance = minDistForThisLine;
+              nearestPipelineIndex = i;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        const distanceInMeters = nearestDistance * 1000;
+
+        if (nearestPipelineIndex >= 0 && distanceInMeters <= maxDistanceMeters) {
+          const currentCount = pipelineAccidentCounts.get(nearestPipelineIndex) || 0;
+          pipelineAccidentCounts.set(nearestPipelineIndex, currentCount + 1);
+        } else {
+          unmatchedCount++;
+        }
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Участки трубопроводов");
+
+      worksheet.columns = [
+        { header: "Sys", key: "sys", width: 15 },
+        { header: "Begin_uch", key: "begin_uch", width: 20 },
+        { header: "End_uch", key: "end_uch", width: 20 },
+        { header: "L (м)", key: "l", width: 12 },
+        { header: "Dpod (мм)", key: "dpod", width: 12 },
+        { header: "Dobr (мм)", key: "dobr", width: 12 },
+        { header: "Кол-во аварий", key: "accident_count", width: 15 },
+      ];
+
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE0E0E0" },
+      };
+
+      const rows: any[] = [];
+      for (let i = 0; i < pipelineFeatures.length; i++) {
+        const feature = pipelineFeatures[i];
+        const props = feature.properties || {};
+        const accidentCount = pipelineAccidentCounts.get(i) || 0;
+
+        rows.push({
+          sys: props.Sys || props.sys || props.SYS || "",
+          begin_uch: props.Begin_uch || props.begin_uch || props.BEGIN_UCH || "",
+          end_uch: props.End_uch || props.end_uch || props.END_UCH || "",
+          l: props.L || props.l || "",
+          dpod: props.Dpod || props.dpod || props.DPOD || "",
+          dobr: props.Dobr || props.dobr || props.DOBR || "",
+          accident_count: accidentCount,
+        });
+      }
+
+      rows.sort((a, b) => b.accident_count - a.accident_count);
+
+      for (const row of rows) {
+        worksheet.addRow(row);
+      }
+
+      const metaSheet = workbook.addWorksheet("Метаданные");
+      metaSheet.columns = [
+        { header: "Параметр", key: "param", width: 30 },
+        { header: "Значение", key: "value", width: 40 },
+      ];
+      metaSheet.getRow(1).font = { bold: true };
+
+      metaSheet.addRow({ param: "Дата анализа", value: new Date().toLocaleString("ru-RU") });
+      metaSheet.addRow({ param: "Слой аварий", value: accidentLayer.name });
+      metaSheet.addRow({ param: "Слой трубопроводов", value: pipelineLayer.name });
+      metaSheet.addRow({ param: "Порог расстояния (м)", value: maxDistanceMeters });
+      metaSheet.addRow({ param: "Всего аварий", value: accidentFeatures.length });
+      metaSheet.addRow({ param: "Привязано аварий", value: accidentFeatures.length - unmatchedCount });
+      metaSheet.addRow({ param: "Непривязано аварий", value: unmatchedCount });
+      metaSheet.addRow({ param: "Всего участков", value: pipelineFeatures.length });
+      metaSheet.addRow({ 
+        param: "Участков с авариями", 
+        value: Array.from(pipelineAccidentCounts.values()).filter(c => c > 0).length 
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="accident_analysis_${Date.now()}.xlsx"`);
+      return res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error("Accident pipeline analysis error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
