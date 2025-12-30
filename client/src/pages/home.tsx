@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LayerPanel } from "@/components/layer-panel";
-import { UploadedLayersPanel } from "@/components/uploaded-layers-panel";
 import { MapViewer, type SelectedFeatureData } from "@/components/map-viewer";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import type { ConnectionStatus, UploadedLayer } from "@shared/schema";
@@ -32,9 +31,7 @@ function SidebarContentPanel({
 }: Pick<ReturnType<typeof useZuluConnectionContext>, 'layers' | 'toggleLayerVisibility' | 'setLayerOpacity' | 'layerFilters' | 'activeFilters' | 'toggleFilter'>) {
   return (
     <ScrollArea className="h-full w-full min-w-0">
-      <div className="p-4 space-y-6 min-w-0 max-w-full overflow-hidden">
-        <UploadedLayersPanel />
-        <Separator />
+      <div className="p-4 min-w-0 max-w-full overflow-hidden">
         <LayerPanel
           layers={layers}
           onToggleVisibility={toggleLayerVisibility}
