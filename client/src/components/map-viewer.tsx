@@ -12,7 +12,9 @@ import { defaults as defaultControls, ScaleLine } from "ol/control";
 import WKT from "ol/format/WKT";
 import Feature from "ol/Feature";
 import { Style, Fill, Stroke, Circle, Icon } from "ol/style";
-import { LineString } from "ol/geom";
+import { LineString, Geometry } from "ol/geom";
+import { DragBox, Select } from "ol/interaction";
+import { platformModifierKeyOnly } from "ol/events/condition";
 import "ol/ol.css";
 
 import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, UploadedLayer } from "@shared/schema";
@@ -29,6 +31,80 @@ import Text from "ol/style/Text";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import { MousePointer2, Square, Trash2, X } from "lucide-react";
+
+interface SelectionToolbarProps {
+  selectionMode: "none" | "click" | "box";
+  onToggleSelectionMode: (mode: "none" | "click" | "box") => void;
+  selectedCount: number;
+  onClearSelection: () => void;
+  onDeleteSelected: () => void;
+  isDeleting: boolean;
+}
+
+function SelectionToolbar({
+  selectionMode,
+  onToggleSelectionMode,
+  selectedCount,
+  onClearSelection,
+  onDeleteSelected,
+  isDeleting,
+}: SelectionToolbarProps) {
+  return (
+    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg p-2">
+      <Button
+        size="sm"
+        variant={selectionMode === "click" ? "default" : "outline"}
+        onClick={() => onToggleSelectionMode(selectionMode === "click" ? "none" : "click")}
+        data-testid="button-selection-click"
+        title="Выделение кликом"
+      >
+        <MousePointer2 className="h-4 w-4 mr-1" />
+        Клик
+      </Button>
+      <Button
+        size="sm"
+        variant={selectionMode === "box" ? "default" : "outline"}
+        onClick={() => onToggleSelectionMode(selectionMode === "box" ? "none" : "box")}
+        data-testid="button-selection-box"
+        title="Выделение прямоугольником (Ctrl+перетаскивание)"
+      >
+        <Square className="h-4 w-4 mr-1" />
+        Прямоугольник
+      </Button>
+      
+      {selectedCount > 0 && (
+        <>
+          <div className="h-6 w-px bg-border mx-1" />
+          <span className="text-sm text-muted-foreground px-2" data-testid="text-selected-count">
+            Выбрано: {selectedCount}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onClearSelection}
+            data-testid="button-clear-selection"
+            title="Снять выделение"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={onDeleteSelected}
+            disabled={isDeleting}
+            data-testid="button-delete-selected"
+            title="Удалить выбранные объекты"
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            {isDeleting ? "Удаление..." : "Удалить"}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
 
 interface MapViewerProps {
   layers: LayerConfig[];
@@ -286,12 +362,46 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
   const [isTracing, setIsTracing] = useState(false);
   const [pendingPlacement, setPendingPlacement] = useState<{ lon: number; lat: number; type: FacilityType } | null>(null);
   const [tracingError, setTracingError] = useState<string | null>(null);
+  
+  const [selectionMode, setSelectionMode] = useState<"none" | "click" | "box">("none");
+  const [selectedMapFeatures, setSelectedMapFeatures] = useState<Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }>>([]);
+  const selectionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const dragBoxRef = useRef<DragBox | null>(null);
+  const selectionModeRef = useRef<"none" | "click" | "box">("none");
 
   const placementModeRef = useRef<FacilityType | null>(null);
 
   useEffect(() => {
     placementModeRef.current = placementMode;
   }, [placementMode]);
+
+  useEffect(() => {
+    selectionModeRef.current = selectionMode;
+  }, [selectionMode]);
+
+  const deleteFeaturesMutation = useMutation({
+    mutationFn: async (data: { layerId: number; featureIndices: number[] }) => {
+      const response = await apiRequest("POST", `/api/uploaded-layers/${data.layerId}/delete-features`, {
+        featureIndices: data.featureIndices,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/uploaded-layers"] });
+      setSelectedMapFeatures([]);
+      toast({
+        title: "Объекты удалены",
+        description: "Выбранные объекты успешно удалены из слоя",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Ошибка удаления",
+        description: "Не удалось удалить выбранные объекты",
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: facilities = [] } = useQuery<Facility[]>({
     queryKey: ["/api/facilities"],
@@ -417,6 +527,53 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     map.addLayer(facilitiesLayer);
     facilitiesLayerRef.current = facilitiesLayer;
 
+    const selectionSource = new VectorSource();
+    const selectionLayer = new VectorLayer({
+      source: selectionSource,
+      properties: { id: "selection-layer" },
+      zIndex: 2000,
+      style: new Style({
+        fill: new Fill({ color: "rgba(255, 255, 0, 0.3)" }),
+        stroke: new Stroke({ color: "#FFD700", width: 3 }),
+        image: new Circle({
+          radius: 8,
+          fill: new Fill({ color: "rgba(255, 255, 0, 0.5)" }),
+          stroke: new Stroke({ color: "#FFD700", width: 3 }),
+        }),
+      }),
+    });
+    map.addLayer(selectionLayer);
+    selectionLayerRef.current = selectionLayer;
+
+    const dragBox = new DragBox({
+      condition: platformModifierKeyOnly,
+    });
+    
+    dragBox.on("boxend", () => {
+      if (selectionModeRef.current !== "box") return;
+      
+      const extent = dragBox.getGeometry().getExtent();
+      const newSelectedFeatures: Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }> = [];
+      
+      uploadedLayersRef.current.forEach((layer, layerId) => {
+        const source = layer.getSource();
+        if (!source || !layer.getVisible()) return;
+        
+        const features = source.getFeatures();
+        features.forEach((feature, index) => {
+          const geom = feature.getGeometry();
+          if (geom && geom.intersectsExtent(extent)) {
+            newSelectedFeatures.push({ layerId, featureIndex: index, feature: feature as Feature<Geometry> });
+          }
+        });
+      });
+      
+      setSelectedMapFeatures(prev => [...prev, ...newSelectedFeatures]);
+    });
+    
+    map.addInteraction(dragBox);
+    dragBoxRef.current = dragBox;
+
     map.on("pointermove", (evt) => {
       const coords = toLonLat(evt.coordinate);
       setMouseCoordinates([coords[0], coords[1]]);
@@ -448,6 +605,7 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       const currentLayers = layersStateRef.current;
       const isTicketMode = ticketModeRef.current;
       const currentPlacementMode = placementModeRef.current;
+      const currentSelectionMode = selectionModeRef.current;
 
       const coords = toLonLat(evt.coordinate);
       setFeatureCoordinates([coords[0], coords[1]]);
@@ -459,6 +617,64 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
           type: currentPlacementMode,
         });
         setPlacementMode(null);
+        return;
+      }
+
+      if (currentSelectionMode === "click") {
+        let foundUploadedFeature: Feature<Geometry> | null = null;
+        let foundLayerId: number | null = null;
+        let foundFeatureIndex: number = -1;
+
+        map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
+          if (foundUploadedFeature) return true;
+          
+          const uploadedLayerId = layer?.get("uploadedLayerId");
+          if (uploadedLayerId !== undefined) {
+            const vectorLayer = uploadedLayersRef.current.get(uploadedLayerId);
+            if (vectorLayer) {
+              const source = vectorLayer.getSource();
+              if (source) {
+                const features = source.getFeatures();
+                const idx = features.indexOf(feature as Feature);
+                if (idx !== -1) {
+                  foundUploadedFeature = feature as Feature<Geometry>;
+                  foundLayerId = uploadedLayerId;
+                  foundFeatureIndex = idx;
+                }
+              }
+            }
+          }
+          return true;
+        });
+
+        if (foundUploadedFeature && foundLayerId !== null && foundFeatureIndex !== -1) {
+          const isAlreadySelected = selectedMapFeatures.some(
+            sf => sf.layerId === foundLayerId && sf.featureIndex === foundFeatureIndex
+          );
+          
+          if (evt.originalEvent.ctrlKey || evt.originalEvent.metaKey) {
+            if (isAlreadySelected) {
+              setSelectedMapFeatures(prev => 
+                prev.filter(sf => !(sf.layerId === foundLayerId && sf.featureIndex === foundFeatureIndex))
+              );
+            } else {
+              setSelectedMapFeatures(prev => [
+                ...prev, 
+                { layerId: foundLayerId!, featureIndex: foundFeatureIndex, feature: foundUploadedFeature! }
+              ]);
+            }
+          } else {
+            if (isAlreadySelected) {
+              setSelectedMapFeatures([]);
+            } else {
+              setSelectedMapFeatures([
+                { layerId: foundLayerId, featureIndex: foundFeatureIndex, feature: foundUploadedFeature }
+              ]);
+            }
+          }
+        } else if (!evt.originalEvent.ctrlKey && !evt.originalEvent.metaKey) {
+          setSelectedMapFeatures([]);
+        }
         return;
       }
 
@@ -750,6 +966,46 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       }));
     });
   }, [uploadedLayers]);
+
+  useEffect(() => {
+    if (!selectionLayerRef.current) return;
+    
+    const source = selectionLayerRef.current.getSource();
+    if (!source) return;
+    
+    source.clear();
+    
+    selectedMapFeatures.forEach(({ feature }) => {
+      const clonedFeature = feature.clone();
+      source.addFeature(clonedFeature);
+    });
+  }, [selectedMapFeatures]);
+
+  const handleDeleteSelectedFeatures = useCallback(() => {
+    if (selectedMapFeatures.length === 0) return;
+    
+    const featuresByLayer = new Map<number, number[]>();
+    selectedMapFeatures.forEach(({ layerId, featureIndex }) => {
+      const existing = featuresByLayer.get(layerId) || [];
+      existing.push(featureIndex);
+      featuresByLayer.set(layerId, existing);
+    });
+    
+    featuresByLayer.forEach((featureIndices, layerId) => {
+      deleteFeaturesMutation.mutate({ layerId, featureIndices });
+    });
+  }, [selectedMapFeatures, deleteFeaturesMutation]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedMapFeatures([]);
+  }, []);
+
+  const toggleSelectionMode = useCallback((mode: "none" | "click" | "box") => {
+    setSelectionMode(mode);
+    if (mode === "none") {
+      setSelectedMapFeatures([]);
+    }
+  }, []);
 
   // Handle OSM base layer visibility and opacity (works without connection)
   useEffect(() => {
@@ -1284,6 +1540,15 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
         onCancelPendingPlacement={() => setPendingPlacement(null)}
         facilities={facilities}
         tracingError={tracingError}
+      />
+
+      <SelectionToolbar
+        selectionMode={selectionMode}
+        onToggleSelectionMode={toggleSelectionMode}
+        selectedCount={selectedMapFeatures.length}
+        onClearSelection={clearSelection}
+        onDeleteSelected={handleDeleteSelectedFeatures}
+        isDeleting={deleteFeaturesMutation.isPending}
       />
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />

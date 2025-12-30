@@ -814,5 +814,47 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/uploaded-layers/:id/delete-features", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid layer ID" });
+      }
+      
+      const { featureIndices } = req.body;
+      if (!Array.isArray(featureIndices) || featureIndices.length === 0) {
+        return res.status(400).json({ message: "featureIndices must be a non-empty array" });
+      }
+      
+      const layer = await storage.getUploadedLayer(id);
+      if (!layer) {
+        return res.status(404).json({ message: "Layer not found" });
+      }
+      
+      const geojson = layer.geojson;
+      if (!geojson || !geojson.features || !Array.isArray(geojson.features)) {
+        return res.status(400).json({ message: "Layer has no features" });
+      }
+      
+      const indicesToDelete = new Set(featureIndices.map((i: number) => Number(i)));
+      const remainingFeatures = geojson.features.filter((_: any, index: number) => !indicesToDelete.has(index));
+      
+      const updatedGeojson = {
+        ...geojson,
+        features: remainingFeatures,
+      };
+      
+      const updatedLayer = await storage.updateUploadedLayer(id, {
+        geojson: updatedGeojson,
+        featureCount: remainingFeatures.length,
+      });
+      
+      return res.json(updatedLayer);
+    } catch (error) {
+      console.error("Delete features error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
