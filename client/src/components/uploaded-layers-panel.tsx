@@ -250,14 +250,16 @@ export function UploadedLayersPanel({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span 
-                    className="text-xs font-medium truncate min-w-0 max-w-[80px] cursor-default"
+                    className="text-xs font-medium min-w-0 cursor-default"
                   >
-                    {layer.name}
+                    {layer.name.length > 40 ? `${layer.name.slice(0, 40)}...` : layer.name}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-[250px]">
-                  <p className="text-xs break-words">{layer.name}</p>
-                </TooltipContent>
+                {layer.name.length > 40 && (
+                  <TooltipContent side="top" className="max-w-[300px]">
+                    <p className="text-xs break-words">{layer.name}</p>
+                  </TooltipContent>
+                )}
               </Tooltip>
               <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">
                 {layer.featureCount}
