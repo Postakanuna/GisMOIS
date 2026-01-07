@@ -101,6 +101,7 @@ export function useDrawing() {
     onSuccess: (newFeature: DrawnFeature) => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
       
       // Add to undo stack
       undoStack.current.push({
@@ -127,6 +128,7 @@ export function useDrawing() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
     },
   });
 
@@ -137,6 +139,7 @@ export function useDrawing() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
     },
   });
 

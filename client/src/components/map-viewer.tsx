@@ -613,6 +613,7 @@ export function MapViewer({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
       setSelectedMapFeatures([]);
       toast({
         title: "Объекты удалены",
