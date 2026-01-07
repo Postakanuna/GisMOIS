@@ -43,7 +43,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { LayerConfig, UploadedLayer, PointStyle, LineStyle, EditableLayer, GeometryType } from "@shared/schema";
+import type { LayerConfig, PointStyle, LineStyle, EditableLayer, GeometryType } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -116,55 +116,50 @@ export function LayerPanel({
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerGeomType, setNewLayerGeomType] = useState<GeometryType>("Point");
 
-  const { data: uploadedLayers = [] } = useQuery<UploadedLayer[]>({
-    queryKey: ["/api/uploaded-layers"],
-    refetchOnWindowFocus: false,
-  });
+  // Imported layers are now part of editable layers with source: "import"
+  const importedLayers = editableLayers.filter(l => l.source === "import");
 
-  const createLayersBatchMutation = useMutation({
-    mutationFn: async (data: Omit<UploadedLayer, "id" | "createdAt">[]) => {
-      const res = await apiRequest("POST", "/api/uploaded-layers/batch", data);
+  const importLayerMutation = useMutation({
+    mutationFn: async (data: { 
+      name: string; 
+      geometryType: string; 
+      geojson: any; 
+      sourceFileName: string;
+      color: string;
+      pointStyle: string;
+      lineStyle: string;
+    }) => {
+      const res = await apiRequest("POST", "/api/editable-layers/import", data);
       return res.json();
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/uploaded-layers"] });
-      toast({
-        title: "Слои загружены",
-        description: `Добавлено ${variables.length} слоёв из архива`,
-      });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
     },
     onError: () => {
       toast({
         title: "Ошибка загрузки",
-        description: "Не удалось загрузить слои",
+        description: "Не удалось загрузить слой",
         variant: "destructive",
       });
     },
   });
 
   const updateLayerMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & Partial<UploadedLayer>) => {
-      const res = await apiRequest("PATCH", `/api/uploaded-layers/${id}`, data);
+    mutationFn: async ({ id, ...data }: { id: number } & Partial<EditableLayer>) => {
+      const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, data);
       return res.json();
     },
     onMutate: async (variables) => {
-      // Отменяем текущие запросы чтобы не перезаписали наше оптимистичное обновление
-      await queryClient.cancelQueries({ queryKey: ["/api/uploaded-layers"] });
-      
-      // Сохраняем предыдущее состояние для возможного отката
-      const previousLayers = queryClient.getQueryData<UploadedLayer[]>(["/api/uploaded-layers"]);
-      
-      // Оптимистично обновляем кэш — UI обновится мгновенно
-      queryClient.setQueryData<UploadedLayer[]>(["/api/uploaded-layers"], (old) => 
+      await queryClient.cancelQueries({ queryKey: ["/api/editable-layers"] });
+      const previousLayers = queryClient.getQueryData<EditableLayer[]>(["/api/editable-layers"]);
+      queryClient.setQueryData<EditableLayer[]>(["/api/editable-layers"], (old) => 
         old?.map(layer => layer.id === variables.id ? { ...layer, ...variables } : layer) ?? []
       );
-      
       return { previousLayers };
     },
     onError: (_err, _variables, context) => {
-      // При ошибке откатываем к предыдущему состоянию
       if (context?.previousLayers) {
-        queryClient.setQueryData(["/api/uploaded-layers"], context.previousLayers);
+        queryClient.setQueryData(["/api/editable-layers"], context.previousLayers);
       }
       toast({
         title: "Ошибка обновления",
@@ -172,15 +167,14 @@ export function LayerPanel({
         variant: "destructive",
       });
     },
-    // Не вызываем invalidateQueries — данные уже актуальны
   });
 
-  const deleteLayerMutation = useMutation({
+  const deleteImportedLayerMutation = useMutation({
     mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/uploaded-layers/${id}`);
+      await apiRequest("DELETE", `/api/editable-layers/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/uploaded-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       toast({
         title: "Слой удалён",
         description: "Shapefile удалён с карты",
@@ -202,25 +196,33 @@ export function LayerPanel({
         throw new Error("Не найдено слоёв в архиве");
       }
 
-      const layersToCreate = parsedLayers.map((layer, index) => {
+      // Import each layer using the new endpoint
+      let importedCount = 0;
+      for (const layer of parsedLayers) {
         const geomType = layer.geojson.features?.[0]?.geometry?.type;
-        const isPoint = geomType === "Point" || geomType === "MultiPoint";
-        const isLine = geomType === "LineString" || geomType === "MultiLineString";
+        let geometryType: GeometryType = "Point";
+        if (geomType === "LineString" || geomType === "MultiLineString") {
+          geometryType = "LineString";
+        } else if (geomType === "Polygon" || geomType === "MultiPolygon") {
+          geometryType = "Polygon";
+        }
         
-        return {
+        await importLayerMutation.mutateAsync({
           name: layer.name,
-          filename: file.name,
+          geometryType,
           geojson: layer.geojson,
-          color: LAYER_COLORS[index % LAYER_COLORS.length],
-          visible: true,
-          opacity: 1,
-          featureCount: layer.geojson.features.length,
-          pointStyle: "circle" as const,
-          lineStyle: "solid" as const,
-        };
+          sourceFileName: file.name,
+          color: LAYER_COLORS[importedCount % LAYER_COLORS.length],
+          pointStyle: "circle",
+          lineStyle: "solid",
+        });
+        importedCount++;
+      }
+      
+      toast({
+        title: "Слои загружены",
+        description: `Добавлено ${importedCount} слоёв из архива`,
       });
-
-      await createLayersBatchMutation.mutateAsync(layersToCreate);
     } catch (error) {
       console.error("Error parsing shapefile:", error);
       toast({
@@ -236,39 +238,32 @@ export function LayerPanel({
     }
   };
 
-  const toggleUploadedVisibility = (layer: UploadedLayer) => {
+  const toggleImportedVisibility = (layer: EditableLayer) => {
     updateLayerMutation.mutate({ id: layer.id, visible: !layer.visible });
   };
 
-  const setColor = (layer: UploadedLayer, color: string) => {
+  const setImportedColor = (layer: EditableLayer, color: string) => {
     updateLayerMutation.mutate({ id: layer.id, color });
   };
 
-  const setPointStyle = (layer: UploadedLayer, pointStyle: PointStyle) => {
+  const setImportedPointStyle = (layer: EditableLayer, pointStyle: PointStyle) => {
     updateLayerMutation.mutate({ id: layer.id, pointStyle });
   };
 
-  const setLineStyle = (layer: UploadedLayer, lineStyle: LineStyle) => {
+  const setImportedLineStyle = (layer: EditableLayer, lineStyle: LineStyle) => {
     updateLayerMutation.mutate({ id: layer.id, lineStyle });
   };
 
-  const getLayerGeometryType = (layer: UploadedLayer): LayerGeometryType => {
-    const geom = layer.geojson?.features?.[0]?.geometry?.type;
-    if (geom === "Point" || geom === "MultiPoint") return "point";
-    if (geom === "LineString" || geom === "MultiLineString") return "line";
-    if (geom === "Polygon" || geom === "MultiPolygon") return "polygon";
+  const getImportedLayerGeometryType = (layer: EditableLayer): LayerGeometryType => {
+    if (layer.geometryType === "Point") return "point";
+    if (layer.geometryType === "LineString") return "line";
+    if (layer.geometryType === "Polygon") return "polygon";
     return "unknown";
   };
 
-  const pointLayers = uploadedLayers.filter(l => {
-    const geom = l.geojson?.features?.[0]?.geometry?.type;
-    return geom === "Point" || geom === "MultiPoint";
-  });
-
-  const lineLayers = uploadedLayers.filter(l => {
-    const geom = l.geojson?.features?.[0]?.geometry?.type;
-    return geom === "LineString" || geom === "MultiLineString";
-  });
+  // For analytics, filter by geometry type
+  const pointLayers = importedLayers.filter(l => l.geometryType === "Point");
+  const lineLayers = importedLayers.filter(l => l.geometryType === "LineString");
 
   const runAnalysis = async () => {
     if (!accidentLayerId || !pipelineLayerId) {
@@ -458,12 +453,12 @@ export function LayerPanel({
     );
   };
 
-  const renderUploadedLayerItem = (layer: UploadedLayer) => {
+  const renderImportedLayerItem = (layer: EditableLayer) => {
     return (
       <div
         key={layer.id}
         className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 min-w-0"
-        data-testid={`uploaded-layer-item-${layer.id}`}
+        data-testid={`imported-layer-item-${layer.id}`}
       >
         <div 
           className="h-2.5 w-2.5 rounded-full shrink-0" 
@@ -488,7 +483,7 @@ export function LayerPanel({
           size="icon"
           variant="ghost"
           className="h-6 w-6 shrink-0"
-          onClick={() => toggleUploadedVisibility(layer)}
+          onClick={() => toggleImportedVisibility(layer)}
           data-testid={`button-toggle-visibility-${layer.id}`}
         >
           {layer.visible ? (
@@ -518,13 +513,13 @@ export function LayerPanel({
                       key={color}
                       className={`h-6 w-6 rounded-md border-2 hover:scale-110 transition-transform ${layer.color === color ? "border-foreground" : "border-transparent"}`}
                       style={{ backgroundColor: color }}
-                      onClick={() => setColor(layer, color)}
+                      onClick={() => setImportedColor(layer, color)}
                       data-testid={`button-select-color-${layer.id}-${color}`}
                     />
                   ))}
                 </div>
               </div>
-              {getLayerGeometryType(layer) === "point" && (
+              {getImportedLayerGeometryType(layer) === "point" && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-2">Форма точки</p>
                   <div className="flex gap-1">
@@ -536,7 +531,7 @@ export function LayerPanel({
                           <TooltipTrigger asChild>
                             <button
                               className={`h-7 w-7 rounded-md border flex items-center justify-center hover:scale-110 transition-transform ${isActive ? "bg-accent border-foreground" : "border-border"}`}
-                              onClick={() => setPointStyle(layer, style.value)}
+                              onClick={() => setImportedPointStyle(layer, style.value)}
                               data-testid={`button-point-style-${layer.id}-${style.value}`}
                             >
                               <IconComponent className="h-4 w-4" style={{ color: layer.color }} />
@@ -551,7 +546,7 @@ export function LayerPanel({
                   </div>
                 </div>
               )}
-              {getLayerGeometryType(layer) === "line" && (
+              {getImportedLayerGeometryType(layer) === "line" && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-2">Стиль линии</p>
                   <div className="flex gap-1">
@@ -562,7 +557,7 @@ export function LayerPanel({
                           <TooltipTrigger asChild>
                             <button
                               className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1 hover:scale-105 transition-transform ${isActive ? "bg-accent border-foreground" : "border-border"}`}
-                              onClick={() => setLineStyle(layer, style.value)}
+                              onClick={() => setImportedLineStyle(layer, style.value)}
                               data-testid={`button-line-style-${layer.id}-${style.value}`}
                             >
                               <svg width="24" height="4" viewBox="0 0 24 4">
@@ -597,8 +592,8 @@ export function LayerPanel({
           size="icon"
           variant="ghost"
           className="h-6 w-6 shrink-0"
-          onClick={() => deleteLayerMutation.mutate(layer.id)}
-          disabled={deleteLayerMutation.isPending}
+          onClick={() => deleteImportedLayerMutation.mutate(layer.id)}
+          disabled={deleteImportedLayerMutation.isPending}
           data-testid={`button-delete-layer-${layer.id}`}
         >
           <Trash2 className="h-3 w-3 text-destructive" />
@@ -695,7 +690,7 @@ export function LayerPanel({
               size="icon"
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading || createLayersBatchMutation.isPending}
+              disabled={isUploading || importLayerMutation.isPending}
               data-testid="button-upload-shapefile"
             >
               {isUploading ? (
@@ -709,7 +704,7 @@ export function LayerPanel({
             <p>Загрузить Shapefile (ZIP)</p>
           </TooltipContent>
         </Tooltip>
-        {uploadedLayers.length >= 2 && pointLayers.length > 0 && lineLayers.length > 0 && (
+        {importedLayers.length >= 2 && pointLayers.length > 0 && lineLayers.length > 0 && (
           <Dialog open={analyticsOpen} onOpenChange={setAnalyticsOpen}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -871,19 +866,19 @@ export function LayerPanel({
           </AccordionContent>
         </AccordionItem>
 
-        {uploadedLayers.length > 0 && (
-          <AccordionItem value="uploaded" className="border-none">
-            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-uploaded-layers">
+        {importedLayers.length > 0 && (
+          <AccordionItem value="imported" className="border-none">
+            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-imported-layers">
               <div className="flex items-center gap-2">
                 <FileArchive className="h-3 w-3 text-muted-foreground" />
                 <span className="text-xs font-medium">Shapefile слои</span>
                 <span className="text-[10px] text-muted-foreground">
-                  ({uploadedLayers.length})
+                  ({importedLayers.length})
                 </span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="space-y-1 pt-1">
-              {uploadedLayers.map(renderUploadedLayerItem)}
+              {importedLayers.map(renderImportedLayerItem)}
             </AccordionContent>
           </AccordionItem>
         )}
@@ -940,7 +935,7 @@ export function LayerPanel({
         )}
       </Accordion>
 
-      {layers.length === 0 && uploadedLayers.length === 0 && (
+      {layers.length === 0 && importedLayers.length === 0 && (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Layers className="h-12 w-12 text-muted-foreground/50 mb-3" />
           <p className="text-sm text-muted-foreground">

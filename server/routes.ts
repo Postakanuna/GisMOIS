@@ -722,139 +722,96 @@ export async function registerRoutes(
     }
   });
 
-  // Uploaded layers routes
-  app.get("/api/uploaded-layers", async (_req: Request, res: Response) => {
+  // Import shapefile as editable layer with features
+  app.post("/api/editable-layers/import", async (req: Request, res: Response) => {
     try {
-      const layers = await storage.getUploadedLayers();
-      return res.json(layers);
-    } catch (error) {
-      console.error("Get uploaded layers error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.post("/api/uploaded-layers", async (req: Request, res: Response) => {
-    try {
-      const parseResult = insertUploadedLayerSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return res.status(400).json({
-          message: "Invalid layer data",
-          errors: parseResult.error.errors,
+      const { name, geometryType, geojson, sourceFileName, color, pointStyle, lineStyle } = req.body;
+      
+      if (!name || !geometryType || !geojson) {
+        return res.status(400).json({ 
+          message: "Missing required fields: name, geometryType, geojson" 
         });
       }
-      const layer = await storage.createUploadedLayer(parseResult.data);
-      return res.status(201).json(layer);
-    } catch (error) {
-      console.error("Create uploaded layer error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.post("/api/uploaded-layers/batch", async (req: Request, res: Response) => {
-    try {
-      if (!Array.isArray(req.body)) {
-        return res.status(400).json({ message: "Request body must be an array of layers" });
-      }
       
-      const validLayers: any[] = [];
-      const errors: any[] = [];
+      // Create the editable layer with source: import
+      const layer = await storage.createEditableLayer({
+        name,
+        geometryType,
+        color: color || "#3B82F6",
+        pointStyle: pointStyle || "circle",
+        lineStyle: lineStyle || "solid",
+        visible: true,
+        opacity: 1,
+        source: "import",
+        sourceFileName,
+      });
       
-      for (let i = 0; i < req.body.length; i++) {
-        const parseResult = insertUploadedLayerSchema.safeParse(req.body[i]);
-        if (parseResult.success) {
-          validLayers.push(parseResult.data);
-        } else {
-          errors.push({ index: i, errors: parseResult.error.errors });
+      // Create layer schema from feature properties
+      const features = geojson.features || [];
+      if (features.length > 0) {
+        const sampleProps = features[0].properties || {};
+        const fields = Object.keys(sampleProps).map((key) => ({
+          name: key,
+          type: "string" as const,
+          required: false,
+        }));
+        
+        if (fields.length > 0) {
+          await storage.createLayerSchema({
+            layerId: layer.id,
+            fields,
+          });
         }
       }
       
-      if (errors.length > 0) {
-        return res.status(400).json({
-          message: "Some layers have invalid data",
-          errors,
-        });
+      // Batch create features for the layer
+      const insertFeatures = features.map((feature: any, index: number) => ({
+        layerId: layer.id,
+        geometry: feature.geometry,
+        properties: feature.properties || {},
+      }));
+      
+      if (insertFeatures.length > 0) {
+        await storage.createDrawnFeaturesBatch(insertFeatures);
       }
       
-      const layers = await storage.createUploadedLayersBatch(validLayers);
-      return res.status(201).json(layers);
+      // Fetch updated layer with correct feature count
+      const updatedLayer = await storage.getEditableLayer(layer.id);
+      
+      return res.status(201).json(updatedLayer);
     } catch (error) {
-      console.error("Create uploaded layers batch error:", error);
+      console.error("Import layer error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
-
-  app.patch("/api/uploaded-layers/:id", async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid layer ID" });
-      }
-      const layer = await storage.updateUploadedLayer(id, req.body);
-      if (!layer) {
-        return res.status(404).json({ message: "Layer not found" });
-      }
-      return res.json(layer);
-    } catch (error) {
-      console.error("Update uploaded layer error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.delete("/api/uploaded-layers/:id", async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid layer ID" });
-      }
-      const deleted = await storage.deleteUploadedLayer(id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Layer not found" });
-      }
-      return res.status(204).send();
-    } catch (error) {
-      console.error("Delete uploaded layer error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.post("/api/uploaded-layers/:id/delete-features", async (req: Request, res: Response) => {
+  
+  // Batch create features endpoint
+  app.post("/api/editable-layers/:id/features/batch", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid layer ID" });
       }
       
-      const { featureIndices } = req.body;
-      if (!Array.isArray(featureIndices) || featureIndices.length === 0) {
-        return res.status(400).json({ message: "featureIndices must be a non-empty array" });
-      }
-      
-      const layer = await storage.getUploadedLayer(id);
+      const layer = await storage.getEditableLayer(id);
       if (!layer) {
         return res.status(404).json({ message: "Layer not found" });
       }
       
-      const geojson = layer.geojson;
-      if (!geojson || !geojson.features || !Array.isArray(geojson.features)) {
-        return res.status(400).json({ message: "Layer has no features" });
+      if (!Array.isArray(req.body)) {
+        return res.status(400).json({ message: "Request body must be an array of features" });
       }
       
-      const indicesToDelete = new Set(featureIndices.map((i: number) => Number(i)));
-      const remainingFeatures = geojson.features.filter((_: any, index: number) => !indicesToDelete.has(index));
+      const insertFeatures = req.body.map((feature: any) => ({
+        layerId: id,
+        geometry: feature.geometry,
+        properties: feature.properties || {},
+      }));
       
-      const updatedGeojson = {
-        ...geojson,
-        features: remainingFeatures,
-      };
-      
-      const updatedLayer = await storage.updateUploadedLayer(id, {
-        geojson: updatedGeojson,
-        featureCount: remainingFeatures.length,
-      });
-      
-      return res.json(updatedLayer);
+      const createdFeatures = await storage.createDrawnFeaturesBatch(insertFeatures);
+      return res.status(201).json(createdFeatures);
     } catch (error) {
-      console.error("Delete features error:", error);
+      console.error("Batch create features error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -867,8 +824,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "accidentLayerId and pipelineLayerId are required" });
       }
 
-      const accidentLayer = await storage.getUploadedLayer(accidentLayerId);
-      const pipelineLayer = await storage.getUploadedLayer(pipelineLayerId);
+      const accidentLayer = await storage.getEditableLayer(accidentLayerId);
+      const pipelineLayer = await storage.getEditableLayer(pipelineLayerId);
 
       if (!accidentLayer) {
         return res.status(404).json({ message: "Accident layer not found" });
@@ -877,8 +834,18 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Pipeline layer not found" });
       }
 
-      const accidentFeatures = accidentLayer.geojson?.features || [];
-      const pipelineFeatures = pipelineLayer.geojson?.features || [];
+      const accidentFeaturesRaw = await storage.getDrawnFeatures(accidentLayerId);
+      const pipelineFeaturesRaw = await storage.getDrawnFeatures(pipelineLayerId);
+      
+      // Convert to GeoJSON-like format for processing
+      const accidentFeatures = accidentFeaturesRaw.map(f => ({
+        geometry: f.geometry,
+        properties: f.properties,
+      }));
+      const pipelineFeatures = pipelineFeaturesRaw.map(f => ({
+        geometry: f.geometry,
+        properties: f.properties,
+      }));
 
       if (accidentFeatures.length === 0) {
         return res.status(422).json({ message: "Accident layer has no features" });

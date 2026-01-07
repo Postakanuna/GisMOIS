@@ -19,7 +19,7 @@ import type { DrawEvent } from "ol/interaction/Draw";
 import type { ModifyEvent } from "ol/interaction/Modify";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, UploadedLayer, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature } from "@shared/schema";
 import type { DrawingMode } from "@/components/drawing-toolbar";
 import RegularShape from "ol/style/RegularShape";
 import GeoJSON from "ol/format/GeoJSON";
@@ -55,7 +55,7 @@ interface MapViewerProps {
   ticketMode: boolean;
   onToggleTicketMode: () => void;
   onCreateTicket: (ticket: InsertTicket) => Promise<Ticket>;
-  uploadedLayers?: UploadedLayer[];
+  allEditableLayers?: EditableLayer[];
   onSelectedFeaturesChange?: (features: SelectedFeatureData[]) => void;
   onShowFeatureInfo?: () => void;
   // Drawing/editing props
@@ -143,7 +143,7 @@ function createLineStroke(color: string, lineStyle: LineStyle = "solid"): Stroke
 }
 
 // Create complete layer style based on layer properties
-function createUploadedLayerStyle(layer: UploadedLayer): Style | Style[] {
+function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
   const color = layer.color || "#1976D2";
   const pointStyle = layer.pointStyle || "circle";
   const lineStyle = layer.lineStyle || "solid";
@@ -376,7 +376,7 @@ export function MapViewer({
   ticketMode, 
   onToggleTicketMode, 
   onCreateTicket, 
-  uploadedLayers = [], 
+  allEditableLayers = [], 
   onSelectedFeaturesChange, 
   onShowFeatureInfo,
   editMode = false,
@@ -395,7 +395,7 @@ export function MapViewer({
   const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const facilitiesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const tracesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
-  const uploadedLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
+  const allEditableLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const { toast } = useToast();
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
@@ -460,14 +460,14 @@ export function MapViewer({
   }, [activeEditableLayer]);
 
   const deleteFeaturesMutation = useMutation({
-    mutationFn: async (data: { layerId: number; featureIndices: number[] }) => {
-      const response = await apiRequest("POST", `/api/uploaded-layers/${data.layerId}/delete-features`, {
-        featureIndices: data.featureIndices,
-      });
-      return response.json();
+    mutationFn: async (data: { layerId: number; featureIds: number[] }) => {
+      // Delete features one by one (could be optimized with a batch endpoint)
+      for (const featureId of data.featureIds) {
+        await apiRequest("DELETE", `/api/editable-layers/${data.layerId}/features/${featureId}`);
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/uploaded-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       setSelectedMapFeatures([]);
       toast({
         title: "Объекты удалены",
@@ -489,6 +489,29 @@ export function MapViewer({
 
   const { data: traces = [] } = useQuery<Trace[]>({
     queryKey: ["/api/traces"],
+  });
+
+  // Fetch features for all editable layers (imported and user-created)
+  const { data: allLayerFeatures = {} } = useQuery<Record<number, DrawnFeature[]>>({
+    queryKey: ["/api/editable-layers/all-features", allEditableLayers.map(l => l.id).join(",")],
+    queryFn: async () => {
+      const featuresByLayer: Record<number, DrawnFeature[]> = {};
+      await Promise.all(
+        allEditableLayers.map(async (layer) => {
+          try {
+            const response = await fetch(`/api/editable-layers/${layer.id}/features`);
+            if (response.ok) {
+              featuresByLayer[layer.id] = await response.json();
+            }
+          } catch (e) {
+            console.warn(`Failed to fetch features for layer ${layer.id}`);
+          }
+        })
+      );
+      return featuresByLayer;
+    },
+    enabled: allEditableLayers.length > 0,
+    refetchOnWindowFocus: false,
   });
 
   const createFacilityMutation = useMutation({
@@ -654,7 +677,7 @@ export function MapViewer({
       const extent = dragBox.getGeometry().getExtent();
       const newSelectedFeatures: Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }> = [];
       
-      uploadedLayersRef.current.forEach((layer, layerId) => {
+      allEditableLayersRef.current.forEach((layer, layerId) => {
         const source = layer.getSource();
         if (!source || !layer.getVisible()) return;
         
@@ -727,9 +750,9 @@ export function MapViewer({
         map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
           if (foundUploadedFeature) return true;
           
-          const uploadedLayerId = layer?.get("uploadedLayerId");
-          if (uploadedLayerId !== undefined) {
-            const vectorLayer = uploadedLayersRef.current.get(uploadedLayerId);
+          const editableLayerId = layer?.get("editableLayerId");
+          if (editableLayerId !== undefined) {
+            const vectorLayer = allEditableLayersRef.current.get(editableLayerId);
             if (vectorLayer) {
               const source = vectorLayer.getSource();
               if (source) {
@@ -737,7 +760,7 @@ export function MapViewer({
                 const idx = features.indexOf(feature as Feature);
                 if (idx !== -1) {
                   foundUploadedFeature = feature as Feature<Geometry>;
-                  foundLayerId = uploadedLayerId;
+                  foundLayerId = editableLayerId;
                   foundFeatureIndex = idx;
                 }
               }
@@ -971,69 +994,84 @@ export function MapViewer({
     if (!mapRef.current) return;
     const map = mapRef.current;
     
-    const currentLayerIds = new Set(uploadedLayers.map(l => l.id));
+    const currentLayerIds = new Set(allEditableLayers.map(l => l.id));
     
     // Remove layers that no longer exist
-    uploadedLayersRef.current.forEach((layer, id) => {
+    allEditableLayersRef.current.forEach((layer, id) => {
       if (!currentLayerIds.has(id)) {
         map.removeLayer(layer);
-        uploadedLayersRef.current.delete(id);
+        allEditableLayersRef.current.delete(id);
       }
     });
     
     // Add or update layers
-    uploadedLayers.forEach((uploadedLayer) => {
-      let vectorLayer = uploadedLayersRef.current.get(uploadedLayer.id);
+    allEditableLayers.forEach((editableLayerItem) => {
+      let vectorLayer = allEditableLayersRef.current.get(editableLayerItem.id);
       
       const geojsonFormat = new GeoJSON();
-      const geojsonData = Array.isArray(uploadedLayer.geojson) 
-        ? { type: "FeatureCollection", features: uploadedLayer.geojson.flatMap((g: any) => g.features || []) }
-        : uploadedLayer.geojson;
+      const layerFeatures = allLayerFeatures[editableLayerItem.id] || [];
+      
+      // Convert drawn features to GeoJSON format
+      const geojsonData = {
+        type: "FeatureCollection" as const,
+        features: layerFeatures.map(f => ({
+          type: "Feature" as const,
+          geometry: {
+            type: f.geometryType,
+            coordinates: f.coordinates,
+          },
+          properties: f.properties || {},
+        })),
+      };
       
       if (!vectorLayer) {
         const vectorSource = new VectorSource();
         
         try {
-          const features = geojsonFormat.readFeatures(geojsonData, {
-            dataProjection: "EPSG:4326",
-            featureProjection: "EPSG:3857",
-          });
-          
-          vectorSource.addFeatures(features);
-          console.log(`Loaded ${features.length} features for layer: ${uploadedLayer.name}`);
+          if (geojsonData.features.length > 0) {
+            const features = geojsonFormat.readFeatures(geojsonData, {
+              dataProjection: "EPSG:4326",
+              featureProjection: "EPSG:3857",
+            });
+            
+            vectorSource.addFeatures(features);
+            console.log(`Loaded ${features.length} features for layer: ${editableLayerItem.name}`);
+          }
         } catch (e) {
-          console.error("Failed to parse uploaded layer GeoJSON:", e);
+          console.error("Failed to parse layer GeoJSON:", e);
         }
         
         vectorLayer = new VectorLayer({
           source: vectorSource,
-          style: createUploadedLayerStyle(uploadedLayer),
+          style: createEditableLayerStyle(editableLayerItem),
           properties: { 
-            uploadedLayerId: uploadedLayer.id, 
-            featureCount: uploadedLayer.featureCount,
-            layerColor: uploadedLayer.color,
-            pointStyle: uploadedLayer.pointStyle,
-            lineStyle: uploadedLayer.lineStyle,
+            editableLayerId: editableLayerItem.id, 
+            featureCount: layerFeatures.length,
+            layerColor: editableLayerItem.color,
+            pointStyle: editableLayerItem.pointStyle,
+            lineStyle: editableLayerItem.lineStyle,
           },
         });
         
         map.addLayer(vectorLayer);
-        uploadedLayersRef.current.set(uploadedLayer.id, vectorLayer);
+        allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
       } else {
         // Check if feature count changed - need to refresh the source
         const storedCount = vectorLayer.get("featureCount");
-        if (storedCount !== uploadedLayer.featureCount) {
+        if (storedCount !== layerFeatures.length) {
           const vectorSource = vectorLayer.getSource();
           if (vectorSource) {
             vectorSource.clear();
             try {
-              const features = geojsonFormat.readFeatures(geojsonData, {
-                dataProjection: "EPSG:4326",
-                featureProjection: "EPSG:3857",
-              });
-              vectorSource.addFeatures(features);
-              vectorLayer.set("featureCount", uploadedLayer.featureCount);
-              console.log(`Refreshed layer ${uploadedLayer.name}: ${features.length} features`);
+              if (geojsonData.features.length > 0) {
+                const features = geojsonFormat.readFeatures(geojsonData, {
+                  dataProjection: "EPSG:4326",
+                  featureProjection: "EPSG:3857",
+                });
+                vectorSource.addFeatures(features);
+              }
+              vectorLayer.set("featureCount", layerFeatures.length);
+              console.log(`Refreshed layer ${editableLayerItem.name}: ${layerFeatures.length} features`);
             } catch (e) {
               console.error("Failed to refresh layer features:", e);
             }
@@ -1042,24 +1080,24 @@ export function MapViewer({
       }
       
       // Update visibility and opacity
-      vectorLayer.setVisible(uploadedLayer.visible);
-      vectorLayer.setOpacity(uploadedLayer.opacity);
+      vectorLayer.setVisible(editableLayerItem.visible);
+      vectorLayer.setOpacity(editableLayerItem.opacity);
       
       // Update style only if color, pointStyle, or lineStyle changed
       const storedColor = vectorLayer.get("layerColor");
       const storedPointStyle = vectorLayer.get("pointStyle");
       const storedLineStyle = vectorLayer.get("lineStyle");
       
-      if (storedColor !== uploadedLayer.color || 
-          storedPointStyle !== uploadedLayer.pointStyle || 
-          storedLineStyle !== uploadedLayer.lineStyle) {
-        vectorLayer.setStyle(createUploadedLayerStyle(uploadedLayer));
-        vectorLayer.set("layerColor", uploadedLayer.color);
-        vectorLayer.set("pointStyle", uploadedLayer.pointStyle);
-        vectorLayer.set("lineStyle", uploadedLayer.lineStyle);
+      if (storedColor !== editableLayerItem.color || 
+          storedPointStyle !== editableLayerItem.pointStyle || 
+          storedLineStyle !== editableLayerItem.lineStyle) {
+        vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem));
+        vectorLayer.set("layerColor", editableLayerItem.color);
+        vectorLayer.set("pointStyle", editableLayerItem.pointStyle);
+        vectorLayer.set("lineStyle", editableLayerItem.lineStyle);
       }
     });
-  }, [uploadedLayers]);
+  }, [allEditableLayers, allLayerFeatures]);
 
   useEffect(() => {
     if (!selectionLayerRef.current) return;
@@ -1079,7 +1117,7 @@ export function MapViewer({
     if (!onSelectedFeaturesChange) return;
     
     const featureData: SelectedFeatureData[] = selectedMapFeatures.map(({ layerId, featureIndex, feature }) => {
-      const layer = uploadedLayers.find(l => l.id === layerId);
+      const layer = allEditableLayers.find(l => l.id === layerId);
       return {
         layerId,
         layerName: layer?.name || `Layer ${layerId}`,
@@ -1089,7 +1127,7 @@ export function MapViewer({
     });
     
     onSelectedFeaturesChange(featureData);
-  }, [selectedMapFeatures, uploadedLayers, onSelectedFeaturesChange]);
+  }, [selectedMapFeatures, allEditableLayers, onSelectedFeaturesChange]);
 
   const handleDeleteSelectedFeatures = useCallback(() => {
     if (selectedMapFeatures.length === 0) return;
@@ -1101,8 +1139,8 @@ export function MapViewer({
       featuresByLayer.set(layerId, existing);
     });
     
-    featuresByLayer.forEach((featureIndices, layerId) => {
-      deleteFeaturesMutation.mutate({ layerId, featureIndices });
+    featuresByLayer.forEach((featureIds, layerId) => {
+      deleteFeaturesMutation.mutate({ layerId, featureIds });
     });
   }, [selectedMapFeatures, deleteFeaturesMutation]);
 

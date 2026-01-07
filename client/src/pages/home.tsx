@@ -334,7 +334,7 @@ export default function Home() {
               ticketMode={zuluConnection.ticketMode}
               onToggleTicketMode={() => zuluConnection.setTicketMode(!zuluConnection.ticketMode)}
               onCreateTicket={zuluConnection.createTicket}
-              uploadedLayers={uploadedLayers}
+              allEditableLayers={drawing.editableLayers}
               onSelectedFeaturesChange={handleSelectedFeaturesChange}
               onShowFeatureInfo={handleShowFeatureInfo}
               editMode={editMode}
