@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { DraggableModal } from "@/components/ui/draggable-modal";
@@ -14,21 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { 
-  Settings2, 
-  Plus, 
-  Trash2, 
-  Save,
-  X,
-} from "lucide-react";
+import { Settings2, Plus, Trash2, Save, X } from "lucide-react";
 import type { DrawnFeature, AttributeField, AttributeFieldType, LayerSchemaDefinition } from "@shared/schema";
 
 interface AttributeTableProps {
@@ -64,6 +49,51 @@ export function AttributeTable({
   const [editValue, setEditValue] = useState<string>("");
 
   const fields = layerSchema?.fields || [];
+  
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    _id: 60,
+    _type: 80,
+  });
+  const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const newWidths: Record<string, number> = { _id: 60, _type: 80 };
+    fields.forEach((field) => {
+      if (!columnWidths[field.name]) {
+        newWidths[field.name] = 120;
+      } else {
+        newWidths[field.name] = columnWidths[field.name];
+      }
+    });
+    setColumnWidths(newWidths);
+  }, [fields]);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent, column: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = {
+      column,
+      startX: e.clientX,
+      startWidth: columnWidths[column] || 100,
+    };
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const delta = moveEvent.clientX - resizingRef.current.startX;
+      const newWidth = Math.max(40, resizingRef.current.startWidth + delta);
+      setColumnWidths(prev => ({ ...prev, [resizingRef.current!.column]: newWidth }));
+    };
+    
+    const handleMouseUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+    
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, [columnWidths]);
 
   useEffect(() => {
     if (showSchemaDialog) {
@@ -249,47 +279,93 @@ export function AttributeTable({
           </Button>
         </div>
         
-        <ScrollArea className="flex-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[60px] sticky top-0 bg-background">ID</TableHead>
-                <TableHead className="w-[80px] sticky top-0 bg-background">Тип</TableHead>
+        <div 
+          ref={tableContainerRef}
+          className="flex-1 overflow-auto border-t"
+          style={{ minHeight: 0 }}
+          data-testid="table-scroll-container"
+        >
+          <table className="w-max min-w-full border-collapse text-sm" style={{ tableLayout: "fixed" }}>
+            <thead className="sticky top-0 z-10 bg-background border-b">
+              <tr>
+                <th 
+                  className="relative px-2 py-2 text-left font-medium text-muted-foreground border-r select-none"
+                  style={{ width: columnWidths._id, minWidth: columnWidths._id }}
+                >
+                  ID
+                  <div
+                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
+                    onMouseDown={(e) => handleResizeStart(e, "_id")}
+                    data-testid="resize-handle-id"
+                  />
+                </th>
+                <th 
+                  className="relative px-2 py-2 text-left font-medium text-muted-foreground border-r select-none"
+                  style={{ width: columnWidths._type, minWidth: columnWidths._type }}
+                >
+                  Тип
+                  <div
+                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
+                    onMouseDown={(e) => handleResizeStart(e, "_type")}
+                    data-testid="resize-handle-type"
+                  />
+                </th>
                 {fields.map((field) => (
-                  <TableHead key={field.name} className="sticky top-0 bg-background">
+                  <th 
+                    key={field.name}
+                    className="relative px-2 py-2 text-left font-medium text-muted-foreground border-r select-none"
+                    style={{ width: columnWidths[field.name] || 120, minWidth: columnWidths[field.name] || 120 }}
+                  >
                     {field.name}
                     {field.required && <span className="text-destructive ml-1">*</span>}
-                  </TableHead>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
+                      onMouseDown={(e) => handleResizeStart(e, field.name)}
+                      data-testid={`resize-handle-${field.name}`}
+                    />
+                  </th>
                 ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+              </tr>
+            </thead>
+            <tbody>
               {features.map((feature) => (
-                <TableRow
+                <tr
                   key={feature.id}
-                  className={`cursor-pointer ${
+                  className={`cursor-pointer border-b hover:bg-muted/50 ${
                     selectedFeatureIds.includes(feature.id) ? "bg-accent" : ""
                   }`}
                   onClick={(e) => onFeatureSelect(feature.id, e.ctrlKey || e.metaKey)}
                   data-testid={`row-feature-${feature.id}`}
                 >
-                  <TableCell className="font-mono text-xs">{feature.id}</TableCell>
-                  <TableCell>
+                  <td 
+                    className="px-2 py-1.5 font-mono text-xs border-r"
+                    style={{ width: columnWidths._id, minWidth: columnWidths._id }}
+                  >
+                    {feature.id}
+                  </td>
+                  <td 
+                    className="px-2 py-1.5 border-r"
+                    style={{ width: columnWidths._type, minWidth: columnWidths._type }}
+                  >
                     <Badge variant="outline" className="text-xs">
                       {feature.geometryType === "Point" ? "Точка" : 
                        feature.geometryType === "LineString" ? "Линия" : "Полигон"}
                     </Badge>
-                  </TableCell>
+                  </td>
                   {fields.map((field) => (
-                    <TableCell key={field.name} className="text-sm">
+                    <td 
+                      key={field.name} 
+                      className="px-2 py-1.5 border-r"
+                      style={{ width: columnWidths[field.name] || 120, minWidth: columnWidths[field.name] || 120 }}
+                    >
                       {renderCellValue(feature, field)}
-                    </TableCell>
+                    </td>
                   ))}
-                </TableRow>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
-        </ScrollArea>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Schema Editor Modal */}
