@@ -51,6 +51,11 @@ import { apiRequest } from "@/lib/queryClient";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
 import { Circle, Square, Triangle, Cloud, Minus, MoreHorizontal } from "lucide-react";
 
+const truncateName = (name: string, maxLength: number = 30): string => {
+  if (name.length <= maxLength) return name;
+  return name.substring(0, maxLength - 3) + "...";
+};
+
 const LAYER_COLORS = [
   "#1976D2", "#D32F2F", "#388E3C", "#7B1FA2",
   "#F57C00", "#0097A7", "#C2185B", "#512DA8",
@@ -407,10 +412,10 @@ export function LayerPanel({
         <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
         <div className="flex-1 min-w-0">
           <span 
-            className="block text-xs font-medium truncate"
+            className="block text-xs font-medium"
             title={layer.name}
           >
-            {layer.name}
+            {truncateName(layer.name)}
           </span>
         </div>
         <Button
@@ -689,8 +694,8 @@ export function LayerPanel({
                   
                   {/* Layer name - flex-1 min-w-0 to allow shrinking */}
                   <div className="flex-1 min-w-0 flex items-center gap-1">
-                    <span className="text-xs font-medium truncate" title={layer.name}>
-                      {layer.name}
+                    <span className="text-xs font-medium" title={layer.name}>
+                      {truncateName(layer.name)}
                     </span>
                     {layer.source === "import" && (
                       <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
