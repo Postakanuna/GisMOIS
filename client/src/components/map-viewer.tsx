@@ -526,13 +526,6 @@ export function MapViewer({
     // Get the actual feature ID from the feature properties
     const featureId = feature.get("featureId") as number | undefined;
     
-    // Debug: log the featureId extraction
-    console.log("Selection debug:", {
-      featureId,
-      featureIdType: typeof featureId,
-      allProperties: feature.getProperties(),
-    });
-    
     // Auto-switch to the layer containing the selected feature
     const currentActiveLayer = activeEditableLayerRef.current;
     if (layerId !== currentActiveLayer?.id) {
@@ -1193,7 +1186,10 @@ export function MapViewer({
             type: f.geometryType,
             coordinates: f.coordinates,
           },
-          properties: f.properties || {},
+          properties: {
+            featureId: f.id, // Include database ID for selection sync
+            ...f.properties,
+          },
         })),
       };
       
