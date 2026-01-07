@@ -76,6 +76,7 @@ interface MapViewerProps {
   onFeatureUpdated?: (featureId: number, updates: Partial<InsertDrawnFeature>) => void;
   selectedEditableFeatureIds?: number[];
   onEditableFeatureSelect?: (featureId: number, multi?: boolean) => void;
+  onClearEditableSelection?: () => void;
   onSelectEditableLayer?: (layer: EditableLayer) => void;
   // Selection callbacks exposed for external control
   selectionActionsRef?: React.MutableRefObject<{ clearSelection: () => void; deleteSelected: () => void } | null>;
@@ -399,6 +400,7 @@ export function MapViewer({
   onFeatureUpdated,
   selectedEditableFeatureIds = [],
   onEditableFeatureSelect,
+  onClearEditableSelection,
   onSelectEditableLayer,
   selectionActionsRef,
 }: MapViewerProps) {
@@ -454,6 +456,7 @@ export function MapViewer({
   const onSelectEditableLayerRef = useRef(onSelectEditableLayer);
   const allEditableLayersDataRef = useRef(allEditableLayers);
   const onEditableFeatureSelectRef = useRef(onEditableFeatureSelect);
+  const onClearEditableSelectionRef = useRef(onClearEditableSelection);
 
   useEffect(() => {
     placementModeRef.current = placementMode;
@@ -490,6 +493,10 @@ export function MapViewer({
   useEffect(() => {
     onEditableFeatureSelectRef.current = onEditableFeatureSelect;
   }, [onEditableFeatureSelect]);
+
+  useEffect(() => {
+    onClearEditableSelectionRef.current = onClearEditableSelection;
+  }, [onClearEditableSelection]);
 
   // Sync refs with state to avoid stale closures in OL event handlers
   useEffect(() => {
@@ -528,16 +535,33 @@ export function MapViewer({
       }
     }
     
-    // Sync selection with drawing.selectedFeatureIds via callback
-    if (featureId !== undefined && onEditableFeatureSelectRef.current) {
-      onEditableFeatureSelectRef.current(featureId, isMultiSelect);
-    }
-    
     // Use ref to get current state and avoid stale closure
     const currentSelectedFeatures = selectedMapFeaturesRef.current;
     const isAlreadySelected = currentSelectedFeatures.some(
       sf => sf.layerId === layerId && sf.featureIndex === featureIndex
     );
+    
+    // Sync selection with drawing.selectedFeatureIds via callback
+    // The callback's multi parameter controls toggle behavior:
+    // - multi=true: toggle the selection state
+    // - multi=false: select only this feature (or deselect if already selected)
+    if (featureId !== undefined && onEditableFeatureSelectRef.current) {
+      if (isMultiSelect) {
+        // Multi-select mode: toggle this feature
+        onEditableFeatureSelectRef.current(featureId, true);
+      } else {
+        // Single-select mode: if already selected, we want to deselect
+        // if not selected, we want to select only this one
+        if (!isAlreadySelected) {
+          onEditableFeatureSelectRef.current(featureId, false);
+        } else {
+          // If isAlreadySelected in single-select mode, clear the selection
+          if (onClearEditableSelectionRef.current) {
+            onClearEditableSelectionRef.current();
+          }
+        }
+      }
+    }
     
     if (isMultiSelect) {
       if (isAlreadySelected) {
@@ -915,6 +939,10 @@ export function MapViewer({
           // No features found - clear selection if not multi-select
           if (!evt.originalEvent.ctrlKey && !evt.originalEvent.metaKey) {
             setSelectedMapFeatures([]);
+            // Also clear drawing.selectedFeatureIds
+            if (onClearEditableSelectionRef.current) {
+              onClearEditableSelectionRef.current();
+            }
           }
         } else if (candidates.length === 1) {
           // Single candidate - select directly
