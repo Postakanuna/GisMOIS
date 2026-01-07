@@ -43,6 +43,15 @@ export interface SelectedFeatureData {
   properties: Record<string, unknown>;
 }
 
+// Candidate for feature selection when multiple features overlap
+export interface SelectionCandidate {
+  layerId: number;
+  layerName: string;
+  featureIndex: number;
+  feature: Feature<Geometry>;
+  geometryType: string;
+}
+
 interface MapViewerProps {
   layers: LayerConfig[];
   connection: ZuluConnection | null;
@@ -423,6 +432,10 @@ export function MapViewer({
   const [tracingError, setTracingError] = useState<string | null>(null);
   
   const [selectedMapFeatures, setSelectedMapFeatures] = useState<Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }>>([]);
+  const selectedMapFeaturesRef = useRef(selectedMapFeatures);
+  const [selectionCandidates, setSelectionCandidates] = useState<SelectionCandidate[]>([]);
+  const [pendingClickEvent, setPendingClickEvent] = useState<{ ctrlKey: boolean; metaKey: boolean } | null>(null);
+  const pendingClickEventRef = useRef(pendingClickEvent);
   const selectionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const dragBoxRef = useRef<DragBox | null>(null);
   const selectionModeRef = useRef(false);
@@ -472,6 +485,87 @@ export function MapViewer({
   useEffect(() => {
     allEditableLayersDataRef.current = allEditableLayers;
   }, [allEditableLayers]);
+
+  // Sync refs with state to avoid stale closures in OL event handlers
+  useEffect(() => {
+    selectedMapFeaturesRef.current = selectedMapFeatures;
+  }, [selectedMapFeatures]);
+
+  useEffect(() => {
+    pendingClickEventRef.current = pendingClickEvent;
+  }, [pendingClickEvent]);
+
+  // Clear selection dialog when exiting select mode
+  useEffect(() => {
+    if (drawingMode !== 'select') {
+      setSelectionCandidates([]);
+      setPendingClickEvent(null);
+    }
+  }, [drawingMode]);
+
+  // Function to confirm feature selection (used both for single selection and after dialog choice)
+  // Uses refs to avoid stale closure issues with OL event handlers
+  const confirmFeatureSelectionInternal = useCallback((
+    candidate: SelectionCandidate, 
+    isMultiSelect: boolean
+  ) => {
+    const { layerId, featureIndex, feature } = candidate;
+    
+    // Auto-switch to the layer containing the selected feature
+    const currentActiveLayer = activeEditableLayerRef.current;
+    if (layerId !== currentActiveLayer?.id) {
+      const targetLayer = allEditableLayersDataRef.current?.find(l => l.id === layerId);
+      if (targetLayer && onSelectEditableLayerRef.current) {
+        onSelectEditableLayerRef.current(targetLayer);
+      }
+    }
+    
+    // Use ref to get current state and avoid stale closure
+    const currentSelectedFeatures = selectedMapFeaturesRef.current;
+    const isAlreadySelected = currentSelectedFeatures.some(
+      sf => sf.layerId === layerId && sf.featureIndex === featureIndex
+    );
+    
+    if (isMultiSelect) {
+      if (isAlreadySelected) {
+        setSelectedMapFeatures(prev => 
+          prev.filter(sf => !(sf.layerId === layerId && sf.featureIndex === featureIndex))
+        );
+      } else {
+        setSelectedMapFeatures(prev => [
+          ...prev, 
+          { layerId, featureIndex, feature }
+        ]);
+      }
+    } else {
+      if (isAlreadySelected) {
+        setSelectedMapFeatures([]);
+      } else {
+        setSelectedMapFeatures([{ layerId, featureIndex, feature }]);
+      }
+    }
+  }, []); // No dependencies - uses refs for current state
+
+  // Ref for accessing confirmFeatureSelectionInternal from OL event handlers
+  const confirmFeatureSelectionRef = useRef(confirmFeatureSelectionInternal);
+  useEffect(() => {
+    confirmFeatureSelectionRef.current = confirmFeatureSelectionInternal;
+  }, [confirmFeatureSelectionInternal]);
+
+  // Handle selection from the layer selection dialog
+  const handleCandidateSelect = useCallback((candidate: SelectionCandidate) => {
+    const clickEvent = pendingClickEventRef.current;
+    const isMultiSelect = clickEvent?.ctrlKey || clickEvent?.metaKey || false;
+    confirmFeatureSelectionInternal(candidate, isMultiSelect);
+    setSelectionCandidates([]);
+    setPendingClickEvent(null);
+  }, [confirmFeatureSelectionInternal]);
+
+  // Cancel layer selection dialog
+  const handleCandidateCancel = useCallback(() => {
+    setSelectionCandidates([]);
+    setPendingClickEvent(null);
+  }, []);
 
   const deleteFeaturesMutation = useMutation({
     mutationFn: async (data: { layerId: number; featureIds: number[] }) => {
@@ -757,13 +851,11 @@ export function MapViewer({
       }
 
       if (currentSelectionMode) {
-        let foundUploadedFeature: Feature<Geometry> | null = null;
-        let foundLayerId: number | null = null;
-        let foundFeatureIndex: number = -1;
+        // Collect ALL candidates from all editable layers (don't stop on first match)
+        const candidates: SelectionCandidate[] = [];
+        const seenFeatures = new Set<string>(); // Prevent duplicates
 
         map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
-          if (foundUploadedFeature) return true;
-          
           const editableLayerId = layer?.get("editableLayerId");
           if (editableLayerId !== undefined) {
             const vectorLayer = allEditableLayersRef.current.get(editableLayerId);
@@ -773,52 +865,62 @@ export function MapViewer({
                 const features = source.getFeatures();
                 const idx = features.indexOf(feature as Feature);
                 if (idx !== -1) {
-                  foundUploadedFeature = feature as Feature<Geometry>;
-                  foundLayerId = editableLayerId;
-                  foundFeatureIndex = idx;
+                  const key = `${editableLayerId}-${idx}`;
+                  if (!seenFeatures.has(key)) {
+                    seenFeatures.add(key);
+                    const layerData = allEditableLayersDataRef.current?.find(l => l.id === editableLayerId);
+                    const geom = (feature as Feature<Geometry>).getGeometry();
+                    candidates.push({
+                      layerId: editableLayerId,
+                      layerName: layerData?.name || `Layer ${editableLayerId}`,
+                      featureIndex: idx,
+                      feature: feature as Feature<Geometry>,
+                      geometryType: geom?.getType() || 'unknown',
+                    });
+                  }
                 }
               }
             }
           }
-          return true;
-        }, { hitTolerance: 10 }); // Tolerance for easier line/polygon selection
+          return false; // Continue iterating through all features
+        }, { hitTolerance: 10 });
 
-        if (foundUploadedFeature && foundLayerId !== null && foundFeatureIndex !== -1) {
-          // Auto-switch to the layer containing the selected feature
-          const currentActiveLayer = activeEditableLayerRef.current;
-          if (foundLayerId !== currentActiveLayer?.id) {
-            const targetLayer = allEditableLayersDataRef.current.find(l => l.id === foundLayerId);
-            if (targetLayer && onSelectEditableLayerRef.current) {
-              onSelectEditableLayerRef.current(targetLayer);
-            }
+        // Sort candidates: Points > Lines > Polygons (smaller geometries first)
+        const geometryPriority: Record<string, number> = {
+          'Point': 1,
+          'MultiPoint': 2,
+          'LineString': 3,
+          'MultiLineString': 4,
+          'Polygon': 5,
+          'MultiPolygon': 6,
+        };
+        candidates.sort((a, b) => 
+          (geometryPriority[a.geometryType] || 99) - (geometryPriority[b.geometryType] || 99)
+        );
+
+        if (candidates.length === 0) {
+          // No features found - clear selection if not multi-select
+          if (!evt.originalEvent.ctrlKey && !evt.originalEvent.metaKey) {
+            setSelectedMapFeatures([]);
           }
-          
-          const isAlreadySelected = selectedMapFeatures.some(
-            sf => sf.layerId === foundLayerId && sf.featureIndex === foundFeatureIndex
-          );
-          
-          if (evt.originalEvent.ctrlKey || evt.originalEvent.metaKey) {
-            if (isAlreadySelected) {
-              setSelectedMapFeatures(prev => 
-                prev.filter(sf => !(sf.layerId === foundLayerId && sf.featureIndex === foundFeatureIndex))
-              );
-            } else {
-              setSelectedMapFeatures(prev => [
-                ...prev, 
-                { layerId: foundLayerId!, featureIndex: foundFeatureIndex, feature: foundUploadedFeature! }
-              ]);
-            }
+        } else if (candidates.length === 1) {
+          // Single candidate - select directly
+          const candidate = candidates[0];
+          confirmFeatureSelectionRef.current(candidate, evt.originalEvent.ctrlKey || evt.originalEvent.metaKey);
+        } else {
+          // Multiple candidates from different layers - check if they're from the same layer
+          const uniqueLayerIds = new Set(candidates.map(c => c.layerId));
+          if (uniqueLayerIds.size === 1) {
+            // All from same layer - select the first (topmost by geometry priority)
+            confirmFeatureSelectionRef.current(candidates[0], evt.originalEvent.ctrlKey || evt.originalEvent.metaKey);
           } else {
-            if (isAlreadySelected) {
-              setSelectedMapFeatures([]);
-            } else {
-              setSelectedMapFeatures([
-                { layerId: foundLayerId, featureIndex: foundFeatureIndex, feature: foundUploadedFeature }
-              ]);
-            }
+            // Multiple layers - show selection dialog
+            setSelectionCandidates(candidates);
+            setPendingClickEvent({ 
+              ctrlKey: evt.originalEvent.ctrlKey, 
+              metaKey: evt.originalEvent.metaKey 
+            });
           }
-        } else if (!evt.originalEvent.ctrlKey && !evt.originalEvent.metaKey) {
-          setSelectedMapFeatures([]);
         }
         return;
       }
@@ -1887,6 +1989,56 @@ export function MapViewer({
       />
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
+
+      {/* Layer Selection Dialog for overlapping features */}
+      {selectionCandidates.length > 0 && (
+        <div 
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/30"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleCandidateCancel();
+          }}
+          data-testid="layer-selection-overlay"
+        >
+          <div 
+            className="bg-background border rounded-md shadow-lg p-4 min-w-[280px] max-w-[400px]"
+            data-testid="layer-selection-dialog"
+          >
+            <h3 className="text-sm font-medium mb-3">Выберите объект для выделения</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              В этой точке найдено несколько объектов из разных слоёв
+            </p>
+            <div className="space-y-1 max-h-[300px] overflow-y-auto">
+              {selectionCandidates.map((candidate, index) => (
+                <button
+                  key={`${candidate.layerId}-${candidate.featureIndex}`}
+                  onClick={() => handleCandidateSelect(candidate)}
+                  className="w-full text-left px-3 py-2 rounded-md hover-elevate flex items-center justify-between gap-2 text-sm"
+                  data-testid={`layer-selection-option-${index}`}
+                >
+                  <span className="font-medium truncate">{candidate.layerName}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {candidate.geometryType === 'Point' && 'Точка'}
+                    {candidate.geometryType === 'LineString' && 'Линия'}
+                    {candidate.geometryType === 'Polygon' && 'Полигон'}
+                    {candidate.geometryType === 'MultiPoint' && 'Мультиточка'}
+                    {candidate.geometryType === 'MultiLineString' && 'Мультилиния'}
+                    {candidate.geometryType === 'MultiPolygon' && 'Мультиполигон'}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 pt-3 border-t">
+              <button
+                onClick={handleCandidateCancel}
+                className="w-full text-center px-3 py-2 rounded-md text-sm text-muted-foreground hover-elevate"
+                data-testid="layer-selection-cancel"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
