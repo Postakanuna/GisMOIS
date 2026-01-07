@@ -401,7 +401,7 @@ export function LayerPanel({
     return (
       <div
         key={layer.id}
-        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1"
+        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 min-w-0 overflow-hidden"
         data-testid={`layer-item-${layer.id}`}
       >
         <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -631,27 +631,27 @@ export function LayerPanel({
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       {headerContent}
 
-      <Accordion type="multiple" defaultValue={["base", "wms", "wfs", "uploaded", "editable"]} className="space-y-1">
+      <Accordion type="multiple" defaultValue={["base", "wms", "wfs", "uploaded", "editable"]} className="space-y-1 min-w-0">
         {/* Editable layers section */}
-        <AccordionItem value="editable" className="border-none">
-          <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-editable-layers">
-            <div className="flex items-center gap-2">
-              <Pencil className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs font-medium">Редактируемые слои</span>
-              <span className="text-[10px] text-muted-foreground">
+        <AccordionItem value="editable" className="border-none min-w-0">
+          <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-editable-layers">
+            <div className="flex items-center gap-2 min-w-0">
+              <Pencil className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium truncate">Редактируемые слои</span>
+              <span className="text-[10px] text-muted-foreground shrink-0">
                 ({editableLayers.length})
               </span>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="space-y-1 pt-1">
-            <div className="space-y-1">
+          <AccordionContent className="space-y-1 pt-1 min-w-0">
+            <div className="space-y-1 min-w-0">
               {editableLayers.map((layer) => (
                 <div
                   key={layer.id}
-                  className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors ${
+                  className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors overflow-hidden ${
                     activeEditableLayer?.id === layer.id
                       ? "border-primary bg-primary/10"
                       : "border-sidebar-border hover:bg-accent/50"
@@ -808,51 +808,51 @@ export function LayerPanel({
         </AccordionItem>
 
         {baseLayers.length > 0 && (
-          <AccordionItem value="base" className="border-none">
-            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-base-layers">
-              <div className="flex items-center gap-2">
-                <Map className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs font-medium">Базовые слои</span>
-                <span className="text-[10px] text-muted-foreground">
+          <AccordionItem value="base" className="border-none min-w-0">
+            <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-base-layers">
+              <div className="flex items-center gap-2 min-w-0">
+                <Map className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-xs font-medium truncate">Базовые слои</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">
                   ({baseLayers.length})
                 </span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="space-y-1 pt-1">
+            <AccordionContent className="space-y-1 pt-1 min-w-0">
               {baseLayers.map(renderLayerItem)}
             </AccordionContent>
           </AccordionItem>
         )}
 
         {wmsLayers.length > 0 && (
-          <AccordionItem value="wms" className="border-none">
-            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-wms-layers">
-              <div className="flex items-center gap-2">
-                <Layers className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs font-medium">WMS слои</span>
-                <span className="text-[10px] text-muted-foreground">
+          <AccordionItem value="wms" className="border-none min-w-0">
+            <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-wms-layers">
+              <div className="flex items-center gap-2 min-w-0">
+                <Layers className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-xs font-medium truncate">WMS слои</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">
                   ({wmsLayers.length})
                 </span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="space-y-1 pt-1">
+            <AccordionContent className="space-y-1 pt-1 min-w-0">
               {wmsLayers.map(renderLayerItem)}
             </AccordionContent>
           </AccordionItem>
         )}
 
         {wfsLayers.length > 0 && (
-          <AccordionItem value="wfs" className="border-none">
-            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-wfs-layers">
-              <div className="flex items-center gap-2">
-                <Database className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs font-medium">WFS слои</span>
-                <span className="text-[10px] text-muted-foreground">
+          <AccordionItem value="wfs" className="border-none min-w-0">
+            <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-wfs-layers">
+              <div className="flex items-center gap-2 min-w-0">
+                <Database className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-xs font-medium truncate">WFS слои</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">
                   ({wfsLayers.length})
                 </span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="space-y-1 pt-1">
+            <AccordionContent className="space-y-1 pt-1 min-w-0">
               {wfsLayers.map(renderLayerItem)}
             </AccordionContent>
           </AccordionItem>
