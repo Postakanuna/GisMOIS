@@ -5,14 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import {
   Select,
   SelectContent,
@@ -299,17 +292,24 @@ export function AttributeTable({
         </ScrollArea>
       </div>
 
-      {/* Schema Editor Dialog */}
-      <Dialog open={showSchemaDialog} onOpenChange={setShowSchemaDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Настройка атрибутов слоя</DialogTitle>
-            <DialogDescription>
+      {/* Schema Editor Modal */}
+      <DraggableModal
+        isOpen={showSchemaDialog}
+        onClose={() => setShowSchemaDialog(false)}
+        title={`Настройка атрибутов: ${layerName}`}
+        defaultWidth={700}
+        defaultHeight={450}
+        minWidth={500}
+        minHeight={300}
+      >
+        <div className="flex flex-col h-full">
+          <div className="px-4 py-2 border-b">
+            <p className="text-sm text-muted-foreground">
               Определите поля атрибутивной таблицы для слоя "{layerName}"
-            </DialogDescription>
-          </DialogHeader>
+            </p>
+          </div>
           
-          <ScrollArea className="max-h-[60vh]">
+          <ScrollArea className="flex-1 px-4">
             <div className="grid gap-4 py-4">
               {editingFields.map((field, index) => (
                 <div key={index} className="grid grid-cols-12 gap-2 items-start">
@@ -385,16 +385,16 @@ export function AttributeTable({
             </div>
           </ScrollArea>
           
-          <DialogFooter>
+          <div className="flex justify-end gap-2 px-4 py-3 border-t shrink-0">
             <Button variant="outline" onClick={() => setShowSchemaDialog(false)}>
               Отмена
             </Button>
             <Button onClick={handleSaveSchema} data-testid="button-save-schema">
               Сохранить
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
+      </DraggableModal>
     </>
   );
 }
