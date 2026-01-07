@@ -401,12 +401,12 @@ export function LayerPanel({
     return (
       <div
         key={layer.id}
-        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1"
+        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 overflow-hidden"
         data-testid={`layer-item-${layer.id}`}
       >
         <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
         <span 
-          className="text-xs font-medium truncate flex-1 min-w-0"
+          className="text-xs font-medium truncate flex-1 min-w-0 overflow-hidden"
           title={layer.name}
         >
           {layer.name}
@@ -649,7 +649,7 @@ export function LayerPanel({
               {editableLayers.map((layer) => (
                 <div
                   key={layer.id}
-                  className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors ${
+                  className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors overflow-hidden ${
                     activeEditableLayer?.id === layer.id
                       ? "border-primary bg-primary/10"
                       : "border-sidebar-border hover:bg-accent/50"
@@ -686,8 +686,8 @@ export function LayerPanel({
                   />
                   
                   {/* Layer name and info */}
-                  <div className="flex-1 min-w-0 flex items-center gap-1">
-                    <span className="text-xs font-medium truncate" title={layer.name}>
+                  <div className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden">
+                    <span className="text-xs font-medium truncate min-w-0 flex-1" title={layer.name}>
                       {layer.name}
                     </span>
                     {layer.source === "import" && (
