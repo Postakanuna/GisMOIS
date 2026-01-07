@@ -401,16 +401,18 @@ export function LayerPanel({
     return (
       <div
         key={layer.id}
-        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 overflow-hidden"
+        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1"
         data-testid={`layer-item-${layer.id}`}
       >
         <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
-        <span 
-          className="text-xs font-medium truncate flex-1 min-w-0 overflow-hidden"
-          title={layer.name}
-        >
-          {layer.name}
-        </span>
+        <div className="flex-1 min-w-0">
+          <span 
+            className="block text-xs font-medium truncate"
+            title={layer.name}
+          >
+            {layer.name}
+          </span>
+        </div>
         <Button
           size="icon"
           variant="ghost"
@@ -649,7 +651,7 @@ export function LayerPanel({
               {editableLayers.map((layer) => (
                 <div
                   key={layer.id}
-                  className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors overflow-hidden ${
+                  className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors ${
                     activeEditableLayer?.id === layer.id
                       ? "border-primary bg-primary/10"
                       : "border-sidebar-border hover:bg-accent/50"
@@ -661,45 +663,46 @@ export function LayerPanel({
                   }}
                   data-testid={`editable-layer-item-${layer.id}`}
                 >
-                  {/* Visibility toggle */}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-5 w-5 shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateLayerMutation.mutate({ id: layer.id, visible: !layer.visible });
-                    }}
-                    data-testid={`button-toggle-visibility-${layer.id}`}
-                  >
-                    {layer.visible ? (
-                      <Eye className="h-3 w-3" />
-                    ) : (
-                      <EyeOff className="h-3 w-3 text-muted-foreground" />
-                    )}
-                  </Button>
-                  
-                  {/* Color indicator */}
-                  <div
-                    className="h-3 w-3 rounded-sm shrink-0"
-                    style={{ backgroundColor: layer.color }}
-                  />
-                  
-                  {/* Layer name and info */}
-                  <div className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden">
-                    <span className="text-xs font-medium truncate min-w-0 flex-1" title={layer.name}>
-                      {layer.name}
-                    </span>
-                    {layer.source === "import" && (
-                      <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-                    )}
+                  {/* Left controls - shrink-0 group */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-5 w-5"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateLayerMutation.mutate({ id: layer.id, visible: !layer.visible });
+                      }}
+                      data-testid={`button-toggle-visibility-${layer.id}`}
+                    >
+                      {layer.visible ? (
+                        <Eye className="h-3 w-3" />
+                      ) : (
+                        <EyeOff className="h-3 w-3 text-muted-foreground" />
+                      )}
+                    </Button>
+                    <div
+                      className="h-3 w-3 rounded-sm"
+                      style={{ backgroundColor: layer.color }}
+                    />
                   </div>
                   
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {layer.featureCount || 0}
-                  </span>
+                  {/* Layer name - flex-1 min-w-0 to allow shrinking */}
+                  <div className="flex-1 min-w-0">
+                    <span className="block text-xs font-medium truncate" title={layer.name}>
+                      {layer.name}
+                      {layer.source === "import" && (
+                        <FileArchive className="inline-block h-2.5 w-2.5 ml-1 text-muted-foreground" />
+                      )}
+                    </span>
+                  </div>
                   
-                  {/* Color & style picker */}
+                  {/* Right controls - shrink-0 group */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[10px] text-muted-foreground">
+                      {layer.featureCount || 0}
+                    </span>
+                  
                   <Popover>
                     <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
                       <Button
@@ -783,7 +786,7 @@ export function LayerPanel({
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-5 w-5 shrink-0"
+                    className="h-5 w-5"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDeleteEditableLayer?.(layer.id);
@@ -792,6 +795,7 @@ export function LayerPanel({
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
+                  </div>
                 </div>
               ))}
               {editableLayers.length === 0 && (
