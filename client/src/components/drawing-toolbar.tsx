@@ -42,11 +42,11 @@ interface DrawingToolbarProps {
   featureCount?: number;
 }
 
-const TOOL_BUTTONS: { mode: DrawingMode; icon: typeof MousePointer2; label: string; tooltip: string }[] = [
+const ALL_TOOL_BUTTONS: { mode: DrawingMode; icon: typeof MousePointer2; label: string; tooltip: string; geometryType?: string }[] = [
   { mode: "select", icon: MousePointer2, label: "Выбор", tooltip: "Выбор объектов (V)" },
-  { mode: "point", icon: Circle, label: "Точка", tooltip: "Создать точку (P)" },
-  { mode: "line", icon: Minus, label: "Линия", tooltip: "Создать линию (L)" },
-  { mode: "polygon", icon: Pentagon, label: "Полигон", tooltip: "Создать полигон (G)" },
+  { mode: "point", icon: Circle, label: "Точка", tooltip: "Создать точку (P)", geometryType: "Point" },
+  { mode: "line", icon: Minus, label: "Линия", tooltip: "Создать линию (L)", geometryType: "LineString" },
+  { mode: "polygon", icon: Pentagon, label: "Полигон", tooltip: "Создать полигон (G)", geometryType: "Polygon" },
   { mode: "modify", icon: Move, label: "Редакт.", tooltip: "Редактировать вершины (M)" },
 ];
 
@@ -74,6 +74,18 @@ export function DrawingToolbar({
   const canDraw = activeLayer !== null;
   const isSelectMode = mode === "select";
 
+  // Filter tool buttons based on active layer's geometry type
+  const toolButtons = ALL_TOOL_BUTTONS.filter(tool => {
+    // Always show select and modify
+    if (!tool.geometryType) return true;
+    // Only show geometry tool matching layer type
+    if (activeLayer) {
+      return tool.geometryType === activeLayer.geometryType;
+    }
+    // Show all when no layer selected
+    return true;
+  });
+
   return (
     <>
       <Card className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1 bg-background/95 backdrop-blur-sm">
@@ -89,7 +101,7 @@ export function DrawingToolbar({
         )}
 
         {/* Drawing tools */}
-        {TOOL_BUTTONS.map(({ mode: toolMode, icon: Icon, label, tooltip }, index) => {
+        {toolButtons.map(({ mode: toolMode, icon: Icon, label, tooltip }) => {
           const isActive = mode === toolMode;
           const isDisabled = !canDraw && toolMode !== "select";
           
