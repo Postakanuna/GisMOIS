@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Ticket, type InsertTicket, type Facility, type InsertFacility, type Trace, type InsertTrace, type UploadedLayer, type InsertUploadedLayer, type EditableLayer, type InsertEditableLayer, type DrawnFeature, type InsertDrawnFeature, type LayerSchemaDefinition, type InsertLayerSchemaDefinition, type AttributeField } from "@shared/schema";
+import { type User, type InsertUser, type Ticket, type InsertTicket, type Facility, type InsertFacility, type Trace, type InsertTrace, type EditableLayer, type InsertEditableLayer, type DrawnFeature, type InsertDrawnFeature, type LayerSchemaDefinition, type InsertLayerSchemaDefinition, type AttributeField } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -20,13 +20,7 @@ export interface IStorage {
   createTrace(trace: InsertTrace): Promise<Trace>;
   deleteTrace(id: number): Promise<boolean>;
   deleteTracesByBuilding(buildingId: number): Promise<boolean>;
-  getUploadedLayers(): Promise<UploadedLayer[]>;
-  getUploadedLayer(id: number): Promise<UploadedLayer | undefined>;
-  createUploadedLayer(layer: InsertUploadedLayer): Promise<UploadedLayer>;
-  createUploadedLayersBatch(layers: InsertUploadedLayer[]): Promise<UploadedLayer[]>;
-  updateUploadedLayer(id: number, updates: Partial<InsertUploadedLayer>): Promise<UploadedLayer | undefined>;
-  deleteUploadedLayer(id: number): Promise<boolean>;
-  // Editable layers (user-created layers for drawing)
+  // Editable layers (user-created or imported from shapefile)
   getEditableLayers(): Promise<EditableLayer[]>;
   getEditableLayer(id: number): Promise<EditableLayer | undefined>;
   createEditableLayer(layer: InsertEditableLayer): Promise<EditableLayer>;
@@ -36,6 +30,7 @@ export interface IStorage {
   getDrawnFeatures(layerId: number): Promise<DrawnFeature[]>;
   getDrawnFeature(id: number): Promise<DrawnFeature | undefined>;
   createDrawnFeature(feature: InsertDrawnFeature): Promise<DrawnFeature>;
+  createDrawnFeaturesBatch(features: InsertDrawnFeature[]): Promise<DrawnFeature[]>;
   updateDrawnFeature(id: number, updates: Partial<InsertDrawnFeature>): Promise<DrawnFeature | undefined>;
   deleteDrawnFeature(id: number): Promise<boolean>;
   deleteDrawnFeaturesByLayer(layerId: number): Promise<boolean>;
@@ -53,8 +48,6 @@ export class MemStorage implements IStorage {
   private facilityIdCounter: number;
   private traces: Map<number, Trace>;
   private traceIdCounter: number;
-  private uploadedLayers: Map<number, UploadedLayer>;
-  private uploadedLayerIdCounter: number;
   private editableLayers: Map<number, EditableLayer>;
   private editableLayerIdCounter: number;
   private drawnFeatures: Map<number, DrawnFeature>;
@@ -70,8 +63,6 @@ export class MemStorage implements IStorage {
     this.facilityIdCounter = 1;
     this.traces = new Map();
     this.traceIdCounter = 1;
-    this.uploadedLayers = new Map();
-    this.uploadedLayerIdCounter = 1;
     this.editableLayers = new Map();
     this.editableLayerIdCounter = 1;
     this.drawnFeatures = new Map();
@@ -193,56 +184,6 @@ export class MemStorage implements IStorage {
     return tracesToDelete.length > 0;
   }
 
-  async getUploadedLayers(): Promise<UploadedLayer[]> {
-    return Array.from(this.uploadedLayers.values());
-  }
-
-  async getUploadedLayer(id: number): Promise<UploadedLayer | undefined> {
-    return this.uploadedLayers.get(id);
-  }
-
-  async createUploadedLayer(insertLayer: InsertUploadedLayer): Promise<UploadedLayer> {
-    const id = this.uploadedLayerIdCounter++;
-    const layer: UploadedLayer = {
-      ...insertLayer,
-      id,
-      createdAt: new Date().toISOString(),
-    };
-    this.uploadedLayers.set(id, layer);
-    return layer;
-  }
-
-  async createUploadedLayersBatch(insertLayers: InsertUploadedLayer[]): Promise<UploadedLayer[]> {
-    const createdLayers: UploadedLayer[] = [];
-    for (const insertLayer of insertLayers) {
-      const id = this.uploadedLayerIdCounter++;
-      const layer: UploadedLayer = {
-        ...insertLayer,
-        id,
-        createdAt: new Date().toISOString(),
-      };
-      this.uploadedLayers.set(id, layer);
-      createdLayers.push(layer);
-    }
-    return createdLayers;
-  }
-
-  async updateUploadedLayer(id: number, updates: Partial<InsertUploadedLayer>): Promise<UploadedLayer | undefined> {
-    const layer = this.uploadedLayers.get(id);
-    if (!layer) return undefined;
-    
-    const updatedLayer: UploadedLayer = {
-      ...layer,
-      ...updates,
-    };
-    this.uploadedLayers.set(id, updatedLayer);
-    return updatedLayer;
-  }
-
-  async deleteUploadedLayer(id: number): Promise<boolean> {
-    return this.uploadedLayers.delete(id);
-  }
-
   // Editable layers methods
   async getEditableLayers(): Promise<EditableLayer[]> {
     return Array.from(this.editableLayers.values());
@@ -319,6 +260,41 @@ export class MemStorage implements IStorage {
     }
     
     return feature;
+  }
+
+  async createDrawnFeaturesBatch(insertFeatures: InsertDrawnFeature[]): Promise<DrawnFeature[]> {
+    const now = new Date().toISOString();
+    const createdFeatures: DrawnFeature[] = [];
+    const layerCounts = new Map<number, number>();
+    
+    for (const insertFeature of insertFeatures) {
+      const id = this.drawnFeatureIdCounter++;
+      const feature: DrawnFeature = {
+        ...insertFeature,
+        id,
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.drawnFeatures.set(id, feature);
+      createdFeatures.push(feature);
+      
+      // Track count per layer
+      const count = layerCounts.get(insertFeature.layerId) || 0;
+      layerCounts.set(insertFeature.layerId, count + 1);
+    }
+    
+    // Update layer feature counts
+    Array.from(layerCounts.entries()).forEach(([layerId, count]) => {
+      const layer = this.editableLayers.get(layerId);
+      if (layer) {
+        layer.featureCount += count;
+        layer.updatedAt = now;
+        this.editableLayers.set(layer.id, layer);
+      }
+    });
+    
+    return createdFeatures;
   }
 
   async updateDrawnFeature(id: number, updates: Partial<InsertDrawnFeature>): Promise<DrawnFeature | undefined> {

@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema, insertUploadedLayerSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";

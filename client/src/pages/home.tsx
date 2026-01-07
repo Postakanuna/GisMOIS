@@ -23,7 +23,7 @@ import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useDrawing } from "@/hooks/use-drawing";
-import type { ConnectionStatus, UploadedLayer, EditableLayer, GeometryType } from "@shared/schema";
+import type { ConnectionStatus, EditableLayer, GeometryType } from "@shared/schema";
 
 interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnectionContext>, 'layers' | 'toggleLayerVisibility' | 'setLayerOpacity' | 'layerFilters' | 'activeFilters' | 'toggleFilter'> {
   editableLayers: EditableLayer[];
@@ -147,10 +147,8 @@ export default function Home() {
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
 
-  const { data: uploadedLayers = [] } = useQuery<UploadedLayer[]>({
-    queryKey: ["/api/uploaded-layers"],
-    refetchOnWindowFocus: false,
-  });
+  // Imported layers are now part of editable layers with source: "import"
+  const importedLayers = drawing.editableLayers.filter(l => l.source === "import");
 
   const handleSelectedFeaturesChange = useCallback((features: SelectedFeatureData[]) => {
     setSelectedFeatures(features);
@@ -180,6 +178,7 @@ export default function Home() {
       lineStyle: "solid",
       visible: true,
       opacity: 1,
+      source: "user",
     });
   }, [drawing]);
 

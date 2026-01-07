@@ -166,25 +166,9 @@ export type PointStyle = z.infer<typeof pointStyleSchema>;
 export const lineStyleSchema = z.enum(["solid", "dashed", "double"]);
 export type LineStyle = z.infer<typeof lineStyleSchema>;
 
-// Uploaded shapefile layer schema
-export const uploadedLayerSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  filename: z.string(),
-  visible: z.boolean().default(true),
-  opacity: z.number().min(0).max(1).default(1),
-  color: z.string().default("#1976D2"),
-  pointStyle: pointStyleSchema.default("circle"),
-  lineStyle: lineStyleSchema.default("solid"),
-  geojson: z.any(),
-  featureCount: z.number(),
-  createdAt: z.string(),
-});
-
-export type UploadedLayer = z.infer<typeof uploadedLayerSchema>;
-
-export const insertUploadedLayerSchema = uploadedLayerSchema.omit({ id: true, createdAt: true });
-export type InsertUploadedLayer = z.infer<typeof insertUploadedLayerSchema>;
+// Layer source type
+export const layerSourceSchema = z.enum(["user", "import"]);
+export type LayerSource = z.infer<typeof layerSourceSchema>;
 
 // Geometry types for drawn features
 export const geometryTypeSchema = z.enum(["Point", "LineString", "Polygon"]);
@@ -250,7 +234,7 @@ export type FeatureHistory = z.infer<typeof featureHistorySchema>;
 export const insertFeatureHistorySchema = featureHistorySchema.omit({ id: true, createdAt: true });
 export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
 
-// Editable layer (user-created layer for drawing)
+// Editable layer (user-created layer for drawing or imported from shapefile)
 export const editableLayerSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -261,6 +245,8 @@ export const editableLayerSchema = z.object({
   visible: z.boolean().default(true),
   opacity: z.number().min(0).max(1).default(1),
   featureCount: z.number().default(0),
+  source: layerSourceSchema.default("user"), // "user" = created in app, "import" = from shapefile
+  sourceFileName: z.string().optional(), // original filename for imported layers
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -291,6 +277,8 @@ export const editableLayers = pgTable("editable_layers", {
   visible: integer("visible").notNull().default(1),
   opacity: real("opacity").notNull().default(1),
   featureCount: integer("feature_count").notNull().default(0),
+  source: text("source").notNull().default("user"), // "user" or "import"
+  sourceFileName: text("source_file_name"), // original filename for imported layers
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
