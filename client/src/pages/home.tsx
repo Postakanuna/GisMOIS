@@ -312,9 +312,6 @@ export default function Home() {
                 mode={drawing.drawingMode}
                 onModeChange={drawing.setDrawingMode}
                 activeLayer={drawing.activeLayer}
-                editableLayers={drawing.editableLayers}
-                onLayerSelect={drawing.selectLayer}
-                onCreateLayer={drawing.createLayer}
                 onDeleteSelected={drawing.deleteSelectedFeatures}
                 hasSelection={drawing.selectedFeatureIds.length > 0}
                 canUndo={drawing.canUndo}
