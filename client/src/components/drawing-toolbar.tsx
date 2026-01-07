@@ -16,6 +16,7 @@ import {
   Redo2,
   Save,
   X,
+  Table2,
 } from "lucide-react";
 import type { EditableLayer } from "@shared/schema";
 
@@ -36,6 +37,9 @@ interface DrawingToolbarProps {
   selectedCount?: number;
   onClearSelection?: () => void;
   isDeleting?: boolean;
+  showAttributeTable?: boolean;
+  onToggleAttributeTable?: () => void;
+  featureCount?: number;
 }
 
 const TOOL_BUTTONS: { mode: DrawingMode; icon: typeof MousePointer2; label: string; tooltip: string }[] = [
@@ -62,6 +66,9 @@ export function DrawingToolbar({
   selectedCount = 0,
   onClearSelection,
   isDeleting = false,
+  showAttributeTable = false,
+  onToggleAttributeTable,
+  featureCount = 0,
 }: DrawingToolbarProps) {
   const isDrawingMode = mode === "point" || mode === "line" || mode === "polygon";
   const canDraw = activeLayer !== null;
@@ -82,27 +89,49 @@ export function DrawingToolbar({
         )}
 
         {/* Drawing tools */}
-        {TOOL_BUTTONS.map(({ mode: toolMode, icon: Icon, label, tooltip }) => {
+        {TOOL_BUTTONS.map(({ mode: toolMode, icon: Icon, label, tooltip }, index) => {
           const isActive = mode === toolMode;
           const isDisabled = !canDraw && toolMode !== "select";
           
           return (
-            <Tooltip key={toolMode}>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant={isActive ? "default" : "ghost"}
-                  className={`h-8 px-2 ${isDisabled ? "opacity-50" : ""}`}
-                  onClick={() => !isDisabled && onModeChange(toolMode)}
-                  disabled={isDisabled}
-                  data-testid={`button-tool-${toolMode}`}
-                >
-                  <Icon className="h-4 w-4 mr-1" />
-                  <span className="text-xs">{label}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{tooltip}</TooltipContent>
-            </Tooltip>
+            <span key={toolMode} className="contents">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant={isActive ? "default" : "ghost"}
+                    className={`h-8 px-2 ${isDisabled ? "opacity-50" : ""}`}
+                    onClick={() => !isDisabled && onModeChange(toolMode)}
+                    disabled={isDisabled}
+                    data-testid={`button-tool-${toolMode}`}
+                  >
+                    <Icon className="h-4 w-4 mr-1" />
+                    <span className="text-xs">{label}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{tooltip}</TooltipContent>
+              </Tooltip>
+              
+              {/* Insert attribute table button after select */}
+              {toolMode === "select" && onToggleAttributeTable && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant={showAttributeTable ? "default" : "ghost"}
+                      className="h-8 px-2"
+                      onClick={onToggleAttributeTable}
+                      disabled={featureCount === 0}
+                      data-testid="button-toggle-attribute-table"
+                    >
+                      <Table2 className="h-4 w-4 mr-1" />
+                      <span className="text-xs">Таблица</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Таблица атрибутов (T)</TooltipContent>
+                </Tooltip>
+              )}
+            </span>
           );
         })}
 

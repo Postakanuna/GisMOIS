@@ -35,8 +35,6 @@ import {
   Trash2, 
   Save,
   X,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import type { DrawnFeature, AttributeField, AttributeFieldType, LayerSchemaDefinition } from "@shared/schema";
 
@@ -67,7 +65,6 @@ export function AttributeTable({
   onSchemaUpdate,
   layerName,
 }: AttributeTableProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
   const [showSchemaDialog, setShowSchemaDialog] = useState(false);
   const [editingFields, setEditingFields] = useState<AttributeField[]>([]);
   const [editingCell, setEditingCell] = useState<{ featureId: number; field: string } | null>(null);
@@ -235,87 +232,72 @@ export function AttributeTable({
 
   return (
     <>
-      <Card className="absolute bottom-4 left-4 right-4 z-10 max-h-[40vh] bg-background/95 backdrop-blur-sm">
-        <CardHeader className="py-2 px-3 flex flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm font-medium">{layerName}</CardTitle>
-            <Badge variant="secondary" className="text-xs">
+      <div className="flex flex-col h-full" data-testid="attribute-table-container">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium" data-testid="text-layer-name">{layerName}</span>
+            <Badge variant="secondary" className="text-xs" data-testid="badge-feature-count">
               {features.length} объектов
             </Badge>
             {selectedFeatureIds.length > 0 && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs" data-testid="badge-selected-count">
                 Выбрано: {selectedFeatureIds.length}
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7"
-              onClick={() => setShowSchemaDialog(true)}
-              data-testid="button-edit-schema"
-            >
-              <Settings2 className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7"
-              onClick={() => setIsExpanded(!isExpanded)}
-              data-testid="button-toggle-table"
-            >
-              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-        </CardHeader>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 shrink-0"
+            onClick={() => setShowSchemaDialog(true)}
+            data-testid="button-edit-schema"
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
+        </div>
         
-        {isExpanded && (
-          <CardContent className="p-0">
-            <ScrollArea className="max-h-[30vh]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[60px]">ID</TableHead>
-                    <TableHead className="w-[80px]">Тип</TableHead>
-                    {fields.map((field) => (
-                      <TableHead key={field.name}>
-                        {field.name}
-                        {field.required && <span className="text-destructive ml-1">*</span>}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {features.map((feature) => (
-                    <TableRow
-                      key={feature.id}
-                      className={`cursor-pointer ${
-                        selectedFeatureIds.includes(feature.id) ? "bg-accent" : ""
-                      }`}
-                      onClick={(e) => onFeatureSelect(feature.id, e.ctrlKey || e.metaKey)}
-                      data-testid={`row-feature-${feature.id}`}
-                    >
-                      <TableCell className="font-mono text-xs">{feature.id}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {feature.geometryType === "Point" ? "Точка" : 
-                           feature.geometryType === "LineString" ? "Линия" : "Полигон"}
-                        </Badge>
-                      </TableCell>
-                      {fields.map((field) => (
-                        <TableCell key={field.name} className="text-sm">
-                          {renderCellValue(feature, field)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
+        <ScrollArea className="flex-1">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[60px] sticky top-0 bg-background">ID</TableHead>
+                <TableHead className="w-[80px] sticky top-0 bg-background">Тип</TableHead>
+                {fields.map((field) => (
+                  <TableHead key={field.name} className="sticky top-0 bg-background">
+                    {field.name}
+                    {field.required && <span className="text-destructive ml-1">*</span>}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {features.map((feature) => (
+                <TableRow
+                  key={feature.id}
+                  className={`cursor-pointer ${
+                    selectedFeatureIds.includes(feature.id) ? "bg-accent" : ""
+                  }`}
+                  onClick={(e) => onFeatureSelect(feature.id, e.ctrlKey || e.metaKey)}
+                  data-testid={`row-feature-${feature.id}`}
+                >
+                  <TableCell className="font-mono text-xs">{feature.id}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-xs">
+                      {feature.geometryType === "Point" ? "Точка" : 
+                       feature.geometryType === "LineString" ? "Линия" : "Полигон"}
+                    </Badge>
+                  </TableCell>
+                  {fields.map((field) => (
+                    <TableCell key={field.name} className="text-sm">
+                      {renderCellValue(feature, field)}
+                    </TableCell>
                   ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
-          </CardContent>
-        )}
-      </Card>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ScrollArea>
+      </div>
 
       {/* Schema Editor Dialog */}
       <Dialog open={showSchemaDialog} onOpenChange={setShowSchemaDialog}>

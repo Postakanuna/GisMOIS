@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Map, Settings, Menu, Layers, ArrowLeft, Pencil } from "lucide-react";
@@ -21,6 +21,7 @@ import { LayerPanel } from "@/components/layer-panel";
 import { MapViewer, type SelectedFeatureData } from "@/components/map-viewer";
 import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useDrawing } from "@/hooks/use-drawing";
 import type { ConnectionStatus, EditableLayer, GeometryType } from "@shared/schema";
@@ -146,6 +147,7 @@ export default function Home() {
   const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo">("layers");
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
+  const [showAttributeTable, setShowAttributeTable] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
 
   const handleSelectedFeaturesChange = useCallback((features: SelectedFeatureData[]) => {
@@ -179,6 +181,13 @@ export default function Home() {
       source: "user",
     });
   }, [drawing]);
+
+  // Auto-close attribute table modal when prerequisites are no longer met
+  useEffect(() => {
+    if (showAttributeTable && (!editMode || !drawing.activeLayer || drawing.features.length === 0)) {
+      setShowAttributeTable(false);
+    }
+  }, [showAttributeTable, editMode, drawing.activeLayer, drawing.features.length]);
 
   const sidebarStyle = {
     "--sidebar-width": "24rem",
@@ -325,6 +334,9 @@ export default function Home() {
                 isSaving={drawing.isSaving}
                 selectedCount={drawing.drawingMode === 'select' ? selectedFeatures.length : 0}
                 onClearSelection={() => selectionActionsRef.current?.clearSelection()}
+                showAttributeTable={showAttributeTable}
+                onToggleAttributeTable={() => setShowAttributeTable(prev => !prev)}
+                featureCount={drawing.features.length}
               />
             )}
             
@@ -354,19 +366,30 @@ export default function Home() {
               selectionActionsRef={selectionActionsRef}
             />
 
-            {editMode && drawing.activeLayer && drawing.features.length > 0 && (
-              <AttributeTable
-                features={drawing.features}
-                selectedFeatureIds={drawing.selectedFeatureIds}
-                layerSchema={drawing.layerSchema || null}
-                onFeatureSelect={drawing.selectFeature}
-                onFeatureUpdate={(featureId, properties) => {
-                  drawing.updateFeature(featureId, { properties });
-                }}
-                onSchemaUpdate={drawing.updateSchema}
-                layerName={drawing.activeLayer.name}
-              />
-            )}
+            {/* Attribute Table Modal */}
+            <DraggableModal
+              isOpen={showAttributeTable && editMode && drawing.activeLayer !== null && drawing.features.length > 0}
+              onClose={() => setShowAttributeTable(false)}
+              title={`Таблица атрибутов: ${drawing.activeLayer?.name || ''}`}
+              defaultWidth={900}
+              defaultHeight={400}
+              minWidth={500}
+              minHeight={250}
+            >
+              {drawing.activeLayer && (
+                <AttributeTable
+                  features={drawing.features}
+                  selectedFeatureIds={drawing.selectedFeatureIds}
+                  layerSchema={drawing.layerSchema || null}
+                  onFeatureSelect={drawing.selectFeature}
+                  onFeatureUpdate={(featureId, properties) => {
+                    drawing.updateFeature(featureId, { properties });
+                  }}
+                  onSchemaUpdate={drawing.updateSchema}
+                  layerName={drawing.activeLayer.name}
+                />
+              )}
+            </DraggableModal>
           </main>
         </div>
       </div>
