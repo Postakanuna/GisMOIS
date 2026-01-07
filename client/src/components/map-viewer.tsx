@@ -769,7 +769,7 @@ export function MapViewer({
             }
           }
           return true;
-        });
+        }, { hitTolerance: 10 }); // Tolerance for easier line/polygon selection
 
         if (foundUploadedFeature && foundLayerId !== null && foundFeatureIndex !== -1) {
           const isAlreadySelected = selectedMapFeatures.some(
