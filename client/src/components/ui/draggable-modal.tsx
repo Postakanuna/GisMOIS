@@ -153,7 +153,7 @@ export function DraggableModal({
     >
       <Card
         ref={modalRef}
-        className="absolute pointer-events-auto bg-background/98 backdrop-blur-sm shadow-xl border flex flex-col"
+        className="absolute pointer-events-auto bg-background shadow-xl border flex flex-col"
         style={{
           left: position.x,
           top: position.y,
