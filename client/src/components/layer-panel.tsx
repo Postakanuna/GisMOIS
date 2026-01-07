@@ -688,13 +688,13 @@ export function LayerPanel({
                   </div>
                   
                   {/* Layer name - flex-1 min-w-0 to allow shrinking */}
-                  <div className="flex-1 min-w-0">
-                    <span className="block text-xs font-medium truncate" title={layer.name}>
+                  <div className="flex-1 min-w-0 flex items-center gap-1">
+                    <span className="text-xs font-medium truncate" title={layer.name}>
                       {layer.name}
-                      {layer.source === "import" && (
-                        <FileArchive className="inline-block h-2.5 w-2.5 ml-1 text-muted-foreground" />
-                      )}
                     </span>
+                    {layer.source === "import" && (
+                      <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                    )}
                   </div>
                   
                   {/* Right controls - shrink-0 group */}
