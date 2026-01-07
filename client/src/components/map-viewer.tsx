@@ -453,6 +453,7 @@ export function MapViewer({
   const activeEditableLayerRef = useRef(activeEditableLayer);
   const onSelectEditableLayerRef = useRef(onSelectEditableLayer);
   const allEditableLayersDataRef = useRef(allEditableLayers);
+  const onEditableFeatureSelectRef = useRef(onEditableFeatureSelect);
 
   useEffect(() => {
     placementModeRef.current = placementMode;
@@ -486,6 +487,10 @@ export function MapViewer({
     allEditableLayersDataRef.current = allEditableLayers;
   }, [allEditableLayers]);
 
+  useEffect(() => {
+    onEditableFeatureSelectRef.current = onEditableFeatureSelect;
+  }, [onEditableFeatureSelect]);
+
   // Sync refs with state to avoid stale closures in OL event handlers
   useEffect(() => {
     selectedMapFeaturesRef.current = selectedMapFeatures;
@@ -511,6 +516,9 @@ export function MapViewer({
   ) => {
     const { layerId, featureIndex, feature } = candidate;
     
+    // Get the actual feature ID from the feature properties
+    const featureId = feature.get("featureId") as number | undefined;
+    
     // Auto-switch to the layer containing the selected feature
     const currentActiveLayer = activeEditableLayerRef.current;
     if (layerId !== currentActiveLayer?.id) {
@@ -518,6 +526,11 @@ export function MapViewer({
       if (targetLayer && onSelectEditableLayerRef.current) {
         onSelectEditableLayerRef.current(targetLayer);
       }
+    }
+    
+    // Sync selection with drawing.selectedFeatureIds via callback
+    if (featureId !== undefined && onEditableFeatureSelectRef.current) {
+      onEditableFeatureSelectRef.current(featureId, isMultiSelect);
     }
     
     // Use ref to get current state and avoid stale closure
