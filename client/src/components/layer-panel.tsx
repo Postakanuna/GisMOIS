@@ -116,8 +116,6 @@ export function LayerPanel({
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerGeomType, setNewLayerGeomType] = useState<GeometryType>("Point");
 
-  // Imported layers are now part of editable layers with source: "import"
-  const importedLayers = editableLayers.filter(l => l.source === "import");
 
   const importLayerMutation = useMutation({
     mutationFn: async (data: { 
@@ -238,32 +236,9 @@ export function LayerPanel({
     }
   };
 
-  const toggleImportedVisibility = (layer: EditableLayer) => {
-    updateLayerMutation.mutate({ id: layer.id, visible: !layer.visible });
-  };
-
-  const setImportedColor = (layer: EditableLayer, color: string) => {
-    updateLayerMutation.mutate({ id: layer.id, color });
-  };
-
-  const setImportedPointStyle = (layer: EditableLayer, pointStyle: PointStyle) => {
-    updateLayerMutation.mutate({ id: layer.id, pointStyle });
-  };
-
-  const setImportedLineStyle = (layer: EditableLayer, lineStyle: LineStyle) => {
-    updateLayerMutation.mutate({ id: layer.id, lineStyle });
-  };
-
-  const getImportedLayerGeometryType = (layer: EditableLayer): LayerGeometryType => {
-    if (layer.geometryType === "Point") return "point";
-    if (layer.geometryType === "LineString") return "line";
-    if (layer.geometryType === "Polygon") return "polygon";
-    return "unknown";
-  };
-
-  // For analytics, filter by geometry type
-  const pointLayers = importedLayers.filter(l => l.geometryType === "Point");
-  const lineLayers = importedLayers.filter(l => l.geometryType === "LineString");
+  // For analytics, filter by geometry type from all editable layers
+  const pointLayers = editableLayers.filter(l => l.geometryType === "Point");
+  const lineLayers = editableLayers.filter(l => l.geometryType === "LineString");
 
   const runAnalysis = async () => {
     if (!accidentLayerId || !pipelineLayerId) {
@@ -453,155 +428,6 @@ export function LayerPanel({
     );
   };
 
-  const renderImportedLayerItem = (layer: EditableLayer) => {
-    return (
-      <div
-        key={layer.id}
-        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 min-w-0"
-        data-testid={`imported-layer-item-${layer.id}`}
-      >
-        <div 
-          className="h-2.5 w-2.5 rounded-full shrink-0" 
-          style={{ backgroundColor: layer.color }}
-        />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="text-xs font-medium min-w-0 cursor-default truncate flex-1">
-              {layer.name.length > 30 ? `${layer.name.slice(0, 30)}...` : layer.name}
-            </span>
-          </TooltipTrigger>
-          {layer.name.length > 30 && (
-            <TooltipContent side="top" className="max-w-[300px]">
-              <p className="text-xs break-words">{layer.name}</p>
-            </TooltipContent>
-          )}
-        </Tooltip>
-        <span className="text-[10px] text-muted-foreground shrink-0">
-          {layer.featureCount}
-        </span>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-6 w-6 shrink-0"
-          onClick={() => toggleImportedVisibility(layer)}
-          data-testid={`button-toggle-visibility-${layer.id}`}
-        >
-          {layer.visible ? (
-            <Eye className="h-3 w-3" />
-          ) : (
-            <EyeOff className="h-3 w-3 text-muted-foreground" />
-          )}
-        </Button>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-6 w-6 shrink-0"
-              data-testid={`button-style-picker-${layer.id}`}
-            >
-              <Palette className="h-3 w-3" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-3" align="end">
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Цвет</p>
-                <div className="grid grid-cols-4 gap-1">
-                  {LAYER_COLORS.map((color) => (
-                    <button
-                      key={color}
-                      className={`h-6 w-6 rounded-md border-2 hover:scale-110 transition-transform ${layer.color === color ? "border-foreground" : "border-transparent"}`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => setImportedColor(layer, color)}
-                      data-testid={`button-select-color-${layer.id}-${color}`}
-                    />
-                  ))}
-                </div>
-              </div>
-              {getImportedLayerGeometryType(layer) === "point" && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">Форма точки</p>
-                  <div className="flex gap-1">
-                    {POINT_STYLES.map((style) => {
-                      const IconComponent = style.icon;
-                      const isActive = (layer.pointStyle || "circle") === style.value;
-                      return (
-                        <Tooltip key={style.value}>
-                          <TooltipTrigger asChild>
-                            <button
-                              className={`h-7 w-7 rounded-md border flex items-center justify-center hover:scale-110 transition-transform ${isActive ? "bg-accent border-foreground" : "border-border"}`}
-                              onClick={() => setImportedPointStyle(layer, style.value)}
-                              data-testid={`button-point-style-${layer.id}-${style.value}`}
-                            >
-                              <IconComponent className="h-4 w-4" style={{ color: layer.color }} />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p className="text-xs">{style.label}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {getImportedLayerGeometryType(layer) === "line" && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">Стиль линии</p>
-                  <div className="flex gap-1">
-                    {LINE_STYLES.map((style) => {
-                      const isActive = (layer.lineStyle || "solid") === style.value;
-                      return (
-                        <Tooltip key={style.value}>
-                          <TooltipTrigger asChild>
-                            <button
-                              className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1 hover:scale-105 transition-transform ${isActive ? "bg-accent border-foreground" : "border-border"}`}
-                              onClick={() => setImportedLineStyle(layer, style.value)}
-                              data-testid={`button-line-style-${layer.id}-${style.value}`}
-                            >
-                              <svg width="24" height="4" viewBox="0 0 24 4">
-                                {style.value === "solid" && (
-                                  <line x1="0" y1="2" x2="24" y2="2" stroke={layer.color} strokeWidth="2" />
-                                )}
-                                {style.value === "dashed" && (
-                                  <line x1="0" y1="2" x2="24" y2="2" stroke={layer.color} strokeWidth="2" strokeDasharray="4 2" />
-                                )}
-                                {style.value === "double" && (
-                                  <>
-                                    <line x1="0" y1="1" x2="24" y2="1" stroke={layer.color} strokeWidth="1" />
-                                    <line x1="0" y1="3" x2="24" y2="3" stroke={layer.color} strokeWidth="1" />
-                                  </>
-                                )}
-                              </svg>
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p className="text-xs">{style.label}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-6 w-6 shrink-0"
-          onClick={() => deleteImportedLayerMutation.mutate(layer.id)}
-          disabled={deleteImportedLayerMutation.isPending}
-          data-testid={`button-delete-layer-${layer.id}`}
-        >
-          <Trash2 className="h-3 w-3 text-destructive" />
-        </Button>
-      </div>
-    );
-  };
-
   const headerContent = (
     <div className="flex items-center justify-between gap-2 pb-2 border-b border-sidebar-border">
       <div className="flex items-center gap-2">
@@ -704,7 +530,7 @@ export function LayerPanel({
             <p>Загрузить Shapefile (ZIP)</p>
           </TooltipContent>
         </Tooltip>
-        {importedLayers.length >= 2 && pointLayers.length > 0 && lineLayers.length > 0 && (
+        {editableLayers.length >= 2 && pointLayers.length > 0 && lineLayers.length > 0 && (
           <Dialog open={analyticsOpen} onOpenChange={setAnalyticsOpen}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -829,24 +655,135 @@ export function LayerPanel({
                       : "border-sidebar-border hover:bg-accent/50"
                   }`}
                   onClick={() => {
-                    // Only select if not already selected (toggle handled externally)
                     if (activeEditableLayer?.id !== layer.id) {
                       onSelectEditableLayer?.(layer);
                     }
                   }}
                   data-testid={`editable-layer-item-${layer.id}`}
                 >
-                  <Pencil className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  <span className="text-xs font-medium truncate flex-1 min-w-0" title={layer.name}>
-                    {layer.name}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {layer.geometryType === "Point" ? "Точки" : layer.geometryType === "LineString" ? "Линии" : "Полигоны"}
-                  </span>
+                  {/* Visibility toggle */}
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-6 w-6 shrink-0"
+                    className="h-5 w-5 shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateLayerMutation.mutate({ id: layer.id, visible: !layer.visible });
+                    }}
+                    data-testid={`button-toggle-visibility-${layer.id}`}
+                  >
+                    {layer.visible ? (
+                      <Eye className="h-3 w-3" />
+                    ) : (
+                      <EyeOff className="h-3 w-3 text-muted-foreground" />
+                    )}
+                  </Button>
+                  
+                  {/* Color indicator */}
+                  <div
+                    className="h-3 w-3 rounded-sm shrink-0"
+                    style={{ backgroundColor: layer.color }}
+                  />
+                  
+                  {/* Layer name and info */}
+                  <div className="flex-1 min-w-0 flex items-center gap-1">
+                    <span className="text-xs font-medium truncate" title={layer.name}>
+                      {layer.name}
+                    </span>
+                    {layer.source === "import" && (
+                      <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                    )}
+                  </div>
+                  
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {layer.featureCount || 0}
+                  </span>
+                  
+                  {/* Color & style picker */}
+                  <Popover>
+                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 shrink-0"
+                        data-testid={`button-layer-style-${layer.id}`}
+                      >
+                        <Palette className="h-3 w-3" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52 p-2" align="end" onClick={(e) => e.stopPropagation()}>
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium">Цвет</p>
+                        <div className="flex flex-wrap gap-1">
+                          {LAYER_COLORS.map((color) => (
+                            <button
+                              key={color}
+                              className={`h-5 w-5 rounded-sm border ${layer.color === color ? "ring-2 ring-primary ring-offset-1" : ""}`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => updateLayerMutation.mutate({ id: layer.id, color })}
+                              data-testid={`color-option-${layer.id}-${color}`}
+                            />
+                          ))}
+                        </div>
+                        
+                        {layer.geometryType === "Point" && (
+                          <>
+                            <p className="text-xs font-medium mt-2">Форма точки</p>
+                            <div className="flex gap-1">
+                              {POINT_STYLES.map(({ value, label, icon: Icon }) => (
+                                <Tooltip key={value}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className={`h-6 w-6 flex items-center justify-center rounded border ${layer.pointStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
+                                      onClick={() => updateLayerMutation.mutate({ id: layer.id, pointStyle: value })}
+                                      data-testid={`point-style-${layer.id}-${value}`}
+                                    >
+                                      <Icon className="h-3.5 w-3.5" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p className="text-xs">{label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                        
+                        {layer.geometryType === "LineString" && (
+                          <>
+                            <p className="text-xs font-medium mt-2">Стиль линии</p>
+                            <div className="flex gap-1">
+                              {LINE_STYLES.map(({ value, label }) => (
+                                <Tooltip key={value}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className={`h-6 px-2 flex items-center justify-center rounded border text-[10px] ${layer.lineStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
+                                      onClick={() => updateLayerMutation.mutate({ id: layer.id, lineStyle: value })}
+                                      data-testid={`line-style-${layer.id}-${value}`}
+                                    >
+                                      {value === "solid" && <Minus className="h-3 w-3" />}
+                                      {value === "dashed" && <MoreHorizontal className="h-3 w-3" />}
+                                      {value === "double" && <span className="font-bold">=</span>}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p className="text-xs">{label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  
+                  {/* Delete button */}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-5 w-5 shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDeleteEditableLayer?.(layer.id);
@@ -865,23 +802,6 @@ export function LayerPanel({
             </div>
           </AccordionContent>
         </AccordionItem>
-
-        {importedLayers.length > 0 && (
-          <AccordionItem value="imported" className="border-none">
-            <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-imported-layers">
-              <div className="flex items-center gap-2">
-                <FileArchive className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs font-medium">Shapefile слои</span>
-                <span className="text-[10px] text-muted-foreground">
-                  ({importedLayers.length})
-                </span>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-1 pt-1">
-              {importedLayers.map(renderImportedLayerItem)}
-            </AccordionContent>
-          </AccordionItem>
-        )}
 
         {baseLayers.length > 0 && (
           <AccordionItem value="base" className="border-none">
@@ -935,7 +855,7 @@ export function LayerPanel({
         )}
       </Accordion>
 
-      {layers.length === 0 && importedLayers.length === 0 && (
+      {layers.length === 0 && editableLayers.length === 0 && (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Layers className="h-12 w-12 text-muted-foreground/50 mb-3" />
           <p className="text-sm text-muted-foreground">
