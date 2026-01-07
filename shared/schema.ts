@@ -186,15 +186,144 @@ export type UploadedLayer = z.infer<typeof uploadedLayerSchema>;
 export const insertUploadedLayerSchema = uploadedLayerSchema.omit({ id: true, createdAt: true });
 export type InsertUploadedLayer = z.infer<typeof insertUploadedLayerSchema>;
 
+// Geometry types for drawn features
+export const geometryTypeSchema = z.enum(["Point", "LineString", "Polygon"]);
+export type GeometryType = z.infer<typeof geometryTypeSchema>;
+
+// Attribute field types
+export const attributeFieldTypeSchema = z.enum(["text", "number", "date", "boolean", "select"]);
+export type AttributeFieldType = z.infer<typeof attributeFieldTypeSchema>;
+
+// Attribute field definition
+export const attributeFieldSchema = z.object({
+  name: z.string(),
+  type: attributeFieldTypeSchema,
+  required: z.boolean().default(false),
+  defaultValue: z.unknown().optional(),
+  options: z.array(z.string()).optional(), // For select type
+});
+export type AttributeField = z.infer<typeof attributeFieldSchema>;
+
+// Layer schema definition (for custom attribute structures)
+export const layerSchemaDefinitionSchema = z.object({
+  id: z.number(),
+  layerId: z.number(),
+  fields: z.array(attributeFieldSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type LayerSchemaDefinition = z.infer<typeof layerSchemaDefinitionSchema>;
+
+export const insertLayerSchemaDefinitionSchema = layerSchemaDefinitionSchema.omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertLayerSchemaDefinition = z.infer<typeof insertLayerSchemaDefinitionSchema>;
+
+// Drawn feature schema (user-created geometry)
+export const drawnFeatureSchema = z.object({
+  id: z.number(),
+  layerId: z.number(),
+  geometryType: geometryTypeSchema,
+  coordinates: z.any(), // GeoJSON coordinates
+  properties: z.record(z.string(), z.unknown()).default({}),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  version: z.number().default(1),
+});
+export type DrawnFeature = z.infer<typeof drawnFeatureSchema>;
+
+export const insertDrawnFeatureSchema = drawnFeatureSchema.omit({ id: true, createdAt: true, updatedAt: true, version: true });
+export type InsertDrawnFeature = z.infer<typeof insertDrawnFeatureSchema>;
+
+// Feature history for versioning
+export const featureHistorySchema = z.object({
+  id: z.number(),
+  featureId: z.number(),
+  layerId: z.number(),
+  geometryType: geometryTypeSchema,
+  coordinates: z.any(),
+  properties: z.record(z.string(), z.unknown()),
+  version: z.number(),
+  action: z.enum(["create", "update", "delete"]),
+  createdAt: z.string(),
+});
+export type FeatureHistory = z.infer<typeof featureHistorySchema>;
+
+export const insertFeatureHistorySchema = featureHistorySchema.omit({ id: true, createdAt: true });
+export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
+
+// Editable layer (user-created layer for drawing)
+export const editableLayerSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  geometryType: geometryTypeSchema,
+  color: z.string().default("#1976D2"),
+  pointStyle: pointStyleSchema.default("circle"),
+  lineStyle: lineStyleSchema.default("solid"),
+  visible: z.boolean().default(true),
+  opacity: z.number().min(0).max(1).default(1),
+  featureCount: z.number().default(0),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type EditableLayer = z.infer<typeof editableLayerSchema>;
+
+export const insertEditableLayerSchema = editableLayerSchema.omit({ id: true, createdAt: true, updatedAt: true, featureCount: true });
+export type InsertEditableLayer = z.infer<typeof insertEditableLayerSchema>;
+
 // Keep existing user schema for compatibility
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, jsonb, timestamp, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+});
+
+// PostgreSQL tables for GIS data
+export const editableLayers = pgTable("editable_layers", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
+  color: text("color").notNull().default("#1976D2"),
+  pointStyle: text("point_style").notNull().default("circle"),
+  lineStyle: text("line_style").notNull().default("solid"),
+  visible: integer("visible").notNull().default(1),
+  opacity: real("opacity").notNull().default(1),
+  featureCount: integer("feature_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const drawnFeatures = pgTable("drawn_features", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  layerId: integer("layer_id").notNull(),
+  geometryType: text("geometry_type").notNull(),
+  coordinates: jsonb("coordinates").notNull(),
+  properties: jsonb("properties").notNull().default({}),
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const featureHistory = pgTable("feature_history", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  featureId: integer("feature_id").notNull(),
+  layerId: integer("layer_id").notNull(),
+  geometryType: text("geometry_type").notNull(),
+  coordinates: jsonb("coordinates").notNull(),
+  properties: jsonb("properties").notNull(),
+  version: integer("version").notNull(),
+  action: text("action").notNull(), // create, update, delete
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const layerSchemas = pgTable("layer_schemas", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  layerId: integer("layer_id").notNull().unique(),
+  fields: jsonb("fields").notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

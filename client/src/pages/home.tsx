@@ -1,11 +1,12 @@
 import { useState, useCallback } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Map, Settings, Menu, Layers, ArrowLeft } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -18,7 +19,10 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LayerPanel } from "@/components/layer-panel";
 import { MapViewer, type SelectedFeatureData } from "@/components/map-viewer";
+import { DrawingToolbar } from "@/components/drawing-toolbar";
+import { AttributeTable } from "@/components/attribute-table";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
+import { useDrawing } from "@/hooks/use-drawing";
 import type { ConnectionStatus, UploadedLayer } from "@shared/schema";
 
 function SidebarContentPanel({
@@ -113,9 +117,11 @@ function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
 
 export default function Home() {
   const zuluConnection = useZuluConnectionContext();
+  const drawing = useDrawing();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo">("layers");
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
+  const [editMode, setEditMode] = useState(false);
 
   const { data: uploadedLayers = [] } = useQuery<UploadedLayer[]>({
     queryKey: ["/api/uploaded-layers"],
@@ -133,6 +139,13 @@ export default function Home() {
   const handleBackToLayers = useCallback(() => {
     setSidebarView("layers");
   }, []);
+
+  const toggleEditMode = useCallback(() => {
+    setEditMode(prev => !prev);
+    if (editMode) {
+      drawing.setDrawingMode("select");
+    }
+  }, [editMode, drawing]);
 
   const sidebarStyle = {
     "--sidebar-width": "24rem",
@@ -224,6 +237,16 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <ConnectionStatusBadge status={zuluConnection.status} />
               <div className="h-4 w-px bg-border" />
+              <Button 
+                variant={editMode ? "default" : "ghost"} 
+                size="sm"
+                onClick={toggleEditMode}
+                data-testid="button-toggle-edit-mode"
+                className="gap-1"
+              >
+                <Pencil className="h-4 w-4" />
+                <span className="hidden sm:inline">Редактор</span>
+              </Button>
               <Link href="/settings">
                 <Button variant="ghost" size="icon" data-testid="button-open-settings">
                   <Settings className="h-4 w-4" />
@@ -234,6 +257,25 @@ export default function Home() {
           </header>
 
           <main className="relative flex-1 overflow-hidden">
+            {editMode && (
+              <DrawingToolbar
+                mode={drawing.drawingMode}
+                onModeChange={drawing.setDrawingMode}
+                activeLayer={drawing.activeLayer}
+                editableLayers={drawing.editableLayers}
+                onLayerSelect={drawing.selectLayer}
+                onCreateLayer={drawing.createLayer}
+                onDeleteSelected={drawing.deleteSelectedFeatures}
+                hasSelection={drawing.selectedFeatureIds.length > 0}
+                canUndo={drawing.canUndo}
+                canRedo={drawing.canRedo}
+                onUndo={drawing.undo}
+                onRedo={drawing.redo}
+                onSave={drawing.save}
+                isSaving={drawing.isSaving}
+              />
+            )}
+            
             <MapViewer
               layers={zuluConnection.layers}
               connection={zuluConnection.connection}
@@ -249,7 +291,29 @@ export default function Home() {
               uploadedLayers={uploadedLayers}
               onSelectedFeaturesChange={handleSelectedFeaturesChange}
               onShowFeatureInfo={handleShowFeatureInfo}
+              editMode={editMode}
+              drawingMode={drawing.drawingMode}
+              activeEditableLayer={drawing.activeLayer}
+              editableFeatures={drawing.features}
+              onFeatureCreated={drawing.createFeature}
+              onFeatureUpdated={drawing.updateFeature}
+              selectedEditableFeatureIds={drawing.selectedFeatureIds}
+              onEditableFeatureSelect={drawing.selectFeature}
             />
+
+            {editMode && drawing.activeLayer && drawing.features.length > 0 && (
+              <AttributeTable
+                features={drawing.features}
+                selectedFeatureIds={drawing.selectedFeatureIds}
+                layerSchema={drawing.layerSchema || null}
+                onFeatureSelect={drawing.selectFeature}
+                onFeatureUpdate={(featureId, properties) => {
+                  drawing.updateFeature(featureId, { properties });
+                }}
+                onSchemaUpdate={drawing.updateSchema}
+                layerName={drawing.activeLayer.name}
+              />
+            )}
           </main>
         </div>
       </div>

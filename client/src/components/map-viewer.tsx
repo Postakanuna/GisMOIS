@@ -13,11 +13,14 @@ import WKT from "ol/format/WKT";
 import Feature from "ol/Feature";
 import { Style, Fill, Stroke, Circle, Icon } from "ol/style";
 import { LineString, Geometry } from "ol/geom";
-import { DragBox, Select } from "ol/interaction";
-import { platformModifierKeyOnly } from "ol/events/condition";
+import { DragBox, Select, Draw, Modify, Snap } from "ol/interaction";
+import { platformModifierKeyOnly, click } from "ol/events/condition";
+import type { DrawEvent } from "ol/interaction/Draw";
+import type { ModifyEvent } from "ol/interaction/Modify";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, UploadedLayer, PointStyle, LineStyle } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, UploadedLayer, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature } from "@shared/schema";
+import type { DrawingMode } from "@/components/drawing-toolbar";
 import RegularShape from "ol/style/RegularShape";
 import GeoJSON from "ol/format/GeoJSON";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
@@ -55,6 +58,15 @@ interface MapViewerProps {
   uploadedLayers?: UploadedLayer[];
   onSelectedFeaturesChange?: (features: SelectedFeatureData[]) => void;
   onShowFeatureInfo?: () => void;
+  // Drawing/editing props
+  editMode?: boolean;
+  drawingMode?: DrawingMode;
+  activeEditableLayer?: EditableLayer | null;
+  editableFeatures?: DrawnFeature[];
+  onFeatureCreated?: (geometryType: GeometryType, coordinates: unknown, properties?: Record<string, unknown>) => void;
+  onFeatureUpdated?: (featureId: number, updates: Partial<InsertDrawnFeature>) => void;
+  selectedEditableFeatureIds?: number[];
+  onEditableFeatureSelect?: (featureId: number, multi?: boolean) => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -352,7 +364,30 @@ function parseZwsResponse(xml: string): Feature[] {
   return features;
 }
 
-export function MapViewer({ layers, connection, isConnected, activeFilters, onFiltersDiscovered, onLayerLoadError, onLayerLoadSuccess, tickets = [], ticketMode, onToggleTicketMode, onCreateTicket, uploadedLayers = [], onSelectedFeaturesChange, onShowFeatureInfo }: MapViewerProps) {
+export function MapViewer({ 
+  layers, 
+  connection, 
+  isConnected, 
+  activeFilters, 
+  onFiltersDiscovered, 
+  onLayerLoadError, 
+  onLayerLoadSuccess, 
+  tickets = [], 
+  ticketMode, 
+  onToggleTicketMode, 
+  onCreateTicket, 
+  uploadedLayers = [], 
+  onSelectedFeaturesChange, 
+  onShowFeatureInfo,
+  editMode = false,
+  drawingMode,
+  activeEditableLayer,
+  editableFeatures = [],
+  onFeatureCreated,
+  onFeatureUpdated,
+  selectedEditableFeatureIds = [],
+  onEditableFeatureSelect,
+}: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const layersRef = useRef<Record<string, LayerType>>({});
@@ -390,6 +425,16 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
 
   const placementModeRef = useRef<FacilityType | null>(null);
 
+  // Drawing refs
+  const editableLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const drawInteractionRef = useRef<Draw | null>(null);
+  const modifyInteractionRef = useRef<Modify | null>(null);
+  const snapInteractionRef = useRef<Snap | null>(null);
+  const drawingModeRef = useRef<DrawingMode>(drawingMode || null);
+  const editModeRef = useRef(editMode);
+  const onFeatureCreatedRef = useRef(onFeatureCreated);
+  const activeEditableLayerRef = useRef(activeEditableLayer);
+
   useEffect(() => {
     placementModeRef.current = placementMode;
   }, [placementMode]);
@@ -397,6 +442,22 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
   useEffect(() => {
     selectionModeRef.current = selectionMode;
   }, [selectionMode]);
+
+  useEffect(() => {
+    drawingModeRef.current = drawingMode || null;
+  }, [drawingMode]);
+
+  useEffect(() => {
+    editModeRef.current = editMode;
+  }, [editMode]);
+
+  useEffect(() => {
+    onFeatureCreatedRef.current = onFeatureCreated;
+  }, [onFeatureCreated]);
+
+  useEffect(() => {
+    activeEditableLayerRef.current = activeEditableLayer;
+  }, [activeEditableLayer]);
 
   const deleteFeaturesMutation = useMutation({
     mutationFn: async (data: { layerId: number; featureIndices: number[] }) => {
@@ -563,6 +624,25 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
     });
     map.addLayer(selectionLayer);
     selectionLayerRef.current = selectionLayer;
+
+    // Editable features layer for drawing
+    const editableSource = new VectorSource();
+    const editableLayer = new VectorLayer({
+      source: editableSource,
+      properties: { id: "editable-layer" },
+      zIndex: 1500,
+      style: new Style({
+        fill: new Fill({ color: "rgba(59, 130, 246, 0.3)" }),
+        stroke: new Stroke({ color: "#3B82F6", width: 2 }),
+        image: new Circle({
+          radius: 7,
+          fill: new Fill({ color: "#3B82F6" }),
+          stroke: new Stroke({ color: "#fff", width: 2 }),
+        }),
+      }),
+    });
+    map.addLayer(editableLayer);
+    editableLayerRef.current = editableLayer;
 
     const dragBox = new DragBox({
       condition: platformModifierKeyOnly,
@@ -1051,6 +1131,171 @@ export function MapViewer({ layers, connection, isConnected, activeFilters, onFi
       osmLayer.setOpacity(osmLayerConfig.opacity);
     }
   }, [layers]);
+
+  // Manage drawing interactions
+  useEffect(() => {
+    if (!mapRef.current || !editableLayerRef.current) return;
+    const map = mapRef.current;
+    const editableSource = editableLayerRef.current.getSource();
+    if (!editableSource) return;
+
+    // Clean up previous interactions
+    if (drawInteractionRef.current) {
+      map.removeInteraction(drawInteractionRef.current);
+      drawInteractionRef.current = null;
+    }
+    if (modifyInteractionRef.current) {
+      map.removeInteraction(modifyInteractionRef.current);
+      modifyInteractionRef.current = null;
+    }
+    if (snapInteractionRef.current) {
+      map.removeInteraction(snapInteractionRef.current);
+      snapInteractionRef.current = null;
+    }
+
+    // Show/hide editable layer based on edit mode
+    editableLayerRef.current.setVisible(editMode);
+
+    if (!editMode || !drawingMode) return;
+
+    // Add snap interaction
+    const snap = new Snap({ source: editableSource });
+    map.addInteraction(snap);
+    snapInteractionRef.current = snap;
+
+    // Handle drawing modes
+    if (drawingMode === "point" || drawingMode === "line" || drawingMode === "polygon") {
+      const olDrawType = drawingMode === "point" ? "Point" : drawingMode === "line" ? "LineString" : "Polygon";
+      
+      const draw = new Draw({
+        source: editableSource,
+        type: olDrawType,
+      });
+
+      draw.on("drawend", (evt: DrawEvent) => {
+        const feature = evt.feature;
+        const geom = feature.getGeometry();
+        if (!geom) return;
+
+        // Convert geometry to coordinates
+        const format = new GeoJSON();
+        const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
+          featureProjection: "EPSG:3857",
+          dataProjection: "EPSG:4326",
+        }));
+
+        // Get geometry type as our schema type
+        let geoType: GeometryType = "Point";
+        if (drawingMode === "line") geoType = "LineString";
+        else if (drawingMode === "polygon") geoType = "Polygon";
+
+        // Call the callback to create the feature in the database
+        if (onFeatureCreatedRef.current && activeEditableLayerRef.current) {
+          onFeatureCreatedRef.current(geoType, geoJsonGeom.coordinates, {});
+        }
+
+        // Remove the feature from the source (it will be re-added from the database)
+        setTimeout(() => {
+          editableSource.removeFeature(feature);
+        }, 100);
+      });
+
+      map.addInteraction(draw);
+      drawInteractionRef.current = draw;
+    } else if (drawingMode === "modify") {
+      const modify = new Modify({ source: editableSource });
+      
+      modify.on("modifyend", (evt: ModifyEvent) => {
+        // Handle feature modification
+        const features = evt.features.getArray();
+        features.forEach((feature) => {
+          const featureId = feature.get("featureId");
+          if (featureId && onFeatureUpdated) {
+            const geom = feature.getGeometry();
+            if (geom) {
+              const format = new GeoJSON();
+              const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
+                featureProjection: "EPSG:3857",
+                dataProjection: "EPSG:4326",
+              }));
+              onFeatureUpdated(featureId, { coordinates: geoJsonGeom.coordinates });
+            }
+          }
+        });
+      });
+
+      map.addInteraction(modify);
+      modifyInteractionRef.current = modify;
+    }
+
+    return () => {
+      if (drawInteractionRef.current) {
+        map.removeInteraction(drawInteractionRef.current);
+        drawInteractionRef.current = null;
+      }
+      if (modifyInteractionRef.current) {
+        map.removeInteraction(modifyInteractionRef.current);
+        modifyInteractionRef.current = null;
+      }
+      if (snapInteractionRef.current) {
+        map.removeInteraction(snapInteractionRef.current);
+        snapInteractionRef.current = null;
+      }
+    };
+  }, [editMode, drawingMode, onFeatureUpdated]);
+
+  // Sync editable features to the map layer
+  useEffect(() => {
+    if (!editableLayerRef.current) return;
+    const source = editableLayerRef.current.getSource();
+    if (!source) return;
+
+    source.clear();
+    
+    const format = new GeoJSON();
+    
+    editableFeatures.forEach((drawnFeature) => {
+      try {
+        const geoJsonFeature = {
+          type: "Feature" as const,
+          geometry: {
+            type: drawnFeature.geometryType,
+            coordinates: drawnFeature.coordinates,
+          },
+          properties: {
+            featureId: drawnFeature.id,
+            ...drawnFeature.properties,
+          },
+        };
+        
+        const olFeatures = format.readFeatures(geoJsonFeature, {
+          featureProjection: "EPSG:3857",
+          dataProjection: "EPSG:4326",
+        });
+        
+        olFeatures.forEach((f) => {
+          f.set("featureId", drawnFeature.id);
+          
+          // Highlight selected features
+          if (selectedEditableFeatureIds.includes(drawnFeature.id)) {
+            f.setStyle(new Style({
+              fill: new Fill({ color: "rgba(255, 200, 0, 0.4)" }),
+              stroke: new Stroke({ color: "#FFC800", width: 3 }),
+              image: new Circle({
+                radius: 9,
+                fill: new Fill({ color: "#FFC800" }),
+                stroke: new Stroke({ color: "#fff", width: 2 }),
+              }),
+            }));
+          }
+          
+          source.addFeature(f);
+        });
+      } catch (err) {
+        console.error("Error adding editable feature to map:", err);
+      }
+    });
+  }, [editableFeatures, selectedEditableFeatureIds]);
 
   useEffect(() => {
     if (!mapRef.current || !connection) return;

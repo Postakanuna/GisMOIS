@@ -1,9 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema, insertUploadedLayerSchema } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema, insertUploadedLayerSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
+import { z } from "zod";
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
@@ -1018,6 +1019,232 @@ export async function registerRoutes(
       return res.send(Buffer.from(buffer));
     } catch (error) {
       console.error("Accident pipeline analysis error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // EDITABLE LAYERS API (User-created layers for drawing)
+  // ============================================
+
+  app.get("/api/editable-layers", async (_req: Request, res: Response) => {
+    try {
+      const layers = await storage.getEditableLayers();
+      return res.json(layers);
+    } catch (error) {
+      console.error("Error fetching editable layers:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/editable-layers/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const layer = await storage.getEditableLayer(id);
+      if (!layer) {
+        return res.status(404).json({ message: "Layer not found" });
+      }
+      return res.json(layer);
+    } catch (error) {
+      console.error("Error fetching editable layer:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/editable-layers", async (req: Request, res: Response) => {
+    try {
+      const parsed = insertEditableLayerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid layer data", errors: parsed.error.errors });
+      }
+      const layer = await storage.createEditableLayer(parsed.data);
+      return res.status(201).json(layer);
+    } catch (error) {
+      console.error("Error creating editable layer:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/editable-layers/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const layer = await storage.updateEditableLayer(id, req.body);
+      if (!layer) {
+        return res.status(404).json({ message: "Layer not found" });
+      }
+      return res.json(layer);
+    } catch (error) {
+      console.error("Error updating editable layer:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/editable-layers/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteEditableLayer(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Layer not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting editable layer:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // DRAWN FEATURES API (Features within editable layers)
+  // ============================================
+
+  app.get("/api/editable-layers/:layerId/features", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const features = await storage.getDrawnFeatures(layerId);
+      return res.json(features);
+    } catch (error) {
+      console.error("Error fetching drawn features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/features/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const feature = await storage.getDrawnFeature(id);
+      if (!feature) {
+        return res.status(404).json({ message: "Feature not found" });
+      }
+      return res.json(feature);
+    } catch (error) {
+      console.error("Error fetching drawn feature:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/editable-layers/:layerId/features", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const parsed = insertDrawnFeatureSchema.safeParse({ ...req.body, layerId });
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid feature data", errors: parsed.error.errors });
+      }
+      const feature = await storage.createDrawnFeature(parsed.data);
+      return res.status(201).json(feature);
+    } catch (error) {
+      console.error("Error creating drawn feature:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/features/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const feature = await storage.updateDrawnFeature(id, req.body);
+      if (!feature) {
+        return res.status(404).json({ message: "Feature not found" });
+      }
+      return res.json(feature);
+    } catch (error) {
+      console.error("Error updating drawn feature:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/features/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteDrawnFeature(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Feature not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting drawn feature:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // LAYER SCHEMA API (Attribute definitions for layers)
+  // ============================================
+
+  app.get("/api/editable-layers/:layerId/schema", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const schema = await storage.getLayerSchema(layerId);
+      if (!schema) {
+        // Return empty fields if no schema defined yet
+        return res.json({ layerId, fields: [] });
+      }
+      return res.json(schema);
+    } catch (error) {
+      console.error("Error fetching layer schema:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/editable-layers/:layerId/schema", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const fieldsSchema = z.array(attributeFieldSchema);
+      const parsed = fieldsSchema.safeParse(req.body.fields);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid schema data", errors: parsed.error.errors });
+      }
+
+      // Check if schema exists
+      let schema = await storage.getLayerSchema(layerId);
+      if (schema) {
+        schema = await storage.updateLayerSchema(layerId, parsed.data);
+      } else {
+        schema = await storage.createLayerSchema({ layerId, fields: parsed.data });
+      }
+
+      return res.json(schema);
+    } catch (error) {
+      console.error("Error updating layer schema:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // EXPORT API (Export layers to various formats)
+  // ============================================
+
+  app.get("/api/editable-layers/:layerId/export/:format", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const format = req.params.format.toLowerCase();
+      
+      const layer = await storage.getEditableLayer(layerId);
+      if (!layer) {
+        return res.status(404).json({ message: "Layer not found" });
+      }
+
+      const features = await storage.getDrawnFeatures(layerId);
+      
+      if (format === "geojson") {
+        const geojson = {
+          type: "FeatureCollection",
+          features: features.map(f => ({
+            type: "Feature",
+            geometry: {
+              type: f.geometryType,
+              coordinates: f.coordinates,
+            },
+            properties: { ...f.properties, id: f.id },
+          })),
+        };
+        
+        res.setHeader("Content-Type", "application/geo+json");
+        res.setHeader("Content-Disposition", `attachment; filename="${layer.name}.geojson"`);
+        return res.json(geojson);
+      }
+      
+      return res.status(400).json({ message: `Unsupported format: ${format}. Supported: geojson` });
+    } catch (error) {
+      console.error("Error exporting layer:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
