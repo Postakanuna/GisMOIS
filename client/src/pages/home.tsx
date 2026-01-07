@@ -23,7 +23,17 @@ import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useDrawing } from "@/hooks/use-drawing";
-import type { ConnectionStatus, UploadedLayer } from "@shared/schema";
+import type { ConnectionStatus, UploadedLayer, EditableLayer, GeometryType } from "@shared/schema";
+
+interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnectionContext>, 'layers' | 'toggleLayerVisibility' | 'setLayerOpacity' | 'layerFilters' | 'activeFilters' | 'toggleFilter'> {
+  editableLayers: EditableLayer[];
+  activeEditableLayer: EditableLayer | null;
+  onSelectEditableLayer: (layer: EditableLayer) => void;
+  onCreateEditableLayer: (name: string, geometryType: GeometryType) => void;
+  onDeleteEditableLayer: (layerId: number) => void;
+  editMode: boolean;
+  onToggleEditMode: () => void;
+}
 
 function SidebarContentPanel({
   layers,
@@ -32,7 +42,14 @@ function SidebarContentPanel({
   layerFilters,
   activeFilters,
   toggleFilter,
-}: Pick<ReturnType<typeof useZuluConnectionContext>, 'layers' | 'toggleLayerVisibility' | 'setLayerOpacity' | 'layerFilters' | 'activeFilters' | 'toggleFilter'>) {
+  editableLayers,
+  activeEditableLayer,
+  onSelectEditableLayer,
+  onCreateEditableLayer,
+  onDeleteEditableLayer,
+  editMode,
+  onToggleEditMode,
+}: SidebarContentPanelProps) {
   return (
     <ScrollArea className="h-full w-full min-w-0">
       <div className="p-4 min-w-0 max-w-full overflow-hidden">
@@ -43,6 +60,13 @@ function SidebarContentPanel({
           layerFilters={layerFilters}
           activeFilters={activeFilters}
           onToggleFilter={toggleFilter}
+          editableLayers={editableLayers}
+          activeEditableLayer={activeEditableLayer}
+          onSelectEditableLayer={onSelectEditableLayer}
+          onCreateEditableLayer={onCreateEditableLayer}
+          onDeleteEditableLayer={onDeleteEditableLayer}
+          editMode={editMode}
+          onToggleEditMode={onToggleEditMode}
         />
       </div>
     </ScrollArea>
@@ -147,6 +171,18 @@ export default function Home() {
     }
   }, [editMode, drawing]);
 
+  const handleCreateEditableLayer = useCallback((name: string, geometryType: GeometryType) => {
+    drawing.createLayer({
+      name,
+      geometryType,
+      color: "#3B82F6",
+      pointStyle: "circle",
+      lineStyle: "solid",
+      visible: true,
+      opacity: 1,
+    });
+  }, [drawing]);
+
   const sidebarStyle = {
     "--sidebar-width": "24rem",
     "--sidebar-width-icon": "4rem",
@@ -179,6 +215,13 @@ export default function Home() {
                     layerFilters={zuluConnection.layerFilters}
                     activeFilters={zuluConnection.activeFilters}
                     toggleFilter={zuluConnection.toggleFilter}
+                    editableLayers={drawing.editableLayers}
+                    activeEditableLayer={drawing.activeLayer}
+                    onSelectEditableLayer={drawing.selectLayer}
+                    onCreateEditableLayer={handleCreateEditableLayer}
+                    onDeleteEditableLayer={drawing.deleteLayer}
+                    editMode={editMode}
+                    onToggleEditMode={toggleEditMode}
                   />
                 ) : (
                   <FeatureInfoSidebarPanel
@@ -224,6 +267,13 @@ export default function Home() {
                     layerFilters={zuluConnection.layerFilters}
                     activeFilters={zuluConnection.activeFilters}
                     toggleFilter={zuluConnection.toggleFilter}
+                    editableLayers={drawing.editableLayers}
+                    activeEditableLayer={drawing.activeLayer}
+                    onSelectEditableLayer={drawing.selectLayer}
+                    onCreateEditableLayer={handleCreateEditableLayer}
+                    onDeleteEditableLayer={drawing.deleteLayer}
+                    editMode={editMode}
+                    onToggleEditMode={toggleEditMode}
                   />
                 </SheetContent>
               </Sheet>

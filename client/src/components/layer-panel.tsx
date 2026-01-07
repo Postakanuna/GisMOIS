@@ -43,8 +43,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { LayerConfig, UploadedLayer, PointStyle, LineStyle } from "@shared/schema";
+import type { LayerConfig, UploadedLayer, PointStyle, LineStyle, EditableLayer, GeometryType } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
+import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
@@ -77,6 +78,14 @@ interface LayerPanelProps {
   layerFilters?: Record<string, LayerFilters>;
   activeFilters?: Record<string, ActiveFilters>;
   onToggleFilter?: (layerId: string, filterType: keyof ActiveFilters, value: string) => void;
+  // Editable layers props
+  editableLayers?: EditableLayer[];
+  activeEditableLayer?: EditableLayer | null;
+  onSelectEditableLayer?: (layer: EditableLayer) => void;
+  onCreateEditableLayer?: (name: string, geometryType: GeometryType) => void;
+  onDeleteEditableLayer?: (layerId: number) => void;
+  editMode?: boolean;
+  onToggleEditMode?: () => void;
 }
 
 export function LayerPanel({
@@ -86,6 +95,13 @@ export function LayerPanel({
   layerFilters,
   activeFilters,
   onToggleFilter,
+  editableLayers = [],
+  activeEditableLayer,
+  onSelectEditableLayer,
+  onCreateEditableLayer,
+  onDeleteEditableLayer,
+  editMode = false,
+  onToggleEditMode,
 }: LayerPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -96,6 +112,9 @@ export function LayerPanel({
   const [pipelineLayerId, setPipelineLayerId] = useState<string>("");
   const [maxDistance, setMaxDistance] = useState<string>("15");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [newLayerDialogOpen, setNewLayerDialogOpen] = useState(false);
+  const [newLayerName, setNewLayerName] = useState("");
+  const [newLayerGeomType, setNewLayerGeomType] = useState<GeometryType>("Point");
 
   const { data: uploadedLayers = [] } = useQuery<UploadedLayer[]>({
     queryKey: ["/api/uploaded-layers"],
@@ -725,7 +744,140 @@ export function LayerPanel({
     <div className="space-y-4">
       {headerContent}
 
-      <Accordion type="multiple" defaultValue={["base", "wms", "wfs", "uploaded"]} className="space-y-1">
+      <Accordion type="multiple" defaultValue={["base", "wms", "wfs", "uploaded", "editable"]} className="space-y-1">
+        {/* Editable layers section */}
+        <AccordionItem value="editable" className="border-none">
+          <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-editable-layers">
+            <div className="flex items-center gap-2">
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+              <span className="text-xs font-medium">Редактируемые слои</span>
+              <span className="text-[10px] text-muted-foreground">
+                ({editableLayers.length})
+              </span>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="space-y-1 pt-1">
+            <div className="space-y-1">
+              {editableLayers.map((layer) => (
+                <div
+                  key={layer.id}
+                  className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors ${
+                    activeEditableLayer?.id === layer.id
+                      ? "border-primary bg-primary/10"
+                      : "border-sidebar-border hover:bg-accent/50"
+                  }`}
+                  onClick={() => {
+                    // Only select if not already selected (toggle handled externally)
+                    if (activeEditableLayer?.id !== layer.id) {
+                      onSelectEditableLayer?.(layer);
+                    }
+                  }}
+                  data-testid={`editable-layer-item-${layer.id}`}
+                >
+                  <Pencil className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <span className="text-xs font-medium truncate flex-1 min-w-0" title={layer.name}>
+                    {layer.name}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {layer.geometryType === "Point" ? "Точки" : layer.geometryType === "LineString" ? "Линии" : "Полигоны"}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteEditableLayer?.(layer.id);
+                    }}
+                    data-testid={`button-delete-editable-layer-${layer.id}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+              {editableLayers.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-2">
+                  Нет редактируемых слоёв
+                </p>
+              )}
+            </div>
+            <Dialog open={newLayerDialogOpen} onOpenChange={setNewLayerDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full mt-2"
+                  data-testid="button-create-editable-layer"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Создать слой
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[400px]">
+                <DialogHeader>
+                  <DialogTitle>Новый редактируемый слой</DialogTitle>
+                  <DialogDescription>
+                    Создайте слой для рисования объектов на карте
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-layer-name">Название слоя</Label>
+                    <Input
+                      id="new-layer-name"
+                      value={newLayerName}
+                      onChange={(e) => setNewLayerName(e.target.value)}
+                      placeholder="Например: Мои объекты"
+                      data-testid="input-new-layer-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-layer-geom">Тип геометрии</Label>
+                    <Select value={newLayerGeomType} onValueChange={(v) => setNewLayerGeomType(v as GeometryType)}>
+                      <SelectTrigger id="new-layer-geom" data-testid="select-new-layer-geom">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Point">Точки</SelectItem>
+                        <SelectItem value="LineString">Линии</SelectItem>
+                        <SelectItem value="Polygon">Полигоны</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={() => {
+                      if (newLayerName.trim() && onCreateEditableLayer) {
+                        onCreateEditableLayer(newLayerName.trim(), newLayerGeomType);
+                        setNewLayerName("");
+                        setNewLayerDialogOpen(false);
+                      }
+                    }}
+                    disabled={!newLayerName.trim()}
+                    data-testid="button-confirm-create-layer"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Создать
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            {activeEditableLayer && onToggleEditMode && (
+              <Button
+                size="sm"
+                variant={editMode ? "default" : "secondary"}
+                className="w-full mt-2"
+                onClick={onToggleEditMode}
+                data-testid="button-toggle-edit-mode"
+              >
+                <Pencil className="h-3 w-3 mr-1" />
+                {editMode ? "Выйти из режима рисования" : "Режим рисования"}
+              </Button>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+
         {uploadedLayers.length > 0 && (
           <AccordionItem value="uploaded" className="border-none">
             <AccordionTrigger className="py-1 hover:no-underline" data-testid="accordion-uploaded-layers">
