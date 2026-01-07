@@ -67,6 +67,7 @@ interface MapViewerProps {
   onFeatureUpdated?: (featureId: number, updates: Partial<InsertDrawnFeature>) => void;
   selectedEditableFeatureIds?: number[];
   onEditableFeatureSelect?: (featureId: number, multi?: boolean) => void;
+  onSelectEditableLayer?: (layer: EditableLayer) => void;
   // Selection callbacks exposed for external control
   selectionActionsRef?: React.MutableRefObject<{ clearSelection: () => void; deleteSelected: () => void } | null>;
 }
@@ -389,6 +390,7 @@ export function MapViewer({
   onFeatureUpdated,
   selectedEditableFeatureIds = [],
   onEditableFeatureSelect,
+  onSelectEditableLayer,
   selectionActionsRef,
 }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -436,6 +438,8 @@ export function MapViewer({
   const editModeRef = useRef(editMode);
   const onFeatureCreatedRef = useRef(onFeatureCreated);
   const activeEditableLayerRef = useRef(activeEditableLayer);
+  const onSelectEditableLayerRef = useRef(onSelectEditableLayer);
+  const allEditableLayersDataRef = useRef(allEditableLayers);
 
   useEffect(() => {
     placementModeRef.current = placementMode;
@@ -460,6 +464,14 @@ export function MapViewer({
   useEffect(() => {
     activeEditableLayerRef.current = activeEditableLayer;
   }, [activeEditableLayer]);
+
+  useEffect(() => {
+    onSelectEditableLayerRef.current = onSelectEditableLayer;
+  }, [onSelectEditableLayer]);
+
+  useEffect(() => {
+    allEditableLayersDataRef.current = allEditableLayers;
+  }, [allEditableLayers]);
 
   const deleteFeaturesMutation = useMutation({
     mutationFn: async (data: { layerId: number; featureIds: number[] }) => {
@@ -772,6 +784,15 @@ export function MapViewer({
         }, { hitTolerance: 10 }); // Tolerance for easier line/polygon selection
 
         if (foundUploadedFeature && foundLayerId !== null && foundFeatureIndex !== -1) {
+          // Auto-switch to the layer containing the selected feature
+          const currentActiveLayer = activeEditableLayerRef.current;
+          if (foundLayerId !== currentActiveLayer?.id) {
+            const targetLayer = allEditableLayersDataRef.current.find(l => l.id === foundLayerId);
+            if (targetLayer && onSelectEditableLayerRef.current) {
+              onSelectEditableLayerRef.current(targetLayer);
+            }
+          }
+          
           const isAlreadySelected = selectedMapFeatures.some(
             sf => sf.layerId === foundLayerId && sf.featureIndex === foundFeatureIndex
           );

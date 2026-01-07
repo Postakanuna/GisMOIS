@@ -363,6 +363,7 @@ export default function Home() {
               onFeatureUpdated={drawing.updateFeature}
               selectedEditableFeatureIds={drawing.selectedFeatureIds}
               onEditableFeatureSelect={drawing.selectFeature}
+              onSelectEditableLayer={drawing.selectLayer}
               selectionActionsRef={selectionActionsRef}
             />
 
