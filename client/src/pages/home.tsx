@@ -147,9 +147,6 @@ export default function Home() {
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
 
-  // Imported layers are now part of editable layers with source: "import"
-  const importedLayers = drawing.editableLayers.filter(l => l.source === "import");
-
   const handleSelectedFeaturesChange = useCallback((features: SelectedFeatureData[]) => {
     setSelectedFeatures(features);
   }, []);
