@@ -752,7 +752,7 @@ export async function registerRoutes(
         const sampleProps = features[0].properties || {};
         const fields = Object.keys(sampleProps).map((key) => ({
           name: key,
-          type: "string" as const,
+          type: "text" as const,
           required: false,
         }));
         
@@ -767,7 +767,8 @@ export async function registerRoutes(
       // Batch create features for the layer
       const insertFeatures = features.map((feature: any, index: number) => ({
         layerId: layer.id,
-        geometry: feature.geometry,
+        geometryType: feature.geometry?.type || geometryType,
+        coordinates: feature.geometry?.coordinates || [],
         properties: feature.properties || {},
       }));
       
@@ -804,7 +805,8 @@ export async function registerRoutes(
       
       const insertFeatures = req.body.map((feature: any) => ({
         layerId: id,
-        geometry: feature.geometry,
+        geometryType: feature.geometry?.type || feature.geometryType,
+        coordinates: feature.geometry?.coordinates || feature.coordinates || [],
         properties: feature.properties || {},
       }));
       
@@ -839,11 +841,11 @@ export async function registerRoutes(
       
       // Convert to GeoJSON-like format for processing
       const accidentFeatures = accidentFeaturesRaw.map(f => ({
-        geometry: f.geometry,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
         properties: f.properties,
       }));
       const pipelineFeatures = pipelineFeaturesRaw.map(f => ({
-        geometry: f.geometry,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
         properties: f.properties,
       }));
 
