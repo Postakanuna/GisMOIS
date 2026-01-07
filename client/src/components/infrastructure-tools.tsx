@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Building2, Flame, Droplet, X, Route, Trash2, MousePointer2, Info } from "lucide-react";
+import { Plus, Building2, Flame, Droplet, X, Route, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,13 +35,6 @@ interface InfrastructureToolsProps {
   onCancelPendingPlacement: () => void;
   facilities: Facility[];
   tracingError: string | null;
-  selectionMode?: boolean;
-  onToggleSelectionMode?: () => void;
-  selectedCount?: number;
-  onClearSelection?: () => void;
-  onDeleteSelected?: () => void;
-  isDeleting?: boolean;
-  onShowFeatureInfo?: () => void;
 }
 
 const facilityConfig: Record<FacilityType, { icon: typeof Building2; label: string; color: string }> = {
@@ -66,17 +59,9 @@ export function InfrastructureTools({
   onCancelPendingPlacement,
   facilities,
   tracingError,
-  selectionMode = false,
-  onToggleSelectionMode,
-  selectedCount = 0,
-  onClearSelection,
-  onDeleteSelected,
-  isDeleting = false,
-  onShowFeatureInfo,
 }: InfrastructureToolsProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleteSelectedDialogOpen, setDeleteSelectedDialogOpen] = useState(false);
   
   const [facilityName, setFacilityName] = useState("");
   const [freeHeatCapacity, setFreeHeatCapacity] = useState("");
@@ -151,25 +136,6 @@ export function InfrastructureTools({
       {/* Add facility button - positioned with map controls in top-right */}
       <div className="absolute top-[220px] right-4 z-10 flex flex-col gap-2">
         <div className="flex flex-col rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border overflow-hidden">
-          {onToggleSelectionMode && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant={selectionMode ? "default" : "ghost"}
-                  onClick={onToggleSelectionMode}
-                  className="rounded-none"
-                  data-testid="button-selection-mode"
-                >
-                  <MousePointer2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                {selectionMode ? "Отключить выделение" : "Выделение объектов (Ctrl+тянуть для прямоугольника)"}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          
           {placementMode ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -514,88 +480,6 @@ export function InfrastructureTools({
             </Button>
             <Button onClick={handleConfirmPlacement} data-testid="button-confirm-placement">
               Создать
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {selectedCount > 0 && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-          <div className="flex items-center gap-1 rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border p-1">
-            <span className="text-sm px-2" data-testid="text-selected-count">
-              Выбрано: {selectedCount}
-            </span>
-            {onShowFeatureInfo && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={onShowFeatureInfo}
-                    data-testid="button-show-feature-info"
-                  >
-                    <Info className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Информация</TooltipContent>
-              </Tooltip>
-            )}
-            {onClearSelection && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={onClearSelection}
-                    data-testid="button-clear-selection"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Снять выделение</TooltipContent>
-              </Tooltip>
-            )}
-            {onDeleteSelected && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="destructive"
-                    onClick={() => setDeleteSelectedDialogOpen(true)}
-                    disabled={isDeleting}
-                    data-testid="button-delete-selected"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{isDeleting ? "Удаление..." : "Удалить"}</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </div>
-      )}
-
-      <Dialog open={deleteSelectedDialogOpen} onOpenChange={setDeleteSelectedDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Удалить выбранные объекты?</DialogTitle>
-            <DialogDescription>
-              Вы собираетесь удалить {selectedCount} объектов. Это действие нельзя отменить.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteSelectedDialogOpen(false)}>
-              Отмена
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                onDeleteSelected?.();
-                setDeleteSelectedDialogOpen(false);
-              }}
-              data-testid="button-confirm-delete-selected"
-            >
-              Удалить
             </Button>
           </DialogFooter>
         </DialogContent>

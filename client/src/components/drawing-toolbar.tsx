@@ -33,6 +33,9 @@ interface DrawingToolbarProps {
   onRedo: () => void;
   onSave: () => void;
   isSaving: boolean;
+  selectedCount?: number;
+  onClearSelection?: () => void;
+  isDeleting?: boolean;
 }
 
 const TOOL_BUTTONS: { mode: DrawingMode; icon: typeof MousePointer2; label: string; tooltip: string }[] = [
@@ -56,9 +59,13 @@ export function DrawingToolbar({
   onRedo,
   onSave,
   isSaving,
+  selectedCount = 0,
+  onClearSelection,
+  isDeleting = false,
 }: DrawingToolbarProps) {
   const isDrawingMode = mode === "point" || mode === "line" || mode === "polygon";
   const canDraw = activeLayer !== null;
+  const isSelectMode = mode === "select";
 
   return (
     <>
@@ -99,22 +106,47 @@ export function DrawingToolbar({
           );
         })}
 
+        {/* Selection info when in select mode */}
+        {isSelectMode && selectedCount > 0 && (
+          <div className="border-l pl-1 ml-1 flex items-center gap-1">
+            <span className="text-xs px-2" data-testid="text-selected-count">
+              Выбрано: {selectedCount}
+            </span>
+            {onClearSelection && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    onClick={onClearSelection}
+                    data-testid="button-clear-selection"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Снять выделение</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        )}
+
         <div className="border-l pl-1 ml-1 flex items-center gap-1">
           {/* Delete */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 size="icon"
-                variant="ghost"
+                variant={selectedCount > 0 ? "destructive" : "ghost"}
                 className="h-8 w-8"
                 onClick={onDeleteSelected}
-                disabled={!hasSelection}
+                disabled={!hasSelection && selectedCount === 0}
                 data-testid="button-delete-selected"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Удалить выбранное (Del)</TooltipContent>
+            <TooltipContent>{isDeleting ? "Удаление..." : "Удалить выбранное (Del)"}</TooltipContent>
           </Tooltip>
 
           {/* Undo/Redo */}

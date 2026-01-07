@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Map, Settings, Menu, Layers, ArrowLeft, Pencil } from "lucide-react";
@@ -146,6 +146,7 @@ export default function Home() {
   const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo">("layers");
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
+  const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
 
   const handleSelectedFeaturesChange = useCallback((features: SelectedFeatureData[]) => {
     setSelectedFeatures(features);
@@ -308,14 +309,22 @@ export default function Home() {
                 mode={drawing.drawingMode}
                 onModeChange={drawing.setDrawingMode}
                 activeLayer={drawing.activeLayer}
-                onDeleteSelected={drawing.deleteSelectedFeatures}
-                hasSelection={drawing.selectedFeatureIds.length > 0}
+                onDeleteSelected={() => {
+                  if (drawing.drawingMode === 'select' && selectedFeatures.length > 0) {
+                    selectionActionsRef.current?.deleteSelected();
+                  } else if (drawing.selectedFeatureIds.length > 0) {
+                    drawing.deleteSelectedFeatures();
+                  }
+                }}
+                hasSelection={drawing.selectedFeatureIds.length > 0 || selectedFeatures.length > 0}
                 canUndo={drawing.canUndo}
                 canRedo={drawing.canRedo}
                 onUndo={drawing.undo}
                 onRedo={drawing.redo}
                 onSave={drawing.save}
                 isSaving={drawing.isSaving}
+                selectedCount={drawing.drawingMode === 'select' ? selectedFeatures.length : 0}
+                onClearSelection={() => selectionActionsRef.current?.clearSelection()}
               />
             )}
             
@@ -342,6 +351,7 @@ export default function Home() {
               onFeatureUpdated={drawing.updateFeature}
               selectedEditableFeatureIds={drawing.selectedFeatureIds}
               onEditableFeatureSelect={drawing.selectFeature}
+              selectionActionsRef={selectionActionsRef}
             />
 
             {editMode && drawing.activeLayer && drawing.features.length > 0 && (

@@ -67,6 +67,8 @@ interface MapViewerProps {
   onFeatureUpdated?: (featureId: number, updates: Partial<InsertDrawnFeature>) => void;
   selectedEditableFeatureIds?: number[];
   onEditableFeatureSelect?: (featureId: number, multi?: boolean) => void;
+  // Selection callbacks exposed for external control
+  selectionActionsRef?: React.MutableRefObject<{ clearSelection: () => void; deleteSelected: () => void } | null>;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -387,6 +389,7 @@ export function MapViewer({
   onFeatureUpdated,
   selectedEditableFeatureIds = [],
   onEditableFeatureSelect,
+  selectionActionsRef,
 }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
@@ -417,7 +420,6 @@ export function MapViewer({
   const [pendingPlacement, setPendingPlacement] = useState<{ lon: number; lat: number; type: FacilityType } | null>(null);
   const [tracingError, setTracingError] = useState<string | null>(null);
   
-  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMapFeatures, setSelectedMapFeatures] = useState<Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }>>([]);
   const selectionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const dragBoxRef = useRef<DragBox | null>(null);
@@ -440,8 +442,8 @@ export function MapViewer({
   }, [placementMode]);
 
   useEffect(() => {
-    selectionModeRef.current = selectionMode;
-  }, [selectionMode]);
+    selectionModeRef.current = drawingMode === 'select';
+  }, [drawingMode]);
 
   useEffect(() => {
     drawingModeRef.current = drawingMode || null;
@@ -1148,14 +1150,20 @@ export function MapViewer({
     setSelectedMapFeatures([]);
   }, []);
 
-  const toggleSelectionMode = useCallback(() => {
-    setSelectionMode(prev => {
-      if (prev) {
-        setSelectedMapFeatures([]);
+  // Expose selection actions via ref for external control
+  useEffect(() => {
+    if (selectionActionsRef) {
+      selectionActionsRef.current = {
+        clearSelection,
+        deleteSelected: handleDeleteSelectedFeatures,
+      };
+    }
+    return () => {
+      if (selectionActionsRef) {
+        selectionActionsRef.current = null;
       }
-      return !prev;
-    });
-  }, []);
+    };
+  }, [selectionActionsRef, clearSelection, handleDeleteSelectedFeatures]);
 
   // Handle OSM base layer visibility and opacity (works without connection)
   useEffect(() => {
@@ -1855,13 +1863,6 @@ export function MapViewer({
         onCancelPendingPlacement={() => setPendingPlacement(null)}
         facilities={facilities}
         tracingError={tracingError}
-        selectionMode={selectionMode}
-        onToggleSelectionMode={toggleSelectionMode}
-        selectedCount={selectedMapFeatures.length}
-        onClearSelection={clearSelection}
-        onDeleteSelected={handleDeleteSelectedFeatures}
-        isDeleting={deleteFeaturesMutation.isPending}
-        onShowFeatureInfo={onShowFeatureInfo}
       />
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
