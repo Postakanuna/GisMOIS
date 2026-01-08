@@ -100,8 +100,8 @@ export function DrawingToolbar({
           </div>
         )}
 
-        {/* Drawing tools */}
-        {toolButtons.map(({ mode: toolMode, icon: Icon, label, tooltip }) => {
+        {/* Drawing tools - icon only */}
+        {toolButtons.map(({ mode: toolMode, icon: Icon, tooltip }) => {
           const isActive = mode === toolMode;
           const isDisabled = !canDraw && toolMode !== "select";
           
@@ -110,15 +110,14 @@ export function DrawingToolbar({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    size="sm"
+                    size="icon"
                     variant={isActive ? "default" : "ghost"}
-                    className={`h-8 px-2 ${isDisabled ? "opacity-50" : ""}`}
+                    className={`h-8 w-8 ${isDisabled ? "opacity-50" : ""}`}
                     onClick={() => !isDisabled && onModeChange(toolMode)}
                     disabled={isDisabled}
                     data-testid={`button-tool-${toolMode}`}
                   >
-                    <Icon className="h-4 w-4 mr-1" />
-                    <span className="text-xs">{label}</span>
+                    <Icon className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{tooltip}</TooltipContent>
@@ -129,15 +128,14 @@ export function DrawingToolbar({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      size="sm"
+                      size="icon"
                       variant={showAttributeTable ? "default" : "ghost"}
-                      className="h-8 px-2"
+                      className="h-8 w-8"
                       onClick={onToggleAttributeTable}
                       disabled={featureCount === 0}
                       data-testid="button-toggle-attribute-table"
                     >
-                      <Table2 className="h-4 w-4 mr-1" />
-                      <span className="text-xs">Таблица</span>
+                      <Table2 className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Таблица атрибутов (T)</TooltipContent>
