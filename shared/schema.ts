@@ -255,16 +255,12 @@ export type EditableLayer = z.infer<typeof editableLayerSchema>;
 export const insertEditableLayerSchema = editableLayerSchema.omit({ id: true, createdAt: true, updatedAt: true, featureCount: true });
 export type InsertEditableLayer = z.infer<typeof insertEditableLayerSchema>;
 
-// Keep existing user schema for compatibility
+// Auth schema (users and sessions)
+export * from "./models/auth";
+
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, jsonb, timestamp, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-});
 
 // PostgreSQL tables for GIS data
 export const editableLayers = pgTable("editable_layers", {
@@ -313,11 +309,3 @@ export const layerSchemas = pgTable("layer_schemas", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
-
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
