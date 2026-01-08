@@ -148,7 +148,7 @@ export function DrawingToolbar({
         {/* Selection info when in select mode */}
         {isSelectMode && selectedCount > 0 && (
           <div className="border-l pl-1 ml-1 flex items-center gap-1">
-            <span className="text-xs px-2" data-testid="text-selected-count">
+            <span className="text-xs px-2 whitespace-nowrap" data-testid="text-selected-count">
               Выбрано: {selectedCount}
             </span>
             {onClearSelection && (
