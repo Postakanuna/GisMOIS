@@ -278,7 +278,7 @@ export class DatabaseStorage implements IStorage {
       layerCounts.set(f.layerId, (layerCounts.get(f.layerId) || 0) + 1);
     });
 
-    for (const [layerId, count] of layerCounts) {
+    for (const [layerId, count] of Array.from(layerCounts.entries())) {
       await db.update(editableLayers)
         .set({ 
           featureCount: sql`${editableLayers.featureCount} + ${count}`,
