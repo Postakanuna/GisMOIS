@@ -1,10 +1,17 @@
-import { type User, type InsertUser, type Ticket, type InsertTicket, type Facility, type InsertFacility, type Trace, type InsertTrace, type EditableLayer, type InsertEditableLayer, type DrawnFeature, type InsertDrawnFeature, type LayerSchemaDefinition, type InsertLayerSchemaDefinition, type AttributeField } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { 
+  type Ticket, type InsertTicket, 
+  type Facility, type InsertFacility, 
+  type Trace, type InsertTrace, 
+  type EditableLayer, type InsertEditableLayer, 
+  type DrawnFeature, type InsertDrawnFeature, 
+  type LayerSchemaDefinition, type InsertLayerSchemaDefinition, 
+  type AttributeField,
+  editableLayers, drawnFeatures, layerSchemas
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, sql } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
   getTickets(): Promise<Ticket[]>;
   getTicket(id: number): Promise<Ticket | undefined>;
   createTicket(ticket: InsertTicket): Promise<Ticket>;
@@ -20,13 +27,11 @@ export interface IStorage {
   createTrace(trace: InsertTrace): Promise<Trace>;
   deleteTrace(id: number): Promise<boolean>;
   deleteTracesByBuilding(buildingId: number): Promise<boolean>;
-  // Editable layers (user-created or imported from shapefile)
   getEditableLayers(): Promise<EditableLayer[]>;
   getEditableLayer(id: number): Promise<EditableLayer | undefined>;
   createEditableLayer(layer: InsertEditableLayer): Promise<EditableLayer>;
   updateEditableLayer(id: number, updates: Partial<InsertEditableLayer>): Promise<EditableLayer | undefined>;
   deleteEditableLayer(id: number): Promise<boolean>;
-  // Drawn features
   getDrawnFeatures(layerId: number): Promise<DrawnFeature[]>;
   getDrawnFeature(id: number): Promise<DrawnFeature | undefined>;
   createDrawnFeature(feature: InsertDrawnFeature): Promise<DrawnFeature>;
@@ -34,59 +39,59 @@ export interface IStorage {
   updateDrawnFeature(id: number, updates: Partial<InsertDrawnFeature>): Promise<DrawnFeature | undefined>;
   deleteDrawnFeature(id: number): Promise<boolean>;
   deleteDrawnFeaturesByLayer(layerId: number): Promise<boolean>;
-  // Layer schema definitions
   getLayerSchema(layerId: number): Promise<LayerSchemaDefinition | undefined>;
   createLayerSchema(schema: InsertLayerSchemaDefinition): Promise<LayerSchemaDefinition>;
   updateLayerSchema(layerId: number, fields: AttributeField[]): Promise<LayerSchemaDefinition | undefined>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private tickets: Map<number, Ticket>;
-  private ticketIdCounter: number;
-  private facilities: Map<number, Facility>;
-  private facilityIdCounter: number;
-  private traces: Map<number, Trace>;
-  private traceIdCounter: number;
-  private editableLayers: Map<number, EditableLayer>;
-  private editableLayerIdCounter: number;
-  private drawnFeatures: Map<number, DrawnFeature>;
-  private drawnFeatureIdCounter: number;
-  private layerSchemas: Map<number, LayerSchemaDefinition>;
-  private layerSchemaIdCounter: number;
+function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
+  return {
+    id: row.id,
+    name: row.name,
+    geometryType: row.geometryType as EditableLayer["geometryType"],
+    color: row.color,
+    pointStyle: row.pointStyle as EditableLayer["pointStyle"],
+    lineStyle: row.lineStyle as EditableLayer["lineStyle"],
+    visible: row.visible === 1,
+    opacity: row.opacity,
+    featureCount: row.featureCount,
+    source: row.source as EditableLayer["source"],
+    sourceFileName: row.sourceFileName || undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
-  constructor() {
-    this.users = new Map();
-    this.tickets = new Map();
-    this.ticketIdCounter = 1;
-    this.facilities = new Map();
-    this.facilityIdCounter = 1;
-    this.traces = new Map();
-    this.traceIdCounter = 1;
-    this.editableLayers = new Map();
-    this.editableLayerIdCounter = 1;
-    this.drawnFeatures = new Map();
-    this.drawnFeatureIdCounter = 1;
-    this.layerSchemas = new Map();
-    this.layerSchemaIdCounter = 1;
-  }
+function toDrawnFeature(row: typeof drawnFeatures.$inferSelect): DrawnFeature {
+  return {
+    id: row.id,
+    layerId: row.layerId,
+    geometryType: row.geometryType as DrawnFeature["geometryType"],
+    coordinates: row.coordinates,
+    properties: row.properties as Record<string, unknown>,
+    version: row.version,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
+function toLayerSchema(row: typeof layerSchemas.$inferSelect): LayerSchemaDefinition {
+  return {
+    id: row.id,
+    layerId: row.layerId,
+    fields: row.fields as AttributeField[],
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
-  }
+export class DatabaseStorage implements IStorage {
+  private tickets: Map<number, Ticket> = new Map();
+  private ticketIdCounter = 1;
+  private facilities: Map<number, Facility> = new Map();
+  private facilityIdCounter = 1;
+  private traces: Map<number, Trace> = new Map();
+  private traceIdCounter = 1;
 
   async getTickets(): Promise<Ticket[]> {
     return Array.from(this.tickets.values());
@@ -134,11 +139,7 @@ export class MemStorage implements IStorage {
   async updateFacility(id: number, updates: Partial<InsertFacility>): Promise<Facility | undefined> {
     const facility = this.facilities.get(id);
     if (!facility) return undefined;
-    
-    const updatedFacility: Facility = {
-      ...facility,
-      ...updates,
-    };
+    const updatedFacility: Facility = { ...facility, ...updates };
     this.facilities.set(id, updatedFacility);
     return updatedFacility;
   }
@@ -156,9 +157,7 @@ export class MemStorage implements IStorage {
   }
 
   async getTracesByBuilding(buildingId: number): Promise<Trace[]> {
-    return Array.from(this.traces.values()).filter(
-      (trace) => trace.buildingId === buildingId
-    );
+    return Array.from(this.traces.values()).filter(t => t.buildingId === buildingId);
   }
 
   async createTrace(insertTrace: InsertTrace): Promise<Trace> {
@@ -177,194 +176,177 @@ export class MemStorage implements IStorage {
   }
 
   async deleteTracesByBuilding(buildingId: number): Promise<boolean> {
-    const tracesToDelete = Array.from(this.traces.values()).filter(
-      (trace) => trace.buildingId === buildingId
-    );
-    tracesToDelete.forEach((trace) => this.traces.delete(trace.id));
-    return tracesToDelete.length > 0;
+    const toDelete = Array.from(this.traces.values()).filter(t => t.buildingId === buildingId);
+    toDelete.forEach(t => this.traces.delete(t.id));
+    return toDelete.length > 0;
   }
 
-  // Editable layers methods
   async getEditableLayers(): Promise<EditableLayer[]> {
-    return Array.from(this.editableLayers.values());
+    const rows = await db.select().from(editableLayers);
+    return rows.map(toEditableLayer);
   }
 
   async getEditableLayer(id: number): Promise<EditableLayer | undefined> {
-    return this.editableLayers.get(id);
+    const [row] = await db.select().from(editableLayers).where(eq(editableLayers.id, id));
+    return row ? toEditableLayer(row) : undefined;
   }
 
-  async createEditableLayer(insertLayer: InsertEditableLayer): Promise<EditableLayer> {
-    const id = this.editableLayerIdCounter++;
-    const now = new Date().toISOString();
-    const layer: EditableLayer = {
-      ...insertLayer,
-      id,
+  async createEditableLayer(layer: InsertEditableLayer): Promise<EditableLayer> {
+    const [row] = await db.insert(editableLayers).values({
+      name: layer.name,
+      geometryType: layer.geometryType,
+      color: layer.color || "#1976D2",
+      pointStyle: layer.pointStyle || "circle",
+      lineStyle: layer.lineStyle || "solid",
+      visible: layer.visible !== false ? 1 : 0,
+      opacity: layer.opacity ?? 1,
       featureCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.editableLayers.set(id, layer);
-    return layer;
+      source: layer.source || "user",
+      sourceFileName: layer.sourceFileName,
+    }).returning();
+    return toEditableLayer(row);
   }
 
   async updateEditableLayer(id: number, updates: Partial<InsertEditableLayer>): Promise<EditableLayer | undefined> {
-    const layer = this.editableLayers.get(id);
-    if (!layer) return undefined;
-    
-    const updatedLayer: EditableLayer = {
-      ...layer,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-    this.editableLayers.set(id, updatedLayer);
-    return updatedLayer;
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.geometryType !== undefined) updateData.geometryType = updates.geometryType;
+    if (updates.color !== undefined) updateData.color = updates.color;
+    if (updates.pointStyle !== undefined) updateData.pointStyle = updates.pointStyle;
+    if (updates.lineStyle !== undefined) updateData.lineStyle = updates.lineStyle;
+    if (updates.visible !== undefined) updateData.visible = updates.visible ? 1 : 0;
+    if (updates.opacity !== undefined) updateData.opacity = updates.opacity;
+    if (updates.source !== undefined) updateData.source = updates.source;
+    if (updates.sourceFileName !== undefined) updateData.sourceFileName = updates.sourceFileName;
+
+    const [row] = await db.update(editableLayers)
+      .set(updateData)
+      .where(eq(editableLayers.id, id))
+      .returning();
+    return row ? toEditableLayer(row) : undefined;
   }
 
   async deleteEditableLayer(id: number): Promise<boolean> {
-    // Also delete all features in this layer
     await this.deleteDrawnFeaturesByLayer(id);
-    // Delete layer schema
-    this.layerSchemas.delete(id);
-    return this.editableLayers.delete(id);
+    await db.delete(layerSchemas).where(eq(layerSchemas.layerId, id));
+    const result = await db.delete(editableLayers).where(eq(editableLayers.id, id)).returning();
+    return result.length > 0;
   }
 
-  // Drawn features methods
   async getDrawnFeatures(layerId: number): Promise<DrawnFeature[]> {
-    return Array.from(this.drawnFeatures.values()).filter(
-      (feature) => feature.layerId === layerId
-    );
+    const rows = await db.select().from(drawnFeatures).where(eq(drawnFeatures.layerId, layerId));
+    return rows.map(toDrawnFeature);
   }
 
   async getDrawnFeature(id: number): Promise<DrawnFeature | undefined> {
-    return this.drawnFeatures.get(id);
+    const [row] = await db.select().from(drawnFeatures).where(eq(drawnFeatures.id, id));
+    return row ? toDrawnFeature(row) : undefined;
   }
 
-  async createDrawnFeature(insertFeature: InsertDrawnFeature): Promise<DrawnFeature> {
-    const id = this.drawnFeatureIdCounter++;
-    const now = new Date().toISOString();
-    const feature: DrawnFeature = {
-      ...insertFeature,
-      id,
-      version: 1,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.drawnFeatures.set(id, feature);
+  async createDrawnFeature(feature: InsertDrawnFeature): Promise<DrawnFeature> {
+    const [row] = await db.insert(drawnFeatures).values({
+      layerId: feature.layerId,
+      geometryType: feature.geometryType,
+      coordinates: feature.coordinates,
+      properties: feature.properties || {},
+    }).returning();
     
-    // Update layer feature count
-    const layer = this.editableLayers.get(insertFeature.layerId);
-    if (layer) {
-      layer.featureCount++;
-      layer.updatedAt = now;
-      this.editableLayers.set(layer.id, layer);
-    }
+    await db.update(editableLayers)
+      .set({ 
+        featureCount: sql`${editableLayers.featureCount} + 1`,
+        updatedAt: new Date()
+      })
+      .where(eq(editableLayers.id, feature.layerId));
     
-    return feature;
+    return toDrawnFeature(row);
   }
 
-  async createDrawnFeaturesBatch(insertFeatures: InsertDrawnFeature[]): Promise<DrawnFeature[]> {
-    const now = new Date().toISOString();
-    const createdFeatures: DrawnFeature[] = [];
+  async createDrawnFeaturesBatch(features: InsertDrawnFeature[]): Promise<DrawnFeature[]> {
+    if (features.length === 0) return [];
+    
+    const rows = await db.insert(drawnFeatures).values(
+      features.map(f => ({
+        layerId: f.layerId,
+        geometryType: f.geometryType,
+        coordinates: f.coordinates,
+        properties: f.properties || {},
+      }))
+    ).returning();
+
     const layerCounts = new Map<number, number>();
-    
-    for (const insertFeature of insertFeatures) {
-      const id = this.drawnFeatureIdCounter++;
-      const feature: DrawnFeature = {
-        ...insertFeature,
-        id,
-        version: 1,
-        createdAt: now,
-        updatedAt: now,
-      };
-      this.drawnFeatures.set(id, feature);
-      createdFeatures.push(feature);
-      
-      // Track count per layer
-      const count = layerCounts.get(insertFeature.layerId) || 0;
-      layerCounts.set(insertFeature.layerId, count + 1);
-    }
-    
-    // Update layer feature counts
-    Array.from(layerCounts.entries()).forEach(([layerId, count]) => {
-      const layer = this.editableLayers.get(layerId);
-      if (layer) {
-        layer.featureCount += count;
-        layer.updatedAt = now;
-        this.editableLayers.set(layer.id, layer);
-      }
+    features.forEach(f => {
+      layerCounts.set(f.layerId, (layerCounts.get(f.layerId) || 0) + 1);
     });
-    
-    return createdFeatures;
+
+    for (const [layerId, count] of layerCounts) {
+      await db.update(editableLayers)
+        .set({ 
+          featureCount: sql`${editableLayers.featureCount} + ${count}`,
+          updatedAt: new Date()
+        })
+        .where(eq(editableLayers.id, layerId));
+    }
+
+    return rows.map(toDrawnFeature);
   }
 
   async updateDrawnFeature(id: number, updates: Partial<InsertDrawnFeature>): Promise<DrawnFeature | undefined> {
-    const feature = this.drawnFeatures.get(id);
-    if (!feature) return undefined;
-    
-    const updatedFeature: DrawnFeature = {
-      ...feature,
-      ...updates,
-      version: feature.version + 1,
-      updatedAt: new Date().toISOString(),
+    const updateData: Record<string, unknown> = { 
+      updatedAt: new Date(),
+      version: sql`${drawnFeatures.version} + 1`
     };
-    this.drawnFeatures.set(id, updatedFeature);
-    return updatedFeature;
+    if (updates.geometryType !== undefined) updateData.geometryType = updates.geometryType;
+    if (updates.coordinates !== undefined) updateData.coordinates = updates.coordinates;
+    if (updates.properties !== undefined) updateData.properties = updates.properties;
+
+    const [row] = await db.update(drawnFeatures)
+      .set(updateData)
+      .where(eq(drawnFeatures.id, id))
+      .returning();
+    return row ? toDrawnFeature(row) : undefined;
   }
 
   async deleteDrawnFeature(id: number): Promise<boolean> {
-    const feature = this.drawnFeatures.get(id);
-    if (feature) {
-      // Update layer feature count
-      const layer = this.editableLayers.get(feature.layerId);
-      if (layer && layer.featureCount > 0) {
-        layer.featureCount--;
-        layer.updatedAt = new Date().toISOString();
-        this.editableLayers.set(layer.id, layer);
-      }
-    }
-    return this.drawnFeatures.delete(id);
+    const [feature] = await db.select().from(drawnFeatures).where(eq(drawnFeatures.id, id));
+    if (!feature) return false;
+    
+    await db.delete(drawnFeatures).where(eq(drawnFeatures.id, id));
+    
+    await db.update(editableLayers)
+      .set({ 
+        featureCount: sql`GREATEST(${editableLayers.featureCount} - 1, 0)`,
+        updatedAt: new Date()
+      })
+      .where(eq(editableLayers.id, feature.layerId));
+    
+    return true;
   }
 
   async deleteDrawnFeaturesByLayer(layerId: number): Promise<boolean> {
-    const featuresToDelete = Array.from(this.drawnFeatures.values()).filter(
-      (feature) => feature.layerId === layerId
-    );
-    featuresToDelete.forEach((feature) => this.drawnFeatures.delete(feature.id));
-    return featuresToDelete.length > 0;
+    const result = await db.delete(drawnFeatures).where(eq(drawnFeatures.layerId, layerId)).returning();
+    return result.length > 0;
   }
 
-  // Layer schema methods
   async getLayerSchema(layerId: number): Promise<LayerSchemaDefinition | undefined> {
-    return Array.from(this.layerSchemas.values()).find(
-      (schema) => schema.layerId === layerId
-    );
+    const [row] = await db.select().from(layerSchemas).where(eq(layerSchemas.layerId, layerId));
+    return row ? toLayerSchema(row) : undefined;
   }
 
-  async createLayerSchema(insertSchema: InsertLayerSchemaDefinition): Promise<LayerSchemaDefinition> {
-    const id = this.layerSchemaIdCounter++;
-    const now = new Date().toISOString();
-    const schema: LayerSchemaDefinition = {
-      ...insertSchema,
-      id,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.layerSchemas.set(id, schema);
-    return schema;
+  async createLayerSchema(schema: InsertLayerSchemaDefinition): Promise<LayerSchemaDefinition> {
+    const [row] = await db.insert(layerSchemas).values({
+      layerId: schema.layerId,
+      fields: schema.fields,
+    }).returning();
+    return toLayerSchema(row);
   }
 
   async updateLayerSchema(layerId: number, fields: AttributeField[]): Promise<LayerSchemaDefinition | undefined> {
-    const schema = await this.getLayerSchema(layerId);
-    if (!schema) return undefined;
-    
-    const updatedSchema: LayerSchemaDefinition = {
-      ...schema,
-      fields,
-      updatedAt: new Date().toISOString(),
-    };
-    this.layerSchemas.set(schema.id, updatedSchema);
-    return updatedSchema;
+    const [row] = await db.update(layerSchemas)
+      .set({ fields, updatedAt: new Date() })
+      .where(eq(layerSchemas.layerId, layerId))
+      .returning();
+    return row ? toLayerSchema(row) : undefined;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
