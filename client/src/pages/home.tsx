@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Map, Settings, Menu, Layers, ArrowLeft, Pencil } from "lucide-react";
+import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -309,6 +310,7 @@ export default function Home() {
                 </Button>
               </Link>
               <ThemeToggle />
+              <UserButton />
             </div>
           </header>
 
