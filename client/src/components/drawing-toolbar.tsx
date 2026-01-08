@@ -89,17 +89,6 @@ export function DrawingToolbar({
   return (
     <>
       <Card className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1 bg-background/95 backdrop-blur-sm">
-        {/* Active layer indicator */}
-        {activeLayer && (
-          <div className="flex items-center gap-1 px-2 border-r mr-1">
-            <div 
-              className="w-3 h-3 rounded-full" 
-              style={{ backgroundColor: activeLayer.color }}
-            />
-            <span className="text-xs font-medium truncate max-w-[120px]">{activeLayer.name}</span>
-          </div>
-        )}
-
         {/* Drawing tools - icon only */}
         {toolButtons.map(({ mode: toolMode, icon: Icon, tooltip }) => {
           const isActive = mode === toolMode;
