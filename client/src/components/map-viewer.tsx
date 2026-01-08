@@ -658,7 +658,8 @@ export function MapViewer({
     },
     enabled: allEditableLayers.length > 0,
     refetchOnWindowFocus: false,
-    staleTime: 1000 * 60,
+    refetchOnMount: "always",
+    staleTime: 1000 * 60 * 5,
   });
 
   const createFacilityMutation = useMutation({
@@ -1159,8 +1160,19 @@ export function MapViewer({
 
   // Manage uploaded shapefile layers
   useEffect(() => {
+    console.log("=== Layer sync effect ===");
+    console.log("allEditableLayers count:", allEditableLayers.length);
+    console.log("allLayerFeatures keys:", Object.keys(allLayerFeatures));
+    console.log("isFetchingFeatures:", isFetchingFeatures);
+    
     if (!mapRef.current) return;
     const map = mapRef.current;
+    
+    // Don't process layers while features are still loading
+    if (isFetchingFeatures && Object.keys(allLayerFeatures).length === 0) {
+      console.log("Skipping layer sync - features still loading");
+      return;
+    }
     
     const currentLayerIds = new Set(allEditableLayers.map(l => l.id));
     
@@ -1272,7 +1284,7 @@ export function MapViewer({
         vectorLayer.set("lineStyle", editableLayerItem.lineStyle);
       }
     });
-  }, [allEditableLayers, allLayerFeatures]);
+  }, [allEditableLayers, allLayerFeatures, isFetchingFeatures]);
 
   useEffect(() => {
     if (!selectionLayerRef.current) return;
