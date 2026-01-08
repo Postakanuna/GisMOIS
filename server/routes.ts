@@ -5,7 +5,7 @@ import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertT
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, seedAdminUser } from "./auth";
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
@@ -21,8 +21,9 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  await setupAuth(app);
+  setupAuth(app);
   registerAuthRoutes(app);
+  await seedAdminUser();
 
   app.post("/api/zulu/zws/layers", async (_req: Request, res: Response) => {
     try {
