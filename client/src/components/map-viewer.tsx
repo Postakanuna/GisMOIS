@@ -638,7 +638,7 @@ export function MapViewer({
   });
 
   // Fetch features for all editable layers (imported and user-created)
-  const { data: allLayerFeatures = {} } = useQuery<Record<number, DrawnFeature[]>>({
+  const { data: allLayerFeatures = {}, isFetching: isFetchingFeatures } = useQuery<Record<number, DrawnFeature[]>>({
     queryKey: ["/api/editable-layers/all-features", allEditableLayers.map(l => l.id).join(",")],
     queryFn: async () => {
       const featuresByLayer: Record<number, DrawnFeature[]> = {};
@@ -658,6 +658,7 @@ export function MapViewer({
     },
     enabled: allEditableLayers.length > 0,
     refetchOnWindowFocus: false,
+    staleTime: 1000 * 60,
   });
 
   const createFacilityMutation = useMutation({
@@ -1227,8 +1228,12 @@ export function MapViewer({
         allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
       } else {
         // Check if feature count changed - need to refresh the source
+        // But skip if data is still loading (layerFeatures is empty but should have data)
         const storedCount = vectorLayer.get("featureCount");
-        if (storedCount !== layerFeatures.length) {
+        const hasDataForLayer = allLayerFeatures[editableLayerItem.id] !== undefined;
+        
+        // Only update if we have actual data or explicitly have 0 features
+        if (storedCount !== layerFeatures.length && hasDataForLayer) {
           const vectorSource = vectorLayer.getSource();
           if (vectorSource) {
             vectorSource.clear();
