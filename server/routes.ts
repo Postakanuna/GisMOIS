@@ -1544,7 +1544,7 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const { name, geometryType, geojson, sourceFileName, crs, sceneId, color } = req.body;
+      const { name, geometryType, geojson, sourceFileName, sourceFiles, crs, sceneId, color } = req.body;
       
       if (!name || !geometryType || !geojson) {
         return res.status(400).json({ 
@@ -1572,6 +1572,7 @@ export async function registerRoutes(
         color: color || "#1976D2",
         source: "import",
         sourceFileName: sourceFileName || name,
+        sourceFiles: sourceFiles || [],
         crs: crs || "EPSG:4326",
       });
       

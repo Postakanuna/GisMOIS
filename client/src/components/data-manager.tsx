@@ -25,7 +25,13 @@ import {
   Cloud,
   Minus,
   MoreHorizontal,
+  Pencil,
+  Check,
+  FileText,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -45,6 +51,7 @@ interface EditableLayer {
   featureCount: number;
   source: string;
   sourceFileName: string | null;
+  sourceFiles: string[] | null;
   crs: string;
   createdAt: string;
   updatedAt: string;
@@ -85,6 +92,9 @@ export function DataManager({ onClose }: DataManagerProps) {
   const [isResizing, setIsResizing] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingLayerId, setEditingLayerId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [expandedLayerId, setExpandedLayerId] = useState<number | null>(null);
 
   const { data: sceneLayers = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
@@ -116,15 +126,37 @@ export function DataManager({ onClose }: DataManagerProps) {
   });
 
   const updateLayerStyleMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; color?: string; pointStyle?: string; lineStyle?: string }) => {
+    mutationFn: async ({ id, ...data }: { id: number; color?: string; pointStyle?: string; lineStyle?: string; name?: string }) => {
       const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, data);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      setEditingLayerId(null);
     },
   });
+
+  const handleStartEditing = (layer: EditableLayer) => {
+    setEditingLayerId(layer.id);
+    setEditingName(layer.name);
+  };
+
+  const handleSaveName = (layerId: number) => {
+    if (editingName.trim()) {
+      updateLayerStyleMutation.mutate({ id: layerId, name: editingName.trim() });
+    } else {
+      setEditingLayerId(null);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, layerId: number) => {
+    if (e.key === "Enter") {
+      handleSaveName(layerId);
+    } else if (e.key === "Escape") {
+      setEditingLayerId(null);
+    }
+  };
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
@@ -210,6 +242,7 @@ export function DataManager({ onClose }: DataManagerProps) {
             geometryType,
             geojson: layer.geojson,
             sourceFileName: file.name,
+            sourceFiles: layer.sourceFiles || [],
             crs: layer.sourceCrs || "EPSG:4326",
             sceneId: currentSceneId,
           });
@@ -333,31 +366,81 @@ export function DataManager({ onClose }: DataManagerProps) {
               {sceneLayers.map(layer => (
                 <div
                   key={layer.id}
-                  className="flex items-center gap-2 p-2 rounded-md border bg-background"
+                  className="rounded-md border bg-background"
                   data-testid={`scene-layer-${layer.id}`}
                 >
-                  <div 
-                    className="w-3 h-3 rounded-sm shrink-0" 
-                    style={{ backgroundColor: layer.color }}
-                  />
-                  <span className="text-lg w-6 text-center shrink-0" title={layer.geometryType}>
-                    {getGeometryIcon(layer.geometryType)}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">
-                      {layer.name}
-                    </div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-2">
-                      <span>{layer.featureCount} объектов</span>
-                      {layer.source === "import" && (
-                        <Badge variant="outline" className="text-[10px] px-1 py-0">
-                          импорт
-                        </Badge>
+                  <div className="flex items-center gap-2 p-2">
+                    {layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0 && (
+                      <button
+                        onClick={() => setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id)}
+                        className="shrink-0 p-0.5 hover:bg-muted rounded"
+                        data-testid={`button-expand-${layer.id}`}
+                      >
+                        {expandedLayerId === layer.id ? (
+                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </button>
+                    )}
+                    <div 
+                      className="w-3 h-3 rounded-sm shrink-0" 
+                      style={{ backgroundColor: layer.color }}
+                    />
+                    <span className="text-lg w-6 text-center shrink-0" title={layer.geometryType}>
+                      {getGeometryIcon(layer.geometryType)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      {editingLayerId === layer.id ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, layer.id)}
+                            className="h-6 text-sm"
+                            autoFocus
+                            data-no-drag
+                            data-testid={`input-layer-name-${layer.id}`}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 shrink-0"
+                            onClick={() => handleSaveName(layer.id)}
+                            data-testid={`button-save-name-${layer.id}`}
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <div className="font-medium text-sm truncate">
+                            {layer.name}
+                          </div>
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 shrink-0 opacity-50 hover:opacity-100"
+                              onClick={() => handleStartEditing(layer)}
+                              data-testid={`button-edit-name-${layer.id}`}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       )}
+                      <div className="text-xs text-muted-foreground flex items-center gap-2">
+                        <span>{layer.featureCount} объектов</span>
+                        {layer.source === "import" && (
+                          <Badge variant="outline" className="text-[10px] px-1 py-0">
+                            импорт
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                  </div>
                   
-                  <Popover>
+                    <Popover>
                     <PopoverTrigger asChild>
                       <Button
                         variant="ghost"
@@ -459,21 +542,42 @@ export function DataManager({ onClose }: DataManagerProps) {
                     </TooltipTrigger>
                     <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
                   </Tooltip>
-                  {canEdit && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive"
-                          onClick={() => deleteLayerMutation.mutate(layer.id)}
-                          data-testid={`button-delete-layer-${layer.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Удалить слой</TooltipContent>
-                    </Tooltip>
+                    {canEdit && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive"
+                            onClick={() => deleteLayerMutation.mutate(layer.id)}
+                            data-testid={`button-delete-layer-${layer.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Удалить слой</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                  
+                  {/* Source files panel - shown when expanded */}
+                  {expandedLayerId === layer.id && layer.sourceFiles && layer.sourceFiles.length > 0 && (
+                    <div className="px-3 py-2 border-t bg-muted/30">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Файлы shapefile:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {layer.sourceFiles.map((file, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-[10px] py-0">
+                            <FileText className="h-3 w-3 mr-1" />
+                            {file}
+                          </Badge>
+                        ))}
+                      </div>
+                      {layer.crs && (
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          CRS: {layer.crs}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}

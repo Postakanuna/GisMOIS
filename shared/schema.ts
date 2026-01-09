@@ -201,6 +201,7 @@ export const editableLayerSchema = z.object({
   featureCount: z.number().default(0),
   source: layerSourceSchema.default("user"), // "user" = created in app, "import" = from shapefile
   sourceFileName: z.string().optional(), // original filename for imported layers
+  sourceFiles: z.array(z.string()).optional(), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
   crs: z.string().default("EPSG:4326"), // coordinate reference system for imported layers
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -231,6 +232,7 @@ export const editableLayers = pgTable("editable_layers", {
   featureCount: integer("feature_count").notNull().default(0),
   source: text("source").notNull().default("user"), // "user" or "import"
   sourceFileName: text("source_file_name"), // original filename for imported layers
+  sourceFiles: jsonb("source_files").default([]), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
   crs: text("crs").notNull().default("EPSG:4326"), // coordinate reference system
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

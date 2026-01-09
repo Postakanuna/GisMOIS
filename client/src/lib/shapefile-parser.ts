@@ -6,6 +6,7 @@ interface ParsedShapefile {
   geojson: FeatureCollection;
   sourceCrs: string | null;
   reprojectionFailed?: boolean;
+  sourceFiles?: string[]; // list of files found in the shapefile set (e.g., ["layer.shp", "layer.dbf", "layer.prj"])
 }
 
 interface ShapefileSet {
@@ -15,6 +16,7 @@ interface ShapefileSet {
   dbf: ArrayBuffer | null;
   prj: string | null;
   cpg: string | null;
+  fileNames: string[]; // list of actual file names found (e.g., ["roads.shp", "roads.dbf"])
 }
 
 const CP1251_DECODER = new TextDecoder('windows-1251');
@@ -511,11 +513,14 @@ export async function parseShapefileZip(arrayBuffer: ArrayBuffer): Promise<Parse
         shx: null,
         dbf: null,
         prj: null,
-        cpg: null
+        cpg: null,
+        fileNames: []
       });
     }
     
     const set = shapefileSets.get(pathWithoutExt)!;
+    const fileName = path.split('/').pop() || path;
+    set.fileNames.push(fileName);
     
     if (ext === 'prj' || ext === 'cpg') {
       const content = await entry.async('arraybuffer');
@@ -571,7 +576,8 @@ export async function parseShapefileZip(arrayBuffer: ArrayBuffer): Promise<Parse
         name: set.baseName,
         geojson: transformResult.featureCollection,
         sourceCrs: set.prj,
-        reprojectionFailed: transformResult.failed
+        reprojectionFailed: transformResult.failed,
+        sourceFiles: set.fileNames
       });
       
     } catch (error) {
