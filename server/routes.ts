@@ -1025,6 +1025,28 @@ export async function registerRoutes(
     }
   });
 
+  // Get editable layers for a scene
+  app.get("/api/scenes/:sceneId/editable-layers", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const layers = await storage.getEditableLayersByScene(sceneId);
+      return res.json(layers);
+    } catch (error) {
+      console.error("Error fetching scene editable layers:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/editable-layers/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
@@ -1486,7 +1508,7 @@ export async function registerRoutes(
     }
   });
 
-  // Import shapefile as dataset
+  // Import shapefile as editable layer (unified with drawing layers)
   app.post("/api/datasets/import", async (req: Request, res: Response) => {
     try {
       const user = await getUserFromSession(req);
@@ -1494,7 +1516,7 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const { name, geometryType, geojson, sourceFileName, crs } = req.body;
+      const { name, geometryType, geojson, sourceFileName, crs, sceneId, color } = req.body;
       
       if (!name || !geometryType || !geojson) {
         return res.status(400).json({ 
@@ -1505,42 +1527,52 @@ export async function registerRoutes(
       const features = geojson.features || [];
       
       // Extract field schema from first feature properties
-      let fieldSchema: Array<{ name: string; type: string }> = [];
+      let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
       if (features.length > 0 && features[0].properties) {
         fieldSchema = Object.keys(features[0].properties).map(key => ({
           name: key,
-          type: typeof features[0].properties[key] === 'number' ? 'number' : 'text'
+          type: typeof features[0].properties[key] === 'number' ? 'number' : 'text',
+          required: false
         }));
       }
       
-      // Create the dataset
-      const dataset = await storage.createDataset({
+      // Create editable layer (unified approach)
+      const layer = await storage.createEditableLayer({
+        sceneId: sceneId || null,
         name,
-        originalFilename: sourceFileName || name,
         geometryType,
+        color: color || "#1976D2",
+        source: "import",
+        sourceFileName: sourceFileName || name,
         crs: crs || "EPSG:4326",
-        fieldSchema: fieldSchema as any,
-        createdBy: user.id,
       });
       
-      // Batch create features
+      // Create layer schema from shapefile fields
+      if (fieldSchema.length > 0) {
+        await storage.createLayerSchema({
+          layerId: layer.id,
+          fields: fieldSchema as any,
+        });
+      }
+      
+      // Batch create drawn features
       if (features.length > 0) {
         const insertFeatures = features.map((feature: any) => ({
-          datasetId: dataset.id,
+          layerId: layer.id,
           geometryType: feature.geometry?.type || geometryType,
           coordinates: feature.geometry?.coordinates || [],
           properties: feature.properties || {},
         }));
         
-        await storage.createDatasetFeaturesBatch(insertFeatures);
+        await storage.createDrawnFeaturesBatch(insertFeatures);
       }
       
-      // Fetch updated dataset with correct feature count
-      const updatedDataset = await storage.getDataset(dataset.id);
+      // Fetch updated layer with correct feature count
+      const updatedLayer = await storage.getEditableLayer(layer.id);
       
-      return res.status(201).json(updatedDataset);
+      return res.status(201).json(updatedLayer);
     } catch (error) {
-      console.error("Import dataset error:", error);
+      console.error("Import layer error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

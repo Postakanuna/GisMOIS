@@ -36,6 +36,7 @@ export interface IStorage {
   deleteTrace(id: number): Promise<boolean>;
   deleteTracesByBuilding(buildingId: number): Promise<boolean>;
   getEditableLayers(): Promise<EditableLayer[]>;
+  getEditableLayersByScene(sceneId: number): Promise<EditableLayer[]>;
   getEditableLayer(id: number): Promise<EditableLayer | undefined>;
   createEditableLayer(layer: InsertEditableLayer): Promise<EditableLayer>;
   updateEditableLayer(id: number, updates: Partial<InsertEditableLayer>): Promise<EditableLayer | undefined>;
@@ -99,6 +100,7 @@ export interface IStorage {
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
   return {
     id: row.id,
+    sceneId: row.sceneId ?? undefined,
     name: row.name,
     geometryType: row.geometryType as EditableLayer["geometryType"],
     color: row.color,
@@ -109,6 +111,7 @@ function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer
     featureCount: row.featureCount,
     source: row.source as EditableLayer["source"],
     sourceFileName: row.sourceFileName || undefined,
+    crs: row.crs || "EPSG:4326",
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -238,6 +241,11 @@ export class DatabaseStorage implements IStorage {
     return rows.map(toEditableLayer);
   }
 
+  async getEditableLayersByScene(sceneId: number): Promise<EditableLayer[]> {
+    const rows = await db.select().from(editableLayers).where(eq(editableLayers.sceneId, sceneId));
+    return rows.map(toEditableLayer);
+  }
+
   async getEditableLayer(id: number): Promise<EditableLayer | undefined> {
     const [row] = await db.select().from(editableLayers).where(eq(editableLayers.id, id));
     return row ? toEditableLayer(row) : undefined;
@@ -245,6 +253,7 @@ export class DatabaseStorage implements IStorage {
 
   async createEditableLayer(layer: InsertEditableLayer): Promise<EditableLayer> {
     const [row] = await db.insert(editableLayers).values({
+      sceneId: layer.sceneId ?? null,
       name: layer.name,
       geometryType: layer.geometryType,
       color: layer.color || "#1976D2",
@@ -255,6 +264,7 @@ export class DatabaseStorage implements IStorage {
       featureCount: 0,
       source: layer.source || "user",
       sourceFileName: layer.sourceFileName,
+      crs: layer.crs || "EPSG:4326",
     }).returning();
     return toEditableLayer(row);
   }
@@ -270,6 +280,8 @@ export class DatabaseStorage implements IStorage {
     if (updates.opacity !== undefined) updateData.opacity = updates.opacity;
     if (updates.source !== undefined) updateData.source = updates.source;
     if (updates.sourceFileName !== undefined) updateData.sourceFileName = updates.sourceFileName;
+    if (updates.sceneId !== undefined) updateData.sceneId = updates.sceneId;
+    if (updates.crs !== undefined) updateData.crs = updates.crs;
 
     const [row] = await db.update(editableLayers)
       .set(updateData)

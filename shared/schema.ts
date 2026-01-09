@@ -237,6 +237,7 @@ export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
 // Editable layer (user-created layer for drawing or imported from shapefile)
 export const editableLayerSchema = z.object({
   id: z.number(),
+  sceneId: z.number().nullable().optional(), // null for global layers, scene ID for scene-specific layers
   name: z.string(),
   geometryType: geometryTypeSchema,
   color: z.string().default("#1976D2"),
@@ -247,6 +248,7 @@ export const editableLayerSchema = z.object({
   featureCount: z.number().default(0),
   source: layerSourceSchema.default("user"), // "user" = created in app, "import" = from shapefile
   sourceFileName: z.string().optional(), // original filename for imported layers
+  crs: z.string().default("EPSG:4326"), // coordinate reference system for imported layers
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -265,6 +267,7 @@ import { createInsertSchema } from "drizzle-zod";
 // PostgreSQL tables for GIS data
 export const editableLayers = pgTable("editable_layers", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sceneId: integer("scene_id"), // null for global layers, scene ID for scene-specific layers
   name: text("name").notNull(),
   geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
   color: text("color").notNull().default("#1976D2"),
@@ -275,6 +278,7 @@ export const editableLayers = pgTable("editable_layers", {
   featureCount: integer("feature_count").notNull().default(0),
   source: text("source").notNull().default("user"), // "user" or "import"
   sourceFileName: text("source_file_name"), // original filename for imported layers
+  crs: text("crs").notNull().default("EPSG:4326"), // coordinate reference system
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

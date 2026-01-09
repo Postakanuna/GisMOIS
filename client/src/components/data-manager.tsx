@@ -3,9 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useScene } from "@/contexts/scene-context";
@@ -13,53 +11,31 @@ import shp from "shpjs";
 import {
   X,
   GripVertical,
-  Upload,
   Database,
   Layers,
-  Plus,
-  Minus,
   Eye,
   EyeOff,
   Trash2,
-  RefreshCw,
   FileUp,
   Loader2,
 } from "lucide-react";
 
-interface Dataset {
+interface EditableLayer {
   id: number;
+  sceneId: number | null;
   name: string;
-  originalFilename: string;
   geometryType: string;
-  crs: string;
-  featureCount: number;
-  createdBy: string;
-  createdAt: string;
-}
-
-interface SceneDataset {
-  id: number;
-  sceneId: number;
-  datasetId: number;
-  layerName: string | null;
-  isVisible: number;
-  opacity: number;
   color: string;
   pointStyle: string;
   lineStyle: string;
-  zIndex: number;
-  dataset: Dataset;
-}
-
-interface Upload {
-  id: number;
-  filename: string;
-  originalFilename: string;
-  status: string;
-  error: string | null;
-  datasetId: number | null;
-  createdBy: string;
+  visible: boolean;
+  opacity: number;
+  featureCount: number;
+  source: string;
+  sourceFileName: string | null;
+  crs: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 interface DataManagerProps {
@@ -80,61 +56,31 @@ export function DataManager({ onClose }: DataManagerProps) {
   const dragOffset = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: datasets = [], isLoading: datasetsLoading } = useQuery<Dataset[]>({
-    queryKey: ["/api/datasets"],
-  });
-
-  const { data: sceneDatasets = [], isLoading: sceneLoading } = useQuery<SceneDataset[]>({
-    queryKey: ["/api/scenes", currentSceneId, "datasets"],
+  const { data: sceneLayers = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
+    queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
     enabled: !!currentSceneId,
   });
 
-  const { data: uploads = [] } = useQuery<Upload[]>({
-    queryKey: ["/api/uploads"],
-  });
-
-  const addToSceneMutation = useMutation({
-    mutationFn: async (datasetId: number) => {
-      const res = await apiRequest("POST", `/api/scenes/${currentSceneId}/datasets`, { datasetId });
-      return res.json();
+  const deleteLayerMutation = useMutation({
+    mutationFn: async (layerId: number) => {
+      await apiRequest("DELETE", `/api/editable-layers/${layerId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "datasets"] });
-      toast({ title: "Датасет добавлен в сцену" });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      toast({ title: "Слой удалён" });
     },
     onError: () => {
-      toast({ title: "Ошибка добавления датасета", variant: "destructive" });
-    },
-  });
-
-  const removeFromSceneMutation = useMutation({
-    mutationFn: async (sceneDatasetId: number) => {
-      await apiRequest("DELETE", `/api/scenes/${currentSceneId}/datasets/${sceneDatasetId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "datasets"] });
-      toast({ title: "Датасет удален из сцены" });
+      toast({ title: "Ошибка удаления слоя", variant: "destructive" });
     },
   });
 
   const toggleVisibilityMutation = useMutation({
-    mutationFn: async ({ id, isVisible }: { id: number; isVisible: number }) => {
-      const res = await apiRequest("PATCH", `/api/scenes/${currentSceneId}/datasets/${id}`, { isVisible });
+    mutationFn: async ({ id, visible }: { id: number; visible: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, { visible });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "datasets"] });
-    },
-  });
-
-  const deleteDatasetMutation = useMutation({
-    mutationFn: async (datasetId: number) => {
-      await apiRequest("DELETE", `/api/datasets/${datasetId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/datasets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "datasets"] });
-      toast({ title: "Датасет удален" });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
     },
   });
 
@@ -226,6 +172,7 @@ export function DataManager({ onClose }: DataManagerProps) {
             geojson: collection,
             sourceFileName: file.name,
             crs: "EPSG:4326",
+            sceneId: currentSceneId, // Attach to current scene
           });
 
           if (!res.ok) {
@@ -235,8 +182,8 @@ export function DataManager({ onClose }: DataManagerProps) {
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ["/api/datasets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "datasets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       toast({ title: "Файл загружен успешно" });
     } catch (error) {
       console.error("Shapefile import error:", error);
@@ -253,9 +200,6 @@ export function DataManager({ onClose }: DataManagerProps) {
       fileInputRef.current.value = "";
     }
   };
-
-  const sceneDsIds = new Set(sceneDatasets.map(sd => sd.datasetId));
-  const availableDatasets = datasets.filter(d => !sceneDsIds.has(d.id));
 
   const getGeometryIcon = (type: string) => {
     switch (type) {
@@ -303,190 +247,119 @@ export function DataManager({ onClose }: DataManagerProps) {
         </Button>
       </div>
 
-      <Tabs defaultValue="scene" className="flex-1 flex flex-col overflow-hidden" data-no-drag>
-        <TabsList className="mx-3 mt-2 grid w-auto grid-cols-2">
-          <TabsTrigger value="scene" data-testid="tab-scene-datasets">
-            <Layers className="h-4 w-4 mr-2" />
-            В сцене ({sceneDatasets.length})
-          </TabsTrigger>
-          <TabsTrigger value="catalog" data-testid="tab-catalog">
-            <Database className="h-4 w-4 mr-2" />
-            Каталог ({datasets.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="scene" className="flex-1 overflow-hidden m-0 p-3">
-          <ScrollArea className="h-full">
-            {sceneLoading ? (
-              <div className="text-center py-8 text-muted-foreground">Загрузка...</div>
-            ) : sceneDatasets.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Layers className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>В сцене нет датасетов</p>
-                <p className="text-xs mt-1">Добавьте датасеты из каталога</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {sceneDatasets.map(sd => (
-                  <div
-                    key={sd.id}
-                    className="flex items-center gap-2 p-2 rounded-md border bg-background"
-                    data-testid={`scene-dataset-${sd.id}`}
-                  >
-                    <span className="text-lg w-6 text-center" title={sd.dataset.geometryType}>
-                      {getGeometryIcon(sd.dataset.geometryType)}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {sd.layerName || sd.dataset.name}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {sd.dataset.featureCount} объектов
-                      </div>
+      <div className="flex-1 flex flex-col overflow-hidden p-3" data-no-drag>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Слои сцены ({sceneLayers.length})</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading || !canEdit}
+              data-testid="button-upload-shapefile"
+            >
+              {isUploading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FileUp className="h-4 w-4 mr-2" />
+              )}
+              Импорт SHP
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".zip,.shp"
+              multiple
+              onChange={handleFileChange}
+              data-testid="input-shapefile"
+            />
+          </div>
+        </div>
+        
+        <ScrollArea className="flex-1">
+          {sceneLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Загрузка...</div>
+          ) : sceneLayers.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Layers className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>В сцене нет слоёв</p>
+              <p className="text-xs mt-1">Импортируйте shapefile или создайте слой</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {sceneLayers.map(layer => (
+                <div
+                  key={layer.id}
+                  className="flex items-center gap-2 p-2 rounded-md border bg-background"
+                  data-testid={`scene-layer-${layer.id}`}
+                >
+                  <div 
+                    className="w-3 h-3 rounded-sm shrink-0" 
+                    style={{ backgroundColor: layer.color }}
+                  />
+                  <span className="text-lg w-6 text-center shrink-0" title={layer.geometryType}>
+                    {getGeometryIcon(layer.geometryType)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">
+                      {layer.name}
                     </div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <span>{layer.featureCount} объектов</span>
+                      {layer.source === "import" && (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                          импорт
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => toggleVisibilityMutation.mutate({
+                          id: layer.id,
+                          visible: !layer.visible,
+                        })}
+                        data-testid={`button-toggle-visibility-${layer.id}`}
+                      >
+                        {layer.visible ? (
+                          <Eye className="h-4 w-4" />
+                        ) : (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
+                  </Tooltip>
+                  {canEdit && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7"
-                          onClick={() => toggleVisibilityMutation.mutate({
-                            id: sd.id,
-                            isVisible: sd.isVisible ? 0 : 1,
-                          })}
-                          data-testid={`button-toggle-visibility-${sd.id}`}
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => deleteLayerMutation.mutate(layer.id)}
+                          data-testid={`button-delete-layer-${layer.id}`}
                         >
-                          {sd.isVisible ? (
-                            <Eye className="h-4 w-4" />
-                          ) : (
-                            <EyeOff className="h-4 w-4 text-muted-foreground" />
-                          )}
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>{sd.isVisible ? "Скрыть" : "Показать"}</TooltipContent>
+                      <TooltipContent>Удалить слой</TooltipContent>
                     </Tooltip>
-                    {canEdit && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive"
-                            onClick={() => removeFromSceneMutation.mutate(sd.id)}
-                            data-testid={`button-remove-from-scene-${sd.id}`}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Удалить из сцены</TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-        </TabsContent>
-
-        <TabsContent value="catalog" className="flex-1 overflow-hidden m-0 p-3 flex flex-col gap-3">
-          {canEdit && (
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept=".zip,.shp"
-                multiple
-                className="hidden"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                data-testid="button-upload-shapefile"
-              >
-                <FileUp className="h-4 w-4 mr-2" />
-                Загрузить SHP
-              </Button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
-
-          <ScrollArea className="flex-1">
-            {datasetsLoading ? (
-              <div className="text-center py-8 text-muted-foreground">Загрузка...</div>
-            ) : datasets.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Каталог пуст</p>
-                <p className="text-xs mt-1">Загрузите shapefile для начала работы</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {datasets.map(dataset => {
-                  const inScene = sceneDsIds.has(dataset.id);
-                  return (
-                    <div
-                      key={dataset.id}
-                      className={`flex items-center gap-2 p-2 rounded-md border ${
-                        inScene ? "bg-primary/5 border-primary/20" : "bg-background"
-                      }`}
-                      data-testid={`catalog-dataset-${dataset.id}`}
-                    >
-                      <span className="text-lg w-6 text-center" title={dataset.geometryType}>
-                        {getGeometryIcon(dataset.geometryType)}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{dataset.name}</div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-2">
-                          <span>{dataset.featureCount} объектов</span>
-                          <span>•</span>
-                          <span>{dataset.originalFilename}</span>
-                        </div>
-                      </div>
-                      {inScene ? (
-                        <Badge variant="secondary" className="text-xs">В сцене</Badge>
-                      ) : (
-                        canEdit && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => addToSceneMutation.mutate(dataset.id)}
-                                data-testid={`button-add-to-scene-${dataset.id}`}
-                              >
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Добавить в сцену</TooltipContent>
-                          </Tooltip>
-                        )
-                      )}
-                      {canEdit && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive"
-                              onClick={() => deleteDatasetMutation.mutate(dataset.id)}
-                              data-testid={`button-delete-dataset-${dataset.id}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Удалить из каталога</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </ScrollArea>
-        </TabsContent>
-      </Tabs>
+        </ScrollArea>
+      </div>
 
       <div
         className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"

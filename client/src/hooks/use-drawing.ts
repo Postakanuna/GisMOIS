@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useScene } from "@/contexts/scene-context";
 import type { 
   EditableLayer, 
   InsertEditableLayer, 
@@ -23,6 +24,7 @@ interface UndoAction {
 
 export function useDrawing() {
   const { toast } = useToast();
+  const { currentSceneId } = useScene();
   
   // State
   const [activeLayerId, setActiveLayerId] = useState<number | null>(null);
@@ -35,9 +37,10 @@ export function useDrawing() {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
-  // Queries
+  // Queries - load editable layers for current scene
   const { data: editableLayers = [], isLoading: layersLoading } = useQuery<EditableLayer[]>({
-    queryKey: ["/api/editable-layers"],
+    queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
+    enabled: !!currentSceneId,
   });
 
   const activeLayer = editableLayers.find(l => l.id === activeLayerId) || null;
@@ -55,11 +58,13 @@ export function useDrawing() {
   // Mutations
   const createLayerMutation = useMutation({
     mutationFn: async (layer: InsertEditableLayer) => {
-      const res = await apiRequest("POST", "/api/editable-layers", layer);
+      // Attach layer to current scene
+      const layerWithScene = { ...layer, sceneId: currentSceneId };
+      const res = await apiRequest("POST", "/api/editable-layers", layerWithScene);
       return res.json();
     },
     onSuccess: (newLayer: EditableLayer) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       setActiveLayerId(newLayer.id);
       toast({
         title: "Слой создан",
@@ -74,7 +79,7 @@ export function useDrawing() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
     },
   });
 
@@ -83,7 +88,7 @@ export function useDrawing() {
       await apiRequest("DELETE", `/api/editable-layers/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       if (activeLayerId === activeLayerId) {
         setActiveLayerId(null);
       }
@@ -100,7 +105,7 @@ export function useDrawing() {
     },
     onSuccess: (newFeature: DrawnFeature) => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
       
       // Add to undo stack
@@ -138,7 +143,7 @@ export function useDrawing() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
     },
   });

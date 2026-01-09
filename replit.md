@@ -14,11 +14,11 @@ Preferred communication style: Simple, everyday language.
 - Implemented scene selection page after login
 - Added Data Manager (draggable modal) for managing datasets
 - Shapefile upload with CP1251 encoding support through Data Manager
-- Scene datasets display on map with visibility, color, and opacity controls
 - Role-based access control (owner/editor/viewer) for scenes
-- Scene datasets section in LayerPanel showing datasets added to current scene
-- Scene dataset geometry editing: users can edit features through Modify interaction
-- CRUD API for dataset features (POST/PATCH/DELETE endpoints)
+- **Unified editable layers architecture**: imported shapefiles and hand-drawn layers are unified into single editable layer system
+- Editable layers are scene-scoped (sceneId field) for multi-scene support
+- Import creates editable_layer + drawn_features instead of deprecated dataset approach
+- CRUD API for layer features (POST/PATCH/DELETE endpoints)
 
 ## System Architecture
 
