@@ -26,6 +26,7 @@ import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
 import { DraggableModal } from "@/components/ui/draggable-modal";
 import { DataManager } from "@/components/data-manager";
+import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -188,6 +189,13 @@ export default function Home() {
   const [showDataManager, setShowDataManager] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
+  const [showTraceDialog, setShowTraceDialog] = useState(false);
+  const [traceSourceInfo, setTraceSourceInfo] = useState<{
+    coords: [number, number];
+    layerName: string;
+    layerId: number;
+  } | null>(null);
+  const [traceRouteCoords, setTraceRouteCoords] = useState<[number, number][] | null>(null);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -237,6 +245,7 @@ export default function Home() {
       visible: true,
       opacity: 1,
       source: "user",
+      crs: "EPSG:4326",
     });
   }, [drawing]);
 
@@ -251,6 +260,52 @@ export default function Home() {
   const handleDatasetFeatureUpdated = useCallback((datasetId: number, featureId: number, geometry: { type: string; coordinates: unknown }) => {
     updateDatasetFeatureMutation.mutate({ datasetId, featureId, geometry });
   }, [updateDatasetFeatureMutation]);
+
+  const handleOpenTraceDialog = useCallback(() => {
+    if (selectedFeatures.length !== 1 || !drawing.activeLayer) return;
+    
+    const feature = selectedFeatures[0];
+    const featureData = drawing.features.find((_, idx) => idx === feature.featureIndex);
+    
+    if (featureData) {
+      let coords: [number, number] | null = null;
+      const rawCoords = featureData.coordinates as unknown;
+      
+      if (featureData.geometryType === "Point") {
+        coords = rawCoords as [number, number];
+      } else if (featureData.geometryType === "LineString") {
+        const lineCoords = rawCoords as [number, number][];
+        if (lineCoords.length > 0) {
+          const midIdx = Math.floor(lineCoords.length / 2);
+          coords = lineCoords[midIdx];
+        }
+      } else if (featureData.geometryType === "Polygon") {
+        const polyCoords = rawCoords as [number, number][][];
+        if (polyCoords.length > 0 && polyCoords[0].length > 0) {
+          const ring = polyCoords[0];
+          let sumX = 0, sumY = 0;
+          for (const pt of ring) {
+            sumX += pt[0];
+            sumY += pt[1];
+          }
+          coords = [sumX / ring.length, sumY / ring.length];
+        }
+      }
+      
+      if (coords) {
+        setTraceSourceInfo({
+          coords,
+          layerName: drawing.activeLayer.name,
+          layerId: drawing.activeLayer.id,
+        });
+        setShowTraceDialog(true);
+      }
+    }
+  }, [selectedFeatures, drawing.activeLayer, drawing.features]);
+
+  const handleTraceRouteResult = useCallback((result: { coordinates: [number, number][] }) => {
+    setTraceRouteCoords(result.coordinates);
+  }, []);
 
   // Auto-close attribute table modal when prerequisites are no longer met
   useEffect(() => {
@@ -442,6 +497,7 @@ export default function Home() {
                 showAttributeTable={showAttributeTable}
                 onToggleAttributeTable={() => setShowAttributeTable(prev => !prev)}
                 featureCount={drawing.features.length}
+                onTraceRoute={handleOpenTraceDialog}
               />
             )}
             
@@ -504,6 +560,17 @@ export default function Home() {
             {showDataManager && (
               <DataManager onClose={() => setShowDataManager(false)} />
             )}
+
+            {/* Trace Route Dialog */}
+            <TraceRouteDialog
+              open={showTraceDialog}
+              onOpenChange={setShowTraceDialog}
+              sourceCoords={traceSourceInfo?.coords || null}
+              sourceLayerName={traceSourceInfo?.layerName || null}
+              availableLayers={drawing.editableLayers}
+              currentLayerId={traceSourceInfo?.layerId || null}
+              onRouteResult={handleTraceRouteResult}
+            />
           </main>
         </div>
       </div>

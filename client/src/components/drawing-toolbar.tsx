@@ -17,6 +17,7 @@ import {
   Save,
   X,
   Table2,
+  Route,
 } from "lucide-react";
 import type { EditableLayer } from "@shared/schema";
 
@@ -40,6 +41,7 @@ interface DrawingToolbarProps {
   showAttributeTable?: boolean;
   onToggleAttributeTable?: () => void;
   featureCount?: number;
+  onTraceRoute?: () => void;
 }
 
 const ALL_TOOL_BUTTONS: { mode: DrawingMode; icon: typeof MousePointer2; label: string; tooltip: string; geometryType?: string }[] = [
@@ -69,6 +71,7 @@ export function DrawingToolbar({
   showAttributeTable = false,
   onToggleAttributeTable,
   featureCount = 0,
+  onTraceRoute,
 }: DrawingToolbarProps) {
   const isDrawingMode = mode === "point" || mode === "line" || mode === "polygon";
   const canDraw = activeLayer !== null;
@@ -160,6 +163,24 @@ export function DrawingToolbar({
         )}
 
         <div className="border-l pl-1 ml-1 flex items-center gap-1">
+          {/* Trace Route - only when exactly 1 feature selected */}
+          {onTraceRoute && selectedCount === 1 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={onTraceRoute}
+                  data-testid="button-trace-route"
+                >
+                  <Route className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Трассировка к слою</TooltipContent>
+            </Tooltip>
+          )}
+
           {/* Delete */}
           <Tooltip>
             <TooltipTrigger asChild>
