@@ -1,10 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { DraggableModal } from "@/components/ui/draggable-modal";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -13,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Plus, Trash2, Save, X } from "lucide-react";
+import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown } from "lucide-react";
 import type { DrawnFeature, AttributeField, AttributeFieldType, LayerSchemaDefinition } from "@shared/schema";
 
 interface AttributeTableProps {
@@ -34,6 +40,8 @@ const FIELD_TYPE_LABELS: Record<AttributeFieldType, string> = {
   select: "Список",
 };
 
+const ROW_HEIGHT = 36;
+
 export function AttributeTable({
   features,
   selectedFeatureIds,
@@ -47,6 +55,8 @@ export function AttributeTable({
   const [editingFields, setEditingFields] = useState<AttributeField[]>([]);
   const [editingCell, setEditingCell] = useState<{ featureId: number; field: string } | null>(null);
   const [editValue, setEditValue] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [hasScrolledToSelected, setHasScrolledToSelected] = useState(false);
 
   const fields = layerSchema?.fields || [];
   
@@ -55,7 +65,65 @@ export function AttributeTable({
     _type: 80,
   });
   const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const filteredFeatures = useMemo(() => {
+    if (!searchQuery.trim()) return features;
+    
+    const query = searchQuery.toLowerCase();
+    return features.filter(feature => {
+      if (feature.id.toString().includes(query)) return true;
+      if (feature.geometryType.toLowerCase().includes(query)) return true;
+      
+      for (const value of Object.values(feature.properties)) {
+        if (value !== null && value !== undefined) {
+          if (value.toString().toLowerCase().includes(query)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+  }, [features, searchQuery]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: filteredFeatures.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  });
+
+  const scrollToFirstSelected = useCallback(() => {
+    if (selectedFeatureIds.length === 0) return;
+    
+    const firstSelectedId = selectedFeatureIds[0];
+    const index = filteredFeatures.findIndex(f => f.id === firstSelectedId);
+    
+    if (index !== -1) {
+      rowVirtualizer.scrollToIndex(index, { align: "center" });
+    }
+  }, [selectedFeatureIds, filteredFeatures, rowVirtualizer]);
+
+  const prevSelectedRef = useRef<number[]>([]);
+  
+  useEffect(() => {
+    const selectedChanged = JSON.stringify(prevSelectedRef.current) !== JSON.stringify(selectedFeatureIds);
+    
+    if (selectedChanged) {
+      prevSelectedRef.current = selectedFeatureIds;
+      setHasScrolledToSelected(false);
+    }
+  }, [selectedFeatureIds]);
+
+  useEffect(() => {
+    if (!hasScrolledToSelected && selectedFeatureIds.length > 0 && filteredFeatures.length > 0) {
+      const timer = setTimeout(() => {
+        scrollToFirstSelected();
+        setHasScrolledToSelected(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [hasScrolledToSelected, selectedFeatureIds, filteredFeatures, scrollToFirstSelected]);
 
   useEffect(() => {
     const newWidths: Record<string, number> = { _id: 60, _type: 80 };
@@ -226,7 +294,6 @@ export function AttributeTable({
       );
     }
 
-    // Display value
     if (field.type === "boolean") {
       return (
         <Badge 
@@ -241,13 +308,15 @@ export function AttributeTable({
 
     return (
       <span 
-        className="cursor-pointer hover:bg-muted px-1 rounded"
+        className="cursor-pointer hover:bg-muted px-1 rounded truncate block"
         onClick={() => startEditing(feature.id, field.name, value)}
       >
         {value?.toString() || "-"}
       </span>
     );
   };
+
+  const totalWidth = columnWidths._id + columnWidths._type + fields.reduce((sum, f) => sum + (columnWidths[f.name] || 120), 0);
 
   if (features.length === 0) {
     return null;
@@ -258,9 +327,9 @@ export function AttributeTable({
       <div className="flex flex-col h-full" data-testid="attribute-table-container">
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-b shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium" data-testid="text-layer-name">{layerName}</span>
+            <span className="text-sm font-medium whitespace-nowrap" data-testid="text-layer-name">{layerName}</span>
             <Badge variant="secondary" className="text-xs" data-testid="badge-feature-count">
-              {features.length} объектов
+              {searchQuery ? `${filteredFeatures.length} из ${features.length}` : `${features.length}`}
             </Badge>
             {selectedFeatureIds.length > 0 && (
               <Badge variant="outline" className="text-xs" data-testid="badge-selected-count">
@@ -268,29 +337,67 @@ export function AttributeTable({
               </Badge>
             )}
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-7 w-7 shrink-0"
-            onClick={() => setShowSchemaDialog(true)}
-            data-testid="button-edit-schema"
-          >
-            <Settings2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Поиск..."
+                className="h-7 w-40 pl-7 text-xs"
+                data-testid="input-search"
+              />
+              {searchQuery && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute right-0 top-0 h-7 w-7"
+                  onClick={() => setSearchQuery("")}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+            {selectedFeatureIds.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={scrollToFirstSelected}
+                    data-testid="button-scroll-to-selected"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Перейти к выбранному</TooltipContent>
+              </Tooltip>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => setShowSchemaDialog(true)}
+                  data-testid="button-edit-schema"
+                >
+                  <Settings2 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Настройка атрибутов</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
         
-        <div 
-          ref={tableContainerRef}
-          className="flex-1 overflow-auto border-t"
-          style={{ minHeight: 0 }}
-          data-testid="table-scroll-container"
-        >
-          <table className="w-max min-w-full border-collapse text-sm" style={{ tableLayout: "fixed" }}>
-            <thead className="sticky top-0 z-10 bg-background border-b">
-              <tr>
-                <th 
-                  className="relative px-2 py-2 text-left font-medium text-muted-foreground border-r select-none"
-                  style={{ width: columnWidths._id, minWidth: columnWidths._id }}
+        <div className="flex-1 overflow-hidden flex flex-col" style={{ minHeight: 0 }}>
+          <div className="overflow-x-auto border-b bg-background sticky top-0 z-10">
+            <div style={{ width: totalWidth, minWidth: "100%" }}>
+              <div className="flex">
+                <div 
+                  className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
+                  style={{ width: columnWidths._id }}
                 >
                   ID
                   <div
@@ -298,10 +405,10 @@ export function AttributeTable({
                     onMouseDown={(e) => handleResizeStart(e, "_id")}
                     data-testid="resize-handle-id"
                   />
-                </th>
-                <th 
-                  className="relative px-2 py-2 text-left font-medium text-muted-foreground border-r select-none"
-                  style={{ width: columnWidths._type, minWidth: columnWidths._type }}
+                </div>
+                <div 
+                  className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
+                  style={{ width: columnWidths._type }}
                 >
                   Тип
                   <div
@@ -309,66 +416,90 @@ export function AttributeTable({
                     onMouseDown={(e) => handleResizeStart(e, "_type")}
                     data-testid="resize-handle-type"
                   />
-                </th>
+                </div>
                 {fields.map((field) => (
-                  <th 
+                  <div 
                     key={field.name}
-                    className="relative px-2 py-2 text-left font-medium text-muted-foreground border-r select-none"
-                    style={{ width: columnWidths[field.name] || 120, minWidth: columnWidths[field.name] || 120 }}
+                    className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
+                    style={{ width: columnWidths[field.name] || 120 }}
                   >
-                    {field.name}
+                    <span className="truncate block">{field.name}</span>
                     {field.required && <span className="text-destructive ml-1">*</span>}
                     <div
                       className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
                       onMouseDown={(e) => handleResizeStart(e, field.name)}
                       data-testid={`resize-handle-${field.name}`}
                     />
-                  </th>
+                  </div>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {features.map((feature) => (
-                <tr
-                  key={feature.id}
-                  className={`cursor-pointer border-b hover:bg-muted/50 ${
-                    selectedFeatureIds.includes(feature.id) ? "bg-accent" : ""
-                  }`}
-                  onClick={(e) => onFeatureSelect(feature.id, e.ctrlKey || e.metaKey)}
-                  data-testid={`row-feature-${feature.id}`}
-                >
-                  <td 
-                    className="px-2 py-1.5 font-mono text-xs border-r"
-                    style={{ width: columnWidths._id, minWidth: columnWidths._id }}
+              </div>
+            </div>
+          </div>
+
+          <div 
+            ref={parentRef}
+            className="flex-1 overflow-auto"
+            data-testid="table-scroll-container"
+          >
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: totalWidth,
+                minWidth: "100%",
+                position: "relative",
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const feature = filteredFeatures[virtualRow.index];
+                const isSelected = selectedFeatureIds.includes(feature.id);
+                
+                return (
+                  <div
+                    key={feature.id}
+                    className={`absolute left-0 flex cursor-pointer border-b hover:bg-muted/50 ${
+                      isSelected ? "bg-accent" : ""
+                    }`}
+                    style={{
+                      top: 0,
+                      transform: `translateY(${virtualRow.start}px)`,
+                      height: `${virtualRow.size}px`,
+                      width: "100%",
+                    }}
+                    onClick={(e) => onFeatureSelect(feature.id, e.ctrlKey || e.metaKey)}
+                    data-testid={`row-feature-${feature.id}`}
                   >
-                    {feature.id}
-                  </td>
-                  <td 
-                    className="px-2 py-1.5 border-r"
-                    style={{ width: columnWidths._type, minWidth: columnWidths._type }}
-                  >
-                    <Badge variant="outline" className="text-xs">
-                      {feature.geometryType === "Point" ? "Точка" : 
-                       feature.geometryType === "LineString" ? "Линия" : "Полигон"}
-                    </Badge>
-                  </td>
-                  {fields.map((field) => (
-                    <td 
-                      key={field.name} 
-                      className="px-2 py-1.5 border-r"
-                      style={{ width: columnWidths[field.name] || 120, minWidth: columnWidths[field.name] || 120 }}
+                    <div 
+                      className="px-2 py-1.5 font-mono text-xs border-r flex items-center flex-shrink-0"
+                      style={{ width: columnWidths._id }}
                     >
-                      {renderCellValue(feature, field)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      {feature.id}
+                    </div>
+                    <div 
+                      className="px-2 py-1.5 border-r flex items-center flex-shrink-0"
+                      style={{ width: columnWidths._type }}
+                    >
+                      <Badge variant="outline" className="text-xs">
+                        {feature.geometryType === "Point" ? "Точка" : 
+                         feature.geometryType === "LineString" ? "Линия" : "Полигон"}
+                      </Badge>
+                    </div>
+                    {fields.map((field) => (
+                      <div 
+                        key={field.name} 
+                        className="px-2 py-1.5 border-r flex items-center flex-shrink-0 overflow-hidden"
+                        style={{ width: columnWidths[field.name] || 120 }}
+                      >
+                        {renderCellValue(feature, field)}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Schema Editor Modal */}
       <DraggableModal
         isOpen={showSchemaDialog}
         onClose={() => setShowSchemaDialog(false)}
