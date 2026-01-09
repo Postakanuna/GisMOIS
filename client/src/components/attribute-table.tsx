@@ -93,16 +93,27 @@ export function AttributeTable({
     overscan: 10,
   });
 
-  const scrollToFirstSelected = useCallback(() => {
+  const [currentSelectedIndex, setCurrentSelectedIndex] = useState(0);
+
+  const scrollToSelectedByIndex = useCallback((indexInSelection: number) => {
     if (selectedFeatureIds.length === 0) return;
     
-    const firstSelectedId = selectedFeatureIds[0];
-    const index = filteredFeatures.findIndex(f => f.id === firstSelectedId);
+    const safeIndex = indexInSelection % selectedFeatureIds.length;
+    const targetId = selectedFeatureIds[safeIndex];
+    const rowIndex = filteredFeatures.findIndex(f => f.id === targetId);
     
-    if (index !== -1) {
-      rowVirtualizer.scrollToIndex(index, { align: "center" });
+    if (rowIndex !== -1) {
+      rowVirtualizer.scrollToIndex(rowIndex, { align: "center" });
     }
   }, [selectedFeatureIds, filteredFeatures, rowVirtualizer]);
+
+  const scrollToNextSelected = useCallback(() => {
+    if (selectedFeatureIds.length === 0) return;
+    
+    const nextIndex = (currentSelectedIndex + 1) % selectedFeatureIds.length;
+    setCurrentSelectedIndex(nextIndex);
+    scrollToSelectedByIndex(nextIndex);
+  }, [selectedFeatureIds.length, currentSelectedIndex, scrollToSelectedByIndex]);
 
   const prevSelectedRef = useRef<number[]>([]);
   
@@ -111,6 +122,7 @@ export function AttributeTable({
     
     if (selectedChanged) {
       prevSelectedRef.current = selectedFeatureIds;
+      setCurrentSelectedIndex(0);
       setHasScrolledToSelected(false);
     }
   }, [selectedFeatureIds]);
@@ -118,12 +130,12 @@ export function AttributeTable({
   useEffect(() => {
     if (!hasScrolledToSelected && selectedFeatureIds.length > 0 && filteredFeatures.length > 0) {
       const timer = setTimeout(() => {
-        scrollToFirstSelected();
+        scrollToSelectedByIndex(0);
         setHasScrolledToSelected(true);
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [hasScrolledToSelected, selectedFeatureIds, filteredFeatures, scrollToFirstSelected]);
+  }, [hasScrolledToSelected, selectedFeatureIds, filteredFeatures, scrollToSelectedByIndex]);
 
   useEffect(() => {
     const newWidths: Record<string, number> = { _id: 60, _type: 80 };
@@ -365,13 +377,17 @@ export function AttributeTable({
                     size="icon"
                     variant="ghost"
                     className="h-7 w-7 shrink-0"
-                    onClick={scrollToFirstSelected}
+                    onClick={scrollToNextSelected}
                     data-testid="button-scroll-to-selected"
                   >
                     <ArrowDown className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Перейти к выбранному</TooltipContent>
+                <TooltipContent>
+                  {selectedFeatureIds.length > 1 
+                    ? `К следующему (${currentSelectedIndex + 1}/${selectedFeatureIds.length})`
+                    : "Перейти к выбранному"}
+                </TooltipContent>
               </Tooltip>
             )}
             <Tooltip>
