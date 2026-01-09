@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useScene } from "@/contexts/scene-context";
 import { FolderOpen, Plus, Users, Calendar, LogOut, Settings } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -38,6 +39,7 @@ export default function ScenesPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, logout } = useAuth();
+  const { setCurrentSceneId } = useScene();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
   const [newSceneDescription, setNewSceneDescription] = useState("");
@@ -72,7 +74,7 @@ export default function ScenesPage() {
   };
 
   const handleSelectScene = (sceneId: number) => {
-    localStorage.setItem("currentSceneId", String(sceneId));
+    setCurrentSceneId(sceneId);
     setLocation("/");
   };
 
