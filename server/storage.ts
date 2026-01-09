@@ -183,6 +183,7 @@ export class DatabaseStorage implements IStorage {
       featureCount: 0,
       source: layer.source || "user",
       sourceFileName: layer.sourceFileName,
+      sourceFiles: layer.sourceFiles || [],
       crs: layer.crs || "EPSG:4326",
     }).returning();
     return toEditableLayer(row);
