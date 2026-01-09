@@ -17,6 +17,8 @@ Preferred communication style: Simple, everyday language.
 - Scene datasets display on map with visibility, color, and opacity controls
 - Role-based access control (owner/editor/viewer) for scenes
 - Scene datasets section in LayerPanel showing datasets added to current scene
+- Scene dataset geometry editing: users can edit features through Modify interaction
+- CRUD API for dataset features (POST/PATCH/DELETE endpoints)
 
 ## System Architecture
 
