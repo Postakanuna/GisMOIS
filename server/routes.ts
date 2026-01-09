@@ -5,11 +5,25 @@ import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertT
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, seedAdminUser } from "./auth";
+import { setupAuth, registerAuthRoutes, seedAdminUser, isAuthenticated, type AuthRequest } from "./auth";
+import { db } from "./db";
+import { users } from "@shared/models/auth";
+import { eq, and } from "drizzle-orm";
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
 const ZWS_BASE_URL = "https://is.arki.mosreg.ru/zws";
+
+async function getUserFromSession(req: Request): Promise<{ id: string; role: string } | null> {
+  if (!req.session.userId) {
+    return null;
+  }
+  const [user] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(and(eq(users.id, req.session.userId), eq(users.isActive, "true")));
+  return user || null;
+}
 
 function getBasicAuthHeader(): string {
   const credentials = Buffer.from(`${ZULU_USERNAME}:${ZULU_PASSWORD}`).toString("base64");
@@ -1230,23 +1244,22 @@ export async function registerRoutes(
   // Get scenes for current user
   app.get("/api/scenes", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const userId = (req.user as any).id;
-      const userRole = (req.user as any).role;
       
       // Admin sees all scenes
-      if (userRole === "admin") {
+      if (user.role === "admin") {
         const allScenes = await storage.getScenes();
         const scenesWithRole = await Promise.all(allScenes.map(async scene => {
-          const membership = await storage.getSceneMember(scene.id, userId);
+          const membership = await storage.getSceneMember(scene.id, user.id);
           return { ...scene, role: membership?.role || "owner" };
         }));
         return res.json(scenesWithRole);
       }
       
-      const scenes = await storage.getScenesForUser(userId);
+      const scenes = await storage.getScenesForUser(user.id);
       return res.json(scenes);
     } catch (error) {
       console.error("Error getting scenes:", error);
@@ -1257,20 +1270,19 @@ export async function registerRoutes(
   // Get single scene
   app.get("/api/scenes/:id", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.id);
-      const userId = (req.user as any).id;
       
       const scene = await storage.getScene(sceneId);
       if (!scene) {
         return res.status(404).json({ message: "Scene not found" });
       }
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (!membership && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -1284,17 +1296,17 @@ export async function registerRoutes(
   // Create scene
   app.post("/api/scenes", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const userId = (req.user as any).id;
       const { name, description } = req.body;
       
       if (!name || typeof name !== "string") {
         return res.status(400).json({ message: "Name is required" });
       }
       
-      const scene = await storage.createScene({ name, description, createdBy: userId });
+      const scene = await storage.createScene({ name, description, createdBy: user.id });
       return res.status(201).json({ ...scene, role: "owner" });
     } catch (error) {
       console.error("Error creating scene:", error);
@@ -1305,15 +1317,14 @@ export async function registerRoutes(
   // Update scene
   app.patch("/api/scenes/:id", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.id);
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (!membership && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
       if (membership?.role === "viewer") {
@@ -1332,15 +1343,14 @@ export async function registerRoutes(
   // Delete scene
   app.delete("/api/scenes/:id", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.id);
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (membership?.role !== "owner" && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (membership?.role !== "owner" && user.role !== "admin") {
         return res.status(403).json({ message: "Only owners can delete scenes" });
       }
       
@@ -1359,15 +1369,14 @@ export async function registerRoutes(
   // Get scene members
   app.get("/api/scenes/:sceneId/members", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.sceneId);
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (!membership && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -1382,15 +1391,14 @@ export async function registerRoutes(
   // Add scene member
   app.post("/api/scenes/:sceneId/members", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.sceneId);
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (membership?.role !== "owner" && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (membership?.role !== "owner" && user.role !== "admin") {
         return res.status(403).json({ message: "Only owners can add members" });
       }
       
@@ -1415,16 +1423,15 @@ export async function registerRoutes(
   // Update member role
   app.patch("/api/scenes/:sceneId/members/:memberId", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.sceneId);
       const memberId = req.params.memberId;
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (membership?.role !== "owner" && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (membership?.role !== "owner" && user.role !== "admin") {
         return res.status(403).json({ message: "Only owners can update member roles" });
       }
       
@@ -1440,16 +1447,15 @@ export async function registerRoutes(
   // Remove member
   app.delete("/api/scenes/:sceneId/members/:memberId", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.sceneId);
       const memberId = req.params.memberId;
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (membership?.role !== "owner" && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (membership?.role !== "owner" && user.role !== "admin") {
         return res.status(403).json({ message: "Only owners can remove members" });
       }
       
@@ -1468,7 +1474,8 @@ export async function registerRoutes(
   // Get all datasets
   app.get("/api/datasets", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const datasets = await storage.getDatasets();
@@ -1482,7 +1489,8 @@ export async function registerRoutes(
   // Get dataset
   app.get("/api/datasets/:id", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const datasetId = parseInt(req.params.id);
@@ -1500,7 +1508,8 @@ export async function registerRoutes(
   // Delete dataset
   app.delete("/api/datasets/:id", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const datasetId = parseInt(req.params.id);
@@ -1515,7 +1524,8 @@ export async function registerRoutes(
   // Get dataset features
   app.get("/api/datasets/:id/features", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const datasetId = parseInt(req.params.id);
@@ -1534,15 +1544,14 @@ export async function registerRoutes(
   // Get datasets for a scene
   app.get("/api/scenes/:sceneId/datasets", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.sceneId);
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (!membership && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -1557,15 +1566,14 @@ export async function registerRoutes(
   // Add dataset to scene
   app.post("/api/scenes/:sceneId/datasets", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.sceneId);
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (!membership && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
       if (membership?.role === "viewer") {
@@ -1588,16 +1596,15 @@ export async function registerRoutes(
   // Update scene dataset
   app.patch("/api/scenes/:sceneId/datasets/:id", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.sceneId);
       const id = parseInt(req.params.id);
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (!membership && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
       if (membership?.role === "viewer") {
@@ -1615,16 +1622,15 @@ export async function registerRoutes(
   // Remove dataset from scene
   app.delete("/api/scenes/:sceneId/datasets/:id", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const sceneId = parseInt(req.params.sceneId);
       const id = parseInt(req.params.id);
-      const userId = (req.user as any).id;
       
-      const membership = await storage.getSceneMember(sceneId, userId);
-      const userRole = (req.user as any).role;
-      if (!membership && userRole !== "admin") {
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
       if (membership?.role === "viewer") {
@@ -1646,15 +1652,14 @@ export async function registerRoutes(
   // Get uploads
   app.get("/api/uploads", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const user = await getUserFromSession(req);
+      if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const userId = (req.user as any).id;
-      const userRole = (req.user as any).role;
       
-      const uploads = userRole === "admin" 
+      const uploads = user.role === "admin" 
         ? await storage.getUploads() 
-        : await storage.getUploads(userId);
+        : await storage.getUploads(user.id);
       return res.json(uploads);
     } catch (error) {
       console.error("Error getting uploads:", error);
