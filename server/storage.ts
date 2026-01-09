@@ -98,6 +98,7 @@ function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer
     featureCount: row.featureCount,
     source: row.source as EditableLayer["source"],
     sourceFileName: row.sourceFileName || undefined,
+    sourceFiles: row.sourceFiles || [],
     crs: row.crs || "EPSG:4326",
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
