@@ -529,6 +529,7 @@ export default function Home() {
               selectionActionsRef={selectionActionsRef}
               activeSceneDataset={activeSceneDataset}
               onDatasetFeatureUpdated={handleDatasetFeatureUpdated}
+              traceRouteCoordinates={traceRouteCoords}
             />
 
             {/* Attribute Table Modal */}

@@ -113,6 +113,8 @@ interface MapViewerProps {
   activeSceneDataset?: SceneDatasetInfo | null;
   onDatasetFeatureCreated?: (datasetId: number, geometryType: string, coordinates: unknown, properties?: Record<string, unknown>) => void;
   onDatasetFeatureUpdated?: (datasetId: number, featureId: number, geometry: { type: string; coordinates: unknown }) => void;
+  // Trace route visualization
+  traceRouteCoordinates?: [number, number][] | null;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -387,6 +389,7 @@ export function MapViewer({
   activeSceneDataset,
   onDatasetFeatureCreated,
   onDatasetFeatureUpdated,
+  traceRouteCoordinates,
 }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
@@ -394,6 +397,7 @@ export function MapViewer({
   const allFeaturesRef = useRef<Record<string, Feature[]>>({});
   const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const allEditableLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
+  const traceRouteLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const { toast } = useToast();
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
@@ -1779,6 +1783,77 @@ export function MapViewer({
       });
     }
   }, [findNearestPolygon, onCreateTicket, toast]);
+
+  // Effect for trace route visualization
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove existing route layer
+    if (traceRouteLayerRef.current) {
+      map.removeLayer(traceRouteLayerRef.current);
+      traceRouteLayerRef.current = null;
+    }
+
+    // Add new route if coordinates exist
+    if (traceRouteCoordinates && traceRouteCoordinates.length >= 2) {
+      const routeSource = new VectorSource();
+      
+      // Create line feature
+      const lineCoords = traceRouteCoordinates.map(coord => fromLonLat(coord));
+      const lineFeature = new Feature({
+        geometry: new LineString(lineCoords),
+      });
+      
+      // Style: dashed blue line
+      lineFeature.setStyle(new Style({
+        stroke: new Stroke({
+          color: "#2563eb",
+          width: 4,
+          lineDash: [10, 10],
+        }),
+      }));
+      routeSource.addFeature(lineFeature);
+      
+      // Add start point marker
+      const startFeature = new Feature({
+        geometry: new OlPoint(lineCoords[0]),
+      });
+      startFeature.setStyle(new Style({
+        image: new Circle({
+          radius: 8,
+          fill: new Fill({ color: "#22c55e" }),
+          stroke: new Stroke({ color: "#fff", width: 2 }),
+        }),
+      }));
+      routeSource.addFeature(startFeature);
+      
+      // Add end point marker
+      const endFeature = new Feature({
+        geometry: new OlPoint(lineCoords[lineCoords.length - 1]),
+      });
+      endFeature.setStyle(new Style({
+        image: new Circle({
+          radius: 8,
+          fill: new Fill({ color: "#ef4444" }),
+          stroke: new Stroke({ color: "#fff", width: 2 }),
+        }),
+      }));
+      routeSource.addFeature(endFeature);
+      
+      const routeLayer = new VectorLayer({
+        source: routeSource,
+        zIndex: 9999,
+      });
+      
+      map.addLayer(routeLayer);
+      traceRouteLayerRef.current = routeLayer;
+      
+      // Fit map to route extent
+      const extent = routeSource.getExtent();
+      map.getView().fit(extent, { padding: [50, 50, 50, 50], duration: 500 });
+    }
+  }, [traceRouteCoordinates]);
 
   return (
     <div className="relative flex-1 h-full" data-testid="map-container">

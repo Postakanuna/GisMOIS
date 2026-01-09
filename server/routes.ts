@@ -586,7 +586,7 @@ export async function registerRoutes(
       const { sourceCoords, targetLayerId, sysAttributeName } = parseResult.data;
 
       // Get all features from target layer
-      const targetFeatures = await storage.getDrawnFeaturesByLayerId(targetLayerId);
+      const targetFeatures = await storage.getDrawnFeatures(targetLayerId);
       
       if (targetFeatures.length === 0) {
         return res.status(404).json({ message: "Target layer has no features" });
