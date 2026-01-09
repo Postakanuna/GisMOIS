@@ -1486,6 +1486,65 @@ export async function registerRoutes(
     }
   });
 
+  // Import shapefile as dataset
+  app.post("/api/datasets/import", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { name, geometryType, geojson, sourceFileName, crs } = req.body;
+      
+      if (!name || !geometryType || !geojson) {
+        return res.status(400).json({ 
+          message: "Missing required fields: name, geometryType, geojson" 
+        });
+      }
+      
+      const features = geojson.features || [];
+      
+      // Extract field schema from first feature properties
+      let fieldSchema: Array<{ name: string; type: string }> = [];
+      if (features.length > 0 && features[0].properties) {
+        fieldSchema = Object.keys(features[0].properties).map(key => ({
+          name: key,
+          type: typeof features[0].properties[key] === 'number' ? 'number' : 'text'
+        }));
+      }
+      
+      // Create the dataset
+      const dataset = await storage.createDataset({
+        name,
+        originalFilename: sourceFileName || name,
+        geometryType,
+        crs: crs || "EPSG:4326",
+        fieldSchema: fieldSchema as any,
+        createdBy: user.id,
+      });
+      
+      // Batch create features
+      if (features.length > 0) {
+        const insertFeatures = features.map((feature: any) => ({
+          datasetId: dataset.id,
+          geometryType: feature.geometry?.type || geometryType,
+          coordinates: feature.geometry?.coordinates || [],
+          properties: feature.properties || {},
+        }));
+        
+        await storage.createDatasetFeaturesBatch(insertFeatures);
+      }
+      
+      // Fetch updated dataset with correct feature count
+      const updatedDataset = await storage.getDataset(dataset.id);
+      
+      return res.status(201).json(updatedDataset);
+    } catch (error) {
+      console.error("Import dataset error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Get dataset
   app.get("/api/datasets/:id", async (req: Request, res: Response) => {
     try {

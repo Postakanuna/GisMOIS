@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useScene } from "@/contexts/scene-context";
+import shp from "shpjs";
 import {
   X,
   GripVertical,
@@ -22,6 +23,7 @@ import {
   Trash2,
   RefreshCw,
   FileUp,
+  Loader2,
 } from "lucide-react";
 
 interface Dataset {
@@ -188,37 +190,63 @@ export function DataManager({ onClose }: DataManagerProps) {
     };
   }, [isDragging, isResizing]);
 
+  const [isUploading, setIsUploading] = useState(false);
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append("files", files[i]);
-    }
+    setIsUploading(true);
 
     try {
-      const res = await fetch("/api/editable-layers/import-shapefile", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const arrayBuffer = await file.arrayBuffer();
+        
+        const geojson = await shp(arrayBuffer);
+        
+        const collections = Array.isArray(geojson) ? geojson : [geojson];
+        
+        for (const collection of collections) {
+          if (!collection.features || collection.features.length === 0) {
+            continue;
+          }
+          
+          const firstFeature = collection.features[0];
+          const geometryType = firstFeature.geometry?.type || "Unknown";
+          
+          const baseName = file.name.replace(/\.(zip|shp)$/i, "");
+          const layerName = collections.length > 1 
+            ? `${baseName}_${geometryType}` 
+            : baseName;
+          
+          const res = await apiRequest("POST", "/api/datasets/import", {
+            name: layerName,
+            geometryType,
+            geojson: collection,
+            sourceFileName: file.name,
+            crs: "EPSG:4326",
+          });
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Upload failed");
+          if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.message || "Upload failed");
+          }
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ["/api/datasets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/uploads"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "datasets"] });
       toast({ title: "Файл загружен успешно" });
     } catch (error) {
+      console.error("Shapefile import error:", error);
       toast({
         title: "Ошибка загрузки",
         description: error instanceof Error ? error.message : "Неизвестная ошибка",
         variant: "destructive",
       });
+    } finally {
+      setIsUploading(false);
     }
 
     if (fileInputRef.current) {
