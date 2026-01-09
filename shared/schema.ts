@@ -309,3 +309,144 @@ export const layerSchemas = pgTable("layer_schemas", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// Scene role types
+export const sceneRoleSchema = z.enum(["owner", "editor", "viewer"]);
+export type SceneRole = z.infer<typeof sceneRoleSchema>;
+
+// Scenes table - project containers
+export const scenes = pgTable("scenes", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type Scene = typeof scenes.$inferSelect;
+export type InsertScene = typeof scenes.$inferInsert;
+
+export const insertSceneSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  createdBy: z.string(),
+});
+
+// Scene members - user access to scenes with roles
+export const sceneMembers = pgTable("scene_members", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sceneId: integer("scene_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  role: text("role").notNull().default("viewer"), // owner, editor, viewer
+  addedAt: timestamp("added_at").notNull().defaultNow(),
+});
+
+export type SceneMember = typeof sceneMembers.$inferSelect;
+export type InsertSceneMember = typeof sceneMembers.$inferInsert;
+
+export const insertSceneMemberSchema = z.object({
+  sceneId: z.number(),
+  userId: z.string(),
+  role: sceneRoleSchema.default("viewer"),
+});
+
+// Datasets - processed shapefile data catalog
+export const datasets = pgTable("datasets", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
+  crs: text("crs").default("EPSG:4326"),
+  fieldSchema: jsonb("field_schema").notNull().default([]), // Array of AttributeField
+  featureCount: integer("feature_count").notNull().default(0),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type Dataset = typeof datasets.$inferSelect;
+export type InsertDataset = typeof datasets.$inferInsert;
+
+export const insertDatasetSchema = z.object({
+  name: z.string().min(1),
+  originalFilename: z.string(),
+  geometryType: z.string(),
+  crs: z.string().default("EPSG:4326"),
+  fieldSchema: z.array(attributeFieldSchema).default([]),
+  createdBy: z.string(),
+});
+
+// Dataset features - geometry and attributes for each dataset
+export const datasetFeatures = pgTable("dataset_features", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  datasetId: integer("dataset_id").notNull(),
+  geometryType: text("geometry_type").notNull(),
+  coordinates: jsonb("coordinates").notNull(),
+  properties: jsonb("properties").notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type DatasetFeature = typeof datasetFeatures.$inferSelect;
+export type InsertDatasetFeature = typeof datasetFeatures.$inferInsert;
+
+export const insertDatasetFeatureSchema = z.object({
+  datasetId: z.number(),
+  geometryType: z.string(),
+  coordinates: z.any(),
+  properties: z.record(z.string(), z.unknown()).default({}),
+});
+
+// Scene datasets - links datasets to scenes with display settings
+export const sceneDatasets = pgTable("scene_datasets", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sceneId: integer("scene_id").notNull(),
+  datasetId: integer("dataset_id").notNull(),
+  layerName: text("layer_name"), // custom name in this scene
+  isVisible: integer("is_visible").notNull().default(1),
+  opacity: real("opacity").notNull().default(1),
+  color: text("color").notNull().default("#1976D2"),
+  pointStyle: text("point_style").notNull().default("circle"),
+  lineStyle: text("line_style").notNull().default("solid"),
+  zIndex: integer("z_index").notNull().default(0),
+  addedAt: timestamp("added_at").notNull().defaultNow(),
+});
+
+export type SceneDataset = typeof sceneDatasets.$inferSelect;
+export type InsertSceneDataset = typeof sceneDatasets.$inferInsert;
+
+export const insertSceneDatasetSchema = z.object({
+  sceneId: z.number(),
+  datasetId: z.number(),
+  layerName: z.string().optional(),
+  isVisible: z.number().default(1),
+  opacity: z.number().default(1),
+  color: z.string().default("#1976D2"),
+  pointStyle: pointStyleSchema.default("circle"),
+  lineStyle: lineStyleSchema.default("solid"),
+  zIndex: z.number().default(0),
+});
+
+// Uploads - tracking shapefile upload status
+export const uploadStatusSchema = z.enum(["pending", "processing", "completed", "failed"]);
+export type UploadStatus = z.infer<typeof uploadStatusSchema>;
+
+export const uploads = pgTable("uploads", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  filename: text("filename").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  status: text("status").notNull().default("pending"), // pending, processing, completed, failed
+  error: text("error"),
+  datasetId: integer("dataset_id"), // linked after processing
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type Upload = typeof uploads.$inferSelect;
+export type InsertUpload = typeof uploads.$inferInsert;
+
+export const insertUploadSchema = z.object({
+  filename: z.string(),
+  originalFilename: z.string(),
+  createdBy: z.string(),
+});

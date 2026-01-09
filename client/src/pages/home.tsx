@@ -1,13 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Map, Settings, Menu, Layers, ArrowLeft, Pencil } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sidebar,
   SidebarContent,
@@ -23,7 +24,9 @@ import { MapViewer, type SelectedFeatureData } from "@/components/map-viewer";
 import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
 import { DraggableModal } from "@/components/ui/draggable-modal";
+import { DataManager } from "@/components/data-manager";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
+import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
 import type { ConnectionStatus, EditableLayer, GeometryType } from "@shared/schema";
 
@@ -142,14 +145,23 @@ function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
 }
 
 export default function Home() {
+  const [, setLocation] = useLocation();
   const zuluConnection = useZuluConnectionContext();
+  const { currentScene, currentSceneId } = useScene();
   const drawing = useDrawing();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo">("layers");
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
+  const [showDataManager, setShowDataManager] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
+
+  useEffect(() => {
+    if (!currentSceneId) {
+      setLocation("/scenes");
+    }
+  }, [currentSceneId, setLocation]);
 
   const handleSelectedFeaturesChange = useCallback((features: SelectedFeatureData[]) => {
     setSelectedFeatures(features);
@@ -292,8 +304,38 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
+              {currentScene && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLocation("/scenes")}
+                      className="gap-1 max-w-[150px]"
+                      data-testid="button-current-scene"
+                    >
+                      <FolderOpen className="h-4 w-4 shrink-0" />
+                      <span className="truncate hidden sm:inline">{currentScene.name}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Сменить сцену</TooltipContent>
+                </Tooltip>
+              )}
               <ConnectionStatusBadge status={zuluConnection.status} />
               <div className="h-4 w-px bg-border" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowDataManager(true)}
+                    data-testid="button-open-data-manager"
+                  >
+                    <Database className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Менеджер данных</TooltipContent>
+              </Tooltip>
               <Button 
                 variant={editMode ? "default" : "ghost"} 
                 size="sm"
@@ -394,6 +436,11 @@ export default function Home() {
                 />
               )}
             </DraggableModal>
+
+            {/* Data Manager */}
+            {showDataManager && (
+              <DataManager onClose={() => setShowDataManager(false)} />
+            )}
           </main>
         </div>
       </div>

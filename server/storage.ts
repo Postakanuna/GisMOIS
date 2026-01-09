@@ -6,10 +6,18 @@ import {
   type DrawnFeature, type InsertDrawnFeature, 
   type LayerSchemaDefinition, type InsertLayerSchemaDefinition, 
   type AttributeField,
-  editableLayers, drawnFeatures, layerSchemas
+  type Scene, type InsertScene,
+  type SceneMember, type InsertSceneMember,
+  type Dataset, type InsertDataset,
+  type DatasetFeature, type InsertDatasetFeature,
+  type SceneDataset, type InsertSceneDataset,
+  type Upload, type InsertUpload,
+  type SceneRole,
+  editableLayers, drawnFeatures, layerSchemas,
+  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getTickets(): Promise<Ticket[]>;
@@ -42,6 +50,47 @@ export interface IStorage {
   getLayerSchema(layerId: number): Promise<LayerSchemaDefinition | undefined>;
   createLayerSchema(schema: InsertLayerSchemaDefinition): Promise<LayerSchemaDefinition>;
   updateLayerSchema(layerId: number, fields: AttributeField[]): Promise<LayerSchemaDefinition | undefined>;
+  
+  // Scene methods
+  getScenes(): Promise<Scene[]>;
+  getScenesForUser(userId: string): Promise<(Scene & { role: SceneRole })[]>;
+  getScene(id: number): Promise<Scene | undefined>;
+  createScene(scene: { name: string; description?: string; createdBy: string }): Promise<Scene>;
+  updateScene(id: number, updates: Partial<{ name: string; description: string }>): Promise<Scene | undefined>;
+  deleteScene(id: number): Promise<boolean>;
+  
+  // Scene members methods
+  getSceneMembers(sceneId: number): Promise<(SceneMember & { username?: string })[]>;
+  getSceneMember(sceneId: number, userId: string): Promise<SceneMember | undefined>;
+  addSceneMember(sceneId: number, userId: string, role: SceneRole): Promise<SceneMember>;
+  updateSceneMemberRole(sceneId: number, userId: string, role: SceneRole): Promise<SceneMember | undefined>;
+  removeSceneMember(sceneId: number, userId: string): Promise<boolean>;
+  
+  // Dataset methods
+  getDatasets(): Promise<Dataset[]>;
+  getDataset(id: number): Promise<Dataset | undefined>;
+  createDataset(dataset: { name: string; originalFilename: string; geometryType: string; crs?: string; fieldSchema?: AttributeField[]; createdBy: string }): Promise<Dataset>;
+  updateDataset(id: number, updates: Partial<{ name: string; featureCount: number }>): Promise<Dataset | undefined>;
+  deleteDataset(id: number): Promise<boolean>;
+  
+  // Dataset features methods
+  getDatasetFeatures(datasetId: number): Promise<DatasetFeature[]>;
+  createDatasetFeature(feature: { datasetId: number; geometryType: string; coordinates: unknown; properties?: Record<string, unknown> }): Promise<DatasetFeature>;
+  createDatasetFeaturesBatch(features: { datasetId: number; geometryType: string; coordinates: unknown; properties?: Record<string, unknown> }[]): Promise<DatasetFeature[]>;
+  deleteDatasetFeatures(datasetId: number): Promise<boolean>;
+  
+  // Scene datasets methods
+  getSceneDatasets(sceneId: number): Promise<(SceneDataset & { dataset: Dataset })[]>;
+  addDatasetToScene(sceneId: number, datasetId: number, options?: Partial<{ layerName: string; color: string; opacity: number }>): Promise<SceneDataset>;
+  updateSceneDataset(id: number, updates: Partial<{ layerName: string; isVisible: number; opacity: number; color: string; pointStyle: string; lineStyle: string; zIndex: number }>): Promise<SceneDataset | undefined>;
+  removeDatasetFromScene(id: number): Promise<boolean>;
+  
+  // Upload methods
+  getUploads(userId?: string): Promise<Upload[]>;
+  getUpload(id: number): Promise<Upload | undefined>;
+  createUpload(upload: { filename: string; originalFilename: string; createdBy: string }): Promise<Upload>;
+  updateUpload(id: number, updates: Partial<{ status: string; error: string | null; datasetId: number | null }>): Promise<Upload | undefined>;
+  deleteUpload(id: number): Promise<boolean>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -346,6 +395,267 @@ export class DatabaseStorage implements IStorage {
       .where(eq(layerSchemas.layerId, layerId))
       .returning();
     return row ? toLayerSchema(row) : undefined;
+  }
+
+  // Scene methods
+  async getScenes(): Promise<Scene[]> {
+    return await db.select().from(scenes);
+  }
+
+  async getScenesForUser(userId: string): Promise<(Scene & { role: SceneRole })[]> {
+    const memberships = await db.select().from(sceneMembers).where(eq(sceneMembers.userId, userId));
+    if (memberships.length === 0) return [];
+    
+    const sceneIds = memberships.map(m => m.sceneId);
+    const sceneRows = await db.select().from(scenes).where(inArray(scenes.id, sceneIds));
+    
+    return sceneRows.map(scene => {
+      const membership = memberships.find(m => m.sceneId === scene.id);
+      return { ...scene, role: (membership?.role || "viewer") as SceneRole };
+    });
+  }
+
+  async getScene(id: number): Promise<Scene | undefined> {
+    const [row] = await db.select().from(scenes).where(eq(scenes.id, id));
+    return row;
+  }
+
+  async createScene(scene: { name: string; description?: string; createdBy: string }): Promise<Scene> {
+    const [row] = await db.insert(scenes).values({
+      name: scene.name,
+      description: scene.description || null,
+      createdBy: scene.createdBy,
+    }).returning();
+    
+    // Add creator as owner
+    await db.insert(sceneMembers).values({
+      sceneId: row.id,
+      userId: scene.createdBy,
+      role: "owner",
+    });
+    
+    return row;
+  }
+
+  async updateScene(id: number, updates: Partial<{ name: string; description: string }>): Promise<Scene | undefined> {
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.description !== undefined) updateData.description = updates.description;
+    
+    const [row] = await db.update(scenes).set(updateData).where(eq(scenes.id, id)).returning();
+    return row;
+  }
+
+  async deleteScene(id: number): Promise<boolean> {
+    // Delete all scene datasets first
+    await db.delete(sceneDatasets).where(eq(sceneDatasets.sceneId, id));
+    // Delete all scene members
+    await db.delete(sceneMembers).where(eq(sceneMembers.sceneId, id));
+    // Delete scene
+    const result = await db.delete(scenes).where(eq(scenes.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Scene members methods
+  async getSceneMembers(sceneId: number): Promise<(SceneMember & { username?: string })[]> {
+    const members = await db.select().from(sceneMembers).where(eq(sceneMembers.sceneId, sceneId));
+    return members.map(m => ({ ...m, username: undefined })); // Username populated by route
+  }
+
+  async getSceneMember(sceneId: number, userId: string): Promise<SceneMember | undefined> {
+    const [row] = await db.select().from(sceneMembers)
+      .where(and(eq(sceneMembers.sceneId, sceneId), eq(sceneMembers.userId, userId)));
+    return row;
+  }
+
+  async addSceneMember(sceneId: number, userId: string, role: SceneRole): Promise<SceneMember> {
+    const [row] = await db.insert(sceneMembers).values({
+      sceneId,
+      userId,
+      role,
+    }).returning();
+    return row;
+  }
+
+  async updateSceneMemberRole(sceneId: number, userId: string, role: SceneRole): Promise<SceneMember | undefined> {
+    const [row] = await db.update(sceneMembers)
+      .set({ role })
+      .where(and(eq(sceneMembers.sceneId, sceneId), eq(sceneMembers.userId, userId)))
+      .returning();
+    return row;
+  }
+
+  async removeSceneMember(sceneId: number, userId: string): Promise<boolean> {
+    const result = await db.delete(sceneMembers)
+      .where(and(eq(sceneMembers.sceneId, sceneId), eq(sceneMembers.userId, userId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // Dataset methods
+  async getDatasets(): Promise<Dataset[]> {
+    return await db.select().from(datasets);
+  }
+
+  async getDataset(id: number): Promise<Dataset | undefined> {
+    const [row] = await db.select().from(datasets).where(eq(datasets.id, id));
+    return row;
+  }
+
+  async createDataset(dataset: { name: string; originalFilename: string; geometryType: string; crs?: string; fieldSchema?: AttributeField[]; createdBy: string }): Promise<Dataset> {
+    const [row] = await db.insert(datasets).values({
+      name: dataset.name,
+      originalFilename: dataset.originalFilename,
+      geometryType: dataset.geometryType,
+      crs: dataset.crs || "EPSG:4326",
+      fieldSchema: dataset.fieldSchema || [],
+      createdBy: dataset.createdBy,
+    }).returning();
+    return row;
+  }
+
+  async updateDataset(id: number, updates: Partial<{ name: string; featureCount: number }>): Promise<Dataset | undefined> {
+    const updateData: Record<string, unknown> = {};
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.featureCount !== undefined) updateData.featureCount = updates.featureCount;
+    
+    const [row] = await db.update(datasets).set(updateData).where(eq(datasets.id, id)).returning();
+    return row;
+  }
+
+  async deleteDataset(id: number): Promise<boolean> {
+    // Delete features first
+    await db.delete(datasetFeatures).where(eq(datasetFeatures.datasetId, id));
+    // Remove from all scenes
+    await db.delete(sceneDatasets).where(eq(sceneDatasets.datasetId, id));
+    // Delete dataset
+    const result = await db.delete(datasets).where(eq(datasets.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Dataset features methods
+  async getDatasetFeatures(datasetId: number): Promise<DatasetFeature[]> {
+    return await db.select().from(datasetFeatures).where(eq(datasetFeatures.datasetId, datasetId));
+  }
+
+  async createDatasetFeature(feature: { datasetId: number; geometryType: string; coordinates: unknown; properties?: Record<string, unknown> }): Promise<DatasetFeature> {
+    const [row] = await db.insert(datasetFeatures).values({
+      datasetId: feature.datasetId,
+      geometryType: feature.geometryType,
+      coordinates: feature.coordinates,
+      properties: feature.properties || {},
+    }).returning();
+    
+    await db.update(datasets)
+      .set({ featureCount: sql`${datasets.featureCount} + 1` })
+      .where(eq(datasets.id, feature.datasetId));
+    
+    return row;
+  }
+
+  async createDatasetFeaturesBatch(features: { datasetId: number; geometryType: string; coordinates: unknown; properties?: Record<string, unknown> }[]): Promise<DatasetFeature[]> {
+    if (features.length === 0) return [];
+    
+    const rows = await db.insert(datasetFeatures).values(
+      features.map(f => ({
+        datasetId: f.datasetId,
+        geometryType: f.geometryType,
+        coordinates: f.coordinates,
+        properties: f.properties || {},
+      }))
+    ).returning();
+    
+    // Update feature counts
+    const datasetCounts = new Map<number, number>();
+    features.forEach(f => {
+      datasetCounts.set(f.datasetId, (datasetCounts.get(f.datasetId) || 0) + 1);
+    });
+    
+    for (const [datasetId, count] of Array.from(datasetCounts.entries())) {
+      await db.update(datasets)
+        .set({ featureCount: sql`${datasets.featureCount} + ${count}` })
+        .where(eq(datasets.id, datasetId));
+    }
+    
+    return rows;
+  }
+
+  async deleteDatasetFeatures(datasetId: number): Promise<boolean> {
+    const result = await db.delete(datasetFeatures).where(eq(datasetFeatures.datasetId, datasetId)).returning();
+    await db.update(datasets).set({ featureCount: 0 }).where(eq(datasets.id, datasetId));
+    return result.length > 0;
+  }
+
+  // Scene datasets methods
+  async getSceneDatasets(sceneId: number): Promise<(SceneDataset & { dataset: Dataset })[]> {
+    const links = await db.select().from(sceneDatasets).where(eq(sceneDatasets.sceneId, sceneId));
+    if (links.length === 0) return [];
+    
+    const datasetIds = links.map(l => l.datasetId);
+    const datasetRows = await db.select().from(datasets).where(inArray(datasets.id, datasetIds));
+    
+    return links.map(link => {
+      const dataset = datasetRows.find(d => d.id === link.datasetId)!;
+      return { ...link, dataset };
+    });
+  }
+
+  async addDatasetToScene(sceneId: number, datasetId: number, options?: Partial<{ layerName: string; color: string; opacity: number }>): Promise<SceneDataset> {
+    const [row] = await db.insert(sceneDatasets).values({
+      sceneId,
+      datasetId,
+      layerName: options?.layerName,
+      color: options?.color || "#1976D2",
+      opacity: options?.opacity ?? 1,
+    }).returning();
+    return row;
+  }
+
+  async updateSceneDataset(id: number, updates: Partial<{ layerName: string; isVisible: number; opacity: number; color: string; pointStyle: string; lineStyle: string; zIndex: number }>): Promise<SceneDataset | undefined> {
+    const [row] = await db.update(sceneDatasets).set(updates).where(eq(sceneDatasets.id, id)).returning();
+    return row;
+  }
+
+  async removeDatasetFromScene(id: number): Promise<boolean> {
+    const result = await db.delete(sceneDatasets).where(eq(sceneDatasets.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Upload methods
+  async getUploads(userId?: string): Promise<Upload[]> {
+    if (userId) {
+      return await db.select().from(uploads).where(eq(uploads.createdBy, userId));
+    }
+    return await db.select().from(uploads);
+  }
+
+  async getUpload(id: number): Promise<Upload | undefined> {
+    const [row] = await db.select().from(uploads).where(eq(uploads.id, id));
+    return row;
+  }
+
+  async createUpload(upload: { filename: string; originalFilename: string; createdBy: string }): Promise<Upload> {
+    const [row] = await db.insert(uploads).values({
+      filename: upload.filename,
+      originalFilename: upload.originalFilename,
+      createdBy: upload.createdBy,
+    }).returning();
+    return row;
+  }
+
+  async updateUpload(id: number, updates: Partial<{ status: string; error: string | null; datasetId: number | null }>): Promise<Upload | undefined> {
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (updates.status !== undefined) updateData.status = updates.status;
+    if (updates.error !== undefined) updateData.error = updates.error;
+    if (updates.datasetId !== undefined) updateData.datasetId = updates.datasetId;
+    
+    const [row] = await db.update(uploads).set(updateData).where(eq(uploads.id, id)).returning();
+    return row;
+  }
+
+  async deleteUpload(id: number): Promise<boolean> {
+    const result = await db.delete(uploads).where(eq(uploads.id, id)).returning();
+    return result.length > 0;
   }
 }
 

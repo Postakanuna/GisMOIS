@@ -1223,5 +1223,444 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // SCENES API
+  // ============================================
+
+  // Get scenes for current user
+  app.get("/api/scenes", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const userId = (req.user as any).id;
+      const userRole = (req.user as any).role;
+      
+      // Admin sees all scenes
+      if (userRole === "admin") {
+        const allScenes = await storage.getScenes();
+        const scenesWithRole = await Promise.all(allScenes.map(async scene => {
+          const membership = await storage.getSceneMember(scene.id, userId);
+          return { ...scene, role: membership?.role || "owner" };
+        }));
+        return res.json(scenesWithRole);
+      }
+      
+      const scenes = await storage.getScenesForUser(userId);
+      return res.json(scenes);
+    } catch (error) {
+      console.error("Error getting scenes:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get single scene
+  app.get("/api/scenes/:id", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.id);
+      const userId = (req.user as any).id;
+      
+      const scene = await storage.getScene(sceneId);
+      if (!scene) {
+        return res.status(404).json({ message: "Scene not found" });
+      }
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (!membership && userRole !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      return res.json({ ...scene, role: membership?.role || "owner" });
+    } catch (error) {
+      console.error("Error getting scene:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Create scene
+  app.post("/api/scenes", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const userId = (req.user as any).id;
+      const { name, description } = req.body;
+      
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const scene = await storage.createScene({ name, description, createdBy: userId });
+      return res.status(201).json({ ...scene, role: "owner" });
+    } catch (error) {
+      console.error("Error creating scene:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update scene
+  app.patch("/api/scenes/:id", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.id);
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (!membership && userRole !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (membership?.role === "viewer") {
+        return res.status(403).json({ message: "Viewers cannot edit scenes" });
+      }
+      
+      const { name, description } = req.body;
+      const scene = await storage.updateScene(sceneId, { name, description });
+      return res.json(scene);
+    } catch (error) {
+      console.error("Error updating scene:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete scene
+  app.delete("/api/scenes/:id", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.id);
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (membership?.role !== "owner" && userRole !== "admin") {
+        return res.status(403).json({ message: "Only owners can delete scenes" });
+      }
+      
+      await storage.deleteScene(sceneId);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting scene:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // SCENE MEMBERS API
+  // ============================================
+
+  // Get scene members
+  app.get("/api/scenes/:sceneId/members", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (!membership && userRole !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const members = await storage.getSceneMembers(sceneId);
+      return res.json(members);
+    } catch (error) {
+      console.error("Error getting scene members:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Add scene member
+  app.post("/api/scenes/:sceneId/members", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (membership?.role !== "owner" && userRole !== "admin") {
+        return res.status(403).json({ message: "Only owners can add members" });
+      }
+      
+      const { userId: newUserId, role } = req.body;
+      if (!newUserId || !role) {
+        return res.status(400).json({ message: "userId and role are required" });
+      }
+      
+      const existing = await storage.getSceneMember(sceneId, newUserId);
+      if (existing) {
+        return res.status(400).json({ message: "User is already a member" });
+      }
+      
+      const member = await storage.addSceneMember(sceneId, newUserId, role);
+      return res.status(201).json(member);
+    } catch (error) {
+      console.error("Error adding scene member:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update member role
+  app.patch("/api/scenes/:sceneId/members/:memberId", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      const memberId = req.params.memberId;
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (membership?.role !== "owner" && userRole !== "admin") {
+        return res.status(403).json({ message: "Only owners can update member roles" });
+      }
+      
+      const { role } = req.body;
+      const member = await storage.updateSceneMemberRole(sceneId, memberId, role);
+      return res.json(member);
+    } catch (error) {
+      console.error("Error updating member role:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Remove member
+  app.delete("/api/scenes/:sceneId/members/:memberId", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      const memberId = req.params.memberId;
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (membership?.role !== "owner" && userRole !== "admin") {
+        return res.status(403).json({ message: "Only owners can remove members" });
+      }
+      
+      await storage.removeSceneMember(sceneId, memberId);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing member:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // DATASETS API
+  // ============================================
+
+  // Get all datasets
+  app.get("/api/datasets", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const datasets = await storage.getDatasets();
+      return res.json(datasets);
+    } catch (error) {
+      console.error("Error getting datasets:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get dataset
+  app.get("/api/datasets/:id", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const datasetId = parseInt(req.params.id);
+      const dataset = await storage.getDataset(datasetId);
+      if (!dataset) {
+        return res.status(404).json({ message: "Dataset not found" });
+      }
+      return res.json(dataset);
+    } catch (error) {
+      console.error("Error getting dataset:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete dataset
+  app.delete("/api/datasets/:id", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const datasetId = parseInt(req.params.id);
+      await storage.deleteDataset(datasetId);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting dataset:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get dataset features
+  app.get("/api/datasets/:id/features", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const datasetId = parseInt(req.params.id);
+      const features = await storage.getDatasetFeatures(datasetId);
+      return res.json(features);
+    } catch (error) {
+      console.error("Error getting dataset features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // SCENE DATASETS API
+  // ============================================
+
+  // Get datasets for a scene
+  app.get("/api/scenes/:sceneId/datasets", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (!membership && userRole !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const sceneDatasets = await storage.getSceneDatasets(sceneId);
+      return res.json(sceneDatasets);
+    } catch (error) {
+      console.error("Error getting scene datasets:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Add dataset to scene
+  app.post("/api/scenes/:sceneId/datasets", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (!membership && userRole !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (membership?.role === "viewer") {
+        return res.status(403).json({ message: "Viewers cannot add datasets" });
+      }
+      
+      const { datasetId, layerName, color, opacity } = req.body;
+      if (!datasetId) {
+        return res.status(400).json({ message: "datasetId is required" });
+      }
+      
+      const sceneDataset = await storage.addDatasetToScene(sceneId, datasetId, { layerName, color, opacity });
+      return res.status(201).json(sceneDataset);
+    } catch (error) {
+      console.error("Error adding dataset to scene:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update scene dataset
+  app.patch("/api/scenes/:sceneId/datasets/:id", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      const id = parseInt(req.params.id);
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (!membership && userRole !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (membership?.role === "viewer") {
+        return res.status(403).json({ message: "Viewers cannot update datasets" });
+      }
+      
+      const sceneDataset = await storage.updateSceneDataset(id, req.body);
+      return res.json(sceneDataset);
+    } catch (error) {
+      console.error("Error updating scene dataset:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Remove dataset from scene
+  app.delete("/api/scenes/:sceneId/datasets/:id", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+      const id = parseInt(req.params.id);
+      const userId = (req.user as any).id;
+      
+      const membership = await storage.getSceneMember(sceneId, userId);
+      const userRole = (req.user as any).role;
+      if (!membership && userRole !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (membership?.role === "viewer") {
+        return res.status(403).json({ message: "Viewers cannot remove datasets" });
+      }
+      
+      await storage.removeDatasetFromScene(id);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing dataset from scene:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // UPLOADS API
+  // ============================================
+
+  // Get uploads
+  app.get("/api/uploads", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const userId = (req.user as any).id;
+      const userRole = (req.user as any).role;
+      
+      const uploads = userRole === "admin" 
+        ? await storage.getUploads() 
+        : await storage.getUploads(userId);
+      return res.json(uploads);
+    } catch (error) {
+      console.error("Error getting uploads:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
