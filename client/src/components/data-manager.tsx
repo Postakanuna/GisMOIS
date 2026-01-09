@@ -237,6 +237,8 @@ export function DataManager({ onClose }: DataManagerProps) {
           const firstFeature = layer.geojson.features[0];
           const geometryType = firstFeature.geometry?.type || "Unknown";
           
+          console.log("Import layer sourceFiles:", layer.sourceFiles);
+          
           const res = await apiRequest("POST", "/api/datasets/import", {
             name: layer.name,
             geometryType,

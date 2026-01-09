@@ -1546,6 +1546,8 @@ export async function registerRoutes(
 
       const { name, geometryType, geojson, sourceFileName, sourceFiles, crs, sceneId, color } = req.body;
       
+      console.log("Server received sourceFiles:", sourceFiles);
+      
       if (!name || !geometryType || !geojson) {
         return res.status(400).json({ 
           message: "Missing required fields: name, geometryType, geojson" 
