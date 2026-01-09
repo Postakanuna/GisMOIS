@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertFacilitySchema, insertTraceSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -489,115 +489,6 @@ export async function registerRoutes(
     }
   });
 
-  // Facility routes
-  app.get("/api/facilities", async (_req: Request, res: Response) => {
-    try {
-      const facilities = await storage.getFacilities();
-      return res.json(facilities);
-    } catch (error) {
-      console.error("Get facilities error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.post("/api/facilities", async (req: Request, res: Response) => {
-    try {
-      const parseResult = insertFacilitySchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return res.status(400).json({
-          message: "Invalid facility data",
-          errors: parseResult.error.errors,
-        });
-      }
-      const facility = await storage.createFacility(parseResult.data);
-      return res.status(201).json(facility);
-    } catch (error) {
-      console.error("Create facility error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.patch("/api/facilities/:id", async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid facility ID" });
-      }
-      const facility = await storage.updateFacility(id, req.body);
-      if (!facility) {
-        return res.status(404).json({ message: "Facility not found" });
-      }
-      return res.json(facility);
-    } catch (error) {
-      console.error("Update facility error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.delete("/api/facilities/:id", async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid facility ID" });
-      }
-      // Delete associated traces first
-      await storage.deleteTracesByBuilding(id);
-      const deleted = await storage.deleteFacility(id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Facility not found" });
-      }
-      return res.status(204).send();
-    } catch (error) {
-      console.error("Delete facility error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // Trace routes
-  app.get("/api/traces", async (_req: Request, res: Response) => {
-    try {
-      const traces = await storage.getTraces();
-      return res.json(traces);
-    } catch (error) {
-      console.error("Get traces error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.post("/api/traces", async (req: Request, res: Response) => {
-    try {
-      const parseResult = insertTraceSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return res.status(400).json({
-          message: "Invalid trace data",
-          errors: parseResult.error.errors,
-        });
-      }
-      const trace = await storage.createTrace(parseResult.data);
-      return res.status(201).json(trace);
-    } catch (error) {
-      console.error("Create trace error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.delete("/api/traces/:id", async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id, 10);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid trace ID" });
-      }
-      const deleted = await storage.deleteTrace(id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Trace not found" });
-      }
-      return res.status(204).send();
-    } catch (error) {
-      console.error("Delete trace error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
   // OSRM routing proxy
   app.post("/api/routing", async (req: Request, res: Response) => {
     try {
@@ -674,6 +565,143 @@ export async function registerRoutes(
       }
     } catch (error) {
       console.error("Routing error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Universal object-to-object tracing endpoint
+  const traceRouteSchema = z.object({
+    sourceCoords: z.tuple([z.number(), z.number()]),
+    targetLayerId: z.number(),
+    sysAttributeName: z.string().optional(),
+  });
+
+  app.post("/api/trace-route", async (req: Request, res: Response) => {
+    try {
+      const parseResult = traceRouteSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Invalid request data", errors: parseResult.error.errors });
+      }
+
+      const { sourceCoords, targetLayerId, sysAttributeName } = parseResult.data;
+
+      // Get all features from target layer
+      const targetFeatures = await storage.getDrawnFeaturesByLayerId(targetLayerId);
+      
+      if (targetFeatures.length === 0) {
+        return res.status(404).json({ message: "Target layer has no features" });
+      }
+
+      // Find nearest feature in target layer
+      let nearestFeature = null;
+      let minDistance = Infinity;
+      let nearestCoords: [number, number] | null = null;
+
+      for (const feature of targetFeatures) {
+        const coords = feature.coordinates as unknown;
+        let featurePoint: [number, number] | null = null;
+
+        // Extract centroid based on geometry type
+        if (feature.geometryType === "Point") {
+          featurePoint = coords as [number, number];
+        } else if (feature.geometryType === "LineString") {
+          const lineCoords = coords as [number, number][];
+          if (lineCoords.length > 0) {
+            // Use midpoint of line
+            const midIndex = Math.floor(lineCoords.length / 2);
+            featurePoint = lineCoords[midIndex];
+          }
+        } else if (feature.geometryType === "Polygon") {
+          const polyCoords = coords as [number, number][][];
+          if (polyCoords.length > 0 && polyCoords[0].length > 0) {
+            // Calculate centroid
+            const ring = polyCoords[0];
+            let sumX = 0, sumY = 0;
+            for (const pt of ring) {
+              sumX += pt[0];
+              sumY += pt[1];
+            }
+            featurePoint = [sumX / ring.length, sumY / ring.length];
+          }
+        }
+
+        if (featurePoint) {
+          // Calculate distance using turf (meters)
+          const from = turf.point(sourceCoords);
+          const to = turf.point(featurePoint);
+          const distance = turf.distance(from, to, { units: "meters" });
+
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestFeature = feature;
+            nearestCoords = featurePoint;
+          }
+        }
+      }
+
+      if (!nearestCoords || !nearestFeature) {
+        return res.status(404).json({ message: "Could not find nearest feature" });
+      }
+
+      // Build route using OSRM
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${sourceCoords[0]},${sourceCoords[1]};${nearestCoords[0]},${nearestCoords[1]}?overview=full&geometries=geojson`;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const osrmResponse = await fetch(osrmUrl, {
+          signal: controller.signal,
+          headers: { "User-Agent": "GIS-Application/1.0" },
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!osrmResponse.ok) {
+          return res.json({
+            success: false,
+            fallback: true,
+            coordinates: [sourceCoords, nearestCoords],
+            targetFeature: nearestFeature,
+            distance: minDistance,
+            message: "OSRM unavailable, using straight line",
+          });
+        }
+
+        const osrmData = await osrmResponse.json();
+
+        if (osrmData.code !== "Ok" || !osrmData.routes || osrmData.routes.length === 0) {
+          return res.json({
+            success: false,
+            fallback: true,
+            coordinates: [sourceCoords, nearestCoords],
+            targetFeature: nearestFeature,
+            distance: minDistance,
+            message: "No route found, using straight line",
+          });
+        }
+
+        const route = osrmData.routes[0];
+        return res.json({
+          success: true,
+          coordinates: route.geometry.coordinates,
+          routeDistance: route.distance,
+          routeDuration: route.duration,
+          targetFeature: nearestFeature,
+          straightLineDistance: minDistance,
+        });
+      } catch (fetchError: any) {
+        return res.json({
+          success: false,
+          fallback: true,
+          coordinates: [sourceCoords, nearestCoords],
+          targetFeature: nearestFeature,
+          distance: minDistance,
+          message: fetchError.name === "AbortError" ? "OSRM timeout" : "OSRM error",
+        });
+      }
+    } catch (error) {
+      console.error("Trace route error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

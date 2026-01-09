@@ -1,7 +1,5 @@
 import { 
   type Ticket, type InsertTicket, 
-  type Facility, type InsertFacility, 
-  type Trace, type InsertTrace, 
   type EditableLayer, type InsertEditableLayer, 
   type DrawnFeature, type InsertDrawnFeature, 
   type LayerSchemaDefinition, type InsertLayerSchemaDefinition, 
@@ -24,17 +22,6 @@ export interface IStorage {
   getTicket(id: number): Promise<Ticket | undefined>;
   createTicket(ticket: InsertTicket): Promise<Ticket>;
   deleteTicket(id: number): Promise<boolean>;
-  getFacilities(): Promise<Facility[]>;
-  getFacility(id: number): Promise<Facility | undefined>;
-  createFacility(facility: InsertFacility): Promise<Facility>;
-  updateFacility(id: number, updates: Partial<InsertFacility>): Promise<Facility | undefined>;
-  deleteFacility(id: number): Promise<boolean>;
-  getTraces(): Promise<Trace[]>;
-  getTrace(id: number): Promise<Trace | undefined>;
-  getTracesByBuilding(buildingId: number): Promise<Trace[]>;
-  createTrace(trace: InsertTrace): Promise<Trace>;
-  deleteTrace(id: number): Promise<boolean>;
-  deleteTracesByBuilding(buildingId: number): Promise<boolean>;
   getEditableLayers(): Promise<EditableLayer[]>;
   getEditableLayersByScene(sceneId: number): Promise<EditableLayer[]>;
   getEditableLayer(id: number): Promise<EditableLayer | undefined>;
@@ -143,10 +130,6 @@ function toLayerSchema(row: typeof layerSchemas.$inferSelect): LayerSchemaDefini
 export class DatabaseStorage implements IStorage {
   private tickets: Map<number, Ticket> = new Map();
   private ticketIdCounter = 1;
-  private facilities: Map<number, Facility> = new Map();
-  private facilityIdCounter = 1;
-  private traces: Map<number, Trace> = new Map();
-  private traceIdCounter = 1;
 
   async getTickets(): Promise<Ticket[]> {
     return Array.from(this.tickets.values());
@@ -170,70 +153,6 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTicket(id: number): Promise<boolean> {
     return this.tickets.delete(id);
-  }
-
-  async getFacilities(): Promise<Facility[]> {
-    return Array.from(this.facilities.values());
-  }
-
-  async getFacility(id: number): Promise<Facility | undefined> {
-    return this.facilities.get(id);
-  }
-
-  async createFacility(insertFacility: InsertFacility): Promise<Facility> {
-    const id = this.facilityIdCounter++;
-    const facility: Facility = {
-      ...insertFacility,
-      id,
-      createdAt: new Date().toISOString(),
-    };
-    this.facilities.set(id, facility);
-    return facility;
-  }
-
-  async updateFacility(id: number, updates: Partial<InsertFacility>): Promise<Facility | undefined> {
-    const facility = this.facilities.get(id);
-    if (!facility) return undefined;
-    const updatedFacility: Facility = { ...facility, ...updates };
-    this.facilities.set(id, updatedFacility);
-    return updatedFacility;
-  }
-
-  async deleteFacility(id: number): Promise<boolean> {
-    return this.facilities.delete(id);
-  }
-
-  async getTraces(): Promise<Trace[]> {
-    return Array.from(this.traces.values());
-  }
-
-  async getTrace(id: number): Promise<Trace | undefined> {
-    return this.traces.get(id);
-  }
-
-  async getTracesByBuilding(buildingId: number): Promise<Trace[]> {
-    return Array.from(this.traces.values()).filter(t => t.buildingId === buildingId);
-  }
-
-  async createTrace(insertTrace: InsertTrace): Promise<Trace> {
-    const id = this.traceIdCounter++;
-    const trace: Trace = {
-      ...insertTrace,
-      id,
-      createdAt: new Date().toISOString(),
-    };
-    this.traces.set(id, trace);
-    return trace;
-  }
-
-  async deleteTrace(id: number): Promise<boolean> {
-    return this.traces.delete(id);
-  }
-
-  async deleteTracesByBuilding(buildingId: number): Promise<boolean> {
-    const toDelete = Array.from(this.traces.values()).filter(t => t.buildingId === buildingId);
-    toDelete.forEach(t => this.traces.delete(t.id));
-    return toDelete.length > 0;
   }
 
   async getEditableLayers(): Promise<EditableLayer[]> {

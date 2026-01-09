@@ -19,6 +19,8 @@ Preferred communication style: Simple, everyday language.
 - Editable layers are scene-scoped (sceneId field) for multi-scene support
 - Import creates editable_layer + drawn_features instead of deprecated dataset approach
 - CRUD API for layer features (POST/PATCH/DELETE endpoints)
+- **Removed facility-specific tracing** (building/boilerhouse/waterintake entities removed)
+- **Added universal object-to-object tracing**: `/api/trace-route` endpoint finds nearest object in target layer and builds OSRM route
 
 ## System Architecture
 
@@ -59,6 +61,7 @@ Preferred communication style: Simple, everyday language.
 - Scene endpoints: `/api/scenes`, `/api/scenes/:id/datasets`, `/api/scenes/:id/members`
 - Dataset endpoints: `/api/datasets`, `/api/datasets/:id/features`, `/api/datasets/import`
 - `POST /api/zulu/capabilities`: Fetches WMS capabilities from ZuluServer
+- `POST /api/trace-route`: Universal tracing - finds nearest feature in target layer and builds OSRM route
 
 **Storage**: PostgreSQL with Drizzle ORM
 - User schema, scenes, scene_members, datasets, scene_datasets, dataset_features

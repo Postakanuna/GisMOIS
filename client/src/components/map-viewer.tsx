@@ -11,7 +11,7 @@ import { fromLonLat, toLonLat } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
 import WKT from "ol/format/WKT";
 import Feature from "ol/Feature";
-import { Style, Fill, Stroke, Circle, Icon } from "ol/style";
+import { Style, Fill, Stroke, Circle } from "ol/style";
 import { LineString, Geometry } from "ol/geom";
 import { DragBox, Select, Draw, Modify, Snap } from "ol/interaction";
 import { platformModifierKeyOnly, click } from "ol/events/condition";
@@ -19,7 +19,7 @@ import type { DrawEvent } from "ol/interaction/Draw";
 import type { ModifyEvent } from "ol/interaction/Modify";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset } from "@shared/schema";
 import { useScene } from "@/contexts/scene-context";
 import type { DrawingMode } from "@/components/drawing-toolbar";
 import RegularShape from "ol/style/RegularShape";
@@ -29,7 +29,6 @@ import { MapControls } from "./map-controls";
 import { CoordinateDisplay } from "./coordinate-display";
 import { FeatureInfoPanel } from "./feature-info";
 import { LoadingOverlay } from "./loading-overlay";
-import { InfrastructureTools } from "./infrastructure-tools";
 import { getDistance, getLength } from "ol/sphere";
 import { Point as OlPoint, Polygon as OlPolygon, MultiPolygon as OlMultiPolygon } from "ol/geom";
 import Text from "ol/style/Text";
@@ -125,12 +124,6 @@ const LAYER_COLORS: Record<string, string> = {
   "ZR_VS_MO": "#2196F3",
   "ZR_VO_MO": "#4CAF50",
   "ZR_TS_MO": "#FF5722",
-};
-
-const FACILITY_COLORS: Record<FacilityType, string> = {
-  building: "#3B82F6",
-  boilerhouse: "#F97316",
-  waterintake: "#06B6D4",
 };
 
 // Helper function to create point image style based on pointStyle
@@ -241,52 +234,6 @@ function getTicketStyle(status: "bound" | "unbound") {
       text: status === "bound" ? "P" : "?",
       fill: new Fill({ color: "#fff" }),
       font: "bold 12px sans-serif",
-    }),
-  });
-}
-
-function createFacilityIcon(type: FacilityType, selected: boolean = false): string {
-  const size = selected ? 32 : 28;
-  const bgColor = FACILITY_COLORS[type];
-  const strokeColor = selected ? "#ffffff" : "#ffffff80";
-  const strokeWidth = selected ? 3 : 2;
-  
-  let iconPath = "";
-  if (type === "building") {
-    iconPath = `<path d="M5 20V9l7-5 7 5v11H5z M9 20v-5h6v5" fill="none" stroke="white" stroke-width="1.5"/>`;
-  } else if (type === "boilerhouse") {
-    iconPath = `<path d="M12 22c-4-3-7-6-7-10a7 7 0 0114 0c0 4-3 7-7 10z M12 14a2 2 0 100-4 2 2 0 000 4z" fill="white" fill-opacity="0.9"/>`;
-  } else if (type === "waterintake") {
-    iconPath = `<path d="M12 21c-4 0-7-3-7-7 0-3 7-11 7-11s7 8 7 11c0 4-3 7-7 7z" fill="white" fill-opacity="0.9"/>`;
-  }
-  
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-      <circle cx="${size/2}" cy="${size/2}" r="${size/2 - strokeWidth/2}" fill="${bgColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>
-      <g transform="translate(${(size-24)/2}, ${(size-24)/2})">
-        ${iconPath}
-      </g>
-    </svg>
-  `;
-  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-}
-
-function getFacilityStyle(type: FacilityType, selected: boolean = false) {
-  return new Style({
-    image: new Icon({
-      src: createFacilityIcon(type, selected),
-      anchor: [0.5, 0.5],
-    }),
-  });
-}
-
-function getTraceStyle(type: TraceType, selected: boolean = false) {
-  const color = type === "heating" ? "#F97316" : "#06B6D4";
-  return new Style({
-    stroke: new Stroke({
-      color,
-      width: selected ? 4 : 3,
-      lineDash: [10, 6],
     }),
   });
 }
@@ -446,8 +393,6 @@ export function MapViewer({
   const layersRef = useRef<Record<string, LayerType>>({});
   const allFeaturesRef = useRef<Record<string, Feature[]>>({});
   const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
-  const facilitiesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
-  const tracesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const allEditableLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const { toast } = useToast();
   
@@ -463,12 +408,6 @@ export function MapViewer({
   const [featureCoordinates, setFeatureCoordinates] = useState<[number, number] | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   
-  const [placementMode, setPlacementMode] = useState<FacilityType | null>(null);
-  const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
-  const [selectedTrace, setSelectedTrace] = useState<Trace | null>(null);
-  const [isTracing, setIsTracing] = useState(false);
-  const [pendingPlacement, setPendingPlacement] = useState<{ lon: number; lat: number; type: FacilityType } | null>(null);
-  const [tracingError, setTracingError] = useState<string | null>(null);
   
   const [selectedMapFeatures, setSelectedMapFeatures] = useState<Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }>>([]);
   const selectedMapFeaturesRef = useRef(selectedMapFeatures);
@@ -478,8 +417,6 @@ export function MapViewer({
   const selectionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const dragBoxRef = useRef<DragBox | null>(null);
   const selectionModeRef = useRef(false);
-
-  const placementModeRef = useRef<FacilityType | null>(null);
 
   // Drawing refs
   const editableLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -508,10 +445,6 @@ export function MapViewer({
     queryKey: ["/api/scenes", currentSceneId, "datasets"],
     enabled: !!currentSceneId,
   });
-
-  useEffect(() => {
-    placementModeRef.current = placementMode;
-  }, [placementMode]);
 
   useEffect(() => {
     selectionModeRef.current = drawingMode === 'select';
@@ -692,14 +625,6 @@ export function MapViewer({
     },
   });
 
-  const { data: facilities = [] } = useQuery<Facility[]>({
-    queryKey: ["/api/facilities"],
-  });
-
-  const { data: traces = [] } = useQuery<Trace[]>({
-    queryKey: ["/api/traces"],
-  });
-
   // Fetch features for all editable layers (imported and user-created)
   const { data: allLayerFeatures = {}, isFetching: isFetchingFeatures } = useQuery<Record<number, DrawnFeature[]>>({
     queryKey: ["/api/editable-layers/all-features", allEditableLayers.map(l => l.id).join(",")],
@@ -723,57 +648,6 @@ export function MapViewer({
     refetchOnWindowFocus: false,
     refetchOnMount: "always",
     staleTime: 1000 * 60 * 5,
-  });
-
-  const createFacilityMutation = useMutation({
-    mutationFn: async (facility: InsertFacility) => {
-      const response = await apiRequest("POST", "/api/facilities", facility);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
-    },
-  });
-
-  const deleteFacilityMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/facilities/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/traces"] });
-      setSelectedFacility(null);
-    },
-  });
-
-  const createTraceMutation = useMutation({
-    mutationFn: async (trace: InsertTrace) => {
-      const response = await apiRequest("POST", "/api/traces", trace);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/traces"] });
-    },
-  });
-
-  const deleteTraceMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/traces/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/traces"] });
-      setSelectedTrace(null);
-    },
-  });
-
-  const updateFacilityMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: number; updates: Partial<InsertFacility> }) => {
-      const response = await apiRequest("PATCH", `/api/facilities/${id}`, updates);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
-    },
   });
 
   useEffect(() => {
@@ -822,24 +696,6 @@ export function MapViewer({
     });
     map.addLayer(ticketsLayer);
     ticketsLayerRef.current = ticketsLayer;
-
-    const tracesSource = new VectorSource();
-    const tracesLayer = new VectorLayer({
-      source: tracesSource,
-      properties: { id: "traces-layer" },
-      zIndex: 900,
-    });
-    map.addLayer(tracesLayer);
-    tracesLayerRef.current = tracesLayer;
-
-    const facilitiesSource = new VectorSource();
-    const facilitiesLayer = new VectorLayer({
-      source: facilitiesSource,
-      properties: { id: "facilities-layer" },
-      zIndex: 950,
-    });
-    map.addLayer(facilitiesLayer);
-    facilitiesLayerRef.current = facilitiesLayer;
 
     const selectionSource = new VectorSource();
     const selectionLayer = new VectorLayer({
@@ -910,19 +766,6 @@ export function MapViewer({
     map.on("pointermove", (evt) => {
       const coords = toLonLat(evt.coordinate);
       setMouseCoordinates([coords[0], coords[1]]);
-      
-      if (placementModeRef.current) {
-        map.getTargetElement().style.cursor = "crosshair";
-      } else {
-        let hasFeature = false;
-        map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
-          if (layer === facilitiesLayerRef.current || layer === tracesLayerRef.current) {
-            hasFeature = true;
-          }
-          return true;
-        });
-        map.getTargetElement().style.cursor = hasFeature ? "pointer" : "";
-      }
     });
 
     map.getView().on("change:resolution", () => {
@@ -937,21 +780,10 @@ export function MapViewer({
       const currentConnection = connectionRef.current;
       const currentLayers = layersStateRef.current;
       const isTicketMode = ticketModeRef.current;
-      const currentPlacementMode = placementModeRef.current;
       const currentSelectionMode = selectionModeRef.current;
 
       const coords = toLonLat(evt.coordinate);
       setFeatureCoordinates([coords[0], coords[1]]);
-
-      if (currentPlacementMode) {
-        setPendingPlacement({
-          lon: coords[0],
-          lat: coords[1],
-          type: currentPlacementMode,
-        });
-        setPlacementMode(null);
-        return;
-      }
 
       if (currentSelectionMode) {
         // Collect ALL candidates from all editable layers (don't stop on first match)
@@ -1032,40 +864,6 @@ export function MapViewer({
         return;
       }
 
-      let clickedFacility: Facility | null = null;
-      let clickedTrace: Trace | null = null;
-
-      map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
-        if (layer === facilitiesLayerRef.current && !clickedFacility) {
-          const facilityId = feature.get("facilityId");
-          const allFacilities = queryClient.getQueryData<Facility[]>(["/api/facilities"]) || [];
-          clickedFacility = allFacilities.find(f => f.id === facilityId) || null;
-        }
-        if (layer === tracesLayerRef.current && !clickedTrace) {
-          const traceId = feature.get("traceId");
-          const allTraces = queryClient.getQueryData<Trace[]>(["/api/traces"]) || [];
-          clickedTrace = allTraces.find(t => t.id === traceId) || null;
-        }
-        return true;
-      });
-
-      if (clickedFacility) {
-        setSelectedFacility(clickedFacility);
-        setSelectedTrace(null);
-        setSelectedFeature(null);
-        return;
-      }
-
-      if (clickedTrace) {
-        setSelectedTrace(clickedTrace);
-        setSelectedFacility(null);
-        setSelectedFeature(null);
-        return;
-      }
-
-      setSelectedFacility(null);
-      setSelectedTrace(null);
-
       if (isTicketMode && currentConnection?.useZws) {
         handleTicketCreation(coords[0], coords[1], evt.coordinate);
         return;
@@ -1078,7 +876,7 @@ export function MapViewer({
         let foundLayerId: string | null = null;
 
         map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
-          if (!foundFeature && layer && layer !== facilitiesLayerRef.current && layer !== tracesLayerRef.current && layer !== ticketsLayerRef.current) {
+          if (!foundFeature && layer && layer !== ticketsLayerRef.current) {
             foundFeature = feature as Feature;
             foundLayerId = layer.get("id") as string;
           }
@@ -1158,68 +956,6 @@ export function MapViewer({
       mapRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    if (!facilitiesLayerRef.current) return;
-    
-    const source = facilitiesLayerRef.current.getSource();
-    if (!source) return;
-    
-    source.clear();
-    
-    facilities.forEach((facility) => {
-      const feature = new Feature({
-        geometry: new OlPoint(fromLonLat([facility.lon, facility.lat])),
-        facilityId: facility.id,
-        facilityType: facility.type,
-      });
-      feature.setStyle(getFacilityStyle(facility.type, selectedFacility?.id === facility.id));
-      source.addFeature(feature);
-    });
-  }, [facilities, selectedFacility]);
-
-  useEffect(() => {
-    if (!tracesLayerRef.current) return;
-    
-    const source = tracesLayerRef.current.getSource();
-    if (!source) return;
-    
-    source.clear();
-    
-    const OFFSET_METERS = 3;
-    
-    traces.forEach((trace) => {
-      const baseCoords = trace.coordinates.map(c => fromLonLat(c));
-      const isSelected = selectedTrace?.id === trace.id;
-      const color = trace.type === "heating" ? "#F97316" : "#06B6D4";
-      const offset = trace.type === "heating" ? -OFFSET_METERS : OFFSET_METERS;
-      
-      const feature = new Feature({
-        geometry: new LineString(baseCoords),
-        traceId: trace.id,
-        traceType: trace.type,
-      });
-      
-      feature.setStyle((feat) => {
-        const geom = feat.getGeometry() as LineString;
-        if (!geom) return new Style({});
-        
-        const coords = geom.getCoordinates();
-        const offsetCoords = offsetLineStringConsistent(coords, offset);
-        
-        return new Style({
-          geometry: new LineString(offsetCoords),
-          stroke: new Stroke({
-            color,
-            width: isSelected ? 4 : 3,
-            lineDash: [10, 6],
-          }),
-        });
-      });
-      
-      source.addFeature(feature);
-    });
-  }, [traces, selectedTrace]);
 
   // Manage uploaded shapefile layers
   useEffect(() => {
@@ -2044,190 +1780,6 @@ export function MapViewer({
     }
   }, [findNearestPolygon, onCreateTicket, toast]);
 
-  const calculateDistance = useCallback((f1: Facility, f2: Facility): number => {
-    const dx = f1.lon - f2.lon;
-    const dy = f1.lat - f2.lat;
-    return Math.sqrt(dx * dx + dy * dy) * 111000;
-  }, []);
-
-  const handleStartTracing = useCallback(async () => {
-    if (!selectedFacility || selectedFacility.type !== "building") return;
-
-    setTracingError(null);
-
-    const requiredHeat = selectedFacility.requiredHeatLoad || 0;
-    const requiredWater = selectedFacility.requiredWaterSupply || 0;
-
-    const freshFacilities = await queryClient.fetchQuery({
-      queryKey: ["/api/facilities"],
-      staleTime: 0,
-    }) as Facility[];
-
-    const boilerhouses = freshFacilities.filter(f => f.type === "boilerhouse");
-    const waterintakes = freshFacilities.filter(f => f.type === "waterintake");
-
-    if (boilerhouses.length === 0 && waterintakes.length === 0) {
-      setTracingError("Добавьте котельную и/или водозабор на карту");
-      return;
-    }
-
-    const qualifiedBoilerhouses = boilerhouses.filter(b => 
-      (b.freeHeatCapacity || 0) >= requiredHeat
-    );
-    const qualifiedWaterintakes = waterintakes.filter(w => 
-      (w.freeWaterCapacity || 0) >= requiredWater
-    );
-
-    const errors: string[] = [];
-
-    if (requiredHeat > 0 && qualifiedBoilerhouses.length === 0 && boilerhouses.length > 0) {
-      const maxCapacity = Math.max(...boilerhouses.map(b => b.freeHeatCapacity || 0));
-      errors.push(`Нет котельной с достаточной мощностью (нужно ${requiredHeat} Гкал/ч, макс. доступно ${maxCapacity} Гкал/ч)`);
-    }
-
-    if (requiredWater > 0 && qualifiedWaterintakes.length === 0 && waterintakes.length > 0) {
-      const maxCapacity = Math.max(...waterintakes.map(w => w.freeWaterCapacity || 0));
-      errors.push(`Нет водозабора с достаточной мощностью (нужно ${requiredWater} м³/ч, макс. доступно ${maxCapacity} м³/ч)`);
-    }
-
-    if (errors.length > 0) {
-      setTracingError(errors.join(". "));
-    }
-
-    let nearestBoilerhouse: Facility | null = null;
-    if (qualifiedBoilerhouses.length > 0) {
-      nearestBoilerhouse = qualifiedBoilerhouses.reduce((nearest, current) => {
-        const nearestDist = calculateDistance(selectedFacility, nearest);
-        const currentDist = calculateDistance(selectedFacility, current);
-        return currentDist < nearestDist ? current : nearest;
-      });
-    }
-
-    let nearestWaterintake: Facility | null = null;
-    if (qualifiedWaterintakes.length > 0) {
-      nearestWaterintake = qualifiedWaterintakes.reduce((nearest, current) => {
-        const nearestDist = calculateDistance(selectedFacility, nearest);
-        const currentDist = calculateDistance(selectedFacility, current);
-        return currentDist < nearestDist ? current : nearest;
-      });
-    }
-
-    if (!nearestBoilerhouse && !nearestWaterintake) {
-      return;
-    }
-
-    setIsTracing(true);
-
-    const routingTasks: { target: Facility; type: TraceType; requiredCapacity: number }[] = [];
-    if (nearestBoilerhouse && requiredHeat > 0) {
-      routingTasks.push({ target: nearestBoilerhouse, type: "heating", requiredCapacity: requiredHeat });
-    }
-    if (nearestWaterintake && requiredWater > 0) {
-      routingTasks.push({ target: nearestWaterintake, type: "water", requiredCapacity: requiredWater });
-    }
-
-    try {
-      for (const task of routingTasks) {
-        const currentFacilities = await queryClient.fetchQuery({
-          queryKey: ["/api/facilities"],
-          staleTime: 0,
-        }) as Facility[];
-        const currentTarget = currentFacilities.find(f => f.id === task.target.id);
-        
-        if (!currentTarget) {
-          throw new Error("Источник не найден");
-        }
-
-        const currentCapacity = task.type === "heating" 
-          ? (currentTarget.freeHeatCapacity || 0)
-          : (currentTarget.freeWaterCapacity || 0);
-
-        if (currentCapacity < task.requiredCapacity) {
-          throw new Error(`Недостаточно мощности у источника ${currentTarget.name}`);
-        }
-
-        const response = await fetch("/api/routing", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            start: [selectedFacility.lon, selectedFacility.lat],
-            end: [currentTarget.lon, currentTarget.lat],
-          }),
-        });
-
-        const data = await response.json();
-        
-        const coords = data.coordinates as [number, number][];
-        const lineString = new LineString(coords.map(c => fromLonLat(c)));
-        const lengthMeters = getLength(lineString);
-
-        const trace: InsertTrace = {
-          type: task.type,
-          buildingId: selectedFacility.id,
-          targetId: currentTarget.id,
-          coordinates: coords,
-          length: lengthMeters,
-        };
-
-        await createTraceMutation.mutateAsync(trace);
-
-        const newCapacity = Math.max(0, currentCapacity - task.requiredCapacity);
-        if (task.type === "heating") {
-          await updateFacilityMutation.mutateAsync({
-            id: currentTarget.id,
-            updates: { freeHeatCapacity: newCapacity },
-          });
-        } else {
-          await updateFacilityMutation.mutateAsync({
-            id: currentTarget.id,
-            updates: { freeWaterCapacity: newCapacity },
-          });
-        }
-
-        await queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
-
-        if (data.fallback) {
-          toast({
-            title: task.type === "heating" ? "Теплотрасса построена" : "Водопровод построен",
-            description: "Использована прямая линия (сервис маршрутизации недоступен)",
-          });
-        }
-      }
-
-      toast({
-        title: "Трассировка завершена",
-        description: `Построено ${routingTasks.length} трассировок`,
-      });
-      setTracingError(null);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Не удалось построить трассировки";
-      toast({
-        title: "Ошибка трассировки",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsTracing(false);
-    }
-  }, [selectedFacility, createTraceMutation, updateFacilityMutation, calculateDistance, toast]);
-
-  const handleConfirmPlacement = useCallback(async (facility: InsertFacility) => {
-    try {
-      await createFacilityMutation.mutateAsync(facility);
-      toast({
-        title: "Объект добавлен",
-        description: `${facility.name} размещён на карте`,
-      });
-      setPendingPlacement(null);
-    } catch {
-      toast({
-        title: "Ошибка",
-        description: "Не удалось добавить объект",
-        variant: "destructive",
-      });
-    }
-  }, [createFacilityMutation, toast]);
-
   return (
     <div className="relative flex-1 h-full" data-testid="map-container">
       <div
@@ -2253,24 +1805,6 @@ export function MapViewer({
         feature={selectedFeature}
         onClose={handleCloseFeatureInfo}
         coordinates={featureCoordinates}
-      />
-
-      <InfrastructureTools
-        placementMode={placementMode}
-        onSetPlacementMode={setPlacementMode}
-        selectedFacility={selectedFacility}
-        onCloseSelection={() => setSelectedFacility(null)}
-        onStartTracing={handleStartTracing}
-        onDeleteFacility={(id) => deleteFacilityMutation.mutate(id)}
-        isTracing={isTracing}
-        selectedTrace={selectedTrace}
-        onCloseTraceInfo={() => setSelectedTrace(null)}
-        onDeleteTrace={(id) => deleteTraceMutation.mutate(id)}
-        pendingPlacement={pendingPlacement}
-        onConfirmPlacement={handleConfirmPlacement}
-        onCancelPendingPlacement={() => setPendingPlacement(null)}
-        facilities={facilities}
-        tracingError={tracingError}
       />
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
