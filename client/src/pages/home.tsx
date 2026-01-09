@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,29 @@ import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
 import type { ConnectionStatus, EditableLayer, GeometryType } from "@shared/schema";
 
+interface SceneDataset {
+  id: number;
+  sceneId: number;
+  datasetId: number;
+  layerName: string | null;
+  isVisible: number;
+  opacity: number;
+  color: string;
+  pointStyle: string;
+  lineStyle: string;
+  zIndex: number;
+  dataset: {
+    id: number;
+    name: string;
+    originalFilename: string;
+    geometryType: string;
+    crs: string;
+    featureCount: number;
+    createdBy: string;
+    createdAt: string;
+  };
+}
+
 interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnectionContext>, 'layers' | 'toggleLayerVisibility' | 'setLayerOpacity' | 'layerFilters' | 'activeFilters' | 'toggleFilter'> {
   editableLayers: EditableLayer[];
   activeEditableLayer: EditableLayer | null;
@@ -38,6 +62,8 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   onDeleteEditableLayer: (layerId: number) => void;
   editMode: boolean;
   onToggleEditMode: () => void;
+  activeSceneDataset: SceneDataset | null;
+  onSelectSceneDataset: (sd: SceneDataset | null) => void;
 }
 
 function SidebarContentPanel({
@@ -54,6 +80,8 @@ function SidebarContentPanel({
   onDeleteEditableLayer,
   editMode,
   onToggleEditMode,
+  activeSceneDataset,
+  onSelectSceneDataset,
 }: SidebarContentPanelProps) {
   return (
     <ScrollArea className="h-full w-full min-w-0">
@@ -72,6 +100,8 @@ function SidebarContentPanel({
           onDeleteEditableLayer={onDeleteEditableLayer}
           editMode={editMode}
           onToggleEditMode={onToggleEditMode}
+          activeSceneDataset={activeSceneDataset}
+          onSelectSceneDataset={onSelectSceneDataset}
         />
       </div>
     </ScrollArea>
@@ -146,6 +176,7 @@ function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
 
 export default function Home() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const zuluConnection = useZuluConnectionContext();
   const { currentScene, currentSceneId } = useScene();
   const drawing = useDrawing();
@@ -156,6 +187,20 @@ export default function Home() {
   const [showAttributeTable, setShowAttributeTable] = useState(false);
   const [showDataManager, setShowDataManager] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
+  const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
+
+  const updateDatasetFeatureMutation = useMutation({
+    mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
+      const res = await apiRequest("PATCH", `/api/datasets/${datasetId}/features/${featureId}`, { 
+        geometryType: geometry.type,
+        coordinates: geometry.coordinates,
+      });
+      return res.json();
+    },
+    onSuccess: (_, { datasetId }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/datasets", datasetId, "features"] });
+    },
+  });
 
   useEffect(() => {
     if (!currentSceneId) {
@@ -194,6 +239,18 @@ export default function Home() {
       source: "user",
     });
   }, [drawing]);
+
+  const handleSelectSceneDataset = useCallback((sd: SceneDataset | null) => {
+    setActiveSceneDataset(sd);
+    // When selecting scene dataset, deselect editable layer and vice versa
+    if (sd) {
+      drawing.selectLayer(null as unknown as EditableLayer);
+    }
+  }, [drawing]);
+
+  const handleDatasetFeatureUpdated = useCallback((datasetId: number, featureId: number, geometry: { type: string; coordinates: unknown }) => {
+    updateDatasetFeatureMutation.mutate({ datasetId, featureId, geometry });
+  }, [updateDatasetFeatureMutation]);
 
   // Auto-close attribute table modal when prerequisites are no longer met
   useEffect(() => {
@@ -241,6 +298,8 @@ export default function Home() {
                     onDeleteEditableLayer={drawing.deleteLayer}
                     editMode={editMode}
                     onToggleEditMode={toggleEditMode}
+                    activeSceneDataset={activeSceneDataset}
+                    onSelectSceneDataset={handleSelectSceneDataset}
                   />
                 ) : (
                   <FeatureInfoSidebarPanel
@@ -293,6 +352,8 @@ export default function Home() {
                     onDeleteEditableLayer={drawing.deleteLayer}
                     editMode={editMode}
                     onToggleEditMode={toggleEditMode}
+                    activeSceneDataset={activeSceneDataset}
+                    onSelectSceneDataset={handleSelectSceneDataset}
                   />
                 </SheetContent>
               </Sheet>
@@ -410,6 +471,8 @@ export default function Home() {
               onClearEditableSelection={drawing.clearSelection}
               onSelectEditableLayer={drawing.selectLayer}
               selectionActionsRef={selectionActionsRef}
+              activeSceneDataset={activeSceneDataset}
+              onDatasetFeatureUpdated={handleDatasetFeatureUpdated}
             />
 
             {/* Attribute Table Modal */}

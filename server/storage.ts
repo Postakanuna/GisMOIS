@@ -75,8 +75,11 @@ export interface IStorage {
   
   // Dataset features methods
   getDatasetFeatures(datasetId: number): Promise<DatasetFeature[]>;
+  getDatasetFeature(id: number): Promise<DatasetFeature | undefined>;
   createDatasetFeature(feature: { datasetId: number; geometryType: string; coordinates: unknown; properties?: Record<string, unknown> }): Promise<DatasetFeature>;
   createDatasetFeaturesBatch(features: { datasetId: number; geometryType: string; coordinates: unknown; properties?: Record<string, unknown> }[]): Promise<DatasetFeature[]>;
+  updateDatasetFeature(id: number, updates: Partial<{ geometryType: string; coordinates: unknown; properties: Record<string, unknown> }>): Promise<DatasetFeature | undefined>;
+  deleteDatasetFeature(id: number): Promise<{ deleted: boolean; datasetId: number | null }>;
   deleteDatasetFeatures(datasetId: number): Promise<boolean>;
   
   // Scene datasets methods
@@ -578,6 +581,33 @@ export class DatabaseStorage implements IStorage {
     }
     
     return rows;
+  }
+
+  async getDatasetFeature(id: number): Promise<DatasetFeature | undefined> {
+    const [row] = await db.select().from(datasetFeatures).where(eq(datasetFeatures.id, id));
+    return row;
+  }
+
+  async updateDatasetFeature(id: number, updates: Partial<{ geometryType: string; coordinates: unknown; properties: Record<string, unknown> }>): Promise<DatasetFeature | undefined> {
+    const updateData: Record<string, unknown> = {};
+    if (updates.geometryType !== undefined) updateData.geometryType = updates.geometryType;
+    if (updates.coordinates !== undefined) updateData.coordinates = updates.coordinates;
+    if (updates.properties !== undefined) updateData.properties = updates.properties;
+    
+    const [row] = await db.update(datasetFeatures).set(updateData).where(eq(datasetFeatures.id, id)).returning();
+    return row;
+  }
+
+  async deleteDatasetFeature(id: number): Promise<{ deleted: boolean; datasetId: number | null }> {
+    const [feature] = await db.select().from(datasetFeatures).where(eq(datasetFeatures.id, id));
+    if (!feature) return { deleted: false, datasetId: null };
+    
+    await db.delete(datasetFeatures).where(eq(datasetFeatures.id, id));
+    await db.update(datasets)
+      .set({ featureCount: sql`GREATEST(${datasets.featureCount} - 1, 0)` })
+      .where(eq(datasets.id, feature.datasetId));
+    
+    return { deleted: true, datasetId: feature.datasetId };
   }
 
   async deleteDatasetFeatures(datasetId: number): Promise<boolean> {

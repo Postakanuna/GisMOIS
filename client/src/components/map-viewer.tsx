@@ -67,7 +67,9 @@ interface SceneDatasetInfo {
   dataset: {
     id: number;
     name: string;
+    originalFilename?: string;
     geometryType: string;
+    crs?: string;
     featureCount: number;
   };
 }
@@ -108,6 +110,10 @@ interface MapViewerProps {
   onSelectEditableLayer?: (layer: EditableLayer) => void;
   // Selection callbacks exposed for external control
   selectionActionsRef?: React.MutableRefObject<{ clearSelection: () => void; deleteSelected: () => void } | null>;
+  // Scene dataset editing props
+  activeSceneDataset?: SceneDatasetInfo | null;
+  onDatasetFeatureCreated?: (datasetId: number, geometryType: string, coordinates: unknown, properties?: Record<string, unknown>) => void;
+  onDatasetFeatureUpdated?: (datasetId: number, featureId: number, geometry: { type: string; coordinates: unknown }) => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -431,6 +437,9 @@ export function MapViewer({
   onClearEditableSelection,
   onSelectEditableLayer,
   selectionActionsRef,
+  activeSceneDataset,
+  onDatasetFeatureCreated,
+  onDatasetFeatureUpdated,
 }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
@@ -489,6 +498,10 @@ export function MapViewer({
   // Scene datasets refs
   const sceneDatasetLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const { currentSceneId } = useScene();
+  const activeSceneDatasetRef = useRef(activeSceneDataset);
+  const onDatasetFeatureUpdatedRef = useRef(onDatasetFeatureUpdated);
+  const onDatasetFeatureCreatedRef = useRef(onDatasetFeatureCreated);
+  const sceneDatasetModifyRef = useRef<Modify | null>(null);
 
   // Fetch scene datasets
   const { data: sceneDatasets = [] } = useQuery<SceneDatasetInfo[]>({
@@ -535,6 +548,18 @@ export function MapViewer({
   useEffect(() => {
     onClearEditableSelectionRef.current = onClearEditableSelection;
   }, [onClearEditableSelection]);
+
+  useEffect(() => {
+    activeSceneDatasetRef.current = activeSceneDataset;
+  }, [activeSceneDataset]);
+
+  useEffect(() => {
+    onDatasetFeatureUpdatedRef.current = onDatasetFeatureUpdated;
+  }, [onDatasetFeatureUpdated]);
+
+  useEffect(() => {
+    onDatasetFeatureCreatedRef.current = onDatasetFeatureCreated;
+  }, [onDatasetFeatureCreated]);
 
   // Sync refs with state to avoid stale closures in OL event handlers
   useEffect(() => {
@@ -1668,6 +1693,63 @@ export function MapViewer({
       }
     });
   }, [editableFeatures, selectedEditableFeatureIds]);
+
+  // Scene dataset modify interaction
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove existing scene dataset modify interaction
+    if (sceneDatasetModifyRef.current) {
+      map.removeInteraction(sceneDatasetModifyRef.current);
+      sceneDatasetModifyRef.current = null;
+    }
+
+    // If there's an active scene dataset and edit mode is on, add modify interaction
+    if (activeSceneDataset && editMode) {
+      const layer = sceneDatasetLayersRef.current.get(activeSceneDataset.id);
+      if (layer) {
+        const source = layer.getSource();
+        if (source) {
+          const modify = new Modify({ source });
+
+          modify.on("modifyend", (evt: ModifyEvent) => {
+            const features = evt.features.getArray();
+            const currentDataset = activeSceneDatasetRef.current;
+            if (!currentDataset) return;
+
+            features.forEach((feature) => {
+              const featureId = feature.get("featureId");
+              if (featureId && onDatasetFeatureUpdatedRef.current) {
+                const geom = feature.getGeometry();
+                if (geom) {
+                  const format = new GeoJSON();
+                  const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
+                    featureProjection: "EPSG:3857",
+                    dataProjection: "EPSG:4326",
+                  }));
+                  onDatasetFeatureUpdatedRef.current(currentDataset.datasetId, featureId, {
+                    type: geoJsonGeom.type,
+                    coordinates: geoJsonGeom.coordinates,
+                  });
+                }
+              }
+            });
+          });
+
+          map.addInteraction(modify);
+          sceneDatasetModifyRef.current = modify;
+        }
+      }
+    }
+
+    return () => {
+      if (sceneDatasetModifyRef.current) {
+        map.removeInteraction(sceneDatasetModifyRef.current);
+        sceneDatasetModifyRef.current = null;
+      }
+    };
+  }, [activeSceneDataset, editMode]);
 
   useEffect(() => {
     if (!mapRef.current || !connection) return;

@@ -118,6 +118,9 @@ interface LayerPanelProps {
   onDeleteEditableLayer?: (layerId: number) => void;
   editMode?: boolean;
   onToggleEditMode?: () => void;
+  // Scene dataset editing props
+  activeSceneDataset?: SceneDataset | null;
+  onSelectSceneDataset?: (sd: SceneDataset | null) => void;
 }
 
 export function LayerPanel({
@@ -134,6 +137,8 @@ export function LayerPanel({
   onDeleteEditableLayer,
   editMode = false,
   onToggleEditMode,
+  activeSceneDataset,
+  onSelectSceneDataset,
 }: LayerPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -710,7 +715,16 @@ export function LayerPanel({
                 {sceneDatasets.map((sd) => (
                   <div
                     key={sd.id}
-                    className="flex items-center gap-1 rounded-md border px-2 py-1 transition-colors overflow-hidden border-sidebar-border hover:bg-accent/50"
+                    className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors overflow-hidden ${
+                      activeSceneDataset?.id === sd.id
+                        ? "border-primary bg-primary/10"
+                        : "border-sidebar-border hover:bg-accent/50"
+                    }`}
+                    onClick={() => {
+                      if (activeSceneDataset?.id !== sd.id) {
+                        onSelectSceneDataset?.(sd);
+                      }
+                    }}
                     data-testid={`scene-dataset-layer-${sd.id}`}
                   >
                     <div className="flex items-center gap-1 shrink-0">
@@ -718,10 +732,13 @@ export function LayerPanel({
                         size="icon"
                         variant="ghost"
                         className="h-5 w-5"
-                        onClick={() => toggleSceneDatasetVisibility.mutate({ 
-                          id: sd.id, 
-                          isVisible: sd.isVisible ? 0 : 1 
-                        })}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSceneDatasetVisibility.mutate({ 
+                            id: sd.id, 
+                            isVisible: sd.isVisible ? 0 : 1 
+                          });
+                        }}
                         data-testid={`button-toggle-scene-dataset-${sd.id}`}
                       >
                         {sd.isVisible ? (
@@ -749,12 +766,25 @@ export function LayerPanel({
                       <span className="text-[10px] text-muted-foreground">
                         {sd.dataset.featureCount}
                       </span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className={`h-5 w-5 shrink-0 ${activeSceneDataset?.id === sd.id ? "text-primary" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectSceneDataset?.(activeSceneDataset?.id === sd.id ? null : sd);
+                        }}
+                        data-testid={`button-edit-scene-dataset-${sd.id}`}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             size="icon"
                             variant="ghost"
                             className="h-5 w-5 shrink-0"
+                            onClick={(e) => e.stopPropagation()}
                             data-testid={`button-scene-dataset-style-${sd.id}`}
                           >
                             <Palette className="h-3 w-3" />

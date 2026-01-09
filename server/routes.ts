@@ -1596,6 +1596,79 @@ export async function registerRoutes(
     }
   });
 
+  // Create dataset feature
+  app.post("/api/datasets/:id/features", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const datasetId = parseInt(req.params.id);
+      const { geometryType, coordinates, properties } = req.body;
+      
+      if (!geometryType || !coordinates) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      
+      const feature = await storage.createDatasetFeature({
+        datasetId,
+        geometryType,
+        coordinates,
+        properties: properties || {},
+      });
+      return res.status(201).json(feature);
+    } catch (error) {
+      console.error("Error creating dataset feature:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update dataset feature
+  app.patch("/api/datasets/:datasetId/features/:featureId", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const featureId = parseInt(req.params.featureId);
+      const { geometryType, coordinates, properties } = req.body;
+      
+      // Validate that if coordinates are being updated, geometryType must also be provided
+      if (coordinates !== undefined && geometryType === undefined) {
+        return res.status(400).json({ message: "geometryType is required when updating coordinates" });
+      }
+      
+      const feature = await storage.updateDatasetFeature(featureId, { geometryType, coordinates, properties });
+      if (!feature) {
+        return res.status(404).json({ message: "Feature not found" });
+      }
+      return res.json(feature);
+    } catch (error) {
+      console.error("Error updating dataset feature:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete dataset feature
+  app.delete("/api/datasets/:datasetId/features/:featureId", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const featureId = parseInt(req.params.featureId);
+      
+      const result = await storage.deleteDatasetFeature(featureId);
+      if (!result.deleted) {
+        return res.status(404).json({ message: "Feature not found" });
+      }
+      return res.json({ success: true, datasetId: result.datasetId });
+    } catch (error) {
+      console.error("Error deleting dataset feature:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ============================================
   // SCENE DATASETS API
   // ============================================
