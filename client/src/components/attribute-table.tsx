@@ -464,16 +464,16 @@ export function AttributeTable({
                     data-testid={`row-feature-${feature.id}`}
                   >
                     <div 
-                      className="px-2 py-1.5 font-mono text-xs border-r flex items-center flex-shrink-0"
-                      style={{ width: columnWidths._id }}
+                      className="px-2 py-1.5 font-mono border-r flex items-center flex-shrink-0"
+                      style={{ width: columnWidths._id, fontSize: 12 }}
                     >
                       {feature.id}
                     </div>
                     <div 
                       className="px-2 py-1.5 border-r flex items-center flex-shrink-0"
-                      style={{ width: columnWidths._type }}
+                      style={{ width: columnWidths._type, fontSize: 12 }}
                     >
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" style={{ fontSize: 11 }}>
                         {feature.geometryType === "Point" ? "Точка" : 
                          feature.geometryType === "LineString" ? "Линия" : "Полигон"}
                       </Badge>
@@ -482,7 +482,7 @@ export function AttributeTable({
                       <div 
                         key={field.name} 
                         className="px-2 py-1.5 border-r flex items-center flex-shrink-0 overflow-hidden"
-                        style={{ width: columnWidths[field.name] || 120 }}
+                        style={{ width: columnWidths[field.name] || 120, fontSize: 12 }}
                       >
                         {renderCellValue(feature, field)}
                       </div>
