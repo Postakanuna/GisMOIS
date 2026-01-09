@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Upload, Trash2, Palette, FileArchive, BarChart3, Download, Loader2, FolderOpen } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Upload, Trash2, FileArchive, BarChart3, Download, Loader2, FolderOpen } from "lucide-react";
 import { useScene } from "@/contexts/scene-context";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -39,19 +39,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
-import type { LayerConfig, PointStyle, LineStyle, EditableLayer, GeometryType } from "@shared/schema";
+import type { LayerConfig, EditableLayer, GeometryType } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
-import { Circle, Square, Triangle, Cloud, Minus, MoreHorizontal } from "lucide-react";
 
 const truncateName = (name: string, maxLength: number = 30): string => {
   if (name.length <= maxLength) return name;
@@ -63,18 +57,6 @@ const LAYER_COLORS = [
   "#F57C00", "#0097A7", "#C2185B", "#512DA8",
 ];
 
-const POINT_STYLES: { value: PointStyle; label: string; icon: typeof Circle }[] = [
-  { value: "circle", label: "Круг", icon: Circle },
-  { value: "square", label: "Квадрат", icon: Square },
-  { value: "triangle", label: "Треугольник", icon: Triangle },
-  { value: "cloud", label: "Облачко", icon: Cloud },
-];
-
-const LINE_STYLES: { value: LineStyle; label: string }[] = [
-  { value: "solid", label: "Сплошная" },
-  { value: "dashed", label: "Пунктирная" },
-  { value: "double", label: "Двойная" },
-];
 
 type LayerGeometryType = "point" | "line" | "polygon" | "unknown";
 
@@ -726,24 +708,8 @@ export function LayerPanel({
                   }}
                   data-testid={`editable-layer-item-${layer.id}`}
                 >
-                  {/* Left controls - shrink-0 group */}
+                  {/* Left controls - color indicator */}
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-5 w-5"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateLayerMutation.mutate({ id: layer.id, visible: !layer.visible });
-                      }}
-                      data-testid={`button-toggle-visibility-${layer.id}`}
-                    >
-                      {layer.visible ? (
-                        <Eye className="h-3 w-3" />
-                      ) : (
-                        <EyeOff className="h-3 w-3 text-muted-foreground" />
-                      )}
-                    </Button>
                     <div
                       className="h-3 w-3 rounded-sm"
                       style={{ backgroundColor: layer.color }}
@@ -758,107 +724,15 @@ export function LayerPanel({
                     {layer.source === "import" && (
                       <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
                     )}
+                    {!layer.visible && (
+                      <EyeOff className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                    )}
                   </div>
                   
-                  {/* Right controls - shrink-0 group */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-[10px] text-muted-foreground">
-                      {layer.featureCount || 0}
-                    </span>
-                  
-                  <Popover>
-                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 shrink-0"
-                        data-testid={`button-layer-style-${layer.id}`}
-                      >
-                        <Palette className="h-3 w-3" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-52 p-2" align="end" onClick={(e) => e.stopPropagation()}>
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium">Цвет</p>
-                        <div className="flex flex-wrap gap-1">
-                          {LAYER_COLORS.map((color) => (
-                            <button
-                              key={color}
-                              className={`h-5 w-5 rounded-sm border ${layer.color === color ? "ring-2 ring-primary ring-offset-1" : ""}`}
-                              style={{ backgroundColor: color }}
-                              onClick={() => updateLayerMutation.mutate({ id: layer.id, color })}
-                              data-testid={`color-option-${layer.id}-${color}`}
-                            />
-                          ))}
-                        </div>
-                        
-                        {layer.geometryType === "Point" && (
-                          <>
-                            <p className="text-xs font-medium mt-2">Форма точки</p>
-                            <div className="flex gap-1">
-                              {POINT_STYLES.map(({ value, label, icon: Icon }) => (
-                                <Tooltip key={value}>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      className={`h-6 w-6 flex items-center justify-center rounded border ${layer.pointStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
-                                      onClick={() => updateLayerMutation.mutate({ id: layer.id, pointStyle: value })}
-                                      data-testid={`point-style-${layer.id}-${value}`}
-                                    >
-                                      <Icon className="h-3.5 w-3.5" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="bottom">
-                                    <p className="text-xs">{label}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                        
-                        {layer.geometryType === "LineString" && (
-                          <>
-                            <p className="text-xs font-medium mt-2">Стиль линии</p>
-                            <div className="flex gap-1">
-                              {LINE_STYLES.map(({ value, label }) => (
-                                <Tooltip key={value}>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      className={`h-6 px-2 flex items-center justify-center rounded border text-[10px] ${layer.lineStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
-                                      onClick={() => updateLayerMutation.mutate({ id: layer.id, lineStyle: value })}
-                                      data-testid={`line-style-${layer.id}-${value}`}
-                                    >
-                                      {value === "solid" && <Minus className="h-3 w-3" />}
-                                      {value === "dashed" && <MoreHorizontal className="h-3 w-3" />}
-                                      {value === "double" && <span className="font-bold">=</span>}
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="bottom">
-                                    <p className="text-xs">{label}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                  
-                  {/* Delete button */}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-5 w-5"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteEditableLayer?.(layer.id);
-                    }}
-                    data-testid={`button-delete-editable-layer-${layer.id}`}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                  </div>
+                  {/* Right - feature count */}
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {layer.featureCount || 0}
+                  </span>
                 </div>
               ))}
               {editableLayers.length === 0 && (

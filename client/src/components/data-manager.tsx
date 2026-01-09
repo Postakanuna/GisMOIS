@@ -18,7 +18,19 @@ import {
   Trash2,
   FileUp,
   Loader2,
+  Palette,
+  Circle,
+  Square,
+  Triangle,
+  Cloud,
+  Minus,
+  MoreHorizontal,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface EditableLayer {
   id: number;
@@ -37,6 +49,24 @@ interface EditableLayer {
   createdAt: string;
   updatedAt: string;
 }
+
+const LAYER_COLORS = [
+  "#1976D2", "#D32F2F", "#388E3C", "#7B1FA2",
+  "#F57C00", "#0097A7", "#C2185B", "#512DA8",
+];
+
+const POINT_STYLES = [
+  { value: "circle", label: "Круг", icon: Circle },
+  { value: "square", label: "Квадрат", icon: Square },
+  { value: "triangle", label: "Треугольник", icon: Triangle },
+  { value: "cloud", label: "Облачко", icon: Cloud },
+];
+
+const LINE_STYLES = [
+  { value: "solid", label: "Сплошная" },
+  { value: "dashed", label: "Пунктирная" },
+  { value: "double", label: "Двойная" },
+];
 
 interface DataManagerProps {
   onClose: () => void;
@@ -81,6 +111,18 @@ export function DataManager({ onClose }: DataManagerProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+    },
+  });
+
+  const updateLayerStyleMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; color?: string; pointStyle?: string; lineStyle?: string }) => {
+      const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
     },
   });
 
@@ -314,6 +356,88 @@ export function DataManager({ onClose }: DataManagerProps) {
                       )}
                     </div>
                   </div>
+                  
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        data-testid={`button-layer-style-${layer.id}`}
+                      >
+                        <Palette className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 p-3" align="end">
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-xs font-medium mb-2">Цвет</p>
+                          <div className="flex flex-wrap gap-1">
+                            {LAYER_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                className={`h-6 w-6 rounded-sm border ${layer.color === color ? "ring-2 ring-primary ring-offset-1" : ""}`}
+                                style={{ backgroundColor: color }}
+                                onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, color })}
+                                data-testid={`color-option-${layer.id}-${color}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {layer.geometryType === "Point" && (
+                          <div>
+                            <p className="text-xs font-medium mb-2">Форма точки</p>
+                            <div className="flex gap-1">
+                              {POINT_STYLES.map(({ value, label, icon: Icon }) => (
+                                <Tooltip key={value}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className={`h-7 w-7 flex items-center justify-center rounded border ${layer.pointStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
+                                      onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, pointStyle: value })}
+                                      data-testid={`point-style-${layer.id}-${value}`}
+                                    >
+                                      <Icon className="h-4 w-4" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p className="text-xs">{label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {layer.geometryType === "LineString" && (
+                          <div>
+                            <p className="text-xs font-medium mb-2">Стиль линии</p>
+                            <div className="flex gap-1">
+                              {LINE_STYLES.map(({ value, label }) => (
+                                <Tooltip key={value}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className={`h-7 px-2 flex items-center justify-center rounded border text-xs ${layer.lineStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
+                                      onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, lineStyle: value })}
+                                      data-testid={`line-style-${layer.id}-${value}`}
+                                    >
+                                      {value === "solid" && <Minus className="h-4 w-4" />}
+                                      {value === "dashed" && <MoreHorizontal className="h-4 w-4" />}
+                                      {value === "double" && <span className="font-bold">=</span>}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p className="text-xs">{label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
