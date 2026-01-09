@@ -391,61 +391,56 @@ export function AttributeTable({
           </div>
         </div>
         
-        <div className="flex-1 overflow-hidden flex flex-col" style={{ minHeight: 0 }}>
-          <div className="overflow-x-auto border-b bg-background sticky top-0 z-10">
-            <div style={{ width: totalWidth, minWidth: "100%" }}>
-              <div className="flex">
-                <div 
-                  className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
-                  style={{ width: columnWidths._id }}
-                >
-                  ID
-                  <div
-                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
-                    onMouseDown={(e) => handleResizeStart(e, "_id")}
-                    data-testid="resize-handle-id"
-                  />
-                </div>
-                <div 
-                  className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
-                  style={{ width: columnWidths._type }}
-                >
-                  Тип
-                  <div
-                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
-                    onMouseDown={(e) => handleResizeStart(e, "_type")}
-                    data-testid="resize-handle-type"
-                  />
-                </div>
-                {fields.map((field) => (
-                  <div 
-                    key={field.name}
-                    className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
-                    style={{ width: columnWidths[field.name] || 120 }}
-                  >
-                    <span className="truncate block">{field.name}</span>
-                    {field.required && <span className="text-destructive ml-1">*</span>}
-                    <div
-                      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
-                      onMouseDown={(e) => handleResizeStart(e, field.name)}
-                      data-testid={`resize-handle-${field.name}`}
-                    />
-                  </div>
-                ))}
+        <div 
+          ref={parentRef}
+          className="flex-1 overflow-auto"
+          style={{ minHeight: 0 }}
+          data-testid="table-scroll-container"
+        >
+          <div style={{ width: totalWidth, minWidth: "100%" }}>
+            <div className="flex border-b bg-background sticky top-0 z-10">
+              <div 
+                className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
+                style={{ width: columnWidths._id }}
+              >
+                ID
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
+                  onMouseDown={(e) => handleResizeStart(e, "_id")}
+                  data-testid="resize-handle-id"
+                />
               </div>
+              <div 
+                className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
+                style={{ width: columnWidths._type }}
+              >
+                Тип
+                <div
+                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
+                  onMouseDown={(e) => handleResizeStart(e, "_type")}
+                  data-testid="resize-handle-type"
+                />
+              </div>
+              {fields.map((field) => (
+                <div 
+                  key={field.name}
+                  className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
+                  style={{ width: columnWidths[field.name] || 120 }}
+                >
+                  <span className="truncate block">{field.name}</span>
+                  {field.required && <span className="text-destructive ml-1">*</span>}
+                  <div
+                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
+                    onMouseDown={(e) => handleResizeStart(e, field.name)}
+                    data-testid={`resize-handle-${field.name}`}
+                  />
+                </div>
+              ))}
             </div>
-          </div>
 
-          <div 
-            ref={parentRef}
-            className="flex-1 overflow-auto"
-            data-testid="table-scroll-container"
-          >
             <div
               style={{
                 height: `${rowVirtualizer.getTotalSize()}px`,
-                width: totalWidth,
-                minWidth: "100%",
                 position: "relative",
               }}
             >
