@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useScene } from "@/contexts/scene-context";
-import shp from "shpjs";
+import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
 import {
   X,
   GripVertical,
@@ -149,30 +149,27 @@ export function DataManager({ onClose }: DataManagerProps) {
         const file = files[i];
         const arrayBuffer = await file.arrayBuffer();
         
-        const geojson = await shp(arrayBuffer);
+        const parsedLayers = await parseShapefileWithEncoding(arrayBuffer, file.name);
         
-        const collections = Array.isArray(geojson) ? geojson : [geojson];
+        if (parsedLayers.length === 0) {
+          throw new Error("Не найдено слоёв в архиве");
+        }
         
-        for (const collection of collections) {
-          if (!collection.features || collection.features.length === 0) {
+        for (const layer of parsedLayers) {
+          if (!layer.geojson.features || layer.geojson.features.length === 0) {
             continue;
           }
           
-          const firstFeature = collection.features[0];
+          const firstFeature = layer.geojson.features[0];
           const geometryType = firstFeature.geometry?.type || "Unknown";
           
-          const baseName = file.name.replace(/\.(zip|shp)$/i, "");
-          const layerName = collections.length > 1 
-            ? `${baseName}_${geometryType}` 
-            : baseName;
-          
           const res = await apiRequest("POST", "/api/datasets/import", {
-            name: layerName,
+            name: layer.name,
             geometryType,
-            geojson: collection,
+            geojson: layer.geojson,
             sourceFileName: file.name,
-            crs: "EPSG:4326",
-            sceneId: currentSceneId, // Attach to current scene
+            crs: layer.sourceCrs || "EPSG:4326",
+            sceneId: currentSceneId,
           });
 
           if (!res.ok) {
