@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Upload, Trash2, Palette, FileArchive, BarChart3, Download, Loader2 } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Upload, Trash2, Palette, FileArchive, BarChart3, Download, Loader2, FolderOpen } from "lucide-react";
+import { useScene } from "@/contexts/scene-context";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -43,6 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Slider } from "@/components/ui/slider";
 import type { LayerConfig, PointStyle, LineStyle, EditableLayer, GeometryType } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { Plus, Pencil } from "lucide-react";
@@ -75,6 +77,31 @@ const LINE_STYLES: { value: LineStyle; label: string }[] = [
 ];
 
 type LayerGeometryType = "point" | "line" | "polygon" | "unknown";
+
+interface Dataset {
+  id: number;
+  name: string;
+  originalFilename: string;
+  geometryType: string;
+  crs: string;
+  featureCount: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+interface SceneDataset {
+  id: number;
+  sceneId: number;
+  datasetId: number;
+  layerName: string | null;
+  isVisible: number;
+  opacity: number;
+  color: string;
+  pointStyle: string;
+  lineStyle: string;
+  zIndex: number;
+  dataset: Dataset;
+}
 
 interface LayerPanelProps {
   layers: LayerConfig[];
@@ -110,6 +137,7 @@ export function LayerPanel({
 }: LayerPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { currentSceneId } = useScene();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -120,6 +148,31 @@ export function LayerPanel({
   const [newLayerDialogOpen, setNewLayerDialogOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerGeomType, setNewLayerGeomType] = useState<GeometryType>("Point");
+
+  const { data: sceneDatasets = [] } = useQuery<SceneDataset[]>({
+    queryKey: ["/api/scenes", currentSceneId, "datasets"],
+    enabled: !!currentSceneId,
+  });
+
+  const toggleSceneDatasetVisibility = useMutation({
+    mutationFn: async ({ id, isVisible }: { id: number; isVisible: number }) => {
+      const res = await apiRequest("PATCH", `/api/scenes/${currentSceneId}/datasets/${id}`, { isVisible });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "datasets"] });
+    },
+  });
+
+  const updateSceneDatasetStyle = useMutation({
+    mutationFn: async ({ id, ...updates }: { id: number; color?: string; opacity?: number }) => {
+      const res = await apiRequest("PATCH", `/api/scenes/${currentSceneId}/datasets/${id}`, updates);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "datasets"] });
+    },
+  });
 
 
   const importLayerMutation = useMutation({
@@ -639,7 +692,115 @@ export function LayerPanel({
     <div className="space-y-4 min-w-0">
       {headerContent}
 
-      <Accordion type="multiple" defaultValue={["base", "wms", "wfs", "uploaded", "editable"]} className="space-y-1 min-w-0">
+      <Accordion type="multiple" defaultValue={["base", "wms", "wfs", "uploaded", "editable", "scene-datasets"]} className="space-y-1 min-w-0">
+        {/* Scene datasets section */}
+        {sceneDatasets.length > 0 && (
+          <AccordionItem value="scene-datasets" className="border-none min-w-0">
+            <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-scene-datasets">
+              <div className="flex items-center gap-2 min-w-0">
+                <FolderOpen className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-xs font-medium truncate">Слои сцены</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">
+                  ({sceneDatasets.length})
+                </span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="space-y-1 pt-1 min-w-0">
+              <div className="space-y-1 min-w-0">
+                {sceneDatasets.map((sd) => (
+                  <div
+                    key={sd.id}
+                    className="flex items-center gap-1 rounded-md border px-2 py-1 transition-colors overflow-hidden border-sidebar-border hover:bg-accent/50"
+                    data-testid={`scene-dataset-layer-${sd.id}`}
+                  >
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        onClick={() => toggleSceneDatasetVisibility.mutate({ 
+                          id: sd.id, 
+                          isVisible: sd.isVisible ? 0 : 1 
+                        })}
+                        data-testid={`button-toggle-scene-dataset-${sd.id}`}
+                      >
+                        {sd.isVisible ? (
+                          <Eye className="h-3 w-3" />
+                        ) : (
+                          <EyeOff className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </Button>
+                      <div
+                        className="h-3 w-3 rounded-sm"
+                        style={{ backgroundColor: sd.color }}
+                      />
+                    </div>
+                    
+                    <div className="flex-1 min-w-0 flex items-center gap-1">
+                      <span className="text-xs font-medium truncate" title={sd.layerName || sd.dataset.name}>
+                        {truncateName(sd.layerName || sd.dataset.name)}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        ({sd.dataset.geometryType})
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[10px] text-muted-foreground">
+                        {sd.dataset.featureCount}
+                      </span>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-5 w-5 shrink-0"
+                            data-testid={`button-scene-dataset-style-${sd.id}`}
+                          >
+                            <Palette className="h-3 w-3" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-52 p-2" align="end">
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium">Цвет</p>
+                              <div className="flex flex-wrap gap-1">
+                                {LAYER_COLORS.map((color) => (
+                                  <button
+                                    key={color}
+                                    className={`h-5 w-5 rounded-sm border ${sd.color === color ? "ring-2 ring-primary ring-offset-1" : ""}`}
+                                    style={{ backgroundColor: color }}
+                                    onClick={() => updateSceneDatasetStyle.mutate({ id: sd.id, color })}
+                                    data-testid={`scene-dataset-color-${sd.id}-${color}`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-medium">Прозрачность</p>
+                                <span className="text-[10px] text-muted-foreground">{Math.round(sd.opacity * 100)}%</span>
+                              </div>
+                              <Slider
+                                value={[sd.opacity]}
+                                min={0.1}
+                                max={1}
+                                step={0.1}
+                                onValueChange={(values) => updateSceneDatasetStyle.mutate({ id: sd.id, opacity: values[0] })}
+                                data-testid={`scene-dataset-opacity-${sd.id}`}
+                              />
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
         {/* Editable layers section */}
         <AccordionItem value="editable" className="border-none min-w-0">
           <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-editable-layers">

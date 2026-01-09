@@ -19,7 +19,8 @@ import type { DrawEvent } from "ol/interaction/Draw";
 import type { ModifyEvent } from "ol/interaction/Modify";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, Facility, FacilityType, Trace, InsertFacility, InsertTrace, TraceType, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset } from "@shared/schema";
+import { useScene } from "@/contexts/scene-context";
 import type { DrawingMode } from "@/components/drawing-toolbar";
 import RegularShape from "ol/style/RegularShape";
 import GeoJSON from "ol/format/GeoJSON";
@@ -50,6 +51,33 @@ export interface SelectionCandidate {
   featureIndex: number;
   feature: Feature<Geometry>;
   geometryType: string;
+}
+
+interface SceneDatasetInfo {
+  id: number;
+  sceneId: number;
+  datasetId: number;
+  layerName: string | null;
+  isVisible: number;
+  opacity: number;
+  color: string;
+  pointStyle: string;
+  lineStyle: string;
+  zIndex: number;
+  dataset: {
+    id: number;
+    name: string;
+    geometryType: string;
+    featureCount: number;
+  };
+}
+
+interface DatasetFeatureData {
+  id: number;
+  datasetId: number;
+  geometryType: string;
+  coordinates: unknown;
+  properties: Record<string, unknown>;
 }
 
 interface MapViewerProps {
@@ -457,6 +485,16 @@ export function MapViewer({
   const allEditableLayersDataRef = useRef(allEditableLayers);
   const onEditableFeatureSelectRef = useRef(onEditableFeatureSelect);
   const onClearEditableSelectionRef = useRef(onClearEditableSelection);
+
+  // Scene datasets refs
+  const sceneDatasetLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
+  const { currentSceneId } = useScene();
+
+  // Fetch scene datasets
+  const { data: sceneDatasets = [] } = useQuery<SceneDatasetInfo[]>({
+    queryKey: ["/api/scenes", currentSceneId, "datasets"],
+    enabled: !!currentSceneId,
+  });
 
   useEffect(() => {
     placementModeRef.current = placementMode;
@@ -1285,6 +1323,109 @@ export function MapViewer({
       }
     });
   }, [allEditableLayers, allLayerFeatures, isFetchingFeatures]);
+
+  // Render scene datasets
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const geojsonFormat = new GeoJSON();
+
+    // Remove layers for datasets that are no longer in sceneDatasets
+    const currentDatasetIds = new Set(sceneDatasets.map(sd => sd.id));
+    sceneDatasetLayersRef.current.forEach((layer, id) => {
+      if (!currentDatasetIds.has(id)) {
+        map.removeLayer(layer);
+        sceneDatasetLayersRef.current.delete(id);
+      }
+    });
+
+    // Add or update layers for each visible scene dataset
+    sceneDatasets.forEach(async (sd) => {
+      let vectorLayer = sceneDatasetLayersRef.current.get(sd.id);
+
+      if (!vectorLayer) {
+        // Fetch features for this dataset
+        try {
+          const res = await fetch(`/api/datasets/${sd.datasetId}/features`);
+          if (!res.ok) {
+            console.warn(`Failed to fetch features for dataset ${sd.datasetId}`);
+            return;
+          }
+          const features: DatasetFeatureData[] = await res.json();
+
+          // Convert to GeoJSON FeatureCollection
+          const geojsonData = {
+            type: "FeatureCollection" as const,
+            features: features.map((f) => ({
+              type: "Feature" as const,
+              geometry: {
+                type: f.geometryType,
+                coordinates: f.coordinates,
+              },
+              properties: {
+                ...f.properties,
+                featureId: f.id,
+                datasetId: f.datasetId,
+              },
+            })),
+          };
+
+          const vectorSource = new VectorSource();
+          
+          try {
+            const olFeatures = geojsonFormat.readFeatures(geojsonData, {
+              dataProjection: "EPSG:4326",
+              featureProjection: "EPSG:3857",
+            });
+            vectorSource.addFeatures(olFeatures);
+          } catch (e) {
+            console.warn("Failed to parse GeoJSON for dataset:", sd.datasetId, e);
+          }
+
+          const style = new Style({
+            fill: new Fill({ color: sd.color + "33" }),
+            stroke: new Stroke({ color: sd.color, width: 2 }),
+            image: createPointImageStyle(sd.color, sd.pointStyle as PointStyle),
+          });
+
+          vectorLayer = new VectorLayer({
+            source: vectorSource,
+            style,
+            opacity: sd.opacity,
+            visible: !!sd.isVisible,
+            properties: { 
+              sceneDatasetId: sd.id,
+              datasetId: sd.datasetId,
+              color: sd.color,
+            },
+            zIndex: sd.zIndex + 100,
+          });
+
+          map.addLayer(vectorLayer);
+          sceneDatasetLayersRef.current.set(sd.id, vectorLayer);
+          console.log(`Added scene dataset layer: ${sd.layerName || sd.dataset.name} with ${features.length} features`);
+        } catch (e) {
+          console.error("Error loading scene dataset:", e);
+        }
+      } else {
+        // Update existing layer visibility, opacity, and style
+        vectorLayer.setVisible(!!sd.isVisible);
+        vectorLayer.setOpacity(sd.opacity);
+        
+        const storedColor = vectorLayer.get("color");
+        if (storedColor !== sd.color) {
+          const style = new Style({
+            fill: new Fill({ color: sd.color + "33" }),
+            stroke: new Stroke({ color: sd.color, width: 2 }),
+            image: createPointImageStyle(sd.color, sd.pointStyle as PointStyle),
+          });
+          vectorLayer.setStyle(style);
+          vectorLayer.set("color", sd.color);
+        }
+      }
+    });
+  }, [sceneDatasets]);
 
   useEffect(() => {
     if (!selectionLayerRef.current) return;

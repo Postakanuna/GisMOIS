@@ -2,11 +2,21 @@
 
 ## Overview
 
-ГИС МО "Инженерные сети" — веб-приложение для управления инженерной инфраструктурой. Система позволяет визуализировать данные карт через WMS/WFS API, управлять слоями, отображать информацию об объектах и загружать shapefile-слои. Интерфейс построен по принципу "карта в центре внимания", где интерактивная карта занимает основное пространство, а управляющие элементы расположены в боковой панели.
+ГИС МО "Инженерные сети" — веб-приложение для управления инженерной инфраструктурой с мультисценовой архитектурой. Система позволяет визуализировать данные карт через WMS/WFS API, управлять слоями, отображать информацию об объектах и загружать shapefile-слои. Интерфейс построен по принципу "карта в центре внимания", где интерактивная карта занимает основное пространство, а управляющие элементы расположены в боковой панели.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+
+## Recent Changes (January 2026)
+
+- Added multi-scene architecture: users can create separate project scenes
+- Implemented scene selection page after login
+- Added Data Manager (draggable modal) for managing datasets
+- Shapefile upload with CP1251 encoding support through Data Manager
+- Scene datasets display on map with visibility, color, and opacity controls
+- Role-based access control (owner/editor/viewer) for scenes
+- Scene datasets section in LayerPanel showing datasets added to current scene
 
 ## System Architecture
 
@@ -18,17 +28,21 @@ Preferred communication style: Simple, everyday language.
 - Component library: shadcn/ui built on Radix UI primitives
 - Styling: Tailwind CSS with CSS variables for theming (light/dark mode support)
 - Design system follows Material Design 3 principles for data-heavy productivity applications
+- Scene context (SceneContext) for managing current scene state
 
 **Map Rendering**: OpenLayers (ol) library
 - Supports WMS and WFS layer types from ZuluServer
 - OpenStreetMap as the default base layer
 - Interactive features: zoom controls, coordinate display, feature info on click
+- Scene datasets rendering with GeoJSON format
 
 **Key Frontend Components**:
-- `MapViewer`: Core map component using OpenLayers
+- `MapViewer`: Core map component using OpenLayers, renders scene datasets
 - `ConnectionForm`: Server connection configuration
-- `LayerPanel`: Layer visibility and opacity controls
+- `LayerPanel`: Layer visibility and opacity controls, scene datasets section
 - `FeatureInfoPanel`: Display clicked feature attributes
+- `DataManager`: Draggable modal for dataset management (ArcGIS/QGIS style)
+- `ScenesPage`: Scene selection and management after login
 - Sidebar layout with responsive mobile sheet variant
 
 ### Backend Architecture
@@ -40,11 +54,14 @@ Preferred communication style: Simple, everyday language.
 
 **API Design**:
 - REST endpoints prefixed with `/api/`
-- `POST /api/zulu/capabilities`: Fetches WMS capabilities from ZuluServer and parses available layers
+- Scene endpoints: `/api/scenes`, `/api/scenes/:id/datasets`, `/api/scenes/:id/members`
+- Dataset endpoints: `/api/datasets`, `/api/datasets/:id/features`, `/api/datasets/import`
+- `POST /api/zulu/capabilities`: Fetches WMS capabilities from ZuluServer
 
-**Storage**: In-memory storage class with interface for future database integration
-- User schema defined with Drizzle ORM (prepared for PostgreSQL)
+**Storage**: PostgreSQL with Drizzle ORM
+- User schema, scenes, scene_members, datasets, scene_datasets, dataset_features
 - Schema validation using Zod with drizzle-zod integration
+- Role-based access control: owner, editor, viewer
 
 ### Build System
 
@@ -59,13 +76,25 @@ Preferred communication style: Simple, everyday language.
 ```
 client/           # Frontend React application
   src/
-    components/   # UI components including shadcn/ui
+    components/   # UI components including shadcn/ui, DataManager
+    contexts/     # React contexts (SceneContext)
     hooks/        # Custom React hooks
-    pages/        # Route page components
+    pages/        # Route page components (home, scenes)
     lib/          # Utilities and query client
 server/           # Express backend
 shared/           # Shared types and schemas (Zod + Drizzle)
+migrations/       # Database migrations
 ```
+
+## Database Schema
+
+### Core Tables
+- `users`: User accounts with roles (admin, user)
+- `scenes`: Project scenes with name, description, owner
+- `scene_members`: Scene access control (role: owner, editor, viewer)
+- `datasets`: Uploaded shapefile datasets with geometry type, CRS, feature count
+- `scene_datasets`: Links datasets to scenes with styling (color, opacity, visibility)
+- `dataset_features`: Individual features with geometry (coordinates) and properties
 
 ## External Dependencies
 
@@ -82,7 +111,6 @@ shared/           # Shared types and schemas (Zod + Drizzle)
 - Connection string from `DATABASE_URL` environment variable
 - Migrations stored in `/migrations` directory
 - Schema defined in `shared/schema.ts`
-- Currently using in-memory storage; database ready for future provisioning
 
 ### Key Libraries
 
@@ -91,3 +119,4 @@ shared/           # Shared types and schemas (Zod + Drizzle)
 - **Radix UI**: Accessible UI primitives for shadcn/ui components
 - **Zod**: Runtime type validation for API requests and schemas
 - **Drizzle ORM**: Type-safe database queries and schema management
+- **shpjs**: Shapefile parsing with encoding support
