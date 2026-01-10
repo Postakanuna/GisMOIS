@@ -21,6 +21,14 @@ Preferred communication style: Simple, everyday language.
 - CRUD API for layer features (POST/PATCH/DELETE endpoints)
 - **Removed facility-specific tracing** (building/boilerhouse/waterintake entities removed)
 - **Added universal object-to-object tracing**: `/api/trace-route` endpoint finds nearest object in target layer and builds OSRM route
+- **Large file upload optimization**: 
+  - Hybrid upload: files >10MB use server-side disk storage, smaller files use client-side parsing
+  - Multer disk storage with temp file cleanup
+  - File extension validation (.zip, .shp)
+  - Chunked batch inserts (1000 features per batch) to avoid memory issues
+- **Viewport-based feature loading**: `/api/editable-layers/:id/features/viewport` with bbox filtering
+- **Geometry simplification**: Zoom-based LOD with polygon ring closure preservation
+- **Database optimization**: Index on drawn_features(layer_id) for query performance
 
 ## System Architecture
 
