@@ -30,8 +30,13 @@ Preferred communication style: Simple, everyday language.
   - `/api/editable-layers/:id/features/viewport` with bbox filtering, zoom-based simplification, and feature limit (5000)
   - `/api/datasets/:id/features/viewport` - same optimization for scene datasets
   - Frontend uses debounced `moveend` events (300ms) to trigger viewport-based refetches
-  - React Query caching (gcTime: 2 min, staleTime: 30s) for fast panning back to viewed areas
+  - React Query caching (gcTime: 2 min, staleTime: 30s) with `placeholderData` for seamless viewport transitions
   - Loading indicator during feature fetch, warning when 5000 feature limit reached
+- **Point layer clustering**: 
+  - Automatic clustering for Point layers with 50+ features at zoom < 14
+  - OpenLayers Cluster source with 40px distance threshold
+  - Dynamic cluster style showing feature count with logarithmic radius scaling
+  - Automatic switching between clustered/non-clustered modes on zoom change
 - **Geometry simplification**: Zoom-based LOD with polygon ring closure preservation
 - **Database optimization**: Index on drawn_features(layer_id) for query performance
 

@@ -7,6 +7,7 @@ import ImageLayer from "ol/layer/Image";
 import OSM from "ol/source/OSM";
 import VectorSource from "ol/source/Vector";
 import ImageWMS from "ol/source/ImageWMS";
+import Cluster from "ol/source/Cluster";
 import { fromLonLat, toLonLat, transformExtent } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
 import WKT from "ol/format/WKT";
@@ -210,6 +211,43 @@ function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
     image: createPointImageStyle(color, pointStyle),
   });
 }
+
+// Create cluster style for point layers at low zoom levels
+function createClusterStyle(color: string, pointStyle: PointStyle = "circle") {
+  return function(feature: Feature) {
+    const clusteredFeatures = feature.get('features');
+    const size = clusteredFeatures ? clusteredFeatures.length : 1;
+    
+    if (size === 1) {
+      // Single feature - use normal point style
+      return new Style({
+        image: createPointImageStyle(color, pointStyle),
+      });
+    }
+    
+    // Cluster with multiple features - show count
+    const radius = Math.min(8 + Math.log2(size) * 4, 24);
+    return new Style({
+      image: new Circle({
+        radius: radius,
+        fill: new Fill({ color: color + "CC" }),
+        stroke: new Stroke({ color: "#fff", width: 2 }),
+      }),
+      text: new Text({
+        text: size > 99 ? "99+" : size.toString(),
+        fill: new Fill({ color: "#fff" }),
+        font: `bold ${Math.min(12 + Math.log2(size), 16)}px sans-serif`,
+        textAlign: 'center',
+        textBaseline: 'middle',
+      }),
+    });
+  };
+}
+
+// Cluster distance threshold in pixels
+const CLUSTER_DISTANCE = 40;
+// Zoom threshold below which clustering is enabled
+const CLUSTER_ZOOM_THRESHOLD = 14;
 
 function getLayerStyle(layerId: string) {
   const color = LAYER_COLORS[layerId] || "#1976D2";
@@ -1116,17 +1154,51 @@ export function MapViewer({
           console.error("Failed to parse layer GeoJSON:", e);
         }
         
-        vectorLayer = new VectorLayer({
-          source: vectorSource,
-          style: createEditableLayerStyle(editableLayerItem),
-          properties: { 
-            editableLayerId: editableLayerItem.id, 
-            featureCount: layerFeatures.length,
-            layerColor: editableLayerItem.color,
-            pointStyle: editableLayerItem.pointStyle,
-            lineStyle: editableLayerItem.lineStyle,
-          },
-        });
+        // Check if this is a Point-only layer for clustering
+        const isPointLayer = layerFeatures.length > 0 && 
+          layerFeatures.every(f => f.geometryType === "Point");
+        const currentZoom = viewport?.zoom ?? 12;
+        const shouldCluster = isPointLayer && currentZoom < CLUSTER_ZOOM_THRESHOLD && layerFeatures.length > 50;
+        
+        if (shouldCluster) {
+          // Use Cluster source for point layers at low zoom levels
+          const clusterSource = new Cluster({
+            distance: CLUSTER_DISTANCE,
+            source: vectorSource,
+          });
+          
+          vectorLayer = new VectorLayer({
+            source: clusterSource,
+            style: createClusterStyle(
+              editableLayerItem.color || "#1976D2",
+              (editableLayerItem.pointStyle as PointStyle) || "circle"
+            ),
+            properties: { 
+              editableLayerId: editableLayerItem.id, 
+              featureCount: layerFeatures.length,
+              layerColor: editableLayerItem.color,
+              pointStyle: editableLayerItem.pointStyle,
+              lineStyle: editableLayerItem.lineStyle,
+              isClustered: true,
+              originalSource: vectorSource,
+            },
+          });
+          console.log(`Created clustered layer for ${editableLayerItem.name}`);
+        } else {
+          vectorLayer = new VectorLayer({
+            source: vectorSource,
+            style: createEditableLayerStyle(editableLayerItem),
+            properties: { 
+              editableLayerId: editableLayerItem.id, 
+              featureCount: layerFeatures.length,
+              layerColor: editableLayerItem.color,
+              pointStyle: editableLayerItem.pointStyle,
+              lineStyle: editableLayerItem.lineStyle,
+              isClustered: false,
+              originalSource: vectorSource,
+            },
+          });
+        }
         
         map.addLayer(vectorLayer);
         allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
@@ -1135,22 +1207,92 @@ export function MapViewer({
         // But skip if data is still loading (layerFeatures is empty but should have data)
         const storedCount = vectorLayer.get("featureCount");
         const hasDataForLayer = allLayerFeatures[editableLayerItem.id] !== undefined;
+        const isClustered = vectorLayer.get("isClustered");
         
-        // Only update if we have actual data or explicitly have 0 features
-        if (storedCount !== layerFeatures.length && hasDataForLayer) {
-          const vectorSource = vectorLayer.getSource();
-          if (vectorSource) {
-            vectorSource.clear();
+        // Check if clustering state should change based on zoom
+        const isPointLayer = layerFeatures.length > 0 && 
+          layerFeatures.every(f => f.geometryType === "Point");
+        const currentZoom = viewport?.zoom ?? 12;
+        const shouldCluster = isPointLayer && currentZoom < CLUSTER_ZOOM_THRESHOLD && layerFeatures.length > 50;
+        
+        // If clustering state changed, recreate the layer
+        if (isPointLayer && isClustered !== shouldCluster) {
+          // Remove old layer and recreate with correct source type
+          map.removeLayer(vectorLayer);
+          allEditableLayersRef.current.delete(editableLayerItem.id);
+          
+          const originalSource = vectorLayer.get("originalSource") as VectorSource || new VectorSource();
+          originalSource.clear();
+          
+          if (geojsonData.features.length > 0) {
+            const features = geojsonFormat.readFeatures(geojsonData, {
+              dataProjection: "EPSG:4326",
+              featureProjection: "EPSG:3857",
+            });
+            originalSource.addFeatures(features);
+          }
+          
+          if (shouldCluster) {
+            const clusterSource = new Cluster({
+              distance: CLUSTER_DISTANCE,
+              source: originalSource,
+            });
+            
+            vectorLayer = new VectorLayer({
+              source: clusterSource,
+              style: createClusterStyle(
+                editableLayerItem.color || "#1976D2",
+                (editableLayerItem.pointStyle as PointStyle) || "circle"
+              ),
+              properties: { 
+                editableLayerId: editableLayerItem.id, 
+                featureCount: layerFeatures.length,
+                layerColor: editableLayerItem.color,
+                pointStyle: editableLayerItem.pointStyle,
+                lineStyle: editableLayerItem.lineStyle,
+                isClustered: true,
+                originalSource: originalSource,
+              },
+            });
+            console.log(`Switched to clustered mode for ${editableLayerItem.name}`);
+          } else {
+            vectorLayer = new VectorLayer({
+              source: originalSource,
+              style: createEditableLayerStyle(editableLayerItem),
+              properties: { 
+                editableLayerId: editableLayerItem.id, 
+                featureCount: layerFeatures.length,
+                layerColor: editableLayerItem.color,
+                pointStyle: editableLayerItem.pointStyle,
+                lineStyle: editableLayerItem.lineStyle,
+                isClustered: false,
+                originalSource: originalSource,
+              },
+            });
+            console.log(`Switched to non-clustered mode for ${editableLayerItem.name}`);
+          }
+          
+          map.addLayer(vectorLayer);
+          allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
+        } else if (storedCount !== layerFeatures.length && hasDataForLayer) {
+          // Only update features if count changed
+          // For clustered layers, update the original source
+          const sourceToUpdate = isClustered 
+            ? vectorLayer.get("originalSource") as VectorSource
+            : vectorLayer.getSource() as VectorSource;
+          
+          if (sourceToUpdate) {
+            sourceToUpdate.clear();
             try {
               if (geojsonData.features.length > 0) {
                 const features = geojsonFormat.readFeatures(geojsonData, {
                   dataProjection: "EPSG:4326",
                   featureProjection: "EPSG:3857",
                 });
-                vectorSource.addFeatures(features);
+                sourceToUpdate.addFeatures(features);
               }
               vectorLayer.set("featureCount", layerFeatures.length);
-              console.log(`Refreshed layer ${editableLayerItem.name}: ${layerFeatures.length} features`);
+              console.log(`Refreshed layer ${editableLayerItem.name}: ${layerFeatures.length} features${isClustered ? " (clustered)" : ""}`);
             } catch (e) {
               console.error("Failed to refresh layer features:", e);
             }
@@ -1166,17 +1308,26 @@ export function MapViewer({
       const storedColor = vectorLayer.get("layerColor");
       const storedPointStyle = vectorLayer.get("pointStyle");
       const storedLineStyle = vectorLayer.get("lineStyle");
+      const layerIsClustered = vectorLayer.get("isClustered");
       
       if (storedColor !== editableLayerItem.color || 
           storedPointStyle !== editableLayerItem.pointStyle || 
           storedLineStyle !== editableLayerItem.lineStyle) {
-        vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem));
+        // Apply correct style based on whether layer is clustered
+        if (layerIsClustered) {
+          vectorLayer.setStyle(createClusterStyle(
+            editableLayerItem.color || "#1976D2",
+            (editableLayerItem.pointStyle as PointStyle) || "circle"
+          ));
+        } else {
+          vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem));
+        }
         vectorLayer.set("layerColor", editableLayerItem.color);
         vectorLayer.set("pointStyle", editableLayerItem.pointStyle);
         vectorLayer.set("lineStyle", editableLayerItem.lineStyle);
       }
     });
-  }, [allEditableLayers, allLayerFeatures, isFetchingFeatures]);
+  }, [allEditableLayers, allLayerFeatures, isFetchingFeatures, viewport]);
 
   // Render scene datasets with viewport-based loading
   useEffect(() => {
