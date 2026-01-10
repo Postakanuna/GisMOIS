@@ -9,10 +9,51 @@ import { setupAuth, registerAuthRoutes, seedAdminUser, isAuthenticated, type Aut
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq, and } from "drizzle-orm";
+import multer from "multer";
+import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance } from "./shapefile-parser";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 },
+});
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
 const ZWS_BASE_URL = "https://is.arki.mosreg.ru/zws";
+
+function getFeatureBounds(coordinates: any, geometryType: string): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  if (!coordinates) return null;
+  
+  const allCoords: number[][] = [];
+  
+  function extractCoords(coords: any): void {
+    if (typeof coords[0] === 'number') {
+      allCoords.push(coords as number[]);
+    } else if (Array.isArray(coords)) {
+      coords.forEach(extractCoords);
+    }
+  }
+  
+  extractCoords(coordinates);
+  
+  if (allCoords.length === 0) return null;
+  
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  allCoords.forEach(([x, y]) => {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  });
+  
+  return { minX, minY, maxX, maxY };
+}
+
+function normalizeGeometryType(type: string): "Point" | "LineString" | "Polygon" {
+  if (type.includes("Polygon") || type === "MultiPolygon") return "Polygon";
+  if (type.includes("Line") || type === "MultiLineString") return "LineString";
+  return "Point";
+}
 
 async function getUserFromSession(req: Request): Promise<{ id: string; role: string } | null> {
   if (!req.session.userId) {
@@ -791,6 +832,7 @@ export async function registerRoutes(
         opacity: 1,
         source: "import",
         sourceFileName,
+        crs: "EPSG:4326",
       });
       
       // Create layer schema from feature properties
@@ -1572,6 +1614,10 @@ export async function registerRoutes(
         name,
         geometryType,
         color: color || "#1976D2",
+        pointStyle: "circle",
+        lineStyle: "solid",
+        visible: true,
+        opacity: 1,
         source: "import",
         sourceFileName: sourceFileName || name,
         sourceFiles: sourceFiles || [],
@@ -1604,6 +1650,147 @@ export async function registerRoutes(
       return res.status(201).json(updatedLayer);
     } catch (error) {
       console.error("Import layer error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Server-side shapefile upload and parsing (for large files)
+  app.post("/api/datasets/upload", upload.single("file"), async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const { sceneId, color, name: customName } = req.body;
+      const originalName = file.originalname;
+      const baseName = customName || originalName.replace(/\.zip$/i, "");
+
+      console.log(`Processing shapefile upload: ${originalName} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+
+      const parseResult = await parseShapefileBuffer(file.buffer);
+      
+      console.log(`Parsed ${parseResult.features.length} features, type: ${parseResult.geometryType}`);
+
+      // Extract field schema from first feature
+      let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
+      if (parseResult.features.length > 0 && parseResult.features[0].properties) {
+        fieldSchema = Object.keys(parseResult.features[0].properties).map(key => ({
+          name: key,
+          type: typeof parseResult.features[0].properties[key] === 'number' ? 'number' : 'text',
+          required: false
+        }));
+      }
+
+      // Create editable layer
+      const normalizedType = normalizeGeometryType(parseResult.geometryType);
+      const layer = await storage.createEditableLayer({
+        sceneId: sceneId ? parseInt(sceneId) : null,
+        name: baseName,
+        geometryType: normalizedType,
+        color: color || "#1976D2",
+        pointStyle: "circle",
+        lineStyle: "solid",
+        visible: true,
+        opacity: 1,
+        source: "import",
+        sourceFileName: originalName,
+        sourceFiles: parseResult.fileList,
+        crs: parseResult.crs,
+      });
+
+      // Create layer schema
+      if (fieldSchema.length > 0) {
+        await storage.createLayerSchema({
+          layerId: layer.id,
+          fields: fieldSchema as any,
+        });
+      }
+
+      // Batch create features in chunks to avoid memory issues
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < parseResult.features.length; i += BATCH_SIZE) {
+        const batch = parseResult.features.slice(i, i + BATCH_SIZE);
+        const insertFeatures = batch.map((feature) => ({
+          layerId: layer.id,
+          geometryType: normalizeGeometryType(feature.geometry?.type || parseResult.geometryType),
+          coordinates: feature.geometry?.coordinates || [],
+          properties: feature.properties || {},
+        }));
+        await storage.createDrawnFeaturesBatch(insertFeatures);
+        console.log(`Inserted batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(parseResult.features.length / BATCH_SIZE)}`);
+      }
+
+      const updatedLayer = await storage.getEditableLayer(layer.id);
+      return res.status(201).json(updatedLayer);
+    } catch (error) {
+      console.error("Upload shapefile error:", error);
+      return res.status(500).json({ message: "Failed to process shapefile" });
+    }
+  });
+
+  // Get features by viewport (bbox) with geometry simplification
+  app.get("/api/editable-layers/:id/features/viewport", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const layerId = parseInt(req.params.id);
+      const { minX, minY, maxX, maxY, zoom } = req.query;
+
+      // Get all features for the layer
+      const allFeatures = await storage.getDrawnFeatures(layerId);
+      
+      // If no bbox provided, return all (for compatibility)
+      if (!minX || !minY || !maxX || !maxY) {
+        return res.json(allFeatures);
+      }
+
+      const bbox = {
+        minX: parseFloat(minX as string),
+        minY: parseFloat(minY as string),
+        maxX: parseFloat(maxX as string),
+        maxY: parseFloat(maxY as string),
+      };
+
+      const zoomLevel = zoom ? parseInt(zoom as string) : 10;
+      const tolerance = getSimplifyTolerance(zoomLevel);
+
+      // Filter features by bbox and simplify geometry
+      const filteredFeatures = allFeatures.filter(feature => {
+        const coords = feature.coordinates;
+        if (!coords) return false;
+
+        // Get feature bounds
+        const bounds = getFeatureBounds(coords, feature.geometryType);
+        if (!bounds) return true; // Include if can't determine bounds
+
+        // Check intersection with viewport
+        return !(bounds.maxX < bbox.minX || bounds.minX > bbox.maxX ||
+                 bounds.maxY < bbox.minY || bounds.minY > bbox.maxY);
+      });
+
+      // Simplify geometries for lower zoom levels
+      const simplifiedFeatures = filteredFeatures.map(feature => {
+        if (tolerance > 0 && feature.geometryType !== "Point") {
+          return {
+            ...feature,
+            coordinates: simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance),
+          };
+        }
+        return feature;
+      });
+
+      return res.json(simplifiedFeatures);
+    } catch (error) {
+      console.error("Get viewport features error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

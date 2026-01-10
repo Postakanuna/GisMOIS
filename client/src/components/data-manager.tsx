@@ -211,47 +211,77 @@ export function DataManager({ onClose }: DataManagerProps) {
   }, [isDragging, isResizing]);
 
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>("");
+  const SERVER_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
+    setUploadProgress("");
 
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const arrayBuffer = await file.arrayBuffer();
+        const fileSize = file.size;
+        const fileSizeMB = (fileSize / 1024 / 1024).toFixed(1);
         
-        const parsedLayers = await parseShapefileWithEncoding(arrayBuffer, file.name);
-        
-        if (parsedLayers.length === 0) {
-          throw new Error("Не найдено слоёв в архиве");
-        }
-        
-        for (const layer of parsedLayers) {
-          if (!layer.geojson.features || layer.geojson.features.length === 0) {
-            continue;
+        if (fileSize > SERVER_UPLOAD_THRESHOLD) {
+          setUploadProgress(`Загрузка ${file.name} (${fileSizeMB} МБ) на сервер...`);
+          
+          const formData = new FormData();
+          formData.append("file", file);
+          if (currentSceneId) {
+            formData.append("sceneId", currentSceneId.toString());
           }
           
-          const firstFeature = layer.geojson.features[0];
-          const geometryType = firstFeature.geometry?.type || "Unknown";
-          
-          console.log("Import layer sourceFiles:", layer.sourceFiles);
-          
-          const res = await apiRequest("POST", "/api/datasets/import", {
-            name: layer.name,
-            geometryType,
-            geojson: layer.geojson,
-            sourceFileName: file.name,
-            sourceFiles: layer.sourceFiles || [],
-            crs: layer.sourceCrs || "EPSG:4326",
-            sceneId: currentSceneId,
+          const res = await fetch("/api/datasets/upload", {
+            method: "POST",
+            body: formData,
+            credentials: "include",
           });
-
+          
           if (!res.ok) {
             const error = await res.json();
-            throw new Error(error.message || "Upload failed");
+            throw new Error(error.message || "Ошибка загрузки на сервер");
+          }
+          
+          setUploadProgress(`Обработка завершена`);
+        } else {
+          setUploadProgress(`Обработка ${file.name}...`);
+          const arrayBuffer = await file.arrayBuffer();
+          
+          const parsedLayers = await parseShapefileWithEncoding(arrayBuffer, file.name);
+          
+          if (parsedLayers.length === 0) {
+            throw new Error("Не найдено слоёв в архиве");
+          }
+          
+          for (const layer of parsedLayers) {
+            if (!layer.geojson.features || layer.geojson.features.length === 0) {
+              continue;
+            }
+            
+            const firstFeature = layer.geojson.features[0];
+            const geometryType = firstFeature.geometry?.type || "Unknown";
+            
+            console.log("Import layer sourceFiles:", layer.sourceFiles);
+            
+            const res = await apiRequest("POST", "/api/datasets/import", {
+              name: layer.name,
+              geometryType,
+              geojson: layer.geojson,
+              sourceFileName: file.name,
+              sourceFiles: layer.sourceFiles || [],
+              crs: layer.sourceCrs || "EPSG:4326",
+              sceneId: currentSceneId,
+            });
+
+            if (!res.ok) {
+              const error = await res.json();
+              throw new Error(error.message || "Upload failed");
+            }
           }
         }
       }
@@ -268,6 +298,7 @@ export function DataManager({ onClose }: DataManagerProps) {
       });
     } finally {
       setIsUploading(false);
+      setUploadProgress("");
     }
 
     if (fileInputRef.current) {
@@ -353,6 +384,13 @@ export function DataManager({ onClose }: DataManagerProps) {
             />
           </div>
         </div>
+        
+        {uploadProgress && (
+          <div className="mb-3 p-2 bg-muted rounded text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {uploadProgress}
+          </div>
+        )}
         
         <ScrollArea className="flex-1">
           {sceneLoading ? (
