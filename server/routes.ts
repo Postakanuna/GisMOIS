@@ -97,6 +97,11 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
+  // Health check endpoint for deployment - must respond quickly
+  app.get("/api/health", (_req: Request, res: Response) => {
+    res.status(200).json({ status: "ok" });
+  });
+
   setupAuth(app);
   registerAuthRoutes(app);
   await seedAdminUser();
