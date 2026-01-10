@@ -215,7 +215,7 @@ export type InsertEditableLayer = z.infer<typeof insertEditableLayerSchema>;
 export * from "./models/auth";
 
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, jsonb, timestamp, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, jsonb, timestamp, real, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 // PostgreSQL tables for GIS data
@@ -247,7 +247,9 @@ export const drawnFeatures = pgTable("drawn_features", {
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("drawn_features_layer_id_idx").on(table.layerId),
+]);
 
 export const featureHistory = pgTable("feature_history", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
