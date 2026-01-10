@@ -1201,7 +1201,9 @@ export async function registerRoutes(
   app.get("/api/editable-layers/:layerId/features", async (req: Request, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
-      const features = await storage.getDrawnFeatures(layerId);
+      const limit = Math.min(parseInt(req.query.limit as string) || 10000, 50000);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const features = await storage.getDrawnFeaturesPaginated(layerId, limit, offset);
       return res.json(features);
     } catch (error) {
       console.error("Error fetching drawn features:", error);
