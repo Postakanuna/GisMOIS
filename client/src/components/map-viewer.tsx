@@ -214,7 +214,7 @@ function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
 
 // Create cluster style for point layers at low zoom levels
 function createClusterStyle(color: string, pointStyle: PointStyle = "circle") {
-  return function(feature: Feature) {
+  return function(feature: Feature | import("ol/render/Feature").default) {
     const clusteredFeatures = feature.get('features');
     const size = clusteredFeatures ? clusteredFeatures.length : 1;
     
