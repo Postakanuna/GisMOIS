@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import OLMap from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
@@ -7,7 +7,7 @@ import ImageLayer from "ol/layer/Image";
 import OSM from "ol/source/OSM";
 import VectorSource from "ol/source/Vector";
 import ImageWMS from "ol/source/ImageWMS";
-import { fromLonLat, toLonLat } from "ol/proj";
+import { fromLonLat, toLonLat, transformExtent } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
 import WKT from "ol/format/WKT";
 import Feature from "ol/Feature";
@@ -412,6 +412,17 @@ export function MapViewer({
   const [featureCoordinates, setFeatureCoordinates] = useState<[number, number] | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   
+  // Viewport state for optimized feature loading
+  const [viewport, setViewport] = useState<{
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+    zoom: number;
+  } | null>(null);
+  const viewportDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [isLoadingFeatures, setIsLoadingFeatures] = useState(false);
+  
   
   const [selectedMapFeatures, setSelectedMapFeatures] = useState<Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }>>([]);
   const selectedMapFeaturesRef = useRef(selectedMapFeatures);
@@ -613,7 +624,7 @@ export function MapViewer({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
       setSelectedMapFeatures([]);
       toast({
         title: "Объекты удалены",
@@ -629,30 +640,80 @@ export function MapViewer({
     },
   });
 
-  // Fetch features for all editable layers (imported and user-created)
+  // Create a stable viewport key for query caching
+  const viewportKey = useMemo(() => {
+    if (!viewport) return null;
+    // Round to reduce cache misses from minor viewport changes
+    return `${viewport.minX.toFixed(4)},${viewport.minY.toFixed(4)},${viewport.maxX.toFixed(4)},${viewport.maxY.toFixed(4)},${viewport.zoom}`;
+  }, [viewport]);
+
+  // Track if any layer has limited features
+  const [hasLimitedFeatures, setHasLimitedFeatures] = useState(false);
+
+  // Stable layer IDs for query key (prevents cache invalidation on layer reference changes)
+  const layerIdsKey = useMemo(() => 
+    allEditableLayers.map(l => l.id).sort((a, b) => a - b).join(","),
+    [allEditableLayers]
+  );
+
+  // Fetch features for all editable layers using viewport-based loading for optimization
   const { data: allLayerFeatures = {}, isFetching: isFetchingFeatures } = useQuery<Record<number, DrawnFeature[]>>({
-    queryKey: ["/api/editable-layers/all-features", allEditableLayers.map(l => l.id).join(",")],
+    queryKey: ["/api/editable-layers/viewport-features", layerIdsKey, viewportKey],
     queryFn: async () => {
       const featuresByLayer: Record<number, DrawnFeature[]> = {};
+      let anyLimited = false;
+      
       await Promise.all(
         allEditableLayers.map(async (layer) => {
           try {
-            const response = await fetch(`/api/editable-layers/${layer.id}/features`);
+            // Use viewport endpoint with bbox and zoom for optimized loading
+            let url = `/api/editable-layers/${layer.id}/features/viewport`;
+            if (viewport) {
+              const params = new URLSearchParams({
+                minX: viewport.minX.toString(),
+                minY: viewport.minY.toString(),
+                maxX: viewport.maxX.toString(),
+                maxY: viewport.maxY.toString(),
+                zoom: viewport.zoom.toString(),
+              });
+              url += `?${params.toString()}`;
+            }
+            
+            const response = await fetch(url);
             if (response.ok) {
-              featuresByLayer[layer.id] = await response.json();
+              const data = await response.json();
+              // Handle new response format with features array and limit info
+              if (data.features && Array.isArray(data.features)) {
+                featuresByLayer[layer.id] = data.features;
+                if (data.limited) {
+                  anyLimited = true;
+                }
+              } else if (Array.isArray(data)) {
+                // Backward compatibility with old format
+                featuresByLayer[layer.id] = data;
+              }
             }
           } catch (e) {
             console.warn(`Failed to fetch features for layer ${layer.id}`);
           }
         })
       );
+      setHasLimitedFeatures(anyLimited);
+      
       return featuresByLayer;
     },
-    enabled: allEditableLayers.length > 0,
+    enabled: allEditableLayers.length > 0 && viewport !== null,
     refetchOnWindowFocus: false,
-    refetchOnMount: "always",
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 30, // 30 seconds - shorter for viewport-based data
+    gcTime: 1000 * 60 * 2, // Keep in cache for 2 minutes for panning back
+    // Keep previous data while fetching new viewport data - prevents UI flicker and empty state
+    placeholderData: (previousData) => previousData,
   });
+  
+  // Sync loading state with React Query's fetching state
+  useEffect(() => {
+    setIsLoadingFeatures(isFetchingFeatures);
+  }, [isFetchingFeatures]);
 
   useEffect(() => {
     activeFiltersRef.current = activeFilters;
@@ -779,6 +840,34 @@ export function MapViewer({
     map.getView().on("change:rotation", () => {
       setRotation(map.getView().getRotation());
     });
+
+    // Debounced viewport update for optimized feature loading
+    const updateViewport = () => {
+      const extent = map.getView().calculateExtent(map.getSize());
+      const extentWGS84 = transformExtent(extent, "EPSG:3857", "EPSG:4326");
+      const currentZoom = Math.round(map.getView().getZoom() || DEFAULT_ZOOM);
+      
+      setViewport({
+        minX: extentWGS84[0],
+        minY: extentWGS84[1],
+        maxX: extentWGS84[2],
+        maxY: extentWGS84[3],
+        zoom: currentZoom,
+      });
+    };
+
+    // Update viewport on map move with debounce
+    map.on("moveend", () => {
+      if (viewportDebounceRef.current) {
+        clearTimeout(viewportDebounceRef.current);
+      }
+      viewportDebounceRef.current = setTimeout(() => {
+        updateViewport();
+      }, 300); // 300ms debounce
+    });
+
+    // Initial viewport update
+    setTimeout(() => updateViewport(), 100);
 
     map.on("singleclick", async (evt) => {
       const currentConnection = connectionRef.current;
@@ -1089,10 +1178,10 @@ export function MapViewer({
     });
   }, [allEditableLayers, allLayerFeatures, isFetchingFeatures]);
 
-  // Render scene datasets
+  // Render scene datasets with viewport-based loading
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !viewport) return;
 
     const geojsonFormat = new GeoJSON();
 
@@ -1105,19 +1194,32 @@ export function MapViewer({
       }
     });
 
-    // Add or update layers for each visible scene dataset
+    // Add or update layers for each visible scene dataset with viewport-based loading
     sceneDatasets.forEach(async (sd) => {
       let vectorLayer = sceneDatasetLayersRef.current.get(sd.id);
+      
+      // Build viewport URL params
+      const params = new URLSearchParams({
+        minX: viewport.minX.toString(),
+        minY: viewport.minY.toString(),
+        maxX: viewport.maxX.toString(),
+        maxY: viewport.maxY.toString(),
+        zoom: viewport.zoom.toString(),
+      });
 
       if (!vectorLayer) {
-        // Fetch features for this dataset
+        // Fetch features for this dataset with viewport filtering
         try {
-          const res = await fetch(`/api/datasets/${sd.datasetId}/features`);
+          const res = await fetch(`/api/datasets/${sd.datasetId}/features/viewport?${params.toString()}`);
           if (!res.ok) {
             console.warn(`Failed to fetch features for dataset ${sd.datasetId}`);
             return;
           }
-          const features: DatasetFeatureData[] = await res.json();
+          const data = await res.json();
+          // Handle new response format with features array and limit info
+          const features: DatasetFeatureData[] = data.features && Array.isArray(data.features) 
+            ? data.features 
+            : (Array.isArray(data) ? data : []);
 
           // Convert to GeoJSON FeatureCollection
           const geojsonData = {
@@ -1163,13 +1265,14 @@ export function MapViewer({
               sceneDatasetId: sd.id,
               datasetId: sd.datasetId,
               color: sd.color,
+              lastViewportKey: `${viewport.minX},${viewport.minY},${viewport.maxX},${viewport.maxY},${viewport.zoom}`,
             },
             zIndex: sd.zIndex + 100,
           });
 
           map.addLayer(vectorLayer);
           sceneDatasetLayersRef.current.set(sd.id, vectorLayer);
-          console.log(`Added scene dataset layer: ${sd.layerName || sd.dataset.name} with ${features.length} features`);
+          console.log(`Added scene dataset layer: ${sd.layerName || sd.dataset.name} with ${features.length} features (viewport optimized)`);
         } catch (e) {
           console.error("Error loading scene dataset:", e);
         }
@@ -1188,9 +1291,57 @@ export function MapViewer({
           vectorLayer.setStyle(style);
           vectorLayer.set("color", sd.color);
         }
+        
+        // Check if viewport changed significantly and refresh features
+        const currentViewportKey = `${viewport.minX.toFixed(4)},${viewport.minY.toFixed(4)},${viewport.maxX.toFixed(4)},${viewport.maxY.toFixed(4)},${viewport.zoom}`;
+        const lastViewportKey = vectorLayer.get("lastViewportKey");
+        
+        if (lastViewportKey !== currentViewportKey && sd.isVisible) {
+          // Refetch features for new viewport
+          try {
+            const res = await fetch(`/api/datasets/${sd.datasetId}/features/viewport?${params.toString()}`);
+            if (res.ok) {
+              const data = await res.json();
+              // Handle new response format with features array and limit info
+              const features: DatasetFeatureData[] = data.features && Array.isArray(data.features) 
+                ? data.features 
+                : (Array.isArray(data) ? data : []);
+              
+              const geojsonData = {
+                type: "FeatureCollection" as const,
+                features: features.map((f) => ({
+                  type: "Feature" as const,
+                  geometry: {
+                    type: f.geometryType,
+                    coordinates: f.coordinates,
+                  },
+                  properties: {
+                    ...f.properties,
+                    featureId: f.id,
+                    datasetId: f.datasetId,
+                  },
+                })),
+              };
+              
+              const source = vectorLayer.getSource();
+              if (source) {
+                source.clear();
+                const olFeatures = geojsonFormat.readFeatures(geojsonData, {
+                  dataProjection: "EPSG:4326",
+                  featureProjection: "EPSG:3857",
+                });
+                source.addFeatures(olFeatures);
+                vectorLayer.set("lastViewportKey", currentViewportKey);
+                console.log(`Refreshed dataset ${sd.layerName || sd.dataset.name}: ${features.length} features for viewport`);
+              }
+            }
+          } catch (e) {
+            console.warn("Failed to refresh dataset features:", e);
+          }
+        }
       }
     });
-  }, [sceneDatasets]);
+  }, [sceneDatasets, viewport]);
 
   useEffect(() => {
     if (!selectionLayerRef.current) return;
@@ -1883,6 +2034,27 @@ export function MapViewer({
       />
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
+
+      {/* Loading indicator for feature fetching */}
+      {isLoadingFeatures && (
+        <div 
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-background/90 border rounded-md px-3 py-1.5 shadow-sm flex items-center gap-2 text-sm"
+          data-testid="features-loading-indicator"
+        >
+          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <span>Загрузка объектов...</span>
+        </div>
+      )}
+
+      {/* Warning when feature limit is reached */}
+      {hasLimitedFeatures && !isLoadingFeatures && (
+        <div 
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-amber-50 dark:bg-amber-900/50 border border-amber-200 dark:border-amber-700 rounded-md px-3 py-1.5 shadow-sm flex items-center gap-2 text-sm text-amber-700 dark:text-amber-200"
+          data-testid="features-limit-warning"
+        >
+          <span>Отображено не более 5000 объектов. Приблизьте карту для просмотра всех.</span>
+        </div>
+      )}
 
       {/* Layer Selection Dialog for overlapping features */}
       {selectionCandidates.length > 0 && (

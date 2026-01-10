@@ -106,7 +106,7 @@ export function useDrawing() {
     onSuccess: (newFeature: DrawnFeature) => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
       
       // Add to undo stack
       undoStack.current.push({
@@ -133,7 +133,7 @@ export function useDrawing() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
     },
   });
 
@@ -144,7 +144,7 @@ export function useDrawing() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/all-features"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
     },
   });
 

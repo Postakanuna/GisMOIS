@@ -1777,14 +1777,20 @@ export async function registerRoutes(
       }
 
       const layerId = parseInt(req.params.id);
-      const { minX, minY, maxX, maxY, zoom } = req.query;
+      const { minX, minY, maxX, maxY, zoom, limit } = req.query;
+      const featureLimit = limit ? parseInt(limit as string) : 5000; // Default limit 5000 features
 
       // Get all features for the layer
       const allFeatures = await storage.getDrawnFeatures(layerId);
       
       // If no bbox provided, return all (for compatibility)
       if (!minX || !minY || !maxX || !maxY) {
-        return res.json(allFeatures);
+        const limitedFeatures = allFeatures.slice(0, featureLimit);
+        return res.json({
+          features: limitedFeatures,
+          total: allFeatures.length,
+          limited: allFeatures.length > featureLimit,
+        });
       }
 
       const bbox = {
@@ -1811,8 +1817,11 @@ export async function registerRoutes(
                  bounds.maxY < bbox.minY || bounds.minY > bbox.maxY);
       });
 
+      // Apply limit before simplification for performance
+      const limitedFeatures = filteredFeatures.slice(0, featureLimit);
+
       // Simplify geometries for lower zoom levels
-      const simplifiedFeatures = filteredFeatures.map(feature => {
+      const simplifiedFeatures = limitedFeatures.map(feature => {
         if (tolerance > 0 && feature.geometryType !== "Point") {
           return {
             ...feature,
@@ -1822,7 +1831,11 @@ export async function registerRoutes(
         return feature;
       });
 
-      return res.json(simplifiedFeatures);
+      return res.json({
+        features: simplifiedFeatures,
+        total: filteredFeatures.length,
+        limited: filteredFeatures.length > featureLimit,
+      });
     } catch (error) {
       console.error("Get viewport features error:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -1876,6 +1889,80 @@ export async function registerRoutes(
       return res.json(features);
     } catch (error) {
       console.error("Error getting dataset features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get dataset features by viewport (bbox) with geometry simplification
+  app.get("/api/datasets/:id/features/viewport", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const datasetId = parseInt(req.params.id);
+      const { minX, minY, maxX, maxY, zoom, limit } = req.query;
+      const featureLimit = limit ? parseInt(limit as string) : 5000; // Default limit 5000 features
+
+      // Get all features for the dataset
+      const allFeatures = await storage.getDatasetFeatures(datasetId);
+      
+      // If no bbox provided, return all (for compatibility)
+      if (!minX || !minY || !maxX || !maxY) {
+        const limitedFeatures = allFeatures.slice(0, featureLimit);
+        return res.json({
+          features: limitedFeatures,
+          total: allFeatures.length,
+          limited: allFeatures.length > featureLimit,
+        });
+      }
+
+      const bbox = {
+        minX: parseFloat(minX as string),
+        minY: parseFloat(minY as string),
+        maxX: parseFloat(maxX as string),
+        maxY: parseFloat(maxY as string),
+      };
+
+      const zoomLevel = zoom ? parseInt(zoom as string) : 10;
+      const tolerance = getSimplifyTolerance(zoomLevel);
+
+      // Filter features by bbox and simplify geometry
+      const filteredFeatures = allFeatures.filter(feature => {
+        const coords = feature.coordinates;
+        if (!coords) return false;
+
+        // Get feature bounds
+        const bounds = getFeatureBounds(coords, feature.geometryType);
+        if (!bounds) return true; // Include if can't determine bounds
+
+        // Check intersection with viewport
+        return !(bounds.maxX < bbox.minX || bounds.minX > bbox.maxX ||
+                 bounds.maxY < bbox.minY || bounds.minY > bbox.maxY);
+      });
+
+      // Apply limit before simplification for performance
+      const limitedFeatures = filteredFeatures.slice(0, featureLimit);
+
+      // Simplify geometries for lower zoom levels
+      const simplifiedFeatures = limitedFeatures.map(feature => {
+        if (tolerance > 0 && feature.geometryType !== "Point") {
+          return {
+            ...feature,
+            coordinates: simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance),
+          };
+        }
+        return feature;
+      });
+
+      return res.json({
+        features: simplifiedFeatures,
+        total: filteredFeatures.length,
+        limited: filteredFeatures.length > featureLimit,
+      });
+    } catch (error) {
+      console.error("Get viewport dataset features error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

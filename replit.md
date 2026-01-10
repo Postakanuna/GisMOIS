@@ -26,7 +26,12 @@ Preferred communication style: Simple, everyday language.
   - Multer disk storage with temp file cleanup
   - File extension validation (.zip, .shp)
   - Chunked batch inserts (1000 features per batch) to avoid memory issues
-- **Viewport-based feature loading**: `/api/editable-layers/:id/features/viewport` with bbox filtering
+- **Viewport-based feature loading (optimized January 2026)**:
+  - `/api/editable-layers/:id/features/viewport` with bbox filtering, zoom-based simplification, and feature limit (5000)
+  - `/api/datasets/:id/features/viewport` - same optimization for scene datasets
+  - Frontend uses debounced `moveend` events (300ms) to trigger viewport-based refetches
+  - React Query caching (gcTime: 2 min, staleTime: 30s) for fast panning back to viewed areas
+  - Loading indicator during feature fetch, warning when 5000 feature limit reached
 - **Geometry simplification**: Zoom-based LOD with polygon ring closure preservation
 - **Database optimization**: Index on drawn_features(layer_id) for query performance
 
