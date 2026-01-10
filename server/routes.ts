@@ -10,11 +10,32 @@ import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq, and } from "drizzle-orm";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
+import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance } from "./shapefile-parser";
 
+const uploadDir = path.join(os.tmpdir(), "gis-uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const diskStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+});
+
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: diskStorage,
   limits: { fileSize: 200 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === ".zip" || ext === ".shp") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .zip and .shp files are allowed"));
+    }
+  },
 });
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
@@ -1656,6 +1677,7 @@ export async function registerRoutes(
 
   // Server-side shapefile upload and parsing (for large files)
   app.post("/api/datasets/upload", upload.single("file"), async (req: Request, res: Response) => {
+    let filePath: string | null = null;
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -1667,13 +1689,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "No file uploaded" });
       }
 
+      filePath = file.path;
       const { sceneId, color, name: customName } = req.body;
       const originalName = file.originalname;
       const baseName = customName || originalName.replace(/\.zip$/i, "");
 
       console.log(`Processing shapefile upload: ${originalName} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
 
-      const parseResult = await parseShapefileBuffer(file.buffer);
+      const fileBuffer = fs.readFileSync(filePath);
+      const parseResult = await parseShapefileBuffer(fileBuffer);
       
       console.log(`Parsed ${parseResult.features.length} features, type: ${parseResult.geometryType}`);
 
@@ -1727,9 +1751,19 @@ export async function registerRoutes(
       }
 
       const updatedLayer = await storage.getEditableLayer(layer.id);
+      
+      // Clean up temp file
+      if (filePath && fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      
       return res.status(201).json(updatedLayer);
     } catch (error) {
       console.error("Upload shapefile error:", error);
+      // Clean up temp file on error
+      if (filePath && fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+      }
       return res.status(500).json({ message: "Failed to process shapefile" });
     }
   });

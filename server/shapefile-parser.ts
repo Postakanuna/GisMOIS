@@ -48,7 +48,7 @@ function decodeCP1251(buffer: Buffer): string {
   return result;
 }
 
-function simplifyCoordinates(coordinates: any, tolerance: number): any {
+function simplifyCoordinates(coordinates: any, tolerance: number, isPolygonRing: boolean = false): any {
   if (!coordinates || tolerance <= 0) return coordinates;
 
   if (typeof coordinates[0] === 'number') {
@@ -58,10 +58,23 @@ function simplifyCoordinates(coordinates: any, tolerance: number): any {
   if (typeof coordinates[0][0] === 'number') {
     const points = coordinates.map((c: number[]) => ({ x: c[0], y: c[1] }));
     const simplified = simplify(points, tolerance, true);
-    return simplified.map((p: { x: number; y: number }) => [p.x, p.y]);
+    let result = simplified.map((p: { x: number; y: number }) => [p.x, p.y]);
+    
+    // Ensure polygon rings remain closed
+    if (isPolygonRing && result.length >= 3) {
+      const first = result[0];
+      const last = result[result.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) {
+        result.push([...first]);
+      }
+    }
+    
+    return result;
   }
 
-  return coordinates.map((ring: any) => simplifyCoordinates(ring, tolerance));
+  return coordinates.map((ring: any, index: number) => 
+    simplifyCoordinates(ring, tolerance, true)
+  );
 }
 
 function detectGeometryType(geojson: any): string {
