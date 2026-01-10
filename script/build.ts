@@ -24,6 +24,7 @@ const allowlist = [
   "passport",
   "passport-local",
   "pg",
+  "shpjs",
   "stripe",
   "uuid",
   "ws",
@@ -54,6 +55,9 @@ async function buildAll() {
     outfile: "dist/index.cjs",
     define: {
       "process.env.NODE_ENV": '"production"',
+    },
+    banner: {
+      js: 'if(typeof globalThis.self==="undefined"){globalThis.self=globalThis;}',
     },
     minify: true,
     external: externals,

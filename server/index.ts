@@ -1,8 +1,3 @@
-// Polyfill 'self' for Node.js environment (required by shpjs library)
-if (typeof globalThis !== 'undefined' && typeof (globalThis as any).self === 'undefined') {
-  (globalThis as any).self = globalThis;
-}
-
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
