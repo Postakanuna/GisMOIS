@@ -566,6 +566,10 @@ export function MapViewer({
   const allEditableLayersDataRef = useRef(allEditableLayers);
   const onEditableFeatureSelectRef = useRef(onEditableFeatureSelect);
   const onClearEditableSelectionRef = useRef(onClearEditableSelection);
+  
+  // Flag to skip style sync when auto-selecting layer from object selection
+  // This prevents user-defined styles from being reset to DB defaults
+  const skipNextStyleSyncRef = useRef(false);
 
   // Scene datasets refs
   const sceneDatasetLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
@@ -672,6 +676,8 @@ export function MapViewer({
     if (layerId !== currentActiveLayer?.id) {
       const targetLayer = allEditableLayersDataRef.current?.find(l => l.id === layerId);
       if (targetLayer && onSelectEditableLayerRef.current) {
+        // Skip style sync to preserve user-defined styles during auto-selection
+        skipNextStyleSyncRef.current = true;
         onSelectEditableLayerRef.current(targetLayer);
       }
     }
@@ -1390,6 +1396,13 @@ export function MapViewer({
       // Use a style key to detect changes without storing duplicate values
       const currentStyleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
       const storedStyleKey = vectorLayer.get("styleKey");
+      
+      // Skip style sync if flag is set (auto-selection from object click)
+      // This preserves user-defined styles during edit mode operations
+      if (skipNextStyleSyncRef.current) {
+        skipNextStyleSyncRef.current = false;
+        return; // Skip style update for this sync cycle
+      }
       
       if (storedStyleKey !== currentStyleKey) {
         const layerIsClustered = vectorLayer.get("isClustered");
