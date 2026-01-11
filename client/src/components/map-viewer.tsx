@@ -2330,7 +2330,7 @@ export function MapViewer({
       {/* Loading indicator for feature fetching */}
       {isLoadingFeatures && (
         <div 
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-background/90 border rounded-md px-3 py-1.5 shadow-sm flex items-center gap-2 text-sm"
+          className="absolute bottom-16 right-4 z-40 bg-background/90 border rounded-md px-3 py-1.5 shadow-sm flex items-center gap-2 text-sm"
           data-testid="features-loading-indicator"
         >
           <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -2341,7 +2341,7 @@ export function MapViewer({
       {/* Warning when feature limit is reached */}
       {hasLimitedFeatures && !isLoadingFeatures && (
         <div 
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-amber-50 dark:bg-amber-900/50 border border-amber-200 dark:border-amber-700 rounded-md px-3 py-1.5 shadow-sm flex items-center gap-2 text-sm text-amber-700 dark:text-amber-200"
+          className="absolute bottom-16 right-4 z-40 bg-amber-50 dark:bg-amber-900/50 border border-amber-200 dark:border-amber-700 rounded-md px-3 py-1.5 shadow-sm flex items-center gap-2 text-sm text-amber-700 dark:text-amber-200"
           data-testid="features-limit-warning"
         >
           <span>Отображено не более 5000 объектов. Приблизьте карту для просмотра всех.</span>
