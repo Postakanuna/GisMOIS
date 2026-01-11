@@ -1589,19 +1589,12 @@ export function MapViewer({
     }
 
     // Prepare glow features (clone once, update style each frame)
-    // Store layer style info on cloned features for animation
+    // Store layerId on cloned features to look up live style info during animation
     const glowFeatures: Feature<Geometry>[] = [];
     selectedMapFeatures.forEach(({ feature, layerId }) => {
       const clonedFeature = feature.clone();
-      // Find layer info from allEditableLayers
-      const layerInfo = allEditableLayers.find(l => l.id === layerId);
-      if (layerInfo) {
-        clonedFeature.set("_glowColor", layerInfo.color || "#1976D2");
-        clonedFeature.set("_glowPointStyle", layerInfo.pointStyle || "circle");
-      } else {
-        clonedFeature.set("_glowColor", "#1976D2");
-        clonedFeature.set("_glowPointStyle", "circle");
-      }
+      // Store layerId for live lookup during animation (not cached style values)
+      clonedFeature.set("_sourceLayerId", layerId);
       glowFeatures.push(clonedFeature);
     });
     selectionGlowFeaturesRef.current = glowFeatures;
@@ -1625,12 +1618,18 @@ export function MapViewer({
       const phase = (elapsed % animationDuration) / animationDuration;
       
       // Update styles directly on features (no React state)
-      // Use stored layer color and pointStyle from feature properties
+      // Look up live layer style info from allEditableLayersDataRef for each frame
+      // This ensures glow always matches current layer style even after edits
       selectionGlowFeaturesRef.current.forEach(f => {
         const geom = f.getGeometry();
         const geometryType = geom?.getType() || 'Polygon';
-        const layerColor = f.get("_glowColor") || "#1976D2";
-        const pointStyle = (f.get("_glowPointStyle") || "circle") as PointStyle;
+        const sourceLayerId = f.get("_sourceLayerId");
+        
+        // Look up current style from live data ref
+        const layerInfo = allEditableLayersDataRef.current?.find(l => l.id === sourceLayerId);
+        const layerColor = layerInfo?.color || "#1976D2";
+        const pointStyle = (layerInfo?.pointStyle || "circle") as PointStyle;
+        
         f.setStyle(createSelectionGlowStyle(phase, geometryType, layerColor, pointStyle));
       });
       
@@ -1645,7 +1644,8 @@ export function MapViewer({
         selectionAnimRef.current = null;
       }
     };
-  }, [selectedMapFeatures, allEditableLayers]);
+    // Using allEditableLayersDataRef for live lookup, so no need for allEditableLayers dependency
+  }, [selectedMapFeatures]);
 
   useEffect(() => {
     if (!onSelectedFeaturesChange) return;
