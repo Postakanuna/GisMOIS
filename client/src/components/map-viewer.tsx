@@ -249,26 +249,72 @@ const CLUSTER_DISTANCE = 40;
 // Zoom threshold below which clustering is enabled
 const CLUSTER_ZOOM_THRESHOLD = 14;
 
+// Parse hex color to RGB components
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+    : { r: 59, g: 130, b: 246 }; // Default to blue if parsing fails
+}
+
 // Create pulsating glow effect for selected features
-// This creates an outer glow ring that pulses without changing the original feature style
-function createSelectionGlowStyle(phase: number, geometryType: string): Style {
+// Uses the layer's actual color and pointStyle for consistency
+function createSelectionGlowStyle(
+  phase: number, 
+  geometryType: string,
+  layerColor: string = "#1976D2",
+  pointStyle: PointStyle = "circle"
+): Style {
   // Phase is 0-1, creates smooth pulsing effect
   const glowOpacity = 0.3 + 0.4 * Math.sin(phase * Math.PI * 2);
   const glowWidth = 4 + 2 * Math.sin(phase * Math.PI * 2);
-  const glowColor = `rgba(59, 130, 246, ${glowOpacity})`; // Blue glow
+  const rgb = hexToRgb(layerColor);
+  const glowColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowOpacity})`;
   
   if (geometryType === 'Point' || geometryType === 'MultiPoint') {
-    const radius = 12 + 3 * Math.sin(phase * Math.PI * 2);
-    return new Style({
-      image: new Circle({
-        radius: radius,
-        fill: new Fill({ color: 'transparent' }),
-        stroke: new Stroke({ 
-          color: glowColor, 
-          width: 3,
-        }),
-      }),
-    });
+    const baseRadius = 12;
+    const pulseRadius = baseRadius + 3 * Math.sin(phase * Math.PI * 2);
+    
+    // Create shape based on pointStyle - use same shape as the original feature
+    let image: Circle | RegularShape;
+    
+    switch (pointStyle) {
+      case "triangle":
+        image = new RegularShape({
+          points: 3,
+          radius: pulseRadius,
+          fill: new Fill({ color: 'transparent' }),
+          stroke: new Stroke({ color: glowColor, width: 3 }),
+        });
+        break;
+      case "square":
+        image = new RegularShape({
+          points: 4,
+          radius: pulseRadius,
+          angle: Math.PI / 4,
+          fill: new Fill({ color: 'transparent' }),
+          stroke: new Stroke({ color: glowColor, width: 3 }),
+        });
+        break;
+      case "cloud":
+        // Cloud is rendered as a larger circle with softer glow
+        image = new Circle({
+          radius: pulseRadius * 1.2,
+          fill: new Fill({ color: 'transparent' }),
+          stroke: new Stroke({ color: glowColor, width: 4 }),
+        });
+        break;
+      case "circle":
+      default:
+        image = new Circle({
+          radius: pulseRadius,
+          fill: new Fill({ color: 'transparent' }),
+          stroke: new Stroke({ color: glowColor, width: 3 }),
+        });
+        break;
+    }
+    
+    return new Style({ image });
   }
   
   return new Style({
@@ -277,7 +323,7 @@ function createSelectionGlowStyle(phase: number, geometryType: string): Style {
       width: glowWidth,
     }),
     fill: new Fill({ 
-      color: `rgba(59, 130, 246, ${glowOpacity * 0.3})`,
+      color: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowOpacity * 0.3})`,
     }),
   });
 }
@@ -1543,9 +1589,19 @@ export function MapViewer({
     }
 
     // Prepare glow features (clone once, update style each frame)
+    // Store layer style info on cloned features for animation
     const glowFeatures: Feature<Geometry>[] = [];
-    selectedMapFeatures.forEach(({ feature }) => {
+    selectedMapFeatures.forEach(({ feature, layerId }) => {
       const clonedFeature = feature.clone();
+      // Find layer info from allEditableLayers
+      const layerInfo = allEditableLayers.find(l => l.id === layerId);
+      if (layerInfo) {
+        clonedFeature.set("_glowColor", layerInfo.color || "#1976D2");
+        clonedFeature.set("_glowPointStyle", layerInfo.pointStyle || "circle");
+      } else {
+        clonedFeature.set("_glowColor", "#1976D2");
+        clonedFeature.set("_glowPointStyle", "circle");
+      }
       glowFeatures.push(clonedFeature);
     });
     selectionGlowFeaturesRef.current = glowFeatures;
@@ -1569,10 +1625,13 @@ export function MapViewer({
       const phase = (elapsed % animationDuration) / animationDuration;
       
       // Update styles directly on features (no React state)
+      // Use stored layer color and pointStyle from feature properties
       selectionGlowFeaturesRef.current.forEach(f => {
         const geom = f.getGeometry();
         const geometryType = geom?.getType() || 'Polygon';
-        f.setStyle(createSelectionGlowStyle(phase, geometryType));
+        const layerColor = f.get("_glowColor") || "#1976D2";
+        const pointStyle = (f.get("_glowPointStyle") || "circle") as PointStyle;
+        f.setStyle(createSelectionGlowStyle(phase, geometryType, layerColor, pointStyle));
       });
       
       selectionAnimRef.current = requestAnimationFrame(animate);
@@ -1586,7 +1645,7 @@ export function MapViewer({
         selectionAnimRef.current = null;
       }
     };
-  }, [selectedMapFeatures]);
+  }, [selectedMapFeatures, allEditableLayers]);
 
   useEffect(() => {
     if (!onSelectedFeaturesChange) return;
