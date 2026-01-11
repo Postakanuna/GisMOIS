@@ -249,6 +249,39 @@ const CLUSTER_DISTANCE = 40;
 // Zoom threshold below which clustering is enabled
 const CLUSTER_ZOOM_THRESHOLD = 14;
 
+// Create pulsating glow effect for selected features
+// This creates an outer glow ring that pulses without changing the original feature style
+function createSelectionGlowStyle(phase: number, geometryType: string): Style {
+  // Phase is 0-1, creates smooth pulsing effect
+  const glowOpacity = 0.3 + 0.4 * Math.sin(phase * Math.PI * 2);
+  const glowWidth = 4 + 2 * Math.sin(phase * Math.PI * 2);
+  const glowColor = `rgba(59, 130, 246, ${glowOpacity})`; // Blue glow
+  
+  if (geometryType === 'Point' || geometryType === 'MultiPoint') {
+    const radius = 12 + 3 * Math.sin(phase * Math.PI * 2);
+    return new Style({
+      image: new Circle({
+        radius: radius,
+        fill: new Fill({ color: 'transparent' }),
+        stroke: new Stroke({ 
+          color: glowColor, 
+          width: 3,
+        }),
+      }),
+    });
+  }
+  
+  return new Style({
+    stroke: new Stroke({ 
+      color: glowColor, 
+      width: glowWidth,
+    }),
+    fill: new Fill({ 
+      color: `rgba(59, 130, 246, ${glowOpacity * 0.3})`,
+    }),
+  });
+}
+
 function getLayerStyle(layerId: string) {
   const color = LAYER_COLORS[layerId] || "#1976D2";
   return new Style({
@@ -467,7 +500,10 @@ export function MapViewer({
   const [selectionCandidates, setSelectionCandidates] = useState<SelectionCandidate[]>([]);
   const [pendingClickEvent, setPendingClickEvent] = useState<{ ctrlKey: boolean; metaKey: boolean } | null>(null);
   const pendingClickEventRef = useRef(pendingClickEvent);
-  const selectionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  // Selection animation refs for pulsating glow effect (using refs to avoid React re-renders)
+  const selectionAnimRef = useRef<number | null>(null);
+  const selectionGlowLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const selectionGlowFeaturesRef = useRef<Feature<Geometry>[]>([]);
   const dragBoxRef = useRef<DragBox | null>(null);
   const selectionModeRef = useRef(false);
 
@@ -510,6 +546,16 @@ export function MapViewer({
   useEffect(() => {
     editModeRef.current = editMode;
   }, [editMode]);
+
+  // Clear selection when edit mode is turned off
+  useEffect(() => {
+    if (!editMode) {
+      setSelectedMapFeatures([]);
+      if (onClearEditableSelection) {
+        onClearEditableSelection();
+      }
+    }
+  }, [editMode, onClearEditableSelection]);
 
   useEffect(() => {
     onFeatureCreatedRef.current = onFeatureCreated;
@@ -800,24 +846,6 @@ export function MapViewer({
     map.addLayer(ticketsLayer);
     ticketsLayerRef.current = ticketsLayer;
 
-    const selectionSource = new VectorSource();
-    const selectionLayer = new VectorLayer({
-      source: selectionSource,
-      properties: { id: "selection-layer" },
-      zIndex: 2000,
-      style: new Style({
-        fill: new Fill({ color: "rgba(255, 255, 0, 0.3)" }),
-        stroke: new Stroke({ color: "#FFD700", width: 3 }),
-        image: new Circle({
-          radius: 8,
-          fill: new Fill({ color: "rgba(255, 255, 0, 0.5)" }),
-          stroke: new Stroke({ color: "#FFD700", width: 3 }),
-        }),
-      }),
-    });
-    map.addLayer(selectionLayer);
-    selectionLayerRef.current = selectionLayer;
-
     // Editable features layer for drawing
     const editableSource = new VectorSource();
     const editableLayer = new VectorLayer({
@@ -837,12 +865,23 @@ export function MapViewer({
     map.addLayer(editableLayer);
     editableLayerRef.current = editableLayer;
 
+    // Selection glow layer - renders pulsating effect over selected features
+    const selectionGlowSource = new VectorSource();
+    const selectionGlowLayer = new VectorLayer({
+      source: selectionGlowSource,
+      properties: { id: "selection-glow-layer" },
+      zIndex: 2000,
+    });
+    map.addLayer(selectionGlowLayer);
+    selectionGlowLayerRef.current = selectionGlowLayer;
+
     const dragBox = new DragBox({
       condition: platformModifierKeyOnly,
     });
     
     dragBox.on("boxend", () => {
-      if (!selectionModeRef.current) return;
+      // Selection only works in edit mode
+      if (!editModeRef.current || !selectionModeRef.current) return;
       
       const extent = dragBox.getGeometry().getExtent();
       const newSelectedFeatures: Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }> = [];
@@ -912,11 +951,13 @@ export function MapViewer({
       const currentLayers = layersStateRef.current;
       const isTicketMode = ticketModeRef.current;
       const currentSelectionMode = selectionModeRef.current;
+      const currentEditMode = editModeRef.current;
 
       const coords = toLonLat(evt.coordinate);
       setFeatureCoordinates([coords[0], coords[1]]);
 
-      if (currentSelectionMode) {
+      // Selection only works in edit mode
+      if (currentEditMode && currentSelectionMode) {
         // Collect ALL candidates from all editable layers (don't stop on first match)
         const candidates: SelectionCandidate[] = [];
         const seenFeatures = new Set<string>(); // Prevent duplicates
@@ -1494,18 +1535,67 @@ export function MapViewer({
     });
   }, [sceneDatasets, viewport]);
 
+  // Selection animation loop - optimized to avoid React re-renders
+  // Updates glow layer directly via refs instead of state
   useEffect(() => {
-    if (!selectionLayerRef.current) return;
-    
-    const source = selectionLayerRef.current.getSource();
-    if (!source) return;
-    
-    source.clear();
-    
+    if (selectedMapFeatures.length === 0) {
+      // No selection - stop animation and clear glow layer
+      if (selectionAnimRef.current) {
+        cancelAnimationFrame(selectionAnimRef.current);
+        selectionAnimRef.current = null;
+      }
+      if (selectionGlowLayerRef.current) {
+        const source = selectionGlowLayerRef.current.getSource();
+        if (source) source.clear();
+      }
+      selectionGlowFeaturesRef.current = [];
+      return;
+    }
+
+    // Prepare glow features (clone once, update style each frame)
+    const glowFeatures: Feature<Geometry>[] = [];
     selectedMapFeatures.forEach(({ feature }) => {
       const clonedFeature = feature.clone();
-      source.addFeature(clonedFeature);
+      glowFeatures.push(clonedFeature);
     });
+    selectionGlowFeaturesRef.current = glowFeatures;
+
+    // Add features to glow layer
+    if (selectionGlowLayerRef.current) {
+      const source = selectionGlowLayerRef.current.getSource();
+      if (source) {
+        source.clear();
+        glowFeatures.forEach(f => source.addFeature(f));
+      }
+    }
+
+    // Start animation loop - updates styles directly without React re-renders
+    let startTime: number | null = null;
+    const animationDuration = 1500; // 1.5 seconds per cycle
+
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const phase = (elapsed % animationDuration) / animationDuration;
+      
+      // Update styles directly on features (no React state)
+      selectionGlowFeaturesRef.current.forEach(f => {
+        const geom = f.getGeometry();
+        const geometryType = geom?.getType() || 'Polygon';
+        f.setStyle(createSelectionGlowStyle(phase, geometryType));
+      });
+      
+      selectionAnimRef.current = requestAnimationFrame(animate);
+    };
+
+    selectionAnimRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (selectionAnimRef.current) {
+        cancelAnimationFrame(selectionAnimRef.current);
+        selectionAnimRef.current = null;
+      }
+    };
   }, [selectedMapFeatures]);
 
   useEffect(() => {
@@ -1714,27 +1804,14 @@ export function MapViewer({
         
         olFeatures.forEach((f) => {
           f.set("featureId", drawnFeature.id);
-          
-          // Highlight selected features
-          if (selectedEditableFeatureIds.includes(drawnFeature.id)) {
-            f.setStyle(new Style({
-              fill: new Fill({ color: "rgba(255, 200, 0, 0.4)" }),
-              stroke: new Stroke({ color: "#FFC800", width: 3 }),
-              image: new Circle({
-                radius: 9,
-                fill: new Fill({ color: "#FFC800" }),
-                stroke: new Stroke({ color: "#fff", width: 2 }),
-              }),
-            }));
-          }
-          
+          // Selection is now visualized via pulsating glow layer, no need to change feature style
           source.addFeature(f);
         });
       } catch (err) {
         console.error("Error adding editable feature to map:", err);
       }
     });
-  }, [editableFeatures, selectedEditableFeatureIds]);
+  }, [editableFeatures]);
 
   // Scene dataset modify interaction
   useEffect(() => {
