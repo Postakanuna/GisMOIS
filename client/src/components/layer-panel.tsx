@@ -162,6 +162,9 @@ export function LayerPanel({
   });
 
 
+  // Use scene-scoped query key for all editable layers operations
+  const editableLayersQueryKey = ["/api/scenes", currentSceneId, "editable-layers"];
+
   const importLayerMutation = useMutation({
     mutationFn: async (data: { 
       name: string; 
@@ -176,7 +179,7 @@ export function LayerPanel({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     },
     onError: () => {
       toast({
@@ -193,22 +196,30 @@ export function LayerPanel({
       return res.json();
     },
     onMutate: async (variables) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/editable-layers"] });
-      const previousLayers = queryClient.getQueryData<EditableLayer[]>(["/api/editable-layers"]);
-      queryClient.setQueryData<EditableLayer[]>(["/api/editable-layers"], (old) => 
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: editableLayersQueryKey });
+      // Snapshot the previous value
+      const previousLayers = queryClient.getQueryData<EditableLayer[]>(editableLayersQueryKey);
+      // Optimistically update to the new value
+      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => 
         old?.map(layer => layer.id === variables.id ? { ...layer, ...variables } : layer) ?? []
       );
       return { previousLayers };
     },
     onError: (_err, _variables, context) => {
+      // Rollback on error
       if (context?.previousLayers) {
-        queryClient.setQueryData(["/api/editable-layers"], context.previousLayers);
+        queryClient.setQueryData(editableLayersQueryKey, context.previousLayers);
       }
       toast({
         title: "Ошибка обновления",
         description: "Не удалось обновить слой",
         variant: "destructive",
       });
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure data is in sync
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     },
   });
 
@@ -217,7 +228,7 @@ export function LayerPanel({
       await apiRequest("DELETE", `/api/editable-layers/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
       toast({
         title: "Слой удалён",
         description: "Shapefile удалён с карты",

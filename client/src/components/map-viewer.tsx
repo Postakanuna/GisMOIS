@@ -1208,6 +1208,7 @@ export function MapViewer({
             source: vectorSource,
           });
           
+          const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
           vectorLayer = new VectorLayer({
             source: clusterSource,
             style: createClusterStyle(
@@ -1217,26 +1218,23 @@ export function MapViewer({
             properties: { 
               editableLayerId: editableLayerItem.id, 
               featureCount: layerFeatures.length,
-              layerColor: editableLayerItem.color,
-              pointStyle: editableLayerItem.pointStyle,
-              lineStyle: editableLayerItem.lineStyle,
               isClustered: true,
               originalSource: vectorSource,
+              styleKey,
             },
           });
           console.log(`Created clustered layer for ${editableLayerItem.name}`);
         } else {
+          const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
           vectorLayer = new VectorLayer({
             source: vectorSource,
             style: createEditableLayerStyle(editableLayerItem),
             properties: { 
               editableLayerId: editableLayerItem.id, 
               featureCount: layerFeatures.length,
-              layerColor: editableLayerItem.color,
-              pointStyle: editableLayerItem.pointStyle,
-              lineStyle: editableLayerItem.lineStyle,
               isClustered: false,
               originalSource: vectorSource,
+              styleKey,
             },
           });
         }
@@ -1273,6 +1271,7 @@ export function MapViewer({
             originalSource.addFeatures(features);
           }
           
+          const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
           if (shouldCluster) {
             const clusterSource = new Cluster({
               distance: CLUSTER_DISTANCE,
@@ -1288,11 +1287,9 @@ export function MapViewer({
               properties: { 
                 editableLayerId: editableLayerItem.id, 
                 featureCount: layerFeatures.length,
-                layerColor: editableLayerItem.color,
-                pointStyle: editableLayerItem.pointStyle,
-                lineStyle: editableLayerItem.lineStyle,
                 isClustered: true,
                 originalSource: originalSource,
+                styleKey,
               },
             });
             console.log(`Switched to clustered mode for ${editableLayerItem.name}`);
@@ -1303,11 +1300,9 @@ export function MapViewer({
               properties: { 
                 editableLayerId: editableLayerItem.id, 
                 featureCount: layerFeatures.length,
-                layerColor: editableLayerItem.color,
-                pointStyle: editableLayerItem.pointStyle,
-                lineStyle: editableLayerItem.lineStyle,
                 isClustered: false,
                 originalSource: originalSource,
+                styleKey,
               },
             });
             console.log(`Switched to non-clustered mode for ${editableLayerItem.name}`);
@@ -1345,16 +1340,13 @@ export function MapViewer({
       vectorLayer.setVisible(editableLayerItem.visible);
       vectorLayer.setOpacity(editableLayerItem.opacity);
       
-      // Update style only if color, pointStyle, or lineStyle changed
-      const storedColor = vectorLayer.get("layerColor");
-      const storedPointStyle = vectorLayer.get("pointStyle");
-      const storedLineStyle = vectorLayer.get("lineStyle");
-      const layerIsClustered = vectorLayer.get("isClustered");
+      // Only update style when style properties actually changed
+      // Use a style key to detect changes without storing duplicate values
+      const currentStyleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
+      const storedStyleKey = vectorLayer.get("styleKey");
       
-      if (storedColor !== editableLayerItem.color || 
-          storedPointStyle !== editableLayerItem.pointStyle || 
-          storedLineStyle !== editableLayerItem.lineStyle) {
-        // Apply correct style based on whether layer is clustered
+      if (storedStyleKey !== currentStyleKey) {
+        const layerIsClustered = vectorLayer.get("isClustered");
         if (layerIsClustered) {
           vectorLayer.setStyle(createClusterStyle(
             editableLayerItem.color || "#1976D2",
@@ -1363,9 +1355,7 @@ export function MapViewer({
         } else {
           vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem));
         }
-        vectorLayer.set("layerColor", editableLayerItem.color);
-        vectorLayer.set("pointStyle", editableLayerItem.pointStyle);
-        vectorLayer.set("lineStyle", editableLayerItem.lineStyle);
+        vectorLayer.set("styleKey", currentStyleKey);
       }
     });
   }, [allEditableLayers, allLayerFeatures, isFetchingFeatures, viewport]);

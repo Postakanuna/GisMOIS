@@ -101,12 +101,15 @@ export function DataManager({ onClose }: DataManagerProps) {
     enabled: !!currentSceneId,
   });
 
+  // Single query key for all editable layers operations
+  const editableLayersQueryKey = ["/api/scenes", currentSceneId, "editable-layers"];
+
   const deleteLayerMutation = useMutation({
     mutationFn: async (layerId: number) => {
       await apiRequest("DELETE", `/api/editable-layers/${layerId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
       toast({ title: "Слой удалён" });
     },
     onError: () => {
@@ -119,9 +122,21 @@ export function DataManager({ onClose }: DataManagerProps) {
       const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, { visible });
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: editableLayersQueryKey });
+      const previousLayers = queryClient.getQueryData<EditableLayer[]>(editableLayersQueryKey);
+      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => 
+        old?.map(layer => layer.id === variables.id ? { ...layer, visible: variables.visible } : layer) ?? []
+      );
+      return { previousLayers };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousLayers) {
+        queryClient.setQueryData(editableLayersQueryKey, context.previousLayers);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     },
   });
 
@@ -130,10 +145,25 @@ export function DataManager({ onClose }: DataManagerProps) {
       const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, data);
       return res.json();
     },
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: editableLayersQueryKey });
+      const previousLayers = queryClient.getQueryData<EditableLayer[]>(editableLayersQueryKey);
+      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => 
+        old?.map(layer => layer.id === variables.id ? { ...layer, ...variables } : layer) ?? []
+      );
+      return { previousLayers };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previousLayers) {
+        queryClient.setQueryData(editableLayersQueryKey, context.previousLayers);
+      }
+      toast({ title: "Ошибка обновления", variant: "destructive" });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       setEditingLayerId(null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     },
   });
 

@@ -73,13 +73,34 @@ export function useDrawing() {
     },
   });
 
+  // Query key for editable layers
+  const editableLayersQueryKey = ["/api/scenes", currentSceneId, "editable-layers"];
+
   const updateLayerMutation = useMutation({
     mutationFn: async ({ id, ...updates }: { id: number } & Partial<InsertEditableLayer>) => {
       const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, updates);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: editableLayersQueryKey });
+      // Snapshot the previous value
+      const previousLayers = queryClient.getQueryData<EditableLayer[]>(editableLayersQueryKey);
+      // Optimistically update to the new value
+      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => 
+        old?.map(layer => layer.id === variables.id ? { ...layer, ...variables } : layer) ?? []
+      );
+      return { previousLayers };
+    },
+    onError: (_err, _variables, context) => {
+      // Rollback on error
+      if (context?.previousLayers) {
+        queryClient.setQueryData(editableLayersQueryKey, context.previousLayers);
+      }
+    },
+    onSettled: () => {
+      // Always refetch to ensure data is in sync
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     },
   });
 
