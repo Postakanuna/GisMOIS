@@ -1744,8 +1744,10 @@ export function MapViewer({
       snapInteractionRef.current = null;
     }
 
-    // Show/hide editable layer based on edit mode
-    editableLayerRef.current.setVisible(editMode);
+    // Only show editable layer when actively drawing (not during selection or modify)
+    // This layer has hardcoded blue style and should not overlay user-styled layers
+    const isActivelyDrawing = editMode && (drawingMode === "point" || drawingMode === "line" || drawingMode === "polygon");
+    editableLayerRef.current.setVisible(isActivelyDrawing);
 
     if (!editMode || !drawingMode) return;
 
