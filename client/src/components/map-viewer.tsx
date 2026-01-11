@@ -567,9 +567,9 @@ export function MapViewer({
   const onEditableFeatureSelectRef = useRef(onEditableFeatureSelect);
   const onClearEditableSelectionRef = useRef(onClearEditableSelection);
   
-  // Flag to skip style sync when auto-selecting layer from object selection
+  // LayerId to skip style sync for when auto-selecting layer from object selection
   // This prevents user-defined styles from being reset to DB defaults
-  const skipNextStyleSyncRef = useRef(false);
+  const skipStyleSyncForLayerRef = useRef<number | null>(null);
 
   // Scene datasets refs
   const sceneDatasetLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
@@ -676,8 +676,8 @@ export function MapViewer({
     if (layerId !== currentActiveLayer?.id) {
       const targetLayer = allEditableLayersDataRef.current?.find(l => l.id === layerId);
       if (targetLayer && onSelectEditableLayerRef.current) {
-        // Skip style sync to preserve user-defined styles during auto-selection
-        skipNextStyleSyncRef.current = true;
+        // Skip style sync for this specific layer to preserve user-defined styles
+        skipStyleSyncForLayerRef.current = layerId;
         onSelectEditableLayerRef.current(targetLayer);
       }
     }
@@ -1397,11 +1397,11 @@ export function MapViewer({
       const currentStyleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
       const storedStyleKey = vectorLayer.get("styleKey");
       
-      // Skip style sync if flag is set (auto-selection from object click)
+      // Skip style sync for the specific layer being auto-selected from object click
       // This preserves user-defined styles during edit mode operations
-      if (skipNextStyleSyncRef.current) {
-        skipNextStyleSyncRef.current = false;
-        return; // Skip style update for this sync cycle
+      if (skipStyleSyncForLayerRef.current === editableLayerItem.id) {
+        skipStyleSyncForLayerRef.current = null;
+        return; // Skip style update for this layer only
       }
       
       if (storedStyleKey !== currentStyleKey) {
