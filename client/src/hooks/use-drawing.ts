@@ -265,6 +265,10 @@ export function useDrawing() {
   const clearSelection = useCallback(() => {
     setSelectedFeatureIds([]);
   }, []);
+  
+  const selectAllFeatures = useCallback((featureIds: number[]) => {
+    setSelectedFeatureIds(featureIds);
+  }, []);
 
   const updateSchema = useCallback((fields: AttributeField[]) => {
     if (!activeLayerId) return;
@@ -392,6 +396,7 @@ export function useDrawing() {
     deleteSelectedFeatures,
     selectFeature,
     clearSelection,
+    selectAllFeatures,
     updateSchema,
     undo,
     redo,

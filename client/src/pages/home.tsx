@@ -552,6 +552,8 @@ export default function Home() {
                     drawing.updateFeature(featureId, { properties });
                   }}
                   onSchemaUpdate={drawing.updateSchema}
+                  onSelectAll={drawing.selectAllFeatures}
+                  onClearSelection={drawing.clearSelection}
                   layerName={drawing.activeLayer.name}
                 />
               )}

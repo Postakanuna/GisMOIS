@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DraggableModal } from "@/components/ui/draggable-modal";
 import {
   Tooltip,
@@ -18,8 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown } from "lucide-react";
+import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown, ArrowUpDown, ArrowUp, Filter, CheckSquare, Square } from "lucide-react";
 import type { DrawnFeature, AttributeField, AttributeFieldType, LayerSchemaDefinition } from "@shared/schema";
 
 interface AttributeTableProps {
@@ -29,8 +35,14 @@ interface AttributeTableProps {
   onFeatureSelect: (featureId: number, multi?: boolean) => void;
   onFeatureUpdate: (featureId: number, properties: Record<string, unknown>) => void;
   onSchemaUpdate: (fields: AttributeField[]) => void;
+  onSelectAll?: (featureIds: number[]) => void;
+  onClearSelection?: () => void;
   layerName: string;
 }
+
+type SortDirection = "asc" | "desc" | null;
+type SortConfig = { column: string; direction: SortDirection };
+type ColumnFilters = Record<string, string>;
 
 const FIELD_TYPE_LABELS: Record<AttributeFieldType, string> = {
   text: "Текст",
@@ -49,6 +61,8 @@ export function AttributeTable({
   onFeatureSelect,
   onFeatureUpdate,
   onSchemaUpdate,
+  onSelectAll,
+  onClearSelection,
   layerName,
 }: AttributeTableProps) {
   const [showSchemaDialog, setShowSchemaDialog] = useState(false);
@@ -57,34 +71,134 @@ export function AttributeTable({
   const [editValue, setEditValue] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [hasScrolledToSelected, setHasScrolledToSelected] = useState(false);
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ column: "", direction: null });
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
 
   const fields = layerSchema?.fields || [];
   
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    _checkbox: 40,
     _id: 60,
     _type: 80,
   });
   const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
 
-  const filteredFeatures = useMemo(() => {
-    if (!searchQuery.trim()) return features;
+  const filteredAndSortedFeatures = useMemo(() => {
+    let result = [...features];
     
-    const query = searchQuery.toLowerCase();
-    return features.filter(feature => {
-      if (feature.id.toString().includes(query)) return true;
-      if (feature.geometryType.toLowerCase().includes(query)) return true;
-      
-      for (const value of Object.values(feature.properties)) {
-        if (value !== null && value !== undefined) {
-          if (value.toString().toLowerCase().includes(query)) {
-            return true;
+    // Apply global search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(feature => {
+        if (feature.id.toString().includes(query)) return true;
+        if (feature.geometryType.toLowerCase().includes(query)) return true;
+        
+        for (const value of Object.values(feature.properties)) {
+          if (value !== null && value !== undefined) {
+            if (value.toString().toLowerCase().includes(query)) {
+              return true;
+            }
           }
         }
-      }
-      return false;
+        return false;
+      });
+    }
+    
+    // Apply column filters
+    Object.entries(columnFilters).forEach(([column, filterValue]) => {
+      if (!filterValue.trim()) return;
+      
+      const filter = filterValue.toLowerCase();
+      result = result.filter(feature => {
+        if (column === "_id") {
+          return feature.id.toString().includes(filter);
+        }
+        if (column === "_type") {
+          const typeLabel = feature.geometryType === "Point" ? "точка" : 
+                           feature.geometryType === "LineString" ? "линия" : "полигон";
+          return typeLabel.includes(filter) || feature.geometryType.toLowerCase().includes(filter);
+        }
+        const value = feature.properties[column];
+        if (value === null || value === undefined) return false;
+        return value.toString().toLowerCase().includes(filter);
+      });
     });
-  }, [features, searchQuery]);
+    
+    // Apply sorting
+    if (sortConfig.column && sortConfig.direction) {
+      result.sort((a, b) => {
+        let aVal: unknown;
+        let bVal: unknown;
+        
+        if (sortConfig.column === "_id") {
+          aVal = a.id;
+          bVal = b.id;
+        } else if (sortConfig.column === "_type") {
+          aVal = a.geometryType;
+          bVal = b.geometryType;
+        } else {
+          aVal = a.properties[sortConfig.column];
+          bVal = b.properties[sortConfig.column];
+        }
+        
+        // Handle null/undefined
+        if (aVal === null || aVal === undefined) aVal = "";
+        if (bVal === null || bVal === undefined) bVal = "";
+        
+        // Compare
+        let comparison = 0;
+        if (typeof aVal === "number" && typeof bVal === "number") {
+          comparison = aVal - bVal;
+        } else {
+          comparison = String(aVal).localeCompare(String(bVal), "ru");
+        }
+        
+        return sortConfig.direction === "desc" ? -comparison : comparison;
+      });
+    }
+    
+    return result;
+  }, [features, searchQuery, columnFilters, sortConfig]);
+
+  const filteredFeatures = filteredAndSortedFeatures;
+  
+  const handleSort = useCallback((column: string) => {
+    setSortConfig(prev => {
+      if (prev.column !== column) {
+        return { column, direction: "asc" };
+      }
+      if (prev.direction === "asc") {
+        return { column, direction: "desc" };
+      }
+      return { column: "", direction: null };
+    });
+  }, []);
+  
+  const handleColumnFilterChange = useCallback((column: string, value: string) => {
+    setColumnFilters(prev => ({
+      ...prev,
+      [column]: value
+    }));
+  }, []);
+  
+  const handleSelectAll = useCallback(() => {
+    if (onSelectAll) {
+      const allIds = filteredFeatures.map(f => f.id);
+      onSelectAll(allIds);
+    }
+  }, [filteredFeatures, onSelectAll]);
+  
+  const handleClearSelection = useCallback(() => {
+    if (onClearSelection) {
+      onClearSelection();
+    }
+  }, [onClearSelection]);
+  
+  const handleCheckboxChange = useCallback((featureId: number, checked: boolean) => {
+    // Use multi=true mode for checkbox behavior
+    onFeatureSelect(featureId, true);
+  }, [onFeatureSelect]);
 
   const rowVirtualizer = useVirtualizer({
     count: filteredFeatures.length,
@@ -138,7 +252,7 @@ export function AttributeTable({
   }, [hasScrolledToSelected, selectedFeatureIds, filteredFeatures, scrollToSelectedByIndex]);
 
   useEffect(() => {
-    const newWidths: Record<string, number> = { _id: 60, _type: 80 };
+    const newWidths: Record<string, number> = { _checkbox: 40, _id: 60, _type: 80 };
     fields.forEach((field) => {
       if (!columnWidths[field.name]) {
         newWidths[field.name] = 120;
@@ -328,7 +442,73 @@ export function AttributeTable({
     );
   };
 
-  const totalWidth = columnWidths._id + columnWidths._type + fields.reduce((sum, f) => sum + (columnWidths[f.name] || 120), 0);
+  const totalWidth = columnWidths._checkbox + columnWidths._id + columnWidths._type + fields.reduce((sum, f) => sum + (columnWidths[f.name] || 120), 0);
+  
+  const renderColumnHeader = (column: string, label: string, width: number, canResize = true) => {
+    const isSorted = sortConfig.column === column;
+    const hasFilter = columnFilters[column]?.trim();
+    
+    return (
+      <div 
+        key={column}
+        className="relative px-1 py-1 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0 flex items-center gap-0.5"
+        style={{ width }}
+      >
+        <button
+          className="flex items-center gap-0.5 hover:text-foreground transition-colors flex-1 min-w-0"
+          onClick={() => handleSort(column)}
+          data-testid={`sort-${column}`}
+        >
+          <span className="truncate">{label}</span>
+          {isSorted ? (
+            sortConfig.direction === "asc" ? (
+              <ArrowUp className="h-3 w-3 shrink-0" />
+            ) : (
+              <ArrowDown className="h-3 w-3 shrink-0" />
+            )
+          ) : (
+            <ArrowUpDown className="h-3 w-3 shrink-0 opacity-30" />
+          )}
+        </button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button 
+              className={`p-0.5 rounded hover:bg-muted ${hasFilter ? "text-primary" : "opacity-50 hover:opacity-100"}`}
+              data-testid={`filter-${column}`}
+            >
+              <Filter className="h-3 w-3" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-48 p-2" align="start">
+            <Input
+              placeholder="Фильтр..."
+              value={columnFilters[column] || ""}
+              onChange={(e) => handleColumnFilterChange(column, e.target.value)}
+              className="h-7 text-xs"
+              data-testid={`filter-input-${column}`}
+            />
+            {columnFilters[column] && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="w-full mt-1 h-6 text-xs"
+                onClick={() => handleColumnFilterChange(column, "")}
+              >
+                Сбросить
+              </Button>
+            )}
+          </PopoverContent>
+        </Popover>
+        {canResize && (
+          <div
+            className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
+            onMouseDown={(e) => handleResizeStart(e, column)}
+            data-testid={`resize-handle-${column}`}
+          />
+        )}
+      </div>
+    );
+  };
 
   if (features.length === 0) {
     return null;
@@ -341,7 +521,9 @@ export function AttributeTable({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium whitespace-nowrap" data-testid="text-layer-name">{layerName}</span>
             <Badge variant="secondary" className="text-xs" data-testid="badge-feature-count">
-              {searchQuery ? `${filteredFeatures.length} из ${features.length}` : `${features.length}`}
+              {searchQuery || Object.values(columnFilters).some(v => v.trim()) 
+                ? `${filteredFeatures.length} из ${features.length}` 
+                : `${features.length}`}
             </Badge>
             {selectedFeatureIds.length > 0 && (
               <Badge variant="outline" className="text-xs" data-testid="badge-selected-count">
@@ -350,6 +532,38 @@ export function AttributeTable({
             )}
           </div>
           <div className="flex items-center gap-1">
+            {onSelectAll && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={handleSelectAll}
+                    data-testid="button-select-all"
+                  >
+                    <CheckSquare className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Выделить все</TooltipContent>
+              </Tooltip>
+            )}
+            {onClearSelection && selectedFeatureIds.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={handleClearSelection}
+                    data-testid="button-clear-selection"
+                  >
+                    <Square className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Снять выделение</TooltipContent>
+              </Tooltip>
+            )}
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -416,40 +630,16 @@ export function AttributeTable({
           <div style={{ width: totalWidth, minWidth: "100%" }}>
             <div className="flex border-b bg-background sticky top-0 z-10">
               <div 
-                className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
-                style={{ width: columnWidths._id }}
+                className="px-2 py-2 text-center font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0 flex items-center justify-center"
+                style={{ width: columnWidths._checkbox }}
+                data-testid="header-checkbox"
               >
-                ID
-                <div
-                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
-                  onMouseDown={(e) => handleResizeStart(e, "_id")}
-                  data-testid="resize-handle-id"
-                />
               </div>
-              <div 
-                className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
-                style={{ width: columnWidths._type }}
-              >
-                Тип
-                <div
-                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
-                  onMouseDown={(e) => handleResizeStart(e, "_type")}
-                  data-testid="resize-handle-type"
-                />
-              </div>
+              {renderColumnHeader("_id", "ID", columnWidths._id)}
+              {renderColumnHeader("_type", "Тип", columnWidths._type)}
               {fields.map((field) => (
-                <div 
-                  key={field.name}
-                  className="relative px-2 py-2 text-left font-medium text-muted-foreground text-xs border-r select-none flex-shrink-0"
-                  style={{ width: columnWidths[field.name] || 120 }}
-                >
-                  <span className="truncate block">{field.name}</span>
-                  {field.required && <span className="text-destructive ml-1">*</span>}
-                  <div
-                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50"
-                    onMouseDown={(e) => handleResizeStart(e, field.name)}
-                    data-testid={`resize-handle-${field.name}`}
-                  />
+                <div key={field.name}>
+                  {renderColumnHeader(field.name, field.name + (field.required ? " *" : ""), columnWidths[field.name] || 120)}
                 </div>
               ))}
             </div>
@@ -476,9 +666,25 @@ export function AttributeTable({
                       height: `${virtualRow.size}px`,
                       width: "100%",
                     }}
-                    onClick={(e) => onFeatureSelect(feature.id, e.ctrlKey || e.metaKey)}
+                    onClick={(e) => {
+                      // If clicking on checkbox area, don't trigger row click
+                      const target = e.target as HTMLElement;
+                      if (target.closest('[data-checkbox-cell]')) return;
+                      onFeatureSelect(feature.id, e.ctrlKey || e.metaKey);
+                    }}
                     data-testid={`row-feature-${feature.id}`}
                   >
+                    <div 
+                      className="px-2 py-1.5 border-r flex items-center justify-center flex-shrink-0"
+                      style={{ width: columnWidths._checkbox }}
+                      data-checkbox-cell
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => handleCheckboxChange(feature.id, !!checked)}
+                        data-testid={`checkbox-feature-${feature.id}`}
+                      />
+                    </div>
                     <div 
                       className="px-2 py-1.5 font-mono border-r flex items-center flex-shrink-0"
                       style={{ width: columnWidths._id, fontSize: 12 }}
