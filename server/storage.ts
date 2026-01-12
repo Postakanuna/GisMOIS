@@ -33,7 +33,9 @@ export interface IStorage {
   createDrawnFeature(feature: InsertDrawnFeature): Promise<DrawnFeature>;
   createDrawnFeaturesBatch(features: InsertDrawnFeature[]): Promise<DrawnFeature[]>;
   updateDrawnFeature(id: number, updates: Partial<InsertDrawnFeature>): Promise<DrawnFeature | undefined>;
+  updateDrawnFeaturesBatch(updates: { id: number; properties: Record<string, unknown> }[]): Promise<DrawnFeature[]>;
   deleteDrawnFeature(id: number): Promise<boolean>;
+  deleteDrawnFeaturesBatch(ids: number[]): Promise<{ deletedCount: number; layerIds: number[] }>;
   deleteDrawnFeaturesByLayer(layerId: number): Promise<boolean>;
   getLayerSchema(layerId: number): Promise<LayerSchemaDefinition | undefined>;
   createLayerSchema(schema: InsertLayerSchemaDefinition): Promise<LayerSchemaDefinition>;
@@ -305,6 +307,54 @@ export class DatabaseStorage implements IStorage {
       .where(eq(editableLayers.id, feature.layerId));
     
     return true;
+  }
+
+  async updateDrawnFeaturesBatch(updates: { id: number; properties: Record<string, unknown> }[]): Promise<DrawnFeature[]> {
+    if (updates.length === 0) return [];
+    
+    const results: DrawnFeature[] = [];
+    for (const update of updates) {
+      const [row] = await db.update(drawnFeatures)
+        .set({ 
+          properties: update.properties,
+          updatedAt: new Date(),
+          version: sql`${drawnFeatures.version} + 1`
+        })
+        .where(eq(drawnFeatures.id, update.id))
+        .returning();
+      if (row) {
+        results.push(toDrawnFeature(row));
+      }
+    }
+    return results;
+  }
+
+  async deleteDrawnFeaturesBatch(ids: number[]): Promise<{ deletedCount: number; layerIds: number[] }> {
+    if (ids.length === 0) return { deletedCount: 0, layerIds: [] };
+    
+    const featuresToDelete = await db.select()
+      .from(drawnFeatures)
+      .where(inArray(drawnFeatures.id, ids));
+    
+    if (featuresToDelete.length === 0) return { deletedCount: 0, layerIds: [] };
+    
+    const layerCounts = new Map<number, number>();
+    for (const f of featuresToDelete) {
+      layerCounts.set(f.layerId, (layerCounts.get(f.layerId) || 0) + 1);
+    }
+    
+    await db.delete(drawnFeatures).where(inArray(drawnFeatures.id, ids));
+    
+    for (const [layerId, count] of Array.from(layerCounts.entries())) {
+      await db.update(editableLayers)
+        .set({ 
+          featureCount: sql`GREATEST(${editableLayers.featureCount} - ${count}, 0)`,
+          updatedAt: new Date()
+        })
+        .where(eq(editableLayers.id, layerId));
+    }
+    
+    return { deletedCount: featuresToDelete.length, layerIds: Array.from(layerCounts.keys()) };
   }
 
   async deleteDrawnFeaturesByLayer(layerId: number): Promise<boolean> {

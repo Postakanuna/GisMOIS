@@ -1271,6 +1271,34 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/features/batch-delete", async (req: Request, res: Response) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "Invalid request: ids must be a non-empty array" });
+      }
+      const result = await storage.deleteDrawnFeaturesBatch(ids);
+      return res.json(result);
+    } catch (error) {
+      console.error("Error batch deleting features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/features/batch", async (req: Request, res: Response) => {
+    try {
+      const { updates } = req.body;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return res.status(400).json({ message: "Invalid request: updates must be a non-empty array" });
+      }
+      const result = await storage.updateDrawnFeaturesBatch(updates);
+      return res.json(result);
+    } catch (error) {
+      console.error("Error batch updating features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ============================================
   // LAYER SCHEMA API (Attribute definitions for layers)
   // ============================================
