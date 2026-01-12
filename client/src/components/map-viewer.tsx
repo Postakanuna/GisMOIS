@@ -599,11 +599,11 @@ export function MapViewer({
   // Drawing refs
   const editableLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawInteractionRef = useRef<Draw | null>(null);
-  const modifyInteractionRef = useRef<Modify | null>(null);
   const snapInteractionRef = useRef<Snap | null>(null);
   const drawingModeRef = useRef<DrawingMode>(drawingMode || null);
   const editModeRef = useRef(editMode);
   const onFeatureCreatedRef = useRef(onFeatureCreated);
+  const onFeatureUpdatedRef = useRef(onFeatureUpdated);
   const activeEditableLayerRef = useRef(activeEditableLayer);
   const onSelectEditableLayerRef = useRef(onSelectEditableLayer);
   const allEditableLayersDataRef = useRef(allEditableLayers);
@@ -621,6 +621,7 @@ export function MapViewer({
   const onDatasetFeatureUpdatedRef = useRef(onDatasetFeatureUpdated);
   const onDatasetFeatureCreatedRef = useRef(onDatasetFeatureCreated);
   const sceneDatasetModifyRef = useRef<Modify | null>(null);
+  const editableLayerModifyRef = useRef<Modify | null>(null);
 
   // Fetch scene datasets
   const { data: sceneDatasets = [] } = useQuery<SceneDatasetInfo[]>({
@@ -653,6 +654,10 @@ export function MapViewer({
   useEffect(() => {
     onFeatureCreatedRef.current = onFeatureCreated;
   }, [onFeatureCreated]);
+
+  useEffect(() => {
+    onFeatureUpdatedRef.current = onFeatureUpdated;
+  }, [onFeatureUpdated]);
 
   useEffect(() => {
     activeEditableLayerRef.current = activeEditableLayer;
@@ -1823,10 +1828,6 @@ export function MapViewer({
       map.removeInteraction(drawInteractionRef.current);
       drawInteractionRef.current = null;
     }
-    if (modifyInteractionRef.current) {
-      map.removeInteraction(modifyInteractionRef.current);
-      modifyInteractionRef.current = null;
-    }
     if (snapInteractionRef.current) {
       map.removeInteraction(snapInteractionRef.current);
       snapInteractionRef.current = null;
@@ -1883,47 +1884,21 @@ export function MapViewer({
 
       map.addInteraction(draw);
       drawInteractionRef.current = draw;
-    } else if (drawingMode === "modify") {
-      const modify = new Modify({ source: editableSource });
-      
-      modify.on("modifyend", (evt: ModifyEvent) => {
-        // Handle feature modification
-        const features = evt.features.getArray();
-        features.forEach((feature) => {
-          const featureId = feature.get("featureId");
-          if (featureId && onFeatureUpdated) {
-            const geom = feature.getGeometry();
-            if (geom) {
-              const format = new GeoJSON();
-              const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
-                featureProjection: "EPSG:3857",
-                dataProjection: "EPSG:4326",
-              }));
-              onFeatureUpdated(featureId, { coordinates: geoJsonGeom.coordinates });
-            }
-          }
-        });
-      });
-
-      map.addInteraction(modify);
-      modifyInteractionRef.current = modify;
     }
+    // Note: "modify" mode is handled in a separate useEffect with editableLayerModifyRef
+    // that works with the actual layer from allEditableLayersRef
 
     return () => {
       if (drawInteractionRef.current) {
         map.removeInteraction(drawInteractionRef.current);
         drawInteractionRef.current = null;
       }
-      if (modifyInteractionRef.current) {
-        map.removeInteraction(modifyInteractionRef.current);
-        modifyInteractionRef.current = null;
-      }
       if (snapInteractionRef.current) {
         map.removeInteraction(snapInteractionRef.current);
         snapInteractionRef.current = null;
       }
     };
-  }, [editMode, drawingMode, onFeatureUpdated]);
+  }, [editMode, drawingMode]);
 
   // Sync editable features to the map layer
   useEffect(() => {
@@ -2021,6 +1996,86 @@ export function MapViewer({
       }
     };
   }, [activeSceneDataset, editMode]);
+
+  // Editable layer modify interaction - handles object movement for user-created layers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove existing editable layer modify interaction
+    if (editableLayerModifyRef.current) {
+      map.removeInteraction(editableLayerModifyRef.current);
+      editableLayerModifyRef.current = null;
+    }
+
+    // Track if we switched from clustered to non-clustered for cleanup
+    let switchedLayer: VectorLayer<VectorSource> | null = null;
+    let originalClusterSource: Cluster | null = null;
+
+    // Only add modify interaction when in edit mode with "modify" drawing mode and an active layer
+    if (activeEditableLayer && editMode && drawingMode === "modify") {
+      const layer = allEditableLayersRef.current.get(activeEditableLayer.id);
+      if (layer) {
+        const isClustered = layer.get("isClustered");
+        const originalSource = layer.get("originalSource") as VectorSource;
+        
+        // For clustered layers, temporarily switch to non-clustered source
+        // so that the Modify interaction can work with individual features
+        if (isClustered && originalSource) {
+          originalClusterSource = layer.getSource() as Cluster;
+          layer.setSource(originalSource);
+          layer.setStyle(createEditableLayerStyle(activeEditableLayer));
+          switchedLayer = layer;
+        }
+        
+        const source = originalSource || layer.getSource();
+        
+        if (source) {
+          const modify = new Modify({ source });
+
+          modify.on("modifyend", (evt: ModifyEvent) => {
+            const features = evt.features.getArray();
+            features.forEach((feature) => {
+              const featureId = feature.get("featureId");
+              if (featureId && onFeatureUpdatedRef.current) {
+                const geom = feature.getGeometry();
+                if (geom) {
+                  const format = new GeoJSON();
+                  const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
+                    featureProjection: "EPSG:3857",
+                    dataProjection: "EPSG:4326",
+                  }));
+                  onFeatureUpdatedRef.current(featureId, { coordinates: geoJsonGeom.coordinates });
+                }
+              }
+            });
+          });
+
+          map.addInteraction(modify);
+          editableLayerModifyRef.current = modify;
+        }
+      }
+    }
+
+    return () => {
+      if (editableLayerModifyRef.current) {
+        map.removeInteraction(editableLayerModifyRef.current);
+        editableLayerModifyRef.current = null;
+      }
+      // Restore clustered source if we switched it
+      if (switchedLayer && originalClusterSource) {
+        switchedLayer.setSource(originalClusterSource);
+        const layerId = switchedLayer.get("editableLayerId");
+        const layerData = allEditableLayersDataRef.current?.find(l => l.id === layerId);
+        if (layerData) {
+          switchedLayer.setStyle(createClusterStyle(
+            layerData.color || "#1976D2",
+            (layerData.pointStyle as PointStyle) || "circle"
+          ));
+        }
+      }
+    };
+  }, [activeEditableLayer, editMode, drawingMode]);
 
   useEffect(() => {
     if (!mapRef.current || !connection) return;
