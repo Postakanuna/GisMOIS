@@ -867,13 +867,19 @@ export function MapViewer({
                 if (data.limited) {
                   anyLimited = true;
                 }
+                // Debug: Log polygon layers with 0 features
+                if (layer.geometryType === "Polygon" && data.features.length === 0) {
+                  console.log(`[Debug] Layer ${layer.id} (${layer.name}): 0 features in viewport, total: ${data.total}`);
+                }
               } else if (Array.isArray(data)) {
                 // Backward compatibility with old format
                 featuresByLayer[layer.id] = data;
               }
+            } else {
+              console.warn(`Fetch failed for layer ${layer.id}: ${response.status}`);
             }
           } catch (e) {
-            console.warn(`Failed to fetch features for layer ${layer.id}`);
+            console.warn(`Failed to fetch features for layer ${layer.id}:`, e);
           }
         })
       );

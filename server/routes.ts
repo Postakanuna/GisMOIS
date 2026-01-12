@@ -1808,6 +1808,22 @@ export async function registerRoutes(
       const zoomLevel = zoom ? parseInt(zoom as string) : 10;
       const tolerance = getSimplifyTolerance(zoomLevel);
 
+      // Debug: Log layer info for polygon layers
+      const layer = await storage.getEditableLayer(layerId);
+      const isPolygonLayer = allFeatures.some(f => f.geometryType === "Polygon" || f.geometryType === "MultiPolygon");
+      if (isPolygonLayer || layerId === 153) {
+        console.log(`[Viewport Filter] Layer ${layer?.name || layerId} (id=${layerId}): ${allFeatures.length} total features, bbox: [${bbox.minX.toFixed(4)}, ${bbox.minY.toFixed(4)}, ${bbox.maxX.toFixed(4)}, ${bbox.maxY.toFixed(4)}], zoom: ${zoomLevel}`);
+        
+        // Log a sample of feature bounds to debug filtering
+        const sampleFeatures = allFeatures.slice(0, 3);
+        for (const f of sampleFeatures) {
+          const bounds = getFeatureBounds(f.coordinates, f.geometryType);
+          if (bounds) {
+            console.log(`  Feature ${f.id}: bounds [${bounds.minX.toFixed(4)}, ${bounds.minY.toFixed(4)}, ${bounds.maxX.toFixed(4)}, ${bounds.maxY.toFixed(4)}]`);
+          }
+        }
+      }
+
       // Filter features by bbox and simplify geometry
       const filteredFeatures = allFeatures.filter(feature => {
         const coords = feature.coordinates;
@@ -1818,9 +1834,20 @@ export async function registerRoutes(
         if (!bounds) return true; // Include if can't determine bounds
 
         // Check intersection with viewport
-        return !(bounds.maxX < bbox.minX || bounds.minX > bbox.maxX ||
+        const intersects = !(bounds.maxX < bbox.minX || bounds.minX > bbox.maxX ||
                  bounds.maxY < bbox.minY || bounds.minY > bbox.maxY);
+        
+        // Debug: Log excluded polygon features (only first few)
+        if (!intersects && (feature.geometryType === "Polygon" || feature.geometryType === "MultiPolygon")) {
+          console.log(`[Viewport Filter] Excluding polygon ${feature.id}: bounds [${bounds.minX.toFixed(4)}, ${bounds.minY.toFixed(4)}, ${bounds.maxX.toFixed(4)}, ${bounds.maxY.toFixed(4)}]`);
+        }
+        
+        return intersects;
       });
+      
+      if (isPolygonLayer) {
+        console.log(`[Viewport Filter] Layer ${layer?.name || layerId}: ${filteredFeatures.length} features after filter`);
+      }
 
       // Apply limit before simplification for performance
       const limitedFeatures = filteredFeatures.slice(0, featureLimit);
