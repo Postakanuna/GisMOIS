@@ -188,6 +188,7 @@ export default function Home() {
   const [showAttributeTable, setShowAttributeTable] = useState(false);
   const [showDataManager, setShowDataManager] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
+  const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
   const [showTraceDialog, setShowTraceDialog] = useState(false);
   const [traceSourceInfo, setTraceSourceInfo] = useState<{
@@ -536,6 +537,12 @@ export default function Home() {
             <DraggableModal
               isOpen={showAttributeTable && editMode && drawing.activeLayer !== null && drawing.features.length > 0}
               onClose={() => setShowAttributeTable(false)}
+              onBeforeClose={() => {
+                if (attributeTableCloseRef.current?.tryClose()) {
+                  return true;
+                }
+                return false;
+              }}
               title={`Таблица атрибутов: ${drawing.activeLayer?.name || ''}`}
               defaultWidth={900}
               defaultHeight={400}
@@ -551,9 +558,13 @@ export default function Home() {
                   onFeatureUpdate={(featureId, properties) => {
                     drawing.updateFeature(featureId, { properties });
                   }}
+                  onBatchUpdate={drawing.batchUpdateFeatures}
+                  onBatchDelete={drawing.batchDeleteFeatures}
                   onSchemaUpdate={drawing.updateSchema}
                   onSelectAll={drawing.selectAllFeatures}
                   onClearSelection={drawing.clearSelection}
+                  onRequestClose={() => setShowAttributeTable(false)}
+                  closeRef={attributeTableCloseRef}
                   layerName={drawing.activeLayer.name}
                 />
               )}

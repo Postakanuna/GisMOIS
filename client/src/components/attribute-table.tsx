@@ -24,9 +24,29 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown, ArrowUpDown, ArrowUp, Filter, CheckSquare, Square } from "lucide-react";
+import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown, ArrowUpDown, ArrowUp, Filter, CheckSquare, Square, Undo2 } from "lucide-react";
 import type { DrawnFeature, AttributeField, AttributeFieldType, LayerSchemaDefinition } from "@shared/schema";
+
+interface PendingEdit {
+  featureId: number;
+  originalProperties: Record<string, unknown>;
+  newProperties: Record<string, unknown>;
+}
+
+interface AttributeTableCloseRef {
+  tryClose: () => boolean;
+}
 
 interface AttributeTableProps {
   features: DrawnFeature[];
@@ -34,9 +54,13 @@ interface AttributeTableProps {
   layerSchema: LayerSchemaDefinition | null;
   onFeatureSelect: (featureId: number, multi?: boolean) => void;
   onFeatureUpdate: (featureId: number, properties: Record<string, unknown>) => void;
+  onBatchUpdate?: (updates: { id: number; properties: Record<string, unknown> }[]) => Promise<void>;
+  onBatchDelete?: (ids: number[]) => void;
   onSchemaUpdate: (fields: AttributeField[]) => void;
   onSelectAll?: (featureIds: number[]) => void;
   onClearSelection?: () => void;
+  onRequestClose?: (hasUnsavedChanges: boolean) => void;
+  closeRef?: React.MutableRefObject<AttributeTableCloseRef | null>;
   layerName: string;
 }
 
@@ -60,9 +84,13 @@ export function AttributeTable({
   layerSchema,
   onFeatureSelect,
   onFeatureUpdate,
+  onBatchUpdate,
+  onBatchDelete,
   onSchemaUpdate,
   onSelectAll,
   onClearSelection,
+  onRequestClose,
+  closeRef,
   layerName,
 }: AttributeTableProps) {
   const [showSchemaDialog, setShowSchemaDialog] = useState(false);
@@ -73,6 +101,67 @@ export function AttributeTable({
   const [hasScrolledToSelected, setHasScrolledToSelected] = useState(false);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ column: "", direction: null });
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
+  
+  const [pendingEdits, setPendingEdits] = useState<Map<number, PendingEdit>>(new Map());
+  const [undoStack, setUndoStack] = useState<PendingEdit[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  
+  const hasPendingChanges = pendingEdits.size > 0;
+  const canUndo = undoStack.length > 0;
+  
+  const handleCloseRequest = useCallback(() => {
+    if (hasPendingChanges) {
+      setShowCloseConfirm(true);
+    } else {
+      onRequestClose?.(false);
+    }
+  }, [hasPendingChanges, onRequestClose]);
+  
+  const handleDiscardAndClose = useCallback(() => {
+    setPendingEdits(new Map());
+    setUndoStack([]);
+    setShowCloseConfirm(false);
+    onRequestClose?.(false);
+  }, [onRequestClose]);
+  
+  const handleSaveAndClose = useCallback(async () => {
+    if (onBatchUpdate && pendingEdits.size > 0) {
+      setIsSaving(true);
+      try {
+        const updates = Array.from(pendingEdits.values()).map(edit => ({
+          id: edit.featureId,
+          properties: edit.newProperties,
+        }));
+        await onBatchUpdate(updates);
+        setPendingEdits(new Map());
+        setUndoStack([]);
+        setShowCloseConfirm(false);
+        onRequestClose?.(false);
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  }, [onBatchUpdate, pendingEdits, onRequestClose]);
+
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = {
+        tryClose: () => {
+          if (hasPendingChanges) {
+            setShowCloseConfirm(true);
+            return true;
+          }
+          return false;
+        },
+      };
+    }
+    return () => {
+      if (closeRef) {
+        closeRef.current = null;
+      }
+    };
+  }, [closeRef, hasPendingChanges]);
 
   const fields = layerSchema?.fields || [];
   
@@ -323,7 +412,16 @@ export function AttributeTable({
     setEditValue(currentValue?.toString() || "");
   };
 
-  const saveEdit = () => {
+  const getFeatureProperties = useCallback((featureId: number): Record<string, unknown> => {
+    const pending = pendingEdits.get(featureId);
+    if (pending) {
+      return pending.newProperties;
+    }
+    const feature = features.find(f => f.id === featureId);
+    return feature?.properties || {};
+  }, [pendingEdits, features]);
+
+  const saveEdit = useCallback(() => {
     if (!editingCell) return;
     
     const feature = features.find(f => f.id === editingCell.featureId);
@@ -338,106 +436,162 @@ export function AttributeTable({
       parsedValue = editValue === "true";
     }
 
-    onFeatureUpdate(editingCell.featureId, {
-      ...feature.properties,
+    const currentProps = getFeatureProperties(editingCell.featureId);
+    const newProperties = {
+      ...currentProps,
       [editingCell.field]: parsedValue,
+    };
+
+    const existingPending = pendingEdits.get(editingCell.featureId);
+    const originalProperties = existingPending?.originalProperties || feature.properties;
+    
+    setPendingEdits(prev => {
+      const newMap = new Map(prev);
+      newMap.set(editingCell.featureId, {
+        featureId: editingCell.featureId,
+        originalProperties,
+        newProperties,
+      });
+      return newMap;
     });
+    
+    setUndoStack(prev => [...prev, {
+      featureId: editingCell.featureId,
+      originalProperties: currentProps,
+      newProperties,
+    }]);
     
     setEditingCell(null);
     setEditValue("");
-  };
+  }, [editingCell, features, fields, editValue, getFeatureProperties, pendingEdits]);
 
   const cancelEdit = () => {
     setEditingCell(null);
     setEditValue("");
   };
 
+  const handleSaveAllChanges = useCallback(async () => {
+    if (!onBatchUpdate || pendingEdits.size === 0) return;
+    
+    setIsSaving(true);
+    try {
+      const updates = Array.from(pendingEdits.values()).map(edit => ({
+        id: edit.featureId,
+        properties: edit.newProperties,
+      }));
+      await onBatchUpdate(updates);
+      setPendingEdits(new Map());
+      setUndoStack([]);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [onBatchUpdate, pendingEdits]);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    
+    const lastAction = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    
+    setPendingEdits(prev => {
+      const newMap = new Map(prev);
+      const existingPending = newMap.get(lastAction.featureId);
+      
+      if (existingPending) {
+        const feature = features.find(f => f.id === lastAction.featureId);
+        if (JSON.stringify(lastAction.originalProperties) === JSON.stringify(feature?.properties)) {
+          newMap.delete(lastAction.featureId);
+        } else {
+          newMap.set(lastAction.featureId, {
+            ...existingPending,
+            newProperties: lastAction.originalProperties,
+          });
+        }
+      }
+      return newMap;
+    });
+  }, [undoStack, features]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (!onBatchDelete || selectedFeatureIds.length === 0) return;
+    onBatchDelete(selectedFeatureIds);
+  }, [onBatchDelete, selectedFeatureIds]);
+
   const renderCellValue = (feature: DrawnFeature, field: AttributeField) => {
-    const value = feature.properties[field.name];
+    const pendingEdit = pendingEdits.get(feature.id);
+    const displayValue = pendingEdit ? pendingEdit.newProperties[field.name] : feature.properties[field.name];
     const isEditing = editingCell?.featureId === feature.id && editingCell?.field === field.name;
+    const hasChange = pendingEdit && pendingEdit.newProperties[field.name] !== pendingEdit.originalProperties[field.name];
 
     if (isEditing) {
       if (field.type === "boolean") {
         return (
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={editValue === "true"}
-              onCheckedChange={(checked) => setEditValue(checked.toString())}
-            />
-            <Button size="sm" variant="ghost" onClick={saveEdit}>
-              <Save className="h-3 w-3" />
-            </Button>
-            <Button size="sm" variant="ghost" onClick={cancelEdit}>
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
+          <Switch
+            checked={editValue === "true"}
+            onCheckedChange={(checked) => {
+              setEditValue(checked.toString());
+              setTimeout(saveEdit, 0);
+            }}
+            autoFocus
+          />
         );
       }
       
       if (field.type === "select" && field.options) {
         return (
-          <div className="flex items-center gap-1">
-            <Select value={editValue} onValueChange={setEditValue}>
-              <SelectTrigger className="h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {field.options.map((opt) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={saveEdit}>
-              <Save className="h-3 w-3" />
-            </Button>
-            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={cancelEdit}>
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
+          <Select 
+            value={editValue} 
+            onValueChange={(val) => {
+              setEditValue(val);
+              setTimeout(saveEdit, 0);
+            }}
+          >
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {field.options.map((opt) => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         );
       }
 
       return (
-        <div className="flex items-center gap-1">
-          <Input
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            className="h-7 text-xs"
-            type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") saveEdit();
-              if (e.key === "Escape") cancelEdit();
-            }}
-            autoFocus
-          />
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={saveEdit}>
-            <Save className="h-3 w-3" />
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={cancelEdit}>
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
+        <Input
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="h-7 text-xs"
+          type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveEdit();
+            if (e.key === "Escape") cancelEdit();
+          }}
+          onBlur={saveEdit}
+          autoFocus
+        />
       );
     }
 
     if (field.type === "boolean") {
       return (
         <Badge 
-          variant={value ? "default" : "secondary"} 
-          className="cursor-pointer"
-          onClick={() => startEditing(feature.id, field.name, value)}
+          variant={displayValue ? "default" : "secondary"} 
+          className={`cursor-pointer ${hasChange ? "ring-2 ring-primary ring-offset-1" : ""}`}
+          onClick={() => startEditing(feature.id, field.name, displayValue)}
         >
-          {value ? "Да" : "Нет"}
+          {displayValue ? "Да" : "Нет"}
         </Badge>
       );
     }
 
     return (
       <span 
-        className="cursor-pointer hover:bg-muted px-1 rounded truncate block"
-        onClick={() => startEditing(feature.id, field.name, value)}
+        className={`cursor-pointer hover:bg-muted px-1 rounded truncate block ${hasChange ? "bg-primary/10 ring-1 ring-primary/30" : ""}`}
+        onClick={() => startEditing(feature.id, field.name, displayValue)}
       >
-        {value?.toString() || "-"}
+        {displayValue?.toString() || "-"}
       </span>
     );
   };
@@ -564,6 +718,62 @@ export function AttributeTable({
                 <TooltipContent>Снять выделение</TooltipContent>
               </Tooltip>
             )}
+            {onBatchDelete && selectedFeatureIds.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                    onClick={handleDeleteSelected}
+                    data-testid="button-delete-selected"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Удалить выбранные ({selectedFeatureIds.length})</TooltipContent>
+              </Tooltip>
+            )}
+            {hasPendingChanges && (
+              <div className="flex items-center gap-1 border-l pl-2 ml-1">
+                <Badge variant="secondary" className="text-xs">
+                  Изменено: {pendingEdits.size}
+                </Badge>
+                {onBatchUpdate && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="default"
+                        className="h-7 w-7 shrink-0"
+                        onClick={handleSaveAllChanges}
+                        disabled={isSaving}
+                        data-testid="button-save-all"
+                      >
+                        <Save className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Сохранить все изменения</TooltipContent>
+                  </Tooltip>
+                )}
+                {canUndo && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0"
+                        onClick={handleUndo}
+                        data-testid="button-undo"
+                      >
+                        <Undo2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Отменить изменение</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            )}
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -618,6 +828,22 @@ export function AttributeTable({
               </TooltipTrigger>
               <TooltipContent>Настройка атрибутов</TooltipContent>
             </Tooltip>
+            {onRequestClose && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={handleCloseRequest}
+                    data-testid="button-close-table"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Закрыть таблицу</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
         
@@ -819,6 +1045,28 @@ export function AttributeTable({
           </div>
         </div>
       </DraggableModal>
+
+      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Несохранённые изменения</AlertDialogTitle>
+            <AlertDialogDescription>
+              У вас есть {pendingEdits.size} несохранённых изменений. Что вы хотите сделать?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel onClick={() => setShowCloseConfirm(false)}>
+              Продолжить редактирование
+            </AlertDialogCancel>
+            <Button variant="destructive" onClick={handleDiscardAndClose}>
+              Отменить изменения
+            </Button>
+            <AlertDialogAction onClick={handleSaveAndClose} disabled={isSaving}>
+              {isSaving ? "Сохранение..." : "Сохранить и закрыть"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

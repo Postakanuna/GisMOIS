@@ -6,6 +6,7 @@ import { X, GripHorizontal, Minimize2, Maximize2 } from "lucide-react";
 interface DraggableModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onBeforeClose?: () => boolean | void;
   title: string;
   children: React.ReactNode;
   defaultWidth?: number;
@@ -17,6 +18,7 @@ interface DraggableModalProps {
 export function DraggableModal({
   isOpen,
   onClose,
+  onBeforeClose,
   title,
   children,
   defaultWidth = 800,
@@ -144,6 +146,16 @@ export function DraggableModal({
     }
   }, [isMaximized, position, size, preMaximizeState]);
 
+  const handleClose = useCallback(() => {
+    if (onBeforeClose) {
+      const shouldPreventClose = onBeforeClose();
+      if (shouldPreventClose === true) {
+        return;
+      }
+    }
+    onClose();
+  }, [onBeforeClose, onClose]);
+
   if (!isOpen) return null;
 
   return (
@@ -185,7 +197,7 @@ export function DraggableModal({
               size="icon"
               variant="ghost"
               className="h-6 w-6"
-              onClick={onClose}
+              onClick={handleClose}
               data-testid="button-close-modal"
             >
               <X className="h-3 w-3" />
