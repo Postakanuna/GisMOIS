@@ -8,7 +8,7 @@ interface CoordinateDisplayProps {
 export function CoordinateDisplay({ coordinates, zoom }: CoordinateDisplayProps) {
   return (
     <div
-      className="absolute bottom-4 left-4 z-10 flex items-center gap-4 rounded-lg bg-card/90 backdrop-blur-sm px-3 py-2 shadow-lg border border-card-border"
+      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4 rounded-lg bg-card/90 backdrop-blur-sm px-3 py-2 shadow-lg border border-card-border"
       data-testid="coordinate-display"
     >
       <div className="flex items-center gap-2">
