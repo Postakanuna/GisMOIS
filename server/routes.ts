@@ -1243,6 +1243,42 @@ export async function registerRoutes(
     }
   });
 
+  // Batch routes must be defined BEFORE routes with :id parameter to avoid matching "batch" as id
+  app.post("/api/features/batch-delete", async (req: Request, res: Response) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "Invalid request: ids must be a non-empty array" });
+      }
+      const result = await storage.deleteDrawnFeaturesBatch(ids);
+      return res.json(result);
+    } catch (error) {
+      console.error("Error batch deleting features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/features/batch", async (req: Request, res: Response) => {
+    try {
+      const { updates } = req.body;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return res.status(400).json({ message: "Invalid request: updates must be a non-empty array" });
+      }
+      
+      const validUpdates = updates.filter((u: any) => 
+        typeof u.id === 'number' && !isNaN(u.id) && u.properties && typeof u.properties === 'object'
+      );
+      if (validUpdates.length === 0) {
+        return res.status(400).json({ message: "No valid updates provided" });
+      }
+      const result = await storage.updateDrawnFeaturesBatch(validUpdates);
+      return res.json(result);
+    } catch (error) {
+      console.error("Error batch updating features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.patch("/api/features/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
@@ -1267,48 +1303,6 @@ export async function registerRoutes(
       return res.status(204).send();
     } catch (error) {
       console.error("Error deleting drawn feature:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.post("/api/features/batch-delete", async (req: Request, res: Response) => {
-    try {
-      const { ids } = req.body;
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "Invalid request: ids must be a non-empty array" });
-      }
-      const result = await storage.deleteDrawnFeaturesBatch(ids);
-      return res.json(result);
-    } catch (error) {
-      console.error("Error batch deleting features:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.patch("/api/features/batch", async (req: Request, res: Response) => {
-    try {
-      const { updates } = req.body;
-      if (!Array.isArray(updates) || updates.length === 0) {
-        return res.status(400).json({ message: "Invalid request: updates must be a non-empty array" });
-      }
-      
-      const invalidUpdates = updates.filter((u: any) => 
-        typeof u.id !== 'number' || isNaN(u.id) || !u.properties || typeof u.properties !== 'object'
-      );
-      if (invalidUpdates.length > 0) {
-        console.log("Invalid updates filtered out:", JSON.stringify(invalidUpdates.map((u: any) => ({ id: u.id, type: typeof u.id }))));
-      }
-      
-      const validUpdates = updates.filter((u: any) => 
-        typeof u.id === 'number' && !isNaN(u.id) && u.properties && typeof u.properties === 'object'
-      );
-      if (validUpdates.length === 0) {
-        return res.status(400).json({ message: "No valid updates provided" });
-      }
-      const result = await storage.updateDrawnFeaturesBatch(validUpdates);
-      return res.json(result);
-    } catch (error) {
-      console.error("Error batch updating features:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
