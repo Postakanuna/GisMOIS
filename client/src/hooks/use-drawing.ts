@@ -298,8 +298,17 @@ export function useDrawing() {
   const batchUpdateFeatures = useCallback((updates: { id: number; properties: Record<string, unknown> }[]) => {
     if (updates.length === 0) return Promise.resolve();
 
+    // Filter out any invalid updates
+    const validUpdates = updates.filter(u => typeof u.id === 'number' && !isNaN(u.id) && u.id > 0);
+    console.log("batchUpdateFeatures received:", updates.length, "valid:", validUpdates.length);
+    
+    if (validUpdates.length === 0) {
+      console.warn("No valid updates to process");
+      return Promise.resolve();
+    }
+
     // Store for undo
-    updates.forEach(update => {
+    validUpdates.forEach(update => {
       const feature = features.find(f => f.id === update.id);
       if (feature) {
         undoStack.current.push({
@@ -314,7 +323,7 @@ export function useDrawing() {
     setCanUndo(true);
     setCanRedo(false);
 
-    return batchUpdateMutation.mutateAsync(updates);
+    return batchUpdateMutation.mutateAsync(validUpdates);
   }, [features, batchUpdateMutation]);
 
   const selectFeature = useCallback((featureId: number, multi = false) => {

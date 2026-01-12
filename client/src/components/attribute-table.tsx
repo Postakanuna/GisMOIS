@@ -480,12 +480,18 @@ export function AttributeTable({
     
     setIsSaving(true);
     try {
-      const updates = Array.from(pendingEdits.values())
-        .filter(edit => typeof edit.featureId === 'number' && !isNaN(edit.featureId))
+      const allEdits = Array.from(pendingEdits.values());
+      console.log("All pending edits:", allEdits.map(e => ({ featureId: e.featureId, type: typeof e.featureId })));
+      
+      const updates = allEdits
+        .filter(edit => typeof edit.featureId === 'number' && !isNaN(edit.featureId) && edit.featureId > 0)
         .map(edit => ({
           id: edit.featureId,
           properties: edit.newProperties,
         }));
+      
+      console.log("Valid updates to send:", updates.map(u => ({ id: u.id, type: typeof u.id })));
+      
       if (updates.length > 0) {
         await onBatchUpdate(updates);
       }
