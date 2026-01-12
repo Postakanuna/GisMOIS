@@ -828,22 +828,6 @@ export function AttributeTable({
               </TooltipTrigger>
               <TooltipContent>Настройка атрибутов</TooltipContent>
             </Tooltip>
-            {onRequestClose && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 shrink-0"
-                    onClick={handleCloseRequest}
-                    data-testid="button-close-table"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Закрыть таблицу</TooltipContent>
-              </Tooltip>
-            )}
           </div>
         </div>
         
@@ -1051,18 +1035,18 @@ export function AttributeTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Несохранённые изменения</AlertDialogTitle>
             <AlertDialogDescription>
-              У вас есть {pendingEdits.size} несохранённых изменений. Что вы хотите сделать?
+              У вас есть {pendingEdits.size} несохранённых изменений.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2">
+          <AlertDialogFooter className="flex-wrap gap-2">
             <AlertDialogCancel onClick={() => setShowCloseConfirm(false)}>
-              Продолжить редактирование
+              Отмена
             </AlertDialogCancel>
             <Button variant="destructive" onClick={handleDiscardAndClose}>
-              Отменить изменения
+              Не сохранять
             </Button>
             <AlertDialogAction onClick={handleSaveAndClose} disabled={isSaving}>
-              {isSaving ? "Сохранение..." : "Сохранить и закрыть"}
+              {isSaving ? "..." : "Сохранить"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
