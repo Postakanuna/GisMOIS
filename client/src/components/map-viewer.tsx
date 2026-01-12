@@ -251,6 +251,30 @@ const CLUSTER_ZOOM_THRESHOLD = 12;
 // Minimum features to enable clustering (increased to avoid overhead on small layers)
 const CLUSTER_MIN_FEATURES = 200;
 
+// Z-index constants for proper layer stacking
+// Polygons should render below lines, lines below points
+const EDITABLE_LAYER_Z_INDEX = {
+  Polygon: 500,      // Base layer - renders first (bottom)
+  LineString: 600,   // Middle layer
+  Point: 700,        // Top layer - renders last (on top)
+};
+
+// Helper to determine z-index based on layer's geometry type
+function getLayerZIndex(layerFeatures: Array<{ geometryType: string }>): number {
+  if (layerFeatures.length === 0) return EDITABLE_LAYER_Z_INDEX.Point;
+  
+  // Determine primary geometry type from features
+  const geometryTypes = new Set(layerFeatures.map(f => f.geometryType));
+  
+  if (geometryTypes.has("Polygon") || geometryTypes.has("MultiPolygon")) {
+    return EDITABLE_LAYER_Z_INDEX.Polygon;
+  }
+  if (geometryTypes.has("LineString") || geometryTypes.has("MultiLineString")) {
+    return EDITABLE_LAYER_Z_INDEX.LineString;
+  }
+  return EDITABLE_LAYER_Z_INDEX.Point;
+}
+
 // Viewport buffer ratio for hysteresis (50% buffer = request 1.5x visible area)
 const VIEWPORT_BUFFER_RATIO = 0.5;
 // Viewport debounce time in ms (increased for less frequent updates)
@@ -1341,6 +1365,10 @@ export function MapViewer({
           });
         }
         
+        // Set z-index based on geometry type: Polygons bottom, Lines middle, Points top
+        const layerZIndex = getLayerZIndex(layerFeatures);
+        vectorLayer.setZIndex(layerZIndex);
+        
         map.addLayer(vectorLayer);
         allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
       } else {
@@ -1409,6 +1437,10 @@ export function MapViewer({
             });
             console.log(`Switched to non-clustered mode for ${editableLayerItem.name}`);
           }
+          
+          // Set z-index based on geometry type when recreating layer
+          const layerZIndex = getLayerZIndex(layerFeatures);
+          vectorLayer.setZIndex(layerZIndex);
           
           map.addLayer(vectorLayer);
           allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
