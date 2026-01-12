@@ -49,13 +49,19 @@ function decodeCP1251(buffer: Buffer): string {
 }
 
 function simplifyCoordinates(coordinates: any, tolerance: number, isPolygonRing: boolean = false): any {
-  if (!coordinates || tolerance <= 0) return coordinates;
+  if (!coordinates || !Array.isArray(coordinates) || coordinates.length === 0 || tolerance <= 0) return coordinates;
+
+  // Skip if first element is undefined/null
+  if (coordinates[0] === undefined || coordinates[0] === null) {
+    return coordinates;
+  }
 
   if (typeof coordinates[0] === 'number') {
     return coordinates;
   }
 
-  if (typeof coordinates[0][0] === 'number') {
+  // Check if this is a ring of coordinates (array of [x, y] pairs)
+  if (Array.isArray(coordinates[0]) && coordinates[0].length >= 2 && typeof coordinates[0][0] === 'number') {
     const points = coordinates.map((c: number[]) => ({ x: c[0], y: c[1] }));
     const simplified = simplify(points, tolerance, true);
     let result = simplified.map((p: { x: number; y: number }) => [p.x, p.y]);
