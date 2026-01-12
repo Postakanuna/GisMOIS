@@ -244,10 +244,19 @@ function createClusterStyle(color: string, pointStyle: PointStyle = "circle") {
   };
 }
 
-// Cluster distance threshold in pixels
-const CLUSTER_DISTANCE = 40;
-// Zoom threshold below which clustering is enabled
-const CLUSTER_ZOOM_THRESHOLD = 14;
+// Cluster distance threshold in pixels (increased for better performance)
+const CLUSTER_DISTANCE = 60;
+// Zoom threshold below which clustering is enabled (lowered for earlier clustering)
+const CLUSTER_ZOOM_THRESHOLD = 12;
+// Minimum features to enable clustering (increased to avoid overhead on small layers)
+const CLUSTER_MIN_FEATURES = 200;
+
+// Viewport buffer ratio for hysteresis (50% buffer = request 1.5x visible area)
+const VIEWPORT_BUFFER_RATIO = 0.5;
+// Viewport debounce time in ms (increased for less frequent updates)
+const VIEWPORT_DEBOUNCE_MS = 500;
+// Viewport coordinate precision (3 decimals = ~111m at equator)
+const VIEWPORT_PRECISION = 3;
 
 // Parse hex color to RGB components
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -530,7 +539,9 @@ export function MapViewer({
   const [isLoading, setIsLoading] = useState(false);
   
   // Viewport state for optimized feature loading
-  const [viewport, setViewport] = useState<{
+  // actualViewport: real map bounds (for UI components that need precise bounds)
+  // fetchViewport: buffered bounds used for data fetching (with hysteresis)
+  const [fetchViewport, setFetchViewport] = useState<{
     minX: number;
     minY: number;
     maxX: number;
@@ -538,6 +549,14 @@ export function MapViewer({
     zoom: number;
   } | null>(null);
   const viewportDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  // Buffered extent for hysteresis - only refetch when viewport exits this area
+  const bufferedExtentRef = useRef<{
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+    zoom: number;
+  } | null>(null);
   const [isLoadingFeatures, setIsLoadingFeatures] = useState(false);
   
   
@@ -776,12 +795,12 @@ export function MapViewer({
     },
   });
 
-  // Create a stable viewport key for query caching
+  // Create a stable viewport key for query caching (coarser rounding for less cache misses)
   const viewportKey = useMemo(() => {
-    if (!viewport) return null;
-    // Round to reduce cache misses from minor viewport changes
-    return `${viewport.minX.toFixed(4)},${viewport.minY.toFixed(4)},${viewport.maxX.toFixed(4)},${viewport.maxY.toFixed(4)},${viewport.zoom}`;
-  }, [viewport]);
+    if (!fetchViewport) return null;
+    // Use coarser rounding (3 decimals = ~111m) to reduce cache invalidation
+    return `${fetchViewport.minX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.minY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.zoom}`;
+  }, [fetchViewport]);
 
   // Track if any layer has limited features
   const [hasLimitedFeatures, setHasLimitedFeatures] = useState(false);
@@ -804,13 +823,13 @@ export function MapViewer({
           try {
             // Use viewport endpoint with bbox and zoom for optimized loading
             let url = `/api/editable-layers/${layer.id}/features/viewport`;
-            if (viewport) {
+            if (fetchViewport) {
               const params = new URLSearchParams({
-                minX: viewport.minX.toString(),
-                minY: viewport.minY.toString(),
-                maxX: viewport.maxX.toString(),
-                maxY: viewport.maxY.toString(),
-                zoom: viewport.zoom.toString(),
+                minX: fetchViewport.minX.toString(),
+                minY: fetchViewport.minY.toString(),
+                maxX: fetchViewport.maxX.toString(),
+                maxY: fetchViewport.maxY.toString(),
+                zoom: fetchViewport.zoom.toString(),
               });
               url += `?${params.toString()}`;
             }
@@ -838,7 +857,7 @@ export function MapViewer({
       
       return featuresByLayer;
     },
-    enabled: allEditableLayers.length > 0 && viewport !== null,
+    enabled: allEditableLayers.length > 0 && fetchViewport !== null,
     refetchOnWindowFocus: false,
     staleTime: 1000 * 30, // 30 seconds - shorter for viewport-based data
     gcTime: 1000 * 60 * 2, // Keep in cache for 2 minutes for panning back
@@ -970,29 +989,60 @@ export function MapViewer({
       setRotation(map.getView().getRotation());
     });
 
-    // Debounced viewport update for optimized feature loading
+    // Debounced viewport update with hysteresis for optimized feature loading
     const updateViewport = () => {
       const extent = map.getView().calculateExtent(map.getSize());
       const extentWGS84 = transformExtent(extent, "EPSG:3857", "EPSG:4326");
       const currentZoom = Math.round(map.getView().getZoom() || DEFAULT_ZOOM);
       
-      setViewport({
+      const currentExtent = {
         minX: extentWGS84[0],
         minY: extentWGS84[1],
         maxX: extentWGS84[2],
         maxY: extentWGS84[3],
         zoom: currentZoom,
-      });
+      };
+      
+      const buffered = bufferedExtentRef.current;
+      
+      // Check if we need to refetch (viewport exited buffered area or zoom changed)
+      const needsRefetch = !buffered ||
+        buffered.zoom !== currentZoom ||
+        currentExtent.minX < buffered.minX ||
+        currentExtent.minY < buffered.minY ||
+        currentExtent.maxX > buffered.maxX ||
+        currentExtent.maxY > buffered.maxY;
+      
+      if (needsRefetch) {
+        // Calculate buffered extent (expand by VIEWPORT_BUFFER_RATIO)
+        const width = currentExtent.maxX - currentExtent.minX;
+        const height = currentExtent.maxY - currentExtent.minY;
+        const bufferX = width * VIEWPORT_BUFFER_RATIO;
+        const bufferY = height * VIEWPORT_BUFFER_RATIO;
+        
+        const newBufferedExtent = {
+          minX: currentExtent.minX - bufferX,
+          minY: currentExtent.minY - bufferY,
+          maxX: currentExtent.maxX + bufferX,
+          maxY: currentExtent.maxY + bufferY,
+          zoom: currentZoom,
+        };
+        
+        bufferedExtentRef.current = newBufferedExtent;
+        
+        // Set fetch viewport to the buffered extent for fetching
+        setFetchViewport(newBufferedExtent);
+      }
     };
 
-    // Update viewport on map move with debounce
+    // Update viewport on map move with increased debounce
     map.on("moveend", () => {
       if (viewportDebounceRef.current) {
         clearTimeout(viewportDebounceRef.current);
       }
       viewportDebounceRef.current = setTimeout(() => {
         updateViewport();
-      }, 300); // 300ms debounce
+      }, VIEWPORT_DEBOUNCE_MS);
     });
 
     // Initial viewport update
@@ -1250,8 +1300,8 @@ export function MapViewer({
         // Check if this is a Point-only layer for clustering
         const isPointLayer = layerFeatures.length > 0 && 
           layerFeatures.every(f => f.geometryType === "Point");
-        const currentZoom = viewport?.zoom ?? 12;
-        const shouldCluster = isPointLayer && currentZoom < CLUSTER_ZOOM_THRESHOLD && layerFeatures.length > 50;
+        const currentZoom = fetchViewport?.zoom ?? 12;
+        const shouldCluster = isPointLayer && currentZoom < CLUSTER_ZOOM_THRESHOLD && layerFeatures.length > CLUSTER_MIN_FEATURES;
         
         if (shouldCluster) {
           // Use Cluster source for point layers at low zoom levels
@@ -1303,8 +1353,8 @@ export function MapViewer({
         // Check if clustering state should change based on zoom
         const isPointLayer = layerFeatures.length > 0 && 
           layerFeatures.every(f => f.geometryType === "Point");
-        const currentZoom = viewport?.zoom ?? 12;
-        const shouldCluster = isPointLayer && currentZoom < CLUSTER_ZOOM_THRESHOLD && layerFeatures.length > 50;
+        const currentZoom = fetchViewport?.zoom ?? 12;
+        const shouldCluster = isPointLayer && currentZoom < CLUSTER_ZOOM_THRESHOLD && layerFeatures.length > CLUSTER_MIN_FEATURES;
         
         // If clustering state changed, recreate the layer
         if (isPointLayer && isClustered !== shouldCluster) {
@@ -1417,12 +1467,12 @@ export function MapViewer({
         vectorLayer.set("styleKey", currentStyleKey);
       }
     });
-  }, [allEditableLayers, allLayerFeatures, isFetchingFeatures, viewport]);
+  }, [allEditableLayers, allLayerFeatures, isFetchingFeatures, fetchViewport]);
 
   // Render scene datasets with viewport-based loading
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !viewport) return;
+    if (!map || !fetchViewport) return;
 
     const geojsonFormat = new GeoJSON();
 
@@ -1441,11 +1491,11 @@ export function MapViewer({
       
       // Build viewport URL params
       const params = new URLSearchParams({
-        minX: viewport.minX.toString(),
-        minY: viewport.minY.toString(),
-        maxX: viewport.maxX.toString(),
-        maxY: viewport.maxY.toString(),
-        zoom: viewport.zoom.toString(),
+        minX: fetchViewport.minX.toString(),
+        minY: fetchViewport.minY.toString(),
+        maxX: fetchViewport.maxX.toString(),
+        maxY: fetchViewport.maxY.toString(),
+        zoom: fetchViewport.zoom.toString(),
       });
 
       if (!vectorLayer) {
@@ -1506,7 +1556,7 @@ export function MapViewer({
               sceneDatasetId: sd.id,
               datasetId: sd.datasetId,
               color: sd.color,
-              lastViewportKey: `${viewport.minX},${viewport.minY},${viewport.maxX},${viewport.maxY},${viewport.zoom}`,
+              lastViewportKey: `${fetchViewport.minX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.minY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.zoom}`,
             },
             zIndex: sd.zIndex + 100,
           });
@@ -1533,8 +1583,8 @@ export function MapViewer({
           vectorLayer.set("color", sd.color);
         }
         
-        // Check if viewport changed significantly and refresh features
-        const currentViewportKey = `${viewport.minX.toFixed(4)},${viewport.minY.toFixed(4)},${viewport.maxX.toFixed(4)},${viewport.maxY.toFixed(4)},${viewport.zoom}`;
+        // Check if viewport changed significantly and refresh features (use same precision as main viewportKey)
+        const currentViewportKey = `${fetchViewport.minX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.minY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.zoom}`;
         const lastViewportKey = vectorLayer.get("lastViewportKey");
         
         if (lastViewportKey !== currentViewportKey && sd.isVisible) {
@@ -1582,7 +1632,7 @@ export function MapViewer({
         }
       }
     });
-  }, [sceneDatasets, viewport]);
+  }, [sceneDatasets, fetchViewport]);
 
   // Selection animation loop - optimized to avoid React re-renders
   // Updates glow layer directly via refs instead of state

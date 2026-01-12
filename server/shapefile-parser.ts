@@ -152,11 +152,12 @@ export function simplifyFeatureGeometry(
 }
 
 export function getSimplifyTolerance(zoom: number): number {
-  if (zoom >= 15) return 0;
-  if (zoom >= 12) return 0.00001;
-  if (zoom >= 10) return 0.0001;
-  if (zoom >= 8) return 0.0005;
-  if (zoom >= 6) return 0.001;
-  if (zoom >= 4) return 0.005;
-  return 0.01;
+  // Balanced tolerances for performance while maintaining geometry fidelity
+  if (zoom >= 14) return 0;           // No simplification at high zoom
+  if (zoom >= 12) return 0.00002;     // Very fine detail (maintain accuracy at zoom 12+)
+  if (zoom >= 10) return 0.00008;     // Fine detail
+  if (zoom >= 8) return 0.0003;       // Medium detail
+  if (zoom >= 6) return 0.001;        // Coarse detail
+  if (zoom >= 4) return 0.003;        // Very coarse
+  return 0.008;                        // Maximum simplification
 }
