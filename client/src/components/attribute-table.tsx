@@ -129,11 +129,15 @@ export function AttributeTable({
     if (onBatchUpdate && pendingEdits.size > 0) {
       setIsSaving(true);
       try {
-        const updates = Array.from(pendingEdits.values()).map(edit => ({
-          id: edit.featureId,
-          properties: edit.newProperties,
-        }));
-        await onBatchUpdate(updates);
+        const updates = Array.from(pendingEdits.values())
+          .filter(edit => typeof edit.featureId === 'number' && !isNaN(edit.featureId))
+          .map(edit => ({
+            id: edit.featureId,
+            properties: edit.newProperties,
+          }));
+        if (updates.length > 0) {
+          await onBatchUpdate(updates);
+        }
         setPendingEdits(new Map());
         setUndoStack([]);
         setShowCloseConfirm(false);
@@ -423,6 +427,7 @@ export function AttributeTable({
 
   const saveEdit = useCallback(() => {
     if (!editingCell) return;
+    if (typeof editingCell.featureId !== 'number' || isNaN(editingCell.featureId)) return;
     
     const feature = features.find(f => f.id === editingCell.featureId);
     if (!feature) return;
@@ -475,11 +480,15 @@ export function AttributeTable({
     
     setIsSaving(true);
     try {
-      const updates = Array.from(pendingEdits.values()).map(edit => ({
-        id: edit.featureId,
-        properties: edit.newProperties,
-      }));
-      await onBatchUpdate(updates);
+      const updates = Array.from(pendingEdits.values())
+        .filter(edit => typeof edit.featureId === 'number' && !isNaN(edit.featureId))
+        .map(edit => ({
+          id: edit.featureId,
+          properties: edit.newProperties,
+        }));
+      if (updates.length > 0) {
+        await onBatchUpdate(updates);
+      }
       setPendingEdits(new Map());
       setUndoStack([]);
     } finally {
