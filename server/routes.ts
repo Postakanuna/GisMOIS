@@ -1291,7 +1291,21 @@ export async function registerRoutes(
       if (!Array.isArray(updates) || updates.length === 0) {
         return res.status(400).json({ message: "Invalid request: updates must be a non-empty array" });
       }
-      const result = await storage.updateDrawnFeaturesBatch(updates);
+      
+      const invalidUpdates = updates.filter((u: any) => 
+        typeof u.id !== 'number' || isNaN(u.id) || !u.properties || typeof u.properties !== 'object'
+      );
+      if (invalidUpdates.length > 0) {
+        console.log("Invalid updates filtered out:", JSON.stringify(invalidUpdates.map((u: any) => ({ id: u.id, type: typeof u.id }))));
+      }
+      
+      const validUpdates = updates.filter((u: any) => 
+        typeof u.id === 'number' && !isNaN(u.id) && u.properties && typeof u.properties === 'object'
+      );
+      if (validUpdates.length === 0) {
+        return res.status(400).json({ message: "No valid updates provided" });
+      }
+      const result = await storage.updateDrawnFeaturesBatch(validUpdates);
       return res.json(result);
     } catch (error) {
       console.error("Error batch updating features:", error);
