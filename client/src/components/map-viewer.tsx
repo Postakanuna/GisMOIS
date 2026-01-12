@@ -1978,6 +1978,13 @@ export function MapViewer({
                     type: geoJsonGeom.type,
                     coordinates: geoJsonGeom.coordinates,
                   });
+                  
+                  // Update selection glow feature geometry to follow the modified feature
+                  const glowFeatures = selectionGlowFeaturesRef.current;
+                  const matchingGlow = glowFeatures.find(gf => gf.get("featureId") === featureId);
+                  if (matchingGlow) {
+                    matchingGlow.setGeometry(geom.clone());
+                  }
                 }
               }
             });
@@ -2046,6 +2053,14 @@ export function MapViewer({
                     dataProjection: "EPSG:4326",
                   }));
                   onFeatureUpdatedRef.current(featureId, { coordinates: geoJsonGeom.coordinates });
+                  
+                  // Update selection glow feature geometry to follow the modified feature
+                  // Glow features are clones that need their geometry synced
+                  const glowFeatures = selectionGlowFeaturesRef.current;
+                  const matchingGlow = glowFeatures.find(gf => gf.get("featureId") === featureId);
+                  if (matchingGlow) {
+                    matchingGlow.setGeometry(geom.clone());
+                  }
                 }
               }
             });
