@@ -169,6 +169,29 @@ export function useDrawing() {
     },
   });
 
+  const batchDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const res = await apiRequest("POST", "/api/features/batch-delete", { ids });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+    },
+  });
+
+  const batchUpdateMutation = useMutation({
+    mutationFn: async (updates: { id: number; properties: Record<string, unknown> }[]) => {
+      const res = await apiRequest("PATCH", "/api/features/batch", { updates });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+    },
+  });
+
   const updateSchemaMutation = useMutation({
     mutationFn: async ({ layerId, fields }: { layerId: number; fields: AttributeField[] }) => {
       const res = await apiRequest("PUT", `/api/editable-layers/${layerId}/schema`, { fields });
@@ -244,11 +267,55 @@ export function useDrawing() {
     setCanUndo(true);
     setCanRedo(false);
 
-    selectedFeatureIds.forEach(id => {
-      deleteFeatureMutation.mutate(id);
-    });
+    // Use batch delete for efficiency
+    batchDeleteMutation.mutate(selectedFeatureIds);
     setSelectedFeatureIds([]);
-  }, [selectedFeatureIds, features, deleteFeatureMutation]);
+  }, [selectedFeatureIds, features, batchDeleteMutation]);
+
+  const batchDeleteFeatures = useCallback((ids: number[]) => {
+    if (ids.length === 0) return;
+
+    // Store for undo
+    ids.forEach(id => {
+      const feature = features.find(f => f.id === id);
+      if (feature) {
+        undoStack.current.push({
+          type: "delete",
+          featureId: id,
+          layerId: feature.layerId,
+          previousData: { ...feature },
+        });
+      }
+    });
+    redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+
+    batchDeleteMutation.mutate(ids);
+    setSelectedFeatureIds(prev => prev.filter(id => !ids.includes(id)));
+  }, [features, batchDeleteMutation]);
+
+  const batchUpdateFeatures = useCallback((updates: { id: number; properties: Record<string, unknown> }[]) => {
+    if (updates.length === 0) return Promise.resolve();
+
+    // Store for undo
+    updates.forEach(update => {
+      const feature = features.find(f => f.id === update.id);
+      if (feature) {
+        undoStack.current.push({
+          type: "update",
+          featureId: update.id,
+          layerId: feature.layerId,
+          previousData: { ...feature },
+        });
+      }
+    });
+    redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+
+    return batchUpdateMutation.mutateAsync(updates);
+  }, [features, batchUpdateMutation]);
 
   const selectFeature = useCallback((featureId: number, multi = false) => {
     if (multi) {
@@ -385,7 +452,8 @@ export function useDrawing() {
     
     // Loading states
     isLoading: layersLoading || featuresLoading,
-    isSaving: createFeatureMutation.isPending || updateFeatureMutation.isPending,
+    isSaving: createFeatureMutation.isPending || updateFeatureMutation.isPending || batchUpdateMutation.isPending,
+    isDeleting: batchDeleteMutation.isPending,
     
     // Actions
     setDrawingMode,
@@ -394,6 +462,8 @@ export function useDrawing() {
     createFeature,
     updateFeature,
     deleteSelectedFeatures,
+    batchDeleteFeatures,
+    batchUpdateFeatures,
     selectFeature,
     clearSelection,
     selectAllFeatures,
