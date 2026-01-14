@@ -46,6 +46,7 @@ import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
+import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 
 const truncateName = (name: string, maxLength: number = 30): string => {
   if (name.length <= maxLength) return name;
@@ -127,11 +128,7 @@ export function LayerPanel({
   const { currentSceneId } = useScene();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const [accidentLayerId, setAccidentLayerId] = useState<string>("");
-  const [pipelineLayerId, setPipelineLayerId] = useState<string>("");
-  const [maxDistance, setMaxDistance] = useState<string>("15");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [geoAnalysisOpen, setGeoAnalysisOpen] = useState(false);
   const [newLayerDialogOpen, setNewLayerDialogOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerGeomType, setNewLayerGeomType] = useState<GeometryType>("Point");
@@ -289,75 +286,6 @@ export function LayerPanel({
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-    }
-  };
-
-  // For analytics, filter by geometry type from all editable layers
-  const pointLayers = editableLayers.filter(l => l.geometryType === "Point");
-  const lineLayers = editableLayers.filter(l => l.geometryType === "LineString");
-
-  const runAnalysis = async () => {
-    if (!accidentLayerId || !pipelineLayerId) {
-      toast({
-        title: "Ошибка",
-        description: "Выберите оба слоя для анализа",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const distanceNum = parseFloat(maxDistance);
-    if (isNaN(distanceNum) || distanceNum <= 0) {
-      toast({
-        title: "Ошибка",
-        description: "Укажите корректный порог расстояния",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsAnalyzing(true);
-
-    try {
-      const response = await fetch("/api/analytics/accident-pipeline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accidentLayerId: parseInt(accidentLayerId),
-          pipelineLayerId: parseInt(pipelineLayerId),
-          maxDistanceMeters: distanceNum,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Ошибка анализа");
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `accident_analysis_${Date.now()}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast({
-        title: "Анализ завершён",
-        description: "Файл XLSX загружен",
-      });
-
-      setAnalyticsOpen(false);
-    } catch (error: any) {
-      toast({
-        title: "Ошибка анализа",
-        description: error.message || "Не удалось выполнить анализ",
-        variant: "destructive",
-      });
-    } finally {
-      setIsAnalyzing(false);
     }
   };
 
@@ -588,99 +516,30 @@ export function LayerPanel({
             <p>Загрузить Shapefile (ZIP)</p>
           </TooltipContent>
         </Tooltip>
-        {editableLayers.length >= 2 && pointLayers.length > 0 && lineLayers.length > 0 && (
-          <Dialog open={analyticsOpen} onOpenChange={setAnalyticsOpen}>
+        {editableLayers.length >= 2 && (
+          <>
             <Tooltip>
               <TooltipTrigger asChild>
-                <DialogTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    data-testid="button-open-analytics"
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                  </Button>
-                </DialogTrigger>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setGeoAnalysisOpen(true)}
+                  data-testid="button-open-analytics"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Анализ аварий</p>
+                <p>Геопространственный анализ</p>
               </TooltipContent>
             </Tooltip>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Привязка аварий к трубопроводам</DialogTitle>
-                <DialogDescription>
-                  Сопоставление точек аварий с ближайшими участками трубопроводов и экспорт в XLSX
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="accident-layer">Слой аварий (точки)</Label>
-                  <Select value={accidentLayerId} onValueChange={setAccidentLayerId}>
-                    <SelectTrigger id="accident-layer" data-testid="select-accident-layer">
-                      <SelectValue placeholder="Выберите слой" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pointLayers.map(layer => (
-                        <SelectItem key={layer.id} value={String(layer.id)}>
-                          {layer.name} ({layer.featureCount} объектов)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pipeline-layer">Слой трубопроводов (линии)</Label>
-                  <Select value={pipelineLayerId} onValueChange={setPipelineLayerId}>
-                    <SelectTrigger id="pipeline-layer" data-testid="select-pipeline-layer">
-                      <SelectValue placeholder="Выберите слой" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {lineLayers.map(layer => (
-                        <SelectItem key={layer.id} value={String(layer.id)}>
-                          {layer.name} ({layer.featureCount} объектов)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="max-distance">Порог расстояния (метры)</Label>
-                  <Input
-                    id="max-distance"
-                    type="number"
-                    value={maxDistance}
-                    onChange={e => setMaxDistance(e.target.value)}
-                    min="1"
-                    max="1000"
-                    data-testid="input-max-distance"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Аварии дальше порога не будут привязаны к трубопроводам
-                  </p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={runAnalysis}
-                  disabled={isAnalyzing || !accidentLayerId || !pipelineLayerId}
-                  data-testid="button-run-analysis"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Анализ...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="h-4 w-4 mr-2" />
-                      Выполнить и скачать XLSX
-                    </>
-                  )}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            <GeoAnalysisModal
+              isOpen={geoAnalysisOpen}
+              onClose={() => setGeoAnalysisOpen(false)}
+              editableLayers={editableLayers}
+              sceneId={currentSceneId}
+            />
+          </>
         )}
       </div>
     </div>
