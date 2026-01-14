@@ -27,7 +27,10 @@ const diskStorage = multer.diskStorage({
 
 const upload = multer({
   storage: diskStorage,
-  limits: { fileSize: 200 * 1024 * 1024 },
+  limits: { 
+    fileSize: 500 * 1024 * 1024, // 500MB limit
+    fieldSize: 500 * 1024 * 1024,
+  },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ext === ".zip" || ext === ".shp") {
