@@ -21,7 +21,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useScene } from "@/contexts/scene-context";
-import { FolderOpen, Plus, Users, Calendar, LogOut, Settings } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { FolderOpen, Plus, Users, Calendar, LogOut, Settings, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -43,6 +53,16 @@ export default function ScenesPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
   const [newSceneDescription, setNewSceneDescription] = useState("");
+  
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingScene, setEditingScene] = useState<Scene | null>(null);
+  const [editSceneName, setEditSceneName] = useState("");
+  const [editSceneDescription, setEditSceneDescription] = useState("");
+  
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
 
   const { data: scenes, isLoading } = useQuery<Scene[]>({
     queryKey: ["/api/scenes"],
@@ -65,12 +85,73 @@ export default function ScenesPage() {
     },
   });
 
+  const updateSceneMutation = useMutation({
+    mutationFn: async ({ id, name, description }: { id: number; name: string; description?: string }) => {
+      const res = await apiRequest("PATCH", `/api/scenes/${id}`, { name, description });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes"] });
+      setEditDialogOpen(false);
+      setEditingScene(null);
+      setEditSceneName("");
+      setEditSceneDescription("");
+      toast({ title: "Сцена обновлена" });
+    },
+    onError: () => {
+      toast({ title: "Ошибка обновления сцены", variant: "destructive" });
+    },
+  });
+
+  const deleteSceneMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/scenes/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes"] });
+      setDeleteDialogOpen(false);
+      setSceneToDelete(null);
+      toast({ title: "Сцена удалена" });
+    },
+    onError: () => {
+      toast({ title: "Ошибка удаления сцены", variant: "destructive" });
+    },
+  });
+
   const handleCreateScene = () => {
     if (!newSceneName.trim()) return;
     createSceneMutation.mutate({
       name: newSceneName.trim(),
       description: newSceneDescription.trim() || undefined,
     });
+  };
+
+  const handleEditScene = (scene: Scene, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingScene(scene);
+    setEditSceneName(scene.name);
+    setEditSceneDescription(scene.description || "");
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateScene = () => {
+    if (!editingScene || !editSceneName.trim()) return;
+    updateSceneMutation.mutate({
+      id: editingScene.id,
+      name: editSceneName.trim(),
+      description: editSceneDescription.trim() || undefined,
+    });
+  };
+
+  const handleDeleteClick = (scene: Scene, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSceneToDelete(scene);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!sceneToDelete) return;
+    deleteSceneMutation.mutate(sceneToDelete.id);
   };
 
   const handleSelectScene = (sceneId: number) => {
@@ -223,13 +304,39 @@ export default function ScenesPage() {
                   )}
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      <span>
-                        {format(new Date(scene.updatedAt), "d MMM yyyy", { locale: ru })}
-                      </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        <span>
+                          {format(new Date(scene.updatedAt), "d MMM yyyy", { locale: ru })}
+                        </span>
+                      </div>
                     </div>
+                    {(scene.role === "owner" || scene.role === "editor") && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => handleEditScene(scene, e)}
+                          data-testid={`button-edit-scene-${scene.id}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        {scene.role === "owner" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={(e) => handleDeleteClick(scene, e)}
+                            data-testid={`button-delete-scene-${scene.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -251,6 +358,74 @@ export default function ScenesPage() {
           </Card>
         )}
       </main>
+
+      {/* Edit Scene Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Редактировать сцену</DialogTitle>
+            <DialogDescription>
+              Измените название или описание сцены
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-scene-name">Название</Label>
+              <Input
+                id="edit-scene-name"
+                value={editSceneName}
+                onChange={(e) => setEditSceneName(e.target.value)}
+                placeholder="Например: Район №5"
+                data-testid="input-edit-scene-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-scene-description">Описание (необязательно)</Label>
+              <Textarea
+                id="edit-scene-description"
+                value={editSceneDescription}
+                onChange={(e) => setEditSceneDescription(e.target.value)}
+                placeholder="Краткое описание сцены"
+                data-testid="input-edit-scene-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button
+              onClick={handleUpdateScene}
+              disabled={!editSceneName.trim() || updateSceneMutation.isPending}
+              data-testid="button-confirm-edit-scene"
+            >
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Scene Confirmation */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить сцену?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите удалить сцену "{sceneToDelete?.name}"? Это действие нельзя отменить. Все слои и данные сцены будут удалены.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-scene"
+            >
+              {deleteSceneMutation.isPending ? "Удаление..." : "Удалить"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
