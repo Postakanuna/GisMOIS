@@ -273,8 +273,22 @@ export function DataManager({ onClose }: DataManagerProps) {
           });
           
           if (!res.ok) {
-            const error = await res.json();
-            throw new Error(error.message || "Ошибка загрузки на сервер");
+            let errorMessage = "Ошибка загрузки на сервер";
+            try {
+              const error = await res.json();
+              errorMessage = error.message || errorMessage;
+            } catch {
+              // Response is not JSON, use status text
+              errorMessage = `Ошибка сервера: ${res.status} ${res.statusText}`;
+            }
+            throw new Error(errorMessage);
+          }
+          
+          // Safely parse success response
+          try {
+            await res.json();
+          } catch {
+            console.warn("Could not parse upload response as JSON");
           }
           
           setUploadProgress(`Обработка завершена`);

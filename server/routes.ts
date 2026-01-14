@@ -1799,13 +1799,16 @@ export async function registerRoutes(
       }
       
       return res.status(201).json(updatedLayer);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload shapefile error:", error);
       // Clean up temp file on error
       if (filePath && fs.existsSync(filePath)) {
         try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
       }
-      return res.status(500).json({ message: "Failed to process shapefile" });
+      
+      // Return more descriptive error message
+      const errorMessage = error?.message || "Failed to process shapefile";
+      return res.status(500).json({ message: errorMessage });
     }
   });
 

@@ -111,7 +111,25 @@ export async function parseShapefileBuffer(
 ): Promise<ParseResult> {
   const { simplifyTolerance = 0 } = options;
   
-  const geojson = await shp(buffer);
+  const bufferSizeMB = buffer.length / (1024 * 1024);
+  console.log(`Parsing shapefile buffer: ${bufferSizeMB.toFixed(2)} MB`);
+  
+  // Warn about large files that may cause memory issues
+  if (bufferSizeMB > 50) {
+    console.warn(`Large file detected (${bufferSizeMB.toFixed(0)} MB). Processing may take longer and use significant memory.`);
+  }
+  
+  let geojson: any;
+  try {
+    geojson = await shp(buffer);
+  } catch (parseError: any) {
+    console.error("shpjs parse error:", parseError);
+    // Provide more helpful error message
+    if (parseError.message?.includes("memory") || parseError.message?.includes("heap")) {
+      throw new Error(`File too large to process. The uncompressed data exceeds memory limits. Try splitting the shapefile into smaller parts.`);
+    }
+    throw new Error(`Failed to parse shapefile: ${parseError.message || 'Unknown parsing error'}`);
+  }
   
   const collection = Array.isArray(geojson) ? geojson[0] : geojson;
   
