@@ -129,6 +129,42 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/zulu/zws/custom/layers", async (req: Request, res: Response) => {
+    try {
+      const { baseUrl, layerNames } = req.body;
+
+      if (!baseUrl) {
+        return res.status(400).json({ message: "URL сервера обязателен" });
+      }
+
+      if (!layerNames) {
+        return res.status(400).json({ message: "Укажите хотя бы один слой" });
+      }
+
+      const layerList = layerNames.split(",").map((name: string) => name.trim()).filter(Boolean);
+
+      if (layerList.length === 0) {
+        return res.status(400).json({ message: "Укажите хотя бы один слой" });
+      }
+
+      const layers = layerList.map((name: string) => ({
+        name,
+        title: name,
+      }));
+
+      return res.json({
+        layers,
+        version: "1.0.0",
+        title: "Пользовательский ZWS сервер",
+        baseUrl,
+        connected: true,
+      });
+    } catch (error: any) {
+      console.error("Custom ZWS layers error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   const LAYER_QUERIES: Record<string, string> = {
     "ZR_VS_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, Geometry.AsText()",
     "ZR_VO_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, Geometry.AsText()",

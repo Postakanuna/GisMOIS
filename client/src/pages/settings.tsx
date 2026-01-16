@@ -8,7 +8,7 @@ import { ConnectionForm } from "@/components/connection-form";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 
 export default function Settings() {
-  const { connect, connectZws, disconnect, status, error } = useZuluConnectionContext();
+  const { connect, connectZws, connectCustomZws, disconnect, status, error } = useZuluConnectionContext();
 
   return (
     <div className="min-h-screen bg-background">
@@ -42,6 +42,7 @@ export default function Settings() {
                 <ConnectionForm
                   onConnect={connect}
                   onConnectZws={connectZws}
+                  onConnectCustomZws={connectCustomZws}
                   onDisconnect={disconnect}
                   status={status}
                   error={error}

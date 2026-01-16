@@ -19,6 +19,7 @@ interface UseZuluConnectionReturn {
   error: string | null;
   connect: (config: ZuluConnection) => Promise<void>;
   connectZws: () => Promise<void>;
+  connectCustomZws: (config: ZuluConnection) => Promise<void>;
   disconnect: () => void;
   toggleLayerVisibility: (layerId: string) => void;
   setLayerOpacity: (layerId: string, opacity: number) => void;
@@ -155,6 +156,58 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     }
   }, []);
 
+  const connectCustomZws = useCallback(async (config: ZuluConnection) => {
+    setStatus("connecting");
+    setError(null);
+
+    try {
+      const response = await fetch("/api/zulu/zws/custom/layers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: config.baseUrl,
+          layerNames: config.layerName,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Не удалось подключиться к ZWS серверу");
+      }
+
+      const data = await response.json();
+
+      setLayers((prev) => {
+        const currentOsm = prev.find(l => l.id === "osm-base");
+        return [
+          currentOsm || DEFAULT_OSM_LAYER,
+          ...data.layers.map((layer: { name: string; title: string }) => ({
+            id: layer.name,
+            name: layer.title || layer.name,
+            visible: true,
+            opacity: 1,
+            type: "wms" as const,
+          })),
+        ];
+      });
+      setConnection(config);
+      setStatus("connecting");
+      
+      try {
+        const ticketsResponse = await fetch("/api/tickets");
+        if (ticketsResponse.ok) {
+          const ticketsData = await ticketsResponse.json();
+          setTickets(ticketsData);
+        }
+      } catch (ticketErr) {
+        console.warn("Failed to load tickets:", ticketErr);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка подключения к ZWS");
+      setStatus("error");
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     setConnection(null);
     // Keep only the OSM base layer with its current visibility/opacity
@@ -261,6 +314,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     error,
     connect,
     connectZws,
+    connectCustomZws,
     disconnect,
     toggleLayerVisibility,
     setLayerOpacity,
