@@ -11,8 +11,9 @@ import {
   type SceneDataset, type InsertSceneDataset,
   type Upload, type InsertUpload,
   type SceneRole,
+  type ApiKey, type InsertApiKey, type ApiKeyPermission,
   editableLayers, drawnFeatures, layerSchemas,
-  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads
+  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, sql, and, inArray } from "drizzle-orm";
@@ -84,6 +85,14 @@ export interface IStorage {
   createUpload(upload: { filename: string; originalFilename: string; createdBy: string }): Promise<Upload>;
   updateUpload(id: number, updates: Partial<{ status: string; error: string | null; datasetId: number | null }>): Promise<Upload | undefined>;
   deleteUpload(id: number): Promise<boolean>;
+  
+  // API Key methods
+  getApiKeys(userId: string): Promise<ApiKey[]>;
+  getApiKey(id: number): Promise<ApiKey | undefined>;
+  getApiKeyByToken(tokenHash: string): Promise<ApiKey | undefined>;
+  createApiKey(apiKey: { userId: string; name: string; tokenHash: string; sceneId?: number; permissions?: ApiKeyPermission[] }): Promise<ApiKey>;
+  updateApiKeyLastUsed(id: number): Promise<void>;
+  revokeApiKey(id: number): Promise<boolean>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -669,6 +678,46 @@ export class DatabaseStorage implements IStorage {
   async deleteUpload(id: number): Promise<boolean> {
     const result = await db.delete(uploads).where(eq(uploads.id, id)).returning();
     return result.length > 0;
+  }
+
+  // API Key methods
+  async getApiKeys(userId: string): Promise<ApiKey[]> {
+    return await db.select().from(apiKeys).where(eq(apiKeys.userId, userId));
+  }
+
+  async getApiKey(id: number): Promise<ApiKey | undefined> {
+    const [row] = await db.select().from(apiKeys).where(eq(apiKeys.id, id));
+    return row;
+  }
+
+  async getApiKeyByToken(tokenHash: string): Promise<ApiKey | undefined> {
+    const [row] = await db.select().from(apiKeys).where(eq(apiKeys.tokenHash, tokenHash));
+    return row;
+  }
+
+  async createApiKey(apiKey: { userId: string; name: string; tokenHash: string; sceneId?: number; permissions?: ApiKeyPermission[] }): Promise<ApiKey> {
+    const [row] = await db.insert(apiKeys).values({
+      userId: apiKey.userId,
+      name: apiKey.name,
+      tokenHash: apiKey.tokenHash,
+      sceneId: apiKey.sceneId ?? null,
+      permissions: apiKey.permissions || ["create_point"],
+    }).returning();
+    return row;
+  }
+
+  async updateApiKeyLastUsed(id: number): Promise<void> {
+    await db.update(apiKeys)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiKeys.id, id));
+  }
+
+  async revokeApiKey(id: number): Promise<boolean> {
+    const [row] = await db.update(apiKeys)
+      .set({ isActive: 0 })
+      .where(eq(apiKeys.id, id))
+      .returning();
+    return !!row;
   }
 }
 
