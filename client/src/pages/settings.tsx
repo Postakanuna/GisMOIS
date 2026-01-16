@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ConnectionForm } from "@/components/connection-form";
+import { ApiKeysManager } from "@/components/api-keys-manager";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 
 export default function Settings() {
@@ -49,6 +50,8 @@ export default function Settings() {
                 />
               </CardContent>
             </Card>
+
+            <ApiKeysManager />
           </div>
         </ScrollArea>
       </main>
