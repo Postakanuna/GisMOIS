@@ -226,16 +226,20 @@ export function registerAuthRoutes(app: Express): void {
 }
 
 export async function seedAdminUser(): Promise<void> {
-  const [existing] = await db.select().from(users).where(eq(users.username, "admin"));
-  if (!existing) {
-    const passwordHash = await hashPassword("admin123");
-    await db.insert(users).values({
-      username: "admin",
-      passwordHash,
-      role: "admin",
-      firstName: "Администратор",
-      lastName: "Системы",
-    });
-    console.log("Admin user created: admin / admin123");
+  const admins = await db.select().from(users).where(eq(users.role, "admin"));
+  if (admins.length === 0) {
+    console.log(`
+╔════════════════════════════════════════════════════════════════╗
+║          ⚠️  ВНИМАНИЕ: Администратор не найден!                 ║
+╚════════════════════════════════════════════════════════════════╝
+
+Для создания первого администратора выполните команду:
+
+  npx tsx scripts/init-admin.ts -- --username=<логин> --password=<пароль>
+
+Пример:
+  npx tsx scripts/init-admin.ts -- --username=admin --password=SecurePass123
+
+`);
   }
 }
