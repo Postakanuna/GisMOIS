@@ -6,6 +6,8 @@ import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, seedAdminUser, isAuthenticated, type AuthRequest } from "./auth";
+import { isApiAuthenticated, generateApiToken, hashApiToken, type ApiAuthenticatedRequest } from "./auth/api-auth";
+import { externalCreatePointSchema, apiKeys } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq, and } from "drizzle-orm";
@@ -2708,6 +2710,215 @@ export async function registerRoutes(
       console.error("Error getting uploads:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
+  });
+
+  // ============================================
+  // API KEYS MANAGEMENT (for external integrations)
+  // ============================================
+
+  // Get user's API keys
+  app.get("/api/api-keys", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const keys = await storage.getApiKeys(user.id);
+      const safeKeys = keys.map(k => ({
+        id: k.id,
+        name: k.name,
+        sceneId: k.sceneId,
+        permissions: k.permissions,
+        isActive: k.isActive === 1,
+        lastUsedAt: k.lastUsedAt,
+        createdAt: k.createdAt,
+      }));
+      return res.json(safeKeys);
+    } catch (error) {
+      console.error("Error getting API keys:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Create new API key
+  app.post("/api/api-keys", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const { name, sceneId, permissions } = req.body;
+
+      if (!name || typeof name !== "string" || name.length < 1) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+
+      const token = generateApiToken();
+      const tokenHash = await hashApiToken(token);
+
+      const apiKey = await storage.createApiKey({
+        userId: user.id,
+        name,
+        tokenHash,
+        sceneId: sceneId || undefined,
+        permissions: permissions || ["create_point"],
+      });
+
+      return res.json({
+        id: apiKey.id,
+        name: apiKey.name,
+        token, // Show token only once!
+        sceneId: apiKey.sceneId,
+        permissions: apiKey.permissions,
+        createdAt: apiKey.createdAt,
+        message: "Сохраните токен! Он больше не будет показан.",
+      });
+    } catch (error) {
+      console.error("Error creating API key:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Revoke API key
+  app.delete("/api/api-keys/:id", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      const id = parseInt(req.params.id);
+      
+      const apiKey = await storage.getApiKey(id);
+      if (!apiKey) {
+        return res.status(404).json({ message: "API key not found" });
+      }
+      if (apiKey.userId !== user.id && user.role !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.revokeApiKey(id);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error revoking API key:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // EXTERNAL API (for Telegram bot and other integrations)
+  // ============================================
+
+  // Get available scenes for API key
+  app.get("/api/external/scenes", isApiAuthenticated("read_scenes"), async (req: ApiAuthenticatedRequest, res: Response) => {
+    try {
+      const apiKey = req.apiKey!;
+      const apiUser = req.apiUser!;
+
+      let scenes;
+      if (apiKey.sceneId) {
+        const scene = await storage.getScene(apiKey.sceneId);
+        scenes = scene ? [scene] : [];
+      } else {
+        scenes = await storage.getScenesForUser(apiUser.id);
+      }
+
+      return res.json(scenes.map(s => ({
+        id: s.id,
+        name: s.name,
+        description: (s as any).description || null,
+      })));
+    } catch (error) {
+      console.error("External API error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Get layers for a scene
+  app.get("/api/external/scenes/:sceneId/layers", isApiAuthenticated("read_layers"), async (req: ApiAuthenticatedRequest, res: Response) => {
+    try {
+      const apiKey = req.apiKey!;
+      const sceneId = parseInt(req.params.sceneId);
+
+      if (apiKey.sceneId && apiKey.sceneId !== sceneId) {
+        return res.status(403).json({ error: "Forbidden", message: "API key restricted to different scene" });
+      }
+
+      const layers = await storage.getEditableLayersByScene(sceneId);
+      const pointLayers = layers.filter(l => l.geometryType === "Point");
+
+      return res.json(pointLayers.map(l => ({
+        id: l.id,
+        name: l.name,
+        geometryType: l.geometryType,
+        featureCount: l.featureCount,
+      })));
+    } catch (error) {
+      console.error("External API error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Create point (main endpoint for Telegram bot)
+  app.post("/api/external/points", isApiAuthenticated("create_point"), async (req: ApiAuthenticatedRequest, res: Response) => {
+    try {
+      const apiKey = req.apiKey!;
+      const apiUser = req.apiUser!;
+
+      const parsed = externalCreatePointSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ 
+          error: "Validation error", 
+          details: parsed.error.issues 
+        });
+      }
+
+      const { sceneId, layerId, coordinates, properties } = parsed.data;
+
+      if (apiKey.sceneId && apiKey.sceneId !== sceneId) {
+        return res.status(403).json({ error: "Forbidden", message: "API key restricted to different scene" });
+      }
+
+      const layer = await storage.getEditableLayer(layerId);
+      if (!layer) {
+        return res.status(404).json({ error: "Layer not found" });
+      }
+      if (layer.sceneId !== sceneId) {
+        return res.status(400).json({ error: "Layer does not belong to specified scene" });
+      }
+      if (layer.geometryType !== "Point") {
+        return res.status(400).json({ error: "Layer must be of type Point" });
+      }
+
+      const membership = await storage.getSceneMember(sceneId, apiUser.id);
+      if (!membership && apiUser.role !== "admin") {
+        return res.status(403).json({ error: "Access denied to scene" });
+      }
+      if (membership?.role === "viewer") {
+        return res.status(403).json({ error: "Viewers cannot create features" });
+      }
+
+      const feature = await storage.createDrawnFeature({
+        layerId,
+        geometryType: "Point",
+        coordinates,
+        properties: {
+          ...properties,
+          _source: "external_api",
+          _createdBy: apiUser.username,
+          _createdAt: new Date().toISOString(),
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+        feature: {
+          id: feature.id,
+          layerId: feature.layerId,
+          coordinates: feature.coordinates,
+          properties: feature.properties,
+          createdAt: feature.createdAt,
+        },
+      });
+    } catch (error) {
+      console.error("External API error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // API health check
+  app.get("/api/external/health", (req: Request, res: Response) => {
+    return res.json({ status: "ok", version: "1.0.0" });
   });
 
   return httpServer;
