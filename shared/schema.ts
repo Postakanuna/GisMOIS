@@ -4,7 +4,7 @@ import { z } from "zod";
 export const zuluConnectionSchema = z.object({
   host: z.string().min(1, "Host is required"),
   port: z.number().min(1).max(65535).optional(),
-  layerName: z.string().min(1, "Layer name is required"),
+  layerName: z.string().default(""),
   useWfs: z.boolean().default(false),
   useZws: z.boolean().default(false),
   baseUrl: z.string().optional(),
