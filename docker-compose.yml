@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gis-mo-app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/gis_mo
+      - SESSION_SECRET=${SESSION_SECRET:-change-this-secret-in-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - gis-network
+
+  db:
+    image: postgres:16-alpine
+    container_name: gis-mo-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=gis_mo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gis-network
+
+volumes:
+  postgres_data:
+
+networks:
+  gis-network:
+    driver: bridge

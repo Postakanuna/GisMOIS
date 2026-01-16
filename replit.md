@@ -155,7 +155,7 @@ npx tsx scripts/init-admin.ts -- --username=admin --password=ВашПароль1
 - Команда работает только ОДИН раз (если админ уже есть — откажет)
 - Дополнительных администраторов создаёт первый админ через веб-интерфейс
 
-### Порядок развёртывания
+### Порядок развёртывания (ручной)
 
 1. Склонировать репозиторий
 2. Установить зависимости: `npm install`
@@ -163,6 +163,41 @@ npx tsx scripts/init-admin.ts -- --username=admin --password=ВашПароль1
 4. Применить миграции: `npm run db:push`
 5. Создать администратора: `npx tsx scripts/init-admin.ts -- --username=admin --password=...`
 6. Запустить сервер: `npm run start` (production) или `npm run dev` (development)
+
+### Развёртывание через Docker
+
+**Быстрый старт с docker-compose:**
+
+```bash
+# 1. Создать файл переменных окружения
+echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
+
+# 2. Запустить приложение и базу данных
+docker-compose up -d
+
+# 3. Применить миграции базы данных
+docker-compose exec app npx drizzle-kit push
+
+# 4. Создать первого администратора
+docker-compose exec app npx tsx scripts/init-admin.ts -- --username=admin --password=ВашПароль123
+```
+
+Приложение будет доступно по адресу: http://localhost:5000
+
+**Только сборка образа:**
+
+```bash
+docker build -t gis-mo-app .
+```
+
+**Переменные окружения для Docker:**
+
+| Переменная | Описание | Пример |
+|------------|----------|--------|
+| DATABASE_URL | Строка подключения к PostgreSQL | postgresql://user:pass@host:5432/db |
+| SESSION_SECRET | Секрет для сессий (32+ символов) | openssl rand -hex 32 |
+| NODE_ENV | Режим работы | production |
+| PORT | Порт приложения | 5000 |
 
 ## External Dependencies
 
