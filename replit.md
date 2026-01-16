@@ -160,7 +160,9 @@ npx tsx scripts/init-admin.ts -- --username=admin --password=ВашПароль1
 1. Склонировать репозиторий
 2. Установить зависимости: `npm install`
 3. Настроить переменные окружения (DATABASE_URL, SESSION_SECRET)
-4. Применить миграции: `npm run db:push`
+4. Создать таблицы в БД одним из способов:
+   - `npm run db:push` (через Drizzle ORM)
+   - Или выполнить SQL-скрипт: `psql -f migrations/init.sql`
 5. Создать администратора: `npx tsx scripts/init-admin.ts -- --username=admin --password=...`
 6. Запустить сервер: `npm run start` (production) или `npm run dev` (development)
 
@@ -172,13 +174,10 @@ npx tsx scripts/init-admin.ts -- --username=admin --password=ВашПароль1
 # 1. Создать файл переменных окружения
 echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
 
-# 2. Запустить приложение и базу данных
+# 2. Запустить приложение и базу данных (БД создаётся автоматически из migrations/init.sql)
 docker-compose up -d
 
-# 3. Применить миграции базы данных
-docker-compose exec app npx drizzle-kit push
-
-# 4. Создать первого администратора
+# 3. Создать первого администратора
 docker-compose exec app npx tsx scripts/init-admin.ts -- --username=admin --password=ВашПароль123
 ```
 
