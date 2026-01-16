@@ -39,6 +39,14 @@ Preferred communication style: Simple, everyday language.
   - Automatic switching between clustered/non-clustered modes on zoom change
 - **Geometry simplification**: Zoom-based LOD with polygon ring closure preservation
 - **Database optimization**: Index on drawn_features(layer_id) for query performance
+- **External API for integrations (January 2026)**:
+  - API key management with Bearer token authentication (gis_* prefix)
+  - `/api/external/scenes` - get available scenes
+  - `/api/external/scenes/:id/layers` - get Point layers for a scene
+  - `/api/external/points` - create point features (for Telegram bot GPS photos)
+  - Permission-based access: create_point, read_scenes, read_layers
+  - UI for API key management in Settings page
+  - Tokens hashed with bcrypt, shown only once at creation
 
 ## System Architecture
 
@@ -118,6 +126,7 @@ migrations/       # Database migrations
 - `datasets`: Uploaded shapefile datasets with geometry type, CRS, feature count
 - `scene_datasets`: Links datasets to scenes with styling (color, opacity, visibility)
 - `dataset_features`: Individual features with geometry (coordinates) and properties
+- `api_keys`: External API tokens for integrations (userId, tokenHash, sceneId, permissions[])
 
 ## Развёртывание в локальной сети
 
