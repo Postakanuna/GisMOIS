@@ -411,3 +411,39 @@ export const insertUploadSchema = z.object({
   originalFilename: z.string(),
   createdBy: z.string(),
 });
+
+// API Keys for external integrations (Telegram bot, etc.)
+export const apiKeys = pgTable("api_keys", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(), // human-readable name like "Telegram Bot"
+  tokenHash: varchar("token_hash", { length: 255 }).notNull(), // bcrypt hash of the token
+  sceneId: integer("scene_id"), // optional: restrict to specific scene
+  permissions: jsonb("permissions").notNull().default(["create_point"]), // allowed actions
+  isActive: integer("is_active").notNull().default(1),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type InsertApiKey = typeof apiKeys.$inferInsert;
+
+export const apiKeyPermissionSchema = z.enum(["create_point", "read_layers", "read_scenes"]);
+export type ApiKeyPermission = z.infer<typeof apiKeyPermissionSchema>;
+
+export const insertApiKeySchema = z.object({
+  userId: z.string(),
+  name: z.string().min(1, "Название обязательно"),
+  tokenHash: z.string(),
+  sceneId: z.number().optional(),
+  permissions: z.array(apiKeyPermissionSchema).default(["create_point"]),
+});
+
+// External API schemas
+export const externalCreatePointSchema = z.object({
+  sceneId: z.number(),
+  layerId: z.number(),
+  coordinates: z.tuple([z.number(), z.number()]), // [longitude, latitude]
+  properties: z.record(z.string(), z.unknown()).default({}),
+});
+export type ExternalCreatePoint = z.infer<typeof externalCreatePointSchema>;
