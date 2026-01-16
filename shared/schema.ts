@@ -416,10 +416,10 @@ export const insertUploadSchema = z.object({
 export const apiKeys = pgTable("api_keys", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: varchar("user_id").notNull(),
-  name: text("name").notNull(), // human-readable name like "Telegram Bot"
-  tokenHash: varchar("token_hash", { length: 255 }).notNull(), // bcrypt hash of the token
-  sceneId: integer("scene_id"), // optional: restrict to specific scene
-  permissions: jsonb("permissions").notNull().default(["create_point"]), // allowed actions
+  name: text("name").notNull(),
+  tokenHash: varchar("token_hash", { length: 255 }).notNull(),
+  sceneId: integer("scene_id"),
+  permissions: text("permissions").array().notNull().default(sql`ARRAY['create_point']`),
   isActive: integer("is_active").notNull().default(1),
   lastUsedAt: timestamp("last_used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

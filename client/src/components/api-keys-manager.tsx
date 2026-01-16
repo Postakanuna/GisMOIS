@@ -55,10 +55,8 @@ export function ApiKeysManager() {
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; sceneId?: number; permissions: string[] }) => {
-      return apiRequest("/api/api-keys", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      const res = await apiRequest("POST", "/api/api-keys", data);
+      return res.json();
     },
     onSuccess: (response) => {
       setCreatedToken(response.token);
@@ -81,9 +79,8 @@ export function ApiKeysManager() {
 
   const revokeMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest(`/api/api-keys/${id}`, {
-        method: "DELETE",
-      });
+      const res = await apiRequest("DELETE", `/api/api-keys/${id}`);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/api-keys"] });
@@ -103,9 +100,10 @@ export function ApiKeysManager() {
 
   const handleCreate = () => {
     if (!newKeyName.trim()) return;
+    const sceneIdValue = newKeySceneId && newKeySceneId !== "all" ? parseInt(newKeySceneId) : undefined;
     createMutation.mutate({
       name: newKeyName.trim(),
-      sceneId: newKeySceneId ? parseInt(newKeySceneId) : undefined,
+      sceneId: isNaN(sceneIdValue as number) ? undefined : sceneIdValue,
       permissions: selectedPermissions,
     });
   };
