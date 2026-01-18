@@ -22,6 +22,14 @@ interface UndoAction {
   newData?: InsertDrawnFeature;
 }
 
+export interface SnapSettings {
+  enabled: boolean;
+  snapToVertices: boolean;
+  snapToEdges: boolean;
+  snapRadius: number;
+  snapLayerIds: number[]; // empty array = all visible layers
+}
+
 export function useDrawing() {
   const { toast } = useToast();
   const { currentSceneId } = useScene();
@@ -30,6 +38,15 @@ export function useDrawing() {
   const [activeLayerId, setActiveLayerId] = useState<number | null>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("select");
   const [selectedFeatureIds, setSelectedFeatureIds] = useState<number[]>([]);
+  
+  // Snap settings
+  const [snapSettings, setSnapSettings] = useState<SnapSettings>({
+    enabled: false,
+    snapToVertices: true,
+    snapToEdges: true,
+    snapRadius: 15,
+    snapLayerIds: [],
+  });
   
   // Undo/redo stacks
   const undoStack = useRef<UndoAction[]>([]);
@@ -351,6 +368,15 @@ export function useDrawing() {
     updateSchemaMutation.mutate({ layerId: activeLayerId, fields });
   }, [activeLayerId, updateSchemaMutation]);
 
+  // Snap functions
+  const toggleSnap = useCallback(() => {
+    setSnapSettings(prev => ({ ...prev, enabled: !prev.enabled }));
+  }, []);
+
+  const updateSnapSettings = useCallback((updates: Partial<SnapSettings>) => {
+    setSnapSettings(prev => ({ ...prev, ...updates }));
+  }, []);
+
   const undo = useCallback(() => {
     const action = undoStack.current.pop();
     if (!action) return;
@@ -440,12 +466,17 @@ export function useDrawing() {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         save();
+      } else if (e.key === "s" || e.key === "S") {
+        // Toggle snap (only when not Ctrl+S for save)
+        if (!e.ctrlKey && !e.metaKey) {
+          toggleSnap();
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeLayer, deleteSelectedFeatures, clearSelection, undo, redo, save]);
+  }, [activeLayer, deleteSelectedFeatures, clearSelection, undo, redo, save, toggleSnap]);
 
   return {
     // State
@@ -458,6 +489,7 @@ export function useDrawing() {
     selectedFeatureIds,
     canUndo,
     canRedo,
+    snapSettings,
     
     // Loading states
     isLoading: layersLoading || featuresLoading,
@@ -481,5 +513,7 @@ export function useDrawing() {
     redo,
     save,
     deleteLayer: deleteLayerMutation.mutate,
+    toggleSnap,
+    updateSnapSettings,
   };
 }

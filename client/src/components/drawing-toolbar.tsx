@@ -20,6 +20,8 @@ import {
   Route,
 } from "lucide-react";
 import type { EditableLayer } from "@shared/schema";
+import type { SnapSettings } from "@/hooks/use-drawing";
+import { SnapSettingsPopover } from "./snap-settings-popover";
 
 export type DrawingMode = "select" | "point" | "line" | "polygon" | "modify" | null;
 
