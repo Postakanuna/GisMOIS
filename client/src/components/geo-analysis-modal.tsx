@@ -48,6 +48,7 @@ interface LayerFilterConfig {
 }
 
 type BoundaryMode = "inside" | "outside" | "none";
+type BoundaryType = "polygon" | "line";
 
 interface GeoAnalysisModalProps {
   isOpen: boolean;
@@ -229,9 +230,11 @@ export function GeoAnalysisModal({
   const [targetConditions, setTargetConditions] = useState<FilterCondition[]>([]);
   
   const [boundaryEnabled, setBoundaryEnabled] = useState(false);
+  const [boundaryType, setBoundaryType] = useState<BoundaryType>("polygon");
   const [boundaryLayerId, setBoundaryLayerId] = useState<string>("");
   const [boundaryConditions, setBoundaryConditions] = useState<FilterCondition[]>([]);
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>("inside");
+  const [bufferDistance, setBufferDistance] = useState<string>("10");
   
   const [maxDistance, setMaxDistance] = useState<string>("15");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -366,12 +369,20 @@ export function GeoAnalysisModal({
       setTargetLayerId("");
       setTargetConditions([]);
       setBoundaryEnabled(false);
+      setBoundaryType("polygon");
       setBoundaryLayerId("");
       setBoundaryConditions([]);
       setBoundaryMode("inside");
+      setBufferDistance("10");
       setMaxDistance("15");
     }
   }, [isOpen]);
+
+  // Сброс слоя при смене типа ограничения
+  useEffect(() => {
+    setBoundaryLayerId("");
+    setBoundaryConditions([]);
+  }, [boundaryType]);
 
   const runAnalysis = async () => {
     if (!sourceLayerId || !targetLayerId) {
@@ -405,6 +416,7 @@ export function GeoAnalysisModal({
     setIsAnalyzing(true);
 
     try {
+      const bufferNum = parseFloat(bufferDistance);
       const requestBody = {
         sourceLayerId: parseInt(sourceLayerId),
         sourceFilters: sourceConditions.filter(c => c.attribute && c.value),
@@ -413,6 +425,8 @@ export function GeoAnalysisModal({
         boundaryLayerId: boundaryEnabled && boundaryLayerId ? parseInt(boundaryLayerId) : null,
         boundaryFilters: boundaryEnabled ? boundaryConditions.filter(c => c.attribute && c.value) : [],
         boundaryMode: boundaryEnabled ? boundaryMode : "none",
+        boundaryType: boundaryEnabled ? boundaryType : "polygon",
+        bufferDistanceMeters: boundaryType === "line" ? (isNaN(bufferNum) ? 10 : bufferNum) : null,
         maxDistanceMeters: distanceNum,
       };
 
@@ -562,7 +576,7 @@ export function GeoAnalysisModal({
                     <span className="font-medium text-sm">Ограничивающий слой (опционально)</span>
                     {boundaryEnabled && boundaryLayerId && (
                       <Badge variant="secondary" className="text-xs">
-                        {filteredBoundaryCount} полигонов
+                        {filteredBoundaryCount} {boundaryType === "polygon" ? "полигонов" : "линий"}
                       </Badge>
                     )}
                   </div>
@@ -574,32 +588,83 @@ export function GeoAnalysisModal({
                       onCheckedChange={setBoundaryEnabled}
                       data-testid="switch-boundary-enabled"
                     />
-                    <Label className="text-xs">Использовать ограничение по полигонам</Label>
+                    <Label className="text-xs">Использовать пространственные ограничения</Label>
                   </div>
                   
                   {boundaryEnabled && (
                     <>
                       <div className="space-y-2">
-                        <Label htmlFor="boundary-layer" className="text-xs">Слой полигонов</Label>
+                        <Label className="text-xs">Тип ограничивающего слоя</Label>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant={boundaryType === "polygon" ? "default" : "outline"}
+                            onClick={() => setBoundaryType("polygon")}
+                            className="flex-1 text-xs"
+                            data-testid="button-boundary-type-polygon"
+                          >
+                            Полигоны
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={boundaryType === "line" ? "default" : "outline"}
+                            onClick={() => setBoundaryType("line")}
+                            className="flex-1 text-xs"
+                            data-testid="button-boundary-type-line"
+                          >
+                            Линии
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="boundary-layer" className="text-xs">
+                          {boundaryType === "polygon" ? "Слой полигонов" : "Слой линий"}
+                        </Label>
                         <Select value={boundaryLayerId} onValueChange={setBoundaryLayerId}>
                           <SelectTrigger id="boundary-layer" data-testid="select-boundary-layer">
                             <SelectValue placeholder="Выберите слой" />
                           </SelectTrigger>
                           <SelectContent>
-                            {polygonLayers.map(layer => (
+                            {(boundaryType === "polygon" ? polygonLayers : lineLayers).map(layer => (
                               <SelectItem key={layer.id} value={String(layer.id)}>
                                 {layer.name} ({layer.featureCount} объектов)
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        {polygonLayers.length === 0 && (
+                        {boundaryType === "polygon" && polygonLayers.length === 0 && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <AlertCircle className="h-3 w-3" />
                             Нет полигональных слоёв
                           </div>
                         )}
+                        {boundaryType === "line" && lineLayers.length === 0 && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <AlertCircle className="h-3 w-3" />
+                            Нет линейных слоёв
+                          </div>
+                        )}
                       </div>
+                      
+                      {boundaryType === "line" && (
+                        <div className="space-y-2">
+                          <Label htmlFor="buffer-distance" className="text-xs">Буферная зона (метры)</Label>
+                          <Input
+                            id="buffer-distance"
+                            type="number"
+                            value={bufferDistance}
+                            onChange={e => setBufferDistance(e.target.value)}
+                            min="1"
+                            max="1000"
+                            className="max-w-[150px]"
+                            data-testid="input-buffer-distance"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Радиус вокруг линий для определения попадания объектов
+                          </p>
+                        </div>
+                      )}
                       
                       <div className="space-y-2">
                         <Label className="text-xs">Режим ограничения</Label>
@@ -608,19 +673,19 @@ export function GeoAnalysisModal({
                             size="sm"
                             variant={boundaryMode === "inside" ? "default" : "outline"}
                             onClick={() => setBoundaryMode("inside")}
-                            className="flex-1 h-7 text-xs"
+                            className="flex-1 text-xs"
                             data-testid="button-boundary-inside"
                           >
-                            Внутри полигонов
+                            {boundaryType === "polygon" ? "Внутри полигонов" : "Вблизи линий"}
                           </Button>
                           <Button
                             size="sm"
                             variant={boundaryMode === "outside" ? "default" : "outline"}
                             onClick={() => setBoundaryMode("outside")}
-                            className="flex-1 h-7 text-xs"
+                            className="flex-1 text-xs"
                             data-testid="button-boundary-outside"
                           >
-                            Вне полигонов
+                            {boundaryType === "polygon" ? "Вне полигонов" : "Вдали от линий"}
                           </Button>
                         </div>
                       </div>
@@ -632,7 +697,7 @@ export function GeoAnalysisModal({
                           onConditionsChange={setBoundaryConditions}
                           availableAttributes={boundaryAttrsData.attrs}
                           attributeValues={boundaryAttrsData.values}
-                          label="Фильтры по атрибутам полигонов"
+                          label={boundaryType === "polygon" ? "Фильтры по атрибутам полигонов" : "Фильтры по атрибутам линий"}
                         />
                       )}
                     </>
@@ -667,7 +732,11 @@ export function GeoAnalysisModal({
             {sourceLayerId && targetLayerId && (
               <span>
                 Анализ: {filteredSourceCount} исходных → {filteredTargetCount} целевых
-                {boundaryEnabled && boundaryLayerId && ` (${boundaryMode === "inside" ? "внутри" : "вне"} ${filteredBoundaryCount} полигонов)`}
+                {boundaryEnabled && boundaryLayerId && (
+                  boundaryType === "polygon" 
+                    ? ` (${boundaryMode === "inside" ? "внутри" : "вне"} ${filteredBoundaryCount} полигонов)`
+                    : ` (${boundaryMode === "inside" ? "вблизи" : "вдали от"} ${filteredBoundaryCount} линий, буфер ${bufferDistance}м)`
+                )}
               </span>
             )}
           </div>

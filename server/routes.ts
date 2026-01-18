@@ -1203,6 +1203,72 @@ export async function registerRoutes(
     });
   }
 
+  function isFeatureNearLines(
+    feature: { geometry: { type: string; coordinates: any } },
+    lineFeatures: { geometry: { type: string; coordinates: any }; properties: Record<string, unknown> }[],
+    bufferDistanceMeters: number,
+    mode: "inside" | "outside"
+  ): boolean {
+    try {
+      const featureGeom = feature.geometry;
+      let turfFeature: ReturnType<typeof turf.point> | ReturnType<typeof turf.lineString> | ReturnType<typeof turf.polygon> | ReturnType<typeof turf.multiLineString> | ReturnType<typeof turf.multiPolygon>;
+      
+      if (featureGeom.type === "Point") {
+        turfFeature = turf.point(featureGeom.coordinates);
+      } else if (featureGeom.type === "LineString") {
+        turfFeature = turf.lineString(featureGeom.coordinates);
+      } else if (featureGeom.type === "Polygon") {
+        turfFeature = turf.polygon(featureGeom.coordinates);
+      } else if (featureGeom.type === "MultiLineString") {
+        turfFeature = turf.multiLineString(featureGeom.coordinates);
+      } else if (featureGeom.type === "MultiPolygon") {
+        turfFeature = turf.multiPolygon(featureGeom.coordinates);
+      } else {
+        return mode === "outside";
+      }
+      
+      for (const lineFeature of lineFeatures) {
+        try {
+          let turfLine: ReturnType<typeof turf.lineString> | ReturnType<typeof turf.multiLineString>;
+          
+          if (lineFeature.geometry.type === "LineString") {
+            turfLine = turf.lineString(lineFeature.geometry.coordinates);
+          } else if (lineFeature.geometry.type === "MultiLineString") {
+            turfLine = turf.multiLineString(lineFeature.geometry.coordinates);
+          } else {
+            continue;
+          }
+          
+          const bufferedLine = turf.buffer(turfLine, bufferDistanceMeters, { units: "meters" });
+          if (!bufferedLine) continue;
+          
+          let intersects = false;
+          
+          if (featureGeom.type === "Point") {
+            intersects = turf.booleanPointInPolygon(turfFeature as ReturnType<typeof turf.point>, bufferedLine);
+          } else {
+            try {
+              intersects = turf.booleanIntersects(turfFeature, bufferedLine);
+            } catch {
+              const centroid = turf.centroid(turfFeature);
+              intersects = turf.booleanPointInPolygon(centroid, bufferedLine);
+            }
+          }
+          
+          if (intersects) {
+            return mode === "inside";
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      return mode === "outside";
+    } catch (e) {
+      return mode === "outside";
+    }
+  }
+
   function isFeatureInBoundary(
     feature: { geometry: { type: string; coordinates: any } },
     polygonFeatures: { geometry: { type: string; coordinates: any }; properties: Record<string, unknown> }[],
@@ -1307,11 +1373,20 @@ export async function registerRoutes(
         boundaryLayerId,
         boundaryFilters = [],
         boundaryMode = "none",
+        boundaryType = "polygon",
+        bufferDistanceMeters = 10,
         maxDistanceMeters = 15
       } = req.body;
 
       if (!sourceLayerId || !targetLayerId) {
         return res.status(400).json({ message: "sourceLayerId and targetLayerId are required" });
+      }
+
+      if (boundaryType === "line" && boundaryMode !== "none" && boundaryLayerId) {
+        const bufferNum = Number(bufferDistanceMeters);
+        if (isNaN(bufferNum) || bufferNum <= 0) {
+          return res.status(400).json({ message: "bufferDistanceMeters must be a positive number for line constraints" });
+        }
       }
 
       const sourceLayer = await storage.getEditableLayer(sourceLayerId);
@@ -1358,13 +1433,23 @@ export async function registerRoutes(
       }
 
       if (boundaryFeatures.length > 0 && (boundaryMode === "inside" || boundaryMode === "outside")) {
-        sourceFeatures = sourceFeatures.filter(feature => {
-          return isFeatureInBoundary(feature, boundaryFeatures, boundaryMode as "inside" | "outside");
-        });
+        if (boundaryType === "line") {
+          sourceFeatures = sourceFeatures.filter(feature => {
+            return isFeatureNearLines(feature, boundaryFeatures, bufferDistanceMeters, boundaryMode as "inside" | "outside");
+          });
 
-        targetFeatures = targetFeatures.filter(feature => {
-          return isFeatureInBoundary(feature, boundaryFeatures, boundaryMode as "inside" | "outside");
-        });
+          targetFeatures = targetFeatures.filter(feature => {
+            return isFeatureNearLines(feature, boundaryFeatures, bufferDistanceMeters, boundaryMode as "inside" | "outside");
+          });
+        } else {
+          sourceFeatures = sourceFeatures.filter(feature => {
+            return isFeatureInBoundary(feature, boundaryFeatures, boundaryMode as "inside" | "outside");
+          });
+
+          targetFeatures = targetFeatures.filter(feature => {
+            return isFeatureInBoundary(feature, boundaryFeatures, boundaryMode as "inside" | "outside");
+          });
+        }
       }
 
       if (sourceFeatures.length === 0) {
@@ -1553,7 +1638,13 @@ export async function registerRoutes(
       
       if (boundaryLayer && boundaryMode !== "none") {
         metaSheet.addRow({ param: "Ограничивающий слой", value: boundaryLayer.name });
-        metaSheet.addRow({ param: "Режим ограничения", value: boundaryMode === "inside" ? "Внутри полигонов" : "Вне полигонов" });
+        metaSheet.addRow({ param: "Тип ограничения", value: boundaryType === "line" ? "Линейный" : "Полигональный" });
+        if (boundaryType === "line") {
+          metaSheet.addRow({ param: "Буферная зона (м)", value: bufferDistanceMeters });
+          metaSheet.addRow({ param: "Режим ограничения", value: boundaryMode === "inside" ? "Вблизи линий" : "Вдали от линий" });
+        } else {
+          metaSheet.addRow({ param: "Режим ограничения", value: boundaryMode === "inside" ? "Внутри полигонов" : "Вне полигонов" });
+        }
         metaSheet.addRow({ param: "Фильтры ограничивающего слоя", value: boundaryFilters.length > 0 ? boundaryFilters.map((f: FilterCondition) => `${f.attribute} ${f.operator} ${f.value}`).join("; ") : "Без фильтров" });
       }
       
