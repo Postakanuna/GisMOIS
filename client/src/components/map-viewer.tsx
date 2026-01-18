@@ -1798,10 +1798,13 @@ export function MapViewer({
     if (selectedMapFeatures.length === 0) return;
     
     const featuresByLayer = new Map<number, number[]>();
-    selectedMapFeatures.forEach(({ layerId, featureIndex }) => {
-      const existing = featuresByLayer.get(layerId) || [];
-      existing.push(featureIndex);
-      featuresByLayer.set(layerId, existing);
+    selectedMapFeatures.forEach(({ layerId, feature }) => {
+      const realId = feature.get("featureId") as number | undefined;
+      if (realId) {
+        const existing = featuresByLayer.get(layerId) || [];
+        existing.push(realId);
+        featuresByLayer.set(layerId, existing);
+      }
     });
     
     featuresByLayer.forEach((featureIds, layerId) => {
