@@ -116,6 +116,14 @@ interface MapViewerProps {
   onDatasetFeatureUpdated?: (datasetId: number, featureId: number, geometry: { type: string; coordinates: unknown }) => void;
   // Trace route visualization
   traceRouteCoordinates?: [number, number][] | null;
+  // Snap settings
+  snapSettings?: {
+    enabled: boolean;
+    snapToVertices: boolean;
+    snapToEdges: boolean;
+    snapRadius: number;
+    snapLayerIds: number[];
+  };
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -540,6 +548,7 @@ export function MapViewer({
   onDatasetFeatureCreated,
   onDatasetFeatureUpdated,
   traceRouteCoordinates,
+  snapSettings,
 }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
@@ -600,6 +609,7 @@ export function MapViewer({
   const editableLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawInteractionRef = useRef<Draw | null>(null);
   const snapInteractionRef = useRef<Snap | null>(null);
+  const additionalSnapsRef = useRef<Snap[]>([]);
   const drawingModeRef = useRef<DrawingMode>(drawingMode || null);
   const editModeRef = useRef(editMode);
   const onFeatureCreatedRef = useRef(onFeatureCreated);
@@ -1832,6 +1842,11 @@ export function MapViewer({
       map.removeInteraction(snapInteractionRef.current);
       snapInteractionRef.current = null;
     }
+    // Clean up additional snaps
+    additionalSnapsRef.current.forEach((snap) => {
+      map.removeInteraction(snap);
+    });
+    additionalSnapsRef.current = [];
 
     // Only show editable layer when actively drawing (not during selection or modify)
     // This layer has hardcoded blue style and should not overlay user-styled layers
@@ -1840,10 +1855,59 @@ export function MapViewer({
 
     if (!editMode || !drawingMode) return;
 
-    // Add snap interaction
-    const snap = new Snap({ source: editableSource });
-    map.addInteraction(snap);
-    snapInteractionRef.current = snap;
+    // Add snap interaction only if snap is enabled
+    if (snapSettings?.enabled) {
+      // Collect sources from all visible editable layers
+      const snapSources: VectorSource[] = [];
+      
+      // Add current editable layer source
+      snapSources.push(editableSource);
+      
+      // Add sources from all editable layers (from allEditableLayersRef)
+      allEditableLayersRef.current.forEach((layerRef) => {
+        const layer = layerRef as VectorLayer<VectorSource>;
+        const source = layer.getSource();
+        if (source && source !== editableSource && layer.getVisible()) {
+          snapSources.push(source);
+        }
+      });
+      
+      // Add sources from scene datasets
+      sceneDatasetLayersRef.current.forEach((layer) => {
+        const source = layer.getSource();
+        if (source && layer.getVisible()) {
+          snapSources.push(source);
+        }
+      });
+      
+      // Create snap interaction for each source
+      // Note: OpenLayers Snap takes single source, so we create one for the primary
+      // and can add more snaps for other layers
+      const snap = new Snap({
+        source: editableSource,
+        pixelTolerance: snapSettings.snapRadius,
+        vertex: snapSettings.snapToVertices,
+        edge: snapSettings.snapToEdges,
+      });
+      map.addInteraction(snap);
+      snapInteractionRef.current = snap;
+      
+      // Add additional snaps for other sources
+      const additionalSnaps: Snap[] = [];
+      snapSources.forEach((source) => {
+        if (source !== editableSource) {
+          const additionalSnap = new Snap({
+            source,
+            pixelTolerance: snapSettings.snapRadius,
+            vertex: snapSettings.snapToVertices,
+            edge: snapSettings.snapToEdges,
+          });
+          map.addInteraction(additionalSnap);
+          additionalSnaps.push(additionalSnap);
+        }
+      });
+      additionalSnapsRef.current = additionalSnaps;
+    }
 
     // Handle drawing modes
     if (drawingMode === "point" || drawingMode === "line" || drawingMode === "polygon") {
@@ -1897,8 +1961,13 @@ export function MapViewer({
         map.removeInteraction(snapInteractionRef.current);
         snapInteractionRef.current = null;
       }
+      // Clean up additional snaps on unmount
+      additionalSnapsRef.current.forEach((snap) => {
+        map.removeInteraction(snap);
+      });
+      additionalSnapsRef.current = [];
     };
-  }, [editMode, drawingMode]);
+  }, [editMode, drawingMode, snapSettings?.enabled, snapSettings?.snapRadius, snapSettings?.snapToVertices, snapSettings?.snapToEdges]);
 
   // Sync editable features to the map layer
   useEffect(() => {

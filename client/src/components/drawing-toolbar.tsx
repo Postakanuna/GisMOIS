@@ -44,6 +44,11 @@ interface DrawingToolbarProps {
   onToggleAttributeTable?: () => void;
   featureCount?: number;
   onTraceRoute?: () => void;
+  // Snap props
+  snapSettings?: SnapSettings;
+  onUpdateSnapSettings?: (updates: Partial<SnapSettings>) => void;
+  onToggleSnap?: () => void;
+  snapLayers?: { id: number; name: string; visible: boolean }[];
 }
 
 const ALL_TOOL_BUTTONS: { mode: DrawingMode; icon: typeof MousePointer2; label: string; tooltip: string; geometryType?: string }[] = [
@@ -74,6 +79,10 @@ export function DrawingToolbar({
   onToggleAttributeTable,
   featureCount = 0,
   onTraceRoute,
+  snapSettings,
+  onUpdateSnapSettings,
+  onToggleSnap,
+  snapLayers = [],
 }: DrawingToolbarProps) {
   const isDrawingMode = mode === "point" || mode === "line" || mode === "polygon";
   const canDraw = activeLayer !== null;
@@ -134,6 +143,16 @@ export function DrawingToolbar({
                   </TooltipTrigger>
                   <TooltipContent>Таблица атрибутов (T)</TooltipContent>
                 </Tooltip>
+              )}
+              
+              {/* Insert snap button after modify tool */}
+              {toolMode === "modify" && snapSettings && onToggleSnap && onUpdateSnapSettings && (
+                <SnapSettingsPopover
+                  snapSettings={snapSettings}
+                  onUpdateSettings={onUpdateSnapSettings}
+                  onToggleSnap={onToggleSnap}
+                  availableLayers={snapLayers}
+                />
               )}
             </span>
           );

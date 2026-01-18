@@ -499,6 +499,21 @@ export default function Home() {
                 onToggleAttributeTable={() => setShowAttributeTable(prev => !prev)}
                 featureCount={drawing.features.length}
                 onTraceRoute={handleOpenTraceDialog}
+                snapSettings={drawing.snapSettings}
+                onUpdateSnapSettings={drawing.updateSnapSettings}
+                onToggleSnap={drawing.toggleSnap}
+                snapLayers={[
+                  ...drawing.editableLayers.map(l => ({
+                    id: l.id,
+                    name: l.name,
+                    visible: l.visible ?? true,
+                  })),
+                  ...zuluConnection.layers.filter(l => l.visible).map(l => ({
+                    id: parseInt(l.id) || 0,
+                    name: l.name || l.id,
+                    visible: l.visible,
+                  })),
+                ]}
               />
             )}
             
@@ -531,6 +546,7 @@ export default function Home() {
               activeSceneDataset={activeSceneDataset}
               onDatasetFeatureUpdated={handleDatasetFeatureUpdated}
               traceRouteCoordinates={traceRouteCoords}
+              snapSettings={drawing.snapSettings}
             />
 
             {/* Attribute Table Modal */}
