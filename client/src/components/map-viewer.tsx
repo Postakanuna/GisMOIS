@@ -1843,6 +1843,15 @@ export function MapViewer({
 
   // Manage drawing interactions
   useEffect(() => {
+    console.log("[SNAP DEBUG] Effect triggered", {
+      hasMap: !!mapRef.current,
+      hasEditableLayer: !!editableLayerRef.current,
+      editMode,
+      drawingMode,
+      snapEnabled: snapSettings?.enabled,
+      snapSettings,
+    });
+    
     if (!mapRef.current || !editableLayerRef.current) return;
     const map = mapRef.current;
     const editableSource = editableLayerRef.current.getSource();
@@ -1877,17 +1886,28 @@ export function MapViewer({
       const snapSources: VectorSource[] = [];
       const useAllLayers = !snapSettings.snapLayerIds || snapSettings.snapLayerIds.length === 0;
       
-      // Add current editable layer source (always snap to current layer)
-      snapSources.push(editableSource);
+      console.log("[SNAP] Setting up snap interactions", {
+        enabled: snapSettings.enabled,
+        drawingMode,
+        useAllLayers,
+        snapLayerIds: snapSettings.snapLayerIds,
+        allEditableLayersCount: allEditableLayersRef.current.size,
+        sceneDatasetLayersCount: sceneDatasetLayersRef.current.size,
+      });
       
       // Add sources from all editable layers (from allEditableLayersRef)
       allEditableLayersRef.current.forEach((layerRef, layerId) => {
         const layer = layerRef as VectorLayer<VectorSource>;
         const source = layer.getSource();
-        if (source && source !== editableSource && layer.getVisible()) {
+        const featureCount = source?.getFeatures().length || 0;
+        const isVisible = layer.getVisible();
+        console.log(`[SNAP] Layer ${layerId}: visible=${isVisible}, features=${featureCount}`);
+        
+        if (source && isVisible) {
           // Check if layer should be included based on snapLayerIds
           if (useAllLayers || snapSettings.snapLayerIds.includes(layerId)) {
             snapSources.push(source);
+            console.log(`[SNAP] Added layer ${layerId} to snap sources`);
           }
         }
       });
@@ -1895,17 +1915,24 @@ export function MapViewer({
       // Add sources from scene datasets
       sceneDatasetLayersRef.current.forEach((layer, datasetId) => {
         const source = layer.getSource();
-        if (source && layer.getVisible()) {
+        const featureCount = source?.getFeatures().length || 0;
+        const isVisible = layer.getVisible();
+        console.log(`[SNAP] Dataset ${datasetId}: visible=${isVisible}, features=${featureCount}`);
+        
+        if (source && isVisible) {
           // Check if layer should be included based on snapLayerIds
           if (useAllLayers || snapSettings.snapLayerIds.includes(datasetId)) {
             snapSources.push(source);
+            console.log(`[SNAP] Added dataset ${datasetId} to snap sources`);
           }
         }
       });
       
+      console.log(`[SNAP] Total snap sources: ${snapSources.length}`);
+      
       // Create snap interactions for all collected sources
       const allSnaps: Snap[] = [];
-      snapSources.forEach((source) => {
+      snapSources.forEach((source, idx) => {
         const snap = new Snap({
           source,
           pixelTolerance: snapSettings.snapRadius,
@@ -1914,6 +1941,7 @@ export function MapViewer({
         });
         map.addInteraction(snap);
         allSnaps.push(snap);
+        console.log(`[SNAP] Created snap interaction ${idx + 1} with tolerance ${snapSettings.snapRadius}px, vertex=${snapSettings.snapToVertices}, edge=${snapSettings.snapToEdges}`);
       });
       
       // Store first snap in primary ref, rest in additional
