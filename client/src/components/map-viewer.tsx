@@ -1879,7 +1879,50 @@ export function MapViewer({
 
     if (!editMode) return;
 
-    // Add snap interaction only if snap is enabled and we're in any drawing/editing mode
+    // Handle drawing modes FIRST (snap must be added AFTER draw interaction)
+    if (drawingMode === "point" || drawingMode === "line" || drawingMode === "polygon") {
+      const olDrawType = drawingMode === "point" ? "Point" : drawingMode === "line" ? "LineString" : "Polygon";
+      
+      const draw = new Draw({
+        source: editableSource,
+        type: olDrawType,
+      });
+
+      draw.on("drawend", (evt: DrawEvent) => {
+        const feature = evt.feature;
+        const geom = feature.getGeometry();
+        if (!geom) return;
+
+        // Convert geometry to coordinates
+        const format = new GeoJSON();
+        const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
+          featureProjection: "EPSG:3857",
+          dataProjection: "EPSG:4326",
+        }));
+
+        // Get geometry type as our schema type
+        let geoType: GeometryType = "Point";
+        if (drawingMode === "line") geoType = "LineString";
+        else if (drawingMode === "polygon") geoType = "Polygon";
+
+        // Call the callback to create the feature in the database
+        if (onFeatureCreatedRef.current && activeEditableLayerRef.current) {
+          onFeatureCreatedRef.current(geoType, geoJsonGeom.coordinates, {});
+        }
+
+        // Remove the feature from the source (it will be re-added from the database)
+        setTimeout(() => {
+          editableSource.removeFeature(feature);
+        }, 100);
+      });
+
+      map.addInteraction(draw);
+      drawInteractionRef.current = draw;
+    }
+    // Note: "modify" mode is handled in a separate useEffect with editableLayerModifyRef
+    // that works with the actual layer from allEditableLayersRef
+
+    // Add snap interaction AFTER draw interaction (important for OpenLayers!)
     // Snapping should work for: drawing (point/line/polygon), modify, and select modes
     if (snapSettings?.enabled && drawingMode) {
       // Collect sources from all visible editable layers, respecting snapLayerIds filter
@@ -1950,49 +1993,6 @@ export function MapViewer({
         additionalSnapsRef.current = allSnaps.slice(1);
       }
     }
-
-    // Handle drawing modes
-    if (drawingMode === "point" || drawingMode === "line" || drawingMode === "polygon") {
-      const olDrawType = drawingMode === "point" ? "Point" : drawingMode === "line" ? "LineString" : "Polygon";
-      
-      const draw = new Draw({
-        source: editableSource,
-        type: olDrawType,
-      });
-
-      draw.on("drawend", (evt: DrawEvent) => {
-        const feature = evt.feature;
-        const geom = feature.getGeometry();
-        if (!geom) return;
-
-        // Convert geometry to coordinates
-        const format = new GeoJSON();
-        const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
-          featureProjection: "EPSG:3857",
-          dataProjection: "EPSG:4326",
-        }));
-
-        // Get geometry type as our schema type
-        let geoType: GeometryType = "Point";
-        if (drawingMode === "line") geoType = "LineString";
-        else if (drawingMode === "polygon") geoType = "Polygon";
-
-        // Call the callback to create the feature in the database
-        if (onFeatureCreatedRef.current && activeEditableLayerRef.current) {
-          onFeatureCreatedRef.current(geoType, geoJsonGeom.coordinates, {});
-        }
-
-        // Remove the feature from the source (it will be re-added from the database)
-        setTimeout(() => {
-          editableSource.removeFeature(feature);
-        }, 100);
-      });
-
-      map.addInteraction(draw);
-      drawInteractionRef.current = draw;
-    }
-    // Note: "modify" mode is handled in a separate useEffect with editableLayerModifyRef
-    // that works with the actual layer from allEditableLayersRef
 
     return () => {
       if (drawInteractionRef.current) {
