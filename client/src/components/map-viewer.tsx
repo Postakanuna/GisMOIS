@@ -701,6 +701,21 @@ export function MapViewer({
     onDatasetFeatureCreatedRef.current = onDatasetFeatureCreated;
   }, [onDatasetFeatureCreated]);
 
+  // Derived key for visible layers (used as snap dependency to rebuild snaps when layers change)
+  const visibleLayersKey = useMemo(() => {
+    const visibleEditableIds = (allEditableLayers || [])
+      .filter(l => l.visible)
+      .map(l => l.id)
+      .sort()
+      .join(',');
+    const visibleSceneDatasetIds = sceneDatasets
+      .filter(sd => sd.isVisible === 1)
+      .map(sd => sd.datasetId)
+      .sort()
+      .join(',');
+    return `${visibleEditableIds}|${visibleSceneDatasetIds}`;
+  }, [allEditableLayers, sceneDatasets]);
+
   // Sync refs with state to avoid stale closures in OL event handlers
   useEffect(() => {
     selectedMapFeaturesRef.current = selectedMapFeatures;
@@ -1853,60 +1868,59 @@ export function MapViewer({
     const isActivelyDrawing = editMode && (drawingMode === "point" || drawingMode === "line" || drawingMode === "polygon");
     editableLayerRef.current.setVisible(isActivelyDrawing);
 
-    if (!editMode || !drawingMode) return;
+    if (!editMode) return;
 
-    // Add snap interaction only if snap is enabled
-    if (snapSettings?.enabled) {
-      // Collect sources from all visible editable layers
+    // Add snap interaction only if snap is enabled and we're in any drawing/editing mode
+    // Snapping should work for: drawing (point/line/polygon), modify, and select modes
+    if (snapSettings?.enabled && drawingMode) {
+      // Collect sources from all visible editable layers, respecting snapLayerIds filter
       const snapSources: VectorSource[] = [];
+      const useAllLayers = !snapSettings.snapLayerIds || snapSettings.snapLayerIds.length === 0;
       
-      // Add current editable layer source
+      // Add current editable layer source (always snap to current layer)
       snapSources.push(editableSource);
       
       // Add sources from all editable layers (from allEditableLayersRef)
-      allEditableLayersRef.current.forEach((layerRef) => {
+      allEditableLayersRef.current.forEach((layerRef, layerId) => {
         const layer = layerRef as VectorLayer<VectorSource>;
         const source = layer.getSource();
         if (source && source !== editableSource && layer.getVisible()) {
-          snapSources.push(source);
+          // Check if layer should be included based on snapLayerIds
+          if (useAllLayers || snapSettings.snapLayerIds.includes(layerId)) {
+            snapSources.push(source);
+          }
         }
       });
       
       // Add sources from scene datasets
-      sceneDatasetLayersRef.current.forEach((layer) => {
+      sceneDatasetLayersRef.current.forEach((layer, datasetId) => {
         const source = layer.getSource();
         if (source && layer.getVisible()) {
-          snapSources.push(source);
+          // Check if layer should be included based on snapLayerIds
+          if (useAllLayers || snapSettings.snapLayerIds.includes(datasetId)) {
+            snapSources.push(source);
+          }
         }
       });
       
-      // Create snap interaction for each source
-      // Note: OpenLayers Snap takes single source, so we create one for the primary
-      // and can add more snaps for other layers
-      const snap = new Snap({
-        source: editableSource,
-        pixelTolerance: snapSettings.snapRadius,
-        vertex: snapSettings.snapToVertices,
-        edge: snapSettings.snapToEdges,
-      });
-      map.addInteraction(snap);
-      snapInteractionRef.current = snap;
-      
-      // Add additional snaps for other sources
-      const additionalSnaps: Snap[] = [];
+      // Create snap interactions for all collected sources
+      const allSnaps: Snap[] = [];
       snapSources.forEach((source) => {
-        if (source !== editableSource) {
-          const additionalSnap = new Snap({
-            source,
-            pixelTolerance: snapSettings.snapRadius,
-            vertex: snapSettings.snapToVertices,
-            edge: snapSettings.snapToEdges,
-          });
-          map.addInteraction(additionalSnap);
-          additionalSnaps.push(additionalSnap);
-        }
+        const snap = new Snap({
+          source,
+          pixelTolerance: snapSettings.snapRadius,
+          vertex: snapSettings.snapToVertices,
+          edge: snapSettings.snapToEdges,
+        });
+        map.addInteraction(snap);
+        allSnaps.push(snap);
       });
-      additionalSnapsRef.current = additionalSnaps;
+      
+      // Store first snap in primary ref, rest in additional
+      if (allSnaps.length > 0) {
+        snapInteractionRef.current = allSnaps[0];
+        additionalSnapsRef.current = allSnaps.slice(1);
+      }
     }
 
     // Handle drawing modes
@@ -1967,7 +1981,7 @@ export function MapViewer({
       });
       additionalSnapsRef.current = [];
     };
-  }, [editMode, drawingMode, snapSettings?.enabled, snapSettings?.snapRadius, snapSettings?.snapToVertices, snapSettings?.snapToEdges]);
+  }, [editMode, drawingMode, snapSettings?.enabled, snapSettings?.snapRadius, snapSettings?.snapToVertices, snapSettings?.snapToEdges, snapSettings?.snapLayerIds, visibleLayersKey]);
 
   // Sync editable features to the map layer
   useEffect(() => {
@@ -2544,7 +2558,7 @@ export function MapViewer({
         onToggleTicketMode={isConnected ? onToggleTicketMode : undefined}
       />
 
-      <CoordinateDisplay coordinates={mouseCoordinates} zoom={zoom} />
+      <CoordinateDisplay coordinates={mouseCoordinates} zoom={zoom} snapEnabled={editMode && snapSettings?.enabled} />
 
       <FeatureInfoPanel
         feature={selectedFeature}
