@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useToast } from "@/hooks/use-toast";
 import { useScene } from "@/contexts/scene-context";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   X,
   GripVertical,
@@ -85,6 +86,7 @@ const MIN_HEIGHT = 300;
 export function DataManager({ onClose }: DataManagerProps) {
   const { toast } = useToast();
   const { currentSceneId, canEdit } = useScene();
+  const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [size, setSize] = useState({ width: 700, height: 450 });
@@ -189,22 +191,24 @@ export function DataManager({ onClose }: DataManagerProps) {
   };
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isMobile) return;
     if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
     setIsDragging(true);
     dragOffset.current = {
       x: e.clientX - position.x,
       y: e.clientY - position.y,
     };
-  }, [position]);
+  }, [position, isMobile]);
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isMobile) return;
     e.stopPropagation();
     setIsResizing(true);
     dragOffset.current = {
       x: e.clientX,
       y: e.clientY,
     };
-  }, []);
+  }, [isMobile]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -363,31 +367,38 @@ export function DataManager({ onClose }: DataManagerProps) {
     }
   };
 
-  return (
-    <div
-      ref={containerRef}
-      className="fixed bg-card border rounded-lg shadow-lg flex flex-col z-50"
-      style={{
+  const containerClasses = isMobile
+    ? "fixed inset-0 bg-card flex flex-col z-50"
+    : "fixed bg-card border rounded-lg shadow-lg flex flex-col z-50";
+
+  const containerStyle = isMobile
+    ? {}
+    : {
         left: position.x,
         top: position.y,
         width: size.width,
         height: size.height,
-      }}
+      };
+
+  return (
+    <div
+      ref={containerRef}
+      className={containerClasses}
+      style={containerStyle}
       data-testid="data-manager-window"
     >
       <div
-        className="flex items-center justify-between px-3 py-2 border-b bg-muted/50 cursor-move rounded-t-lg"
+        className={`flex items-center justify-between px-3 py-2 border-b bg-muted/50 ${isMobile ? '' : 'cursor-move rounded-t-lg'}`}
         onMouseDown={handleMouseDown}
       >
         <div className="flex items-center gap-2">
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
+          {!isMobile && <GripVertical className="h-4 w-4 text-muted-foreground" />}
           <Database className="h-4 w-4" />
           <span className="font-medium text-sm">Менеджер данных</span>
         </div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6"
           onClick={onClose}
           data-no-drag
           data-testid="button-close-data-manager"
@@ -670,11 +681,13 @@ export function DataManager({ onClose }: DataManagerProps) {
         </ScrollArea>
       </div>
 
-      <div
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-        onMouseDown={handleResizeMouseDown}
-        data-testid="resize-handle"
-      />
+      {!isMobile && (
+        <div
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+          onMouseDown={handleResizeMouseDown}
+          data-testid="resize-handle"
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { X, GripHorizontal, Minimize2, Maximize2 } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface DraggableModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export function DraggableModal({
   minWidth = 400,
   minHeight = 200,
 }: DraggableModalProps) {
+  const isMobile = useIsMobile();
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [size, setSize] = useState({ width: defaultWidth, height: defaultHeight });
   const [isDragging, setIsDragging] = useState(false);
@@ -38,28 +40,27 @@ export function DraggableModal({
   const dragOffset = useRef({ x: 0, y: 0 });
   const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
 
-  // Center on first open
   useEffect(() => {
-    if (isOpen && !isMaximized) {
+    if (isOpen && !isMaximized && !isMobile) {
       const x = Math.max(50, (window.innerWidth - defaultWidth) / 2);
       const y = Math.max(50, (window.innerHeight - defaultHeight) / 2);
       setPosition({ x, y });
       setSize({ width: defaultWidth, height: defaultHeight });
     }
-  }, [isOpen, defaultWidth, defaultHeight, isMaximized]);
+  }, [isOpen, defaultWidth, defaultHeight, isMaximized, isMobile]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (isMaximized) return;
+    if (isMaximized || isMobile) return;
     e.preventDefault();
     setIsDragging(true);
     dragOffset.current = {
       x: e.clientX - position.x,
       y: e.clientY - position.y,
     };
-  }, [position, isMaximized]);
+  }, [position, isMaximized, isMobile]);
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, direction: string) => {
-    if (isMaximized) return;
+    if (isMaximized || isMobile) return;
     e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
@@ -72,7 +73,7 @@ export function DraggableModal({
       posX: position.x,
       posY: position.y,
     };
-  }, [size, position, isMaximized]);
+  }, [size, position, isMaximized, isMobile]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -134,6 +135,7 @@ export function DraggableModal({
   }, [isDragging, isResizing, resizeDirection, minWidth, minHeight]);
 
   const toggleMaximize = useCallback(() => {
+    if (isMobile) return;
     if (isMaximized) {
       setPosition(preMaximizeState.position);
       setSize(preMaximizeState.size);
@@ -144,7 +146,7 @@ export function DraggableModal({
       setSize({ width: window.innerWidth - 20, height: window.innerHeight - 20 });
       setIsMaximized(true);
     }
-  }, [isMaximized, position, size, preMaximizeState]);
+  }, [isMaximized, position, size, preMaximizeState, isMobile]);
 
   const handleClose = useCallback(() => {
     if (onBeforeClose) {
@@ -157,6 +159,31 @@ export function DraggableModal({
   }, [onBeforeClose, onClose]);
 
   if (!isOpen) return null;
+
+  if (isMobile) {
+    return (
+      <div 
+        className="fixed inset-0 z-50 bg-background flex flex-col"
+        data-testid="draggable-modal-mobile"
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50 shrink-0">
+          <CardTitle className="text-sm font-medium truncate pr-2">{title}</CardTitle>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            onClick={handleClose}
+            data-testid="button-close-modal"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-auto">
+          {children}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -174,7 +201,6 @@ export function DraggableModal({
         }}
         data-testid="draggable-modal"
       >
-        {/* Header - draggable area */}
         <CardHeader 
           className="py-2 px-3 flex flex-row items-center justify-between gap-2 cursor-move border-b shrink-0"
           onMouseDown={handleMouseDown}
@@ -205,15 +231,12 @@ export function DraggableModal({
           </div>
         </CardHeader>
         
-        {/* Content */}
         <CardContent className="p-0 flex-1 overflow-hidden">
           {children}
         </CardContent>
 
-        {/* Resize handles */}
         {!isMaximized && (
           <>
-            {/* Corners */}
             <div
               className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
               onMouseDown={(e) => handleResizeMouseDown(e, "se")}
@@ -230,7 +253,6 @@ export function DraggableModal({
               className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize"
               onMouseDown={(e) => handleResizeMouseDown(e, "nw")}
             />
-            {/* Edges */}
             <div
               className="absolute top-4 bottom-4 right-0 w-1 cursor-e-resize"
               onMouseDown={(e) => handleResizeMouseDown(e, "e")}
