@@ -1869,6 +1869,27 @@ export async function registerRoutes(
     }
   });
 
+  // Delete feature by layerId and featureId (alternative endpoint for map-viewer)
+  app.delete("/api/editable-layers/:layerId/features/:featureId", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const featureId = parseInt(req.params.featureId);
+      
+      if (isNaN(layerId) || isNaN(featureId)) {
+        return res.status(400).json({ message: "Invalid layer or feature ID" });
+      }
+      
+      const deleted = await storage.deleteDrawnFeature(featureId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Feature not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting feature from layer:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ============================================
   // LAYER SCHEMA API (Attribute definitions for layers)
   // ============================================
