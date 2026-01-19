@@ -572,7 +572,7 @@ export function DataManager({ onClose }: DataManagerProps) {
                         <Palette className="h-4 w-4" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-56 p-3" align="end">
+                    <PopoverContent className="w-72 p-3" align="end">
                       <div className="space-y-3">
                         <div>
                           <p className="text-xs font-medium mb-2">Цвет</p>

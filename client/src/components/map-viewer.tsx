@@ -332,6 +332,16 @@ function createSelectionGlowStyle(
     // Create shape based on pointStyle - use same shape as the original feature
     let image: Circle | RegularShape;
     
+    // For heat network icons, use a larger circular glow
+    if (isHeatNetworkStyle(pointStyle)) {
+      image = new Circle({
+        radius: pulseRadius * 1.3,
+        fill: new Fill({ color: 'transparent' }),
+        stroke: new Stroke({ color: glowColor, width: 4 }),
+      });
+      return new Style({ image });
+    }
+    
     switch (pointStyle) {
       case "triangle":
         image = new RegularShape({
