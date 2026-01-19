@@ -2,246 +2,93 @@
 
 ## Overview
 
-ГИС МО "Инженерные сети" — веб-приложение для управления инженерной инфраструктурой с мультисценовой архитектурой. Система позволяет визуализировать данные карт через WMS/WFS API, управлять слоями, отображать информацию об объектах и загружать shapefile-слои. Интерфейс построен по принципу "карта в центре внимания", где интерактивная карта занимает основное пространство, а управляющие элементы расположены в боковой панели.
+ГИС МО "Инженерные сети" — это веб-приложение для управления инженерной инфраструктурой, использующее мультисценовую архитектуру. Оно предназначено для визуализации картографических данных через WMS/WFS API, управления слоями, отображения информации об объектах и загрузки shapefile-слоев. Приложение ставит карту в центр внимания, предоставляя интерактивное картографическое пространство с управляющими элементами на боковой панели. Проект нацелен на создание удобного и мощного инструмента для работы с геопространственными данными, поддерживающего стандарты ГОСТ для иконок и стилей тепловых сетей.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
 
-## Recent Changes (January 2026)
-
-- Added multi-scene architecture: users can create separate project scenes
-- Implemented scene selection page after login
-- Added Data Manager (draggable modal) for managing datasets
-- Shapefile upload with CP1251 encoding support through Data Manager
-- Role-based access control (owner/editor/viewer) for scenes
-- **Unified editable layers architecture**: imported shapefiles and hand-drawn layers are unified into single editable layer system
-- Editable layers are scene-scoped (sceneId field) for multi-scene support
-- Import creates editable_layer + drawn_features instead of deprecated dataset approach
-- CRUD API for layer features (POST/PATCH/DELETE endpoints)
-- **Removed facility-specific tracing** (building/boilerhouse/waterintake entities removed)
-- **Added universal object-to-object tracing**: `/api/trace-route` endpoint finds nearest object in target layer and builds OSRM route
-- **Large file upload optimization**: 
-  - Hybrid upload: files >10MB use server-side disk storage, smaller files use client-side parsing
-  - Multer disk storage with temp file cleanup
-  - File extension validation (.zip, .shp)
-  - Chunked batch inserts (1000 features per batch) to avoid memory issues
-- **Viewport-based feature loading (optimized January 2026)**:
-  - `/api/editable-layers/:id/features/viewport` with bbox filtering, zoom-based simplification, and feature limit (5000)
-  - `/api/datasets/:id/features/viewport` - same optimization for scene datasets
-  - Frontend uses debounced `moveend` events (300ms) to trigger viewport-based refetches
-  - React Query caching (gcTime: 2 min, staleTime: 30s) with `placeholderData` for seamless viewport transitions
-  - Loading indicator during feature fetch, warning when 5000 feature limit reached
-- **Point layer clustering**: 
-  - Automatic clustering for Point layers with 50+ features at zoom < 14
-  - OpenLayers Cluster source with 40px distance threshold
-  - Dynamic cluster style showing feature count with logarithmic radius scaling
-  - Automatic switching between clustered/non-clustered modes on zoom change
-- **Geometry simplification**: Zoom-based LOD with polygon ring closure preservation
-- **Database optimization**: Index on drawn_features(layer_id) for query performance
-- **External API for integrations (January 2026)**:
-  - API key management with Bearer token authentication (gis_* prefix)
-  - `/api/external/scenes` - get available scenes
-  - `/api/external/scenes/:id/layers` - get Point layers for a scene
-  - `/api/external/points` - create point features (for Telegram bot GPS photos)
-  - Permission-based access: create_point, read_scenes, read_layers
-  - UI for API key management in Settings page
-  - Tokens hashed with bcrypt, shown only once at creation
-- **ГОСТ-совместимые иконки для тепловых сетей (January 2026)**:
-  - Расширенная палитра с двумя секциями: "Базовые формы" и "Тепловые сети (ГОСТ)"
-  - 8 новых SVG-иконок для объектов теплосети:
-    - Теплоисточник (heat-source) — котёл с пламенем
-    - ЦТП (ctp) — центральный тепловой пункт
-    - ИТП (itp) — индивидуальный тепловой пункт  
-    - Задвижка (valve) — классический символ "бабочка"
-    - Тепловая камера (heat-chamber) — квадрат с крестом
-    - Насосная станция (pump-station) — круг с треугольником
-    - Компенсатор (compensator) — зигзаг
-    - Опора (support) — треугольная опора
-  - Иконки динамически окрашиваются в цвет слоя
-  - Иконки отображаются на карте через OpenLayers Icon style
-  - Базируется на стандартах: ГОСТ 21.705-2016, ГОСТ 21.403-80, ГОСТ 2.785-70
-
 ## System Architecture
 
 ### Frontend Architecture
 
-**Framework**: React 18 with TypeScript, built using Vite
-- Single-page application with client-side routing via Wouter
-- State management using React Query for server state and React hooks for local state
-- Component library: shadcn/ui built on Radix UI primitives
-- Styling: Tailwind CSS with CSS variables for theming (light/dark mode support)
-- Design system follows Material Design 3 principles for data-heavy productivity applications
-- Scene context (SceneContext) for managing current scene state
+**Framework**: React 18 с TypeScript, Vite
+- Одностраничное приложение с маршрутизацией Wouter.
+- Управление состоянием: React Query для серверного состояния, React Hooks для локального.
+- Библиотека компонентов: shadcn/ui на базе Radix UI.
+- Стилизация: Tailwind CSS с CSS-переменными для тем (светлая/тёмная).
+- Дизайн: Принципы Material Design 3 для приложений с интенсивным использованием данных.
+- Контекст сцены (SceneContext) для управления состоянием текущей сцены.
 
 **Map Rendering**: OpenLayers (ol) library
-- Supports WMS and WFS layer types from ZuluServer
-- OpenStreetMap as the default base layer
-- Interactive features: zoom controls, coordinate display, feature info on click
-- Scene datasets rendering with GeoJSON format
+- Поддержка слоев WMS и WFS от ZuluServer.
+- OpenStreetMap в качестве базового слоя.
+- Интерактивные функции: управление зумом, отображение координат, информация об объектах по клику.
+- Рендеринг наборов данных сцен в формате GeoJSON.
+- Оптимизированная загрузка объектов по области просмотра (viewport-based feature loading) с упрощением геометрии и кластеризацией точечных слоев.
 
 **Key Frontend Components**:
-- `MapViewer`: Core map component using OpenLayers, renders scene datasets
-- `ConnectionForm`: Server connection configuration
-- `LayerPanel`: Layer visibility and opacity controls, scene datasets section
-- `FeatureInfoPanel`: Display clicked feature attributes
-- `DataManager`: Draggable modal for dataset management (ArcGIS/QGIS style)
-- `ScenesPage`: Scene selection and management after login
-- Sidebar layout with responsive mobile sheet variant
+- `MapViewer`: Основной компонент карты.
+- `DataManager`: Модальное окно для управления наборами данных.
+- `ScenesPage`: Выбор и управление сценами после входа.
 
 ### Backend Architecture
 
-**Runtime**: Node.js with Express
-- TypeScript compiled with tsx for development, esbuild for production
-- Single entry point at `server/index.ts`
-- Proxy endpoints for ZuluServer API calls (avoids CORS issues)
+**Runtime**: Node.js с Express
+- TypeScript, компилируется с tsx (разработка) и esbuild (production).
 
 **API Design**:
-- REST endpoints prefixed with `/api/`
-- Scene endpoints: `/api/scenes`, `/api/scenes/:id/datasets`, `/api/scenes/:id/members`
-- Dataset endpoints: `/api/datasets`, `/api/datasets/:id/features`, `/api/datasets/import`
-- `POST /api/zulu/capabilities`: Fetches WMS capabilities from ZuluServer
-- `POST /api/trace-route`: Universal tracing - finds nearest feature in target layer and builds OSRM route
+- REST API с префиксом `/api/`.
+- Поддержка мультисценовой архитектуры с ролевым доступом (владелец/редактор/просмотрщик).
+- Универсальная трассировка объектов (`/api/trace-route`) для построения маршрутов OSRM.
+- Оптимизированная загрузка больших файлов shapefile с поддержкой CP1251 и пакетными вставками.
+- Внешнее API с управлением ключами для интеграций (например, создание точечных объектов из Telegram бота).
+- ГОСТ-совместимые иконки и стили линий для тепловых сетей.
 
-**Storage**: PostgreSQL with Drizzle ORM
-- User schema, scenes, scene_members, datasets, scene_datasets, dataset_features
-- Schema validation using Zod with drizzle-zod integration
-- Role-based access control: owner, editor, viewer
+**Storage**: PostgreSQL с Drizzle ORM
+- Схемы для пользователей, сцен, участников сцен, наборов данных, API ключей.
+- Валидация схем с использованием Zod.
+- Индексация для оптимизации запросов.
 
 ### Build System
 
-**Development**: Vite dev server with HMR, proxied through Express
-**Production**: 
-- Frontend built with Vite to `dist/public`
-- Backend bundled with esbuild to `dist/index.cjs`
-- Selected dependencies bundled to reduce cold start syscalls
+**Development**: Vite dev server с HMR, проксируется через Express.
+**Production**: Frontend собирается Vite, Backend — esbuild.
 
 ### Project Structure
 
-```
-client/           # Frontend React application
-  src/
-    components/   # UI components including shadcn/ui, DataManager
-    contexts/     # React contexts (SceneContext)
-    hooks/        # Custom React hooks
-    pages/        # Route page components (home, scenes)
-    lib/          # Utilities and query client
-server/           # Express backend
-shared/           # Shared types and schemas (Zod + Drizzle)
-migrations/       # Database migrations
-```
+- `client/`: React приложение.
+- `server/`: Express бэкенд.
+- `shared/`: Общие типы и схемы (Zod + Drizzle).
+- `migrations/`: Миграции базы данных.
 
-## Database Schema
+### Database Schema
 
-### Core Tables
-- `users`: User accounts with roles (admin, user)
-- `scenes`: Project scenes with name, description, owner
-- `scene_members`: Scene access control (role: owner, editor, viewer)
-- `datasets`: Uploaded shapefile datasets with geometry type, CRS, feature count
-- `scene_datasets`: Links datasets to scenes with styling (color, opacity, visibility)
-- `dataset_features`: Individual features with geometry (coordinates) and properties
-- `api_keys`: External API tokens for integrations (userId, tokenHash, sceneId, permissions[])
-
-## Развёртывание в локальной сети
-
-### Подключение к серверу карт
-
-Приложение поддерживает два типа подключения к серверу карт:
-
-**1. ZWS-подключение (рекомендуется)**
-- Быстрое подключение к МосОблГаз (is.arki.mosreg.ru)
-- Своё ZWS-подключение с настраиваемыми параметрами:
-  - URL сервера ZWS
-  - Список слоёв (через запятую)
-  - Логин/пароль (опционально)
-
-**2. WMS-подключение (стандартный ГИС-протокол)**
-- Хост и порт ZuluServer
-- Имя слоя (опционально — пустое = все слои)
-- Опция использования WFS
-
-### Создание первого администратора
-
-При развёртывании на новом сервере администратор НЕ создаётся автоматически.
-Для создания первого администратора выполните команду:
-
-```bash
-npx tsx scripts/init-admin.ts -- --username=admin --password=ВашПароль123
-```
-
-**Требования:**
-- Логин: минимум 3 символа
-- Пароль: минимум 6 символов
-
-**Безопасность:**
-- Команда работает только из терминала сервера
-- Команда работает только ОДИН раз (если админ уже есть — откажет)
-- Дополнительных администраторов создаёт первый админ через веб-интерфейс
-
-### Порядок развёртывания (ручной)
-
-1. Склонировать репозиторий
-2. Установить зависимости: `npm install`
-3. Настроить переменные окружения (DATABASE_URL, SESSION_SECRET)
-4. Создать таблицы в БД одним из способов:
-   - `npm run db:push` (через Drizzle ORM)
-   - Или выполнить SQL-скрипт: `psql -f migrations/init.sql`
-5. Создать администратора: `npx tsx scripts/init-admin.ts -- --username=admin --password=...`
-6. Запустить сервер: `npm run start` (production) или `npm run dev` (development)
-
-### Развёртывание через Docker
-
-**Быстрый старт с docker-compose:**
-
-```bash
-# 1. Создать файл переменных окружения
-echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
-
-# 2. Запустить приложение и базу данных (БД создаётся автоматически из migrations/init.sql)
-docker-compose up -d
-
-# 3. Создать первого администратора
-docker-compose exec app npx tsx scripts/init-admin.ts -- --username=admin --password=ВашПароль123
-```
-
-Приложение будет доступно по адресу: http://localhost:5000
-
-**Только сборка образа:**
-
-```bash
-docker build -t gis-mo-app .
-```
-
-**Переменные окружения для Docker:**
-
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| DATABASE_URL | Строка подключения к PostgreSQL | postgresql://user:pass@host:5432/db |
-| SESSION_SECRET | Секрет для сессий (32+ символов) | openssl rand -hex 32 |
-| NODE_ENV | Режим работы | production |
-| PORT | Порт приложения | 5000 |
+- `users`: Учетные записи пользователей.
+- `scenes`: Проектные сцены.
+- `scene_members`: Управление доступом к сценам.
+- `datasets`: Загруженные shapefile-наборы данных.
+- `scene_datasets`: Связь наборов данных со сценами и стилизация.
+- `dataset_features`: Отдельные объекты с геометрией и свойствами.
+- `api_keys`: Токены для внешних API с разрешениями.
 
 ## External Dependencies
 
 ### Third-Party Services
 
-**ZuluServer**: External GIS server providing WMS/WFS map services
-- Connection requires host, port, and layer name
-- Backend proxies requests to handle authentication and CORS
-- Supports GetCapabilities, GetMap (WMS), and GetFeatureInfo requests
+**ZuluServer**: Внешний ГИС-сервер, предоставляющий картографические сервисы WMS/WFS.
+- Бэкенд проксирует запросы для обхода CORS и аутентификации.
 
 ### Database
 
-**PostgreSQL**: Configured via Drizzle ORM
-- Connection string from `DATABASE_URL` environment variable
-- Migrations stored in `/migrations` directory
-- Schema defined in `shared/schema.ts`
+**PostgreSQL**: Настраивается через Drizzle ORM.
+- Строка подключения из переменной окружения `DATABASE_URL`.
 
 ### Key Libraries
 
-- **OpenLayers**: Interactive map rendering and GIS functionality
-- **React Query**: Server state management and caching
-- **Radix UI**: Accessible UI primitives for shadcn/ui components
-- **Zod**: Runtime type validation for API requests and schemas
-- **Drizzle ORM**: Type-safe database queries and schema management
-- **shpjs**: Shapefile parsing with encoding support
+- **OpenLayers**: Интерактивная отрисовка карт и ГИС-функциональность.
+- **React Query**: Управление состоянием сервера и кэширование.
+- **Radix UI**: Доступные UI-примитивы для shadcn/ui.
+- **Zod**: Валидация типов для API-запросов и схем.
+- **Drizzle ORM**: Типобезопасные запросы к базе данных и управление схемой.
+- **shpjs**: Парсинг Shapefile с поддержкой кодировок.
