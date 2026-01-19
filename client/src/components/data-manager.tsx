@@ -31,7 +31,20 @@ import {
   FileText,
   ChevronDown,
   ChevronRight,
+  Flame,
+  Building2,
+  Home,
+  Gauge,
+  Box,
+  Zap,
+  Waves,
+  Anchor,
 } from "lucide-react";
+import { 
+  getHeatNetworkPreviewIcon, 
+  isHeatNetworkStyle,
+  type HeatNetworkPointStyle 
+} from "@/lib/heat-network-icons";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -63,11 +76,24 @@ const LAYER_COLORS = [
   "#F57C00", "#0097A7", "#C2185B", "#512DA8",
 ];
 
-const POINT_STYLES = [
+// Basic geometric shapes
+const BASIC_POINT_STYLES = [
   { value: "circle", label: "Круг", icon: Circle },
   { value: "square", label: "Квадрат", icon: Square },
   { value: "triangle", label: "Треугольник", icon: Triangle },
   { value: "cloud", label: "Облачко", icon: Cloud },
+];
+
+// ГОСТ heat network symbols - using lucide icons as fallback for palette display
+const HEAT_NETWORK_STYLES: { value: HeatNetworkPointStyle; label: string; icon: typeof Flame }[] = [
+  { value: "heat-source", label: "Теплоисточник", icon: Flame },
+  { value: "ctp", label: "ЦТП", icon: Building2 },
+  { value: "itp", label: "ИТП", icon: Home },
+  { value: "valve", label: "Задвижка", icon: Gauge },
+  { value: "heat-chamber", label: "Тепловая камера", icon: Box },
+  { value: "pump-station", label: "Насосная станция", icon: Zap },
+  { value: "compensator", label: "Компенсатор", icon: Waves },
+  { value: "support", label: "Опора", icon: Anchor },
 ];
 
 const LINE_STYLES = [
@@ -564,25 +590,57 @@ export function DataManager({ onClose }: DataManagerProps) {
                         </div>
                         
                         {layer.geometryType === "Point" && (
-                          <div>
-                            <p className="text-xs font-medium mb-2">Форма точки</p>
-                            <div className="flex gap-1">
-                              {POINT_STYLES.map(({ value, label, icon: Icon }) => (
-                                <Tooltip key={value}>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      className={`h-7 w-7 flex items-center justify-center rounded border ${layer.pointStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
-                                      onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, pointStyle: value })}
-                                      data-testid={`point-style-${layer.id}-${value}`}
-                                    >
-                                      <Icon className="h-4 w-4" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="bottom">
-                                    <p className="text-xs">{label}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              ))}
+                          <div className="space-y-3">
+                            <div>
+                              <p className="text-xs font-medium mb-2">Базовые формы</p>
+                              <div className="flex flex-wrap gap-1">
+                                {BASIC_POINT_STYLES.map(({ value, label, icon: Icon }) => (
+                                  <Tooltip key={value}>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        className={`h-7 w-7 flex items-center justify-center rounded border ${layer.pointStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
+                                        onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, pointStyle: value })}
+                                        data-testid={`point-style-${layer.id}-${value}`}
+                                      >
+                                        <Icon className="h-4 w-4" />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                      <p className="text-xs">{label}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <p className="text-xs font-medium mb-2">Тепловые сети (ГОСТ)</p>
+                              <div className="flex flex-wrap gap-1">
+                                {HEAT_NETWORK_STYLES.map(({ value, label, icon: Icon }) => (
+                                  <Tooltip key={value}>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        className={`h-7 w-7 flex items-center justify-center rounded border ${layer.pointStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
+                                        onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, pointStyle: value })}
+                                        data-testid={`point-style-${layer.id}-${value}`}
+                                      >
+                                        {isHeatNetworkStyle(value) ? (
+                                          <img 
+                                            src={getHeatNetworkPreviewIcon(value, layer.color)} 
+                                            alt={label}
+                                            className="h-5 w-5"
+                                          />
+                                        ) : (
+                                          <Icon className="h-4 w-4" />
+                                        )}
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                      <p className="text-xs">{label}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ))}
+                              </div>
                             </div>
                           </div>
                         )}

@@ -112,7 +112,20 @@ export const insertTicketSchema = ticketSchema.omit({ id: true, createdAt: true,
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
 
 // Point style options for shapefile layers
-export const pointStyleSchema = z.enum(["circle", "square", "triangle", "cloud"]);
+// Basic shapes + ГОСТ heat network symbols
+export const pointStyleSchema = z.enum([
+  // Basic geometric shapes
+  "circle", "square", "triangle", "cloud",
+  // ГОСТ heat network symbols
+  "heat-source",    // Теплоисточник
+  "ctp",            // ЦТП (Центральный тепловой пункт)
+  "itp",            // ИТП (Индивидуальный тепловой пункт)
+  "valve",          // Задвижка
+  "heat-chamber",   // Тепловая камера
+  "pump-station",   // Насосная станция
+  "compensator",    // Компенсатор
+  "support",        // Опора
+]);
 export type PointStyle = z.infer<typeof pointStyleSchema>;
 
 // Line style options for shapefile layers

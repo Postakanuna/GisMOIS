@@ -12,7 +12,7 @@ import { fromLonLat, toLonLat, transformExtent } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
 import WKT from "ol/format/WKT";
 import Feature from "ol/Feature";
-import { Style, Fill, Stroke, Circle } from "ol/style";
+import { Style, Fill, Stroke, Circle, Icon } from "ol/style";
 import { LineString, Geometry } from "ol/geom";
 import { DragBox, Select, Draw, Modify, Snap } from "ol/interaction";
 import { platformModifierKeyOnly, click } from "ol/events/condition";
@@ -22,6 +22,7 @@ import "ol/ol.css";
 
 import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset } from "@shared/schema";
 import { useScene } from "@/contexts/scene-context";
+import { isHeatNetworkStyle, getHeatNetworkIconUrl, HEAT_ICON_SIZE, type HeatNetworkPointStyle } from "@/lib/heat-network-icons";
 import type { DrawingMode } from "@/components/drawing-toolbar";
 import RegularShape from "ol/style/RegularShape";
 import GeoJSON from "ol/format/GeoJSON";
@@ -138,9 +139,21 @@ const LAYER_COLORS: Record<string, string> = {
 };
 
 // Helper function to create point image style based on pointStyle
-function createPointImageStyle(color: string, pointStyle: PointStyle = "circle"): Circle | RegularShape {
+function createPointImageStyle(color: string, pointStyle: PointStyle = "circle"): Circle | RegularShape | Icon {
   const fill = new Fill({ color });
   const stroke = new Stroke({ color: "#fff", width: 1 });
+  
+  // Check if it's a heat network style
+  if (isHeatNetworkStyle(pointStyle)) {
+    const iconUrl = getHeatNetworkIconUrl(pointStyle as HeatNetworkPointStyle, color);
+    return new Icon({
+      src: iconUrl,
+      scale: 1,
+      anchor: [0.5, 0.5],
+      anchorXUnits: 'fraction',
+      anchorYUnits: 'fraction',
+    });
+  }
   
   switch (pointStyle) {
     case "square":
