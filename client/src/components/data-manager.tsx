@@ -47,6 +47,12 @@ import {
   isHeatNetworkStyle,
   type HeatNetworkPointStyle 
 } from "@/lib/heat-network-icons";
+import {
+  getHeatNetworkLineStyles,
+  getLinePreviewDataUrl,
+  isHeatNetworkLineStyle,
+  type HeatNetworkLineStyle
+} from "@/lib/heat-network-lines";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -98,11 +104,13 @@ const HEAT_NETWORK_STYLES: { value: HeatNetworkPointStyle; label: string; icon: 
   { value: "support", label: "Опора", icon: Anchor },
 ];
 
-const LINE_STYLES = [
+const BASIC_LINE_STYLES = [
   { value: "solid", label: "Сплошная" },
   { value: "dashed", label: "Пунктирная" },
   { value: "double", label: "Двойная" },
 ];
+
+const HEAT_NETWORK_LINE_STYLES = getHeatNetworkLineStyles();
 
 interface DataManagerProps {
   onClose: () => void;
@@ -718,27 +726,55 @@ export function DataManager({ onClose }: DataManagerProps) {
                         )}
                         
                         {layer.geometryType === "LineString" && (
-                          <div>
-                            <p className="text-xs font-medium mb-2">Стиль линии</p>
-                            <div className="flex gap-1">
-                              {LINE_STYLES.map(({ value, label }) => (
-                                <Tooltip key={value}>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      className={`h-7 px-2 flex items-center justify-center rounded border text-xs ${layer.lineStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
-                                      onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, lineStyle: value })}
-                                      data-testid={`line-style-${layer.id}-${value}`}
-                                    >
-                                      {value === "solid" && <Minus className="h-4 w-4" />}
-                                      {value === "dashed" && <MoreHorizontal className="h-4 w-4" />}
-                                      {value === "double" && <span className="font-bold">=</span>}
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="bottom">
-                                    <p className="text-xs">{label}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              ))}
+                          <div className="space-y-3">
+                            <div>
+                              <p className="text-xs font-medium mb-2">Базовые стили</p>
+                              <div className="flex gap-1">
+                                {BASIC_LINE_STYLES.map(({ value, label }) => (
+                                  <Tooltip key={value}>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        className={`h-7 px-2 flex items-center justify-center rounded border text-xs ${layer.lineStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
+                                        onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, lineStyle: value })}
+                                        data-testid={`line-style-${layer.id}-${value}`}
+                                      >
+                                        {value === "solid" && <Minus className="h-4 w-4" />}
+                                        {value === "dashed" && <MoreHorizontal className="h-4 w-4" />}
+                                        {value === "double" && <span className="font-bold">=</span>}
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                      <p className="text-xs">{label}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <p className="text-xs font-medium mb-2">Тепловые сети (ГОСТ)</p>
+                              <div className="flex flex-wrap gap-1">
+                                {HEAT_NETWORK_LINE_STYLES.map(({ value, label }) => (
+                                  <Tooltip key={value}>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        className={`h-8 px-1 flex items-center justify-center rounded border ${layer.lineStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
+                                        onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, lineStyle: value })}
+                                        data-testid={`line-style-${layer.id}-${value}`}
+                                      >
+                                        <img 
+                                          src={getLinePreviewDataUrl(value, layer.color)} 
+                                          alt={label}
+                                          className="h-4 w-12"
+                                        />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                      <p className="text-xs">{label}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ))}
+                              </div>
                             </div>
                           </div>
                         )}

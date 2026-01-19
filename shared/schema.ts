@@ -129,7 +129,19 @@ export const pointStyleSchema = z.enum([
 export type PointStyle = z.infer<typeof pointStyleSchema>;
 
 // Line style options for shapefile layers
-export const lineStyleSchema = z.enum(["solid", "dashed", "double"]);
+// Basic styles + ГОСТ heat network line styles
+export const lineStyleSchema = z.enum([
+  // Basic line styles
+  "solid", "dashed", "double",
+  // ГОСТ heat network line styles
+  "relaying",              // Под перекладку
+  "bypass",                // Байпас (временная схема)
+  "demolition",            // Под демонтаж
+  "above-ground",          // Наземная
+  "underground-channel",   // Подземная канальная
+  "underground-channelless", // Подземная бесканальная
+  "state-program",         // Под перекладку в рамках госпрограммы
+]);
 export type LineStyle = z.infer<typeof lineStyleSchema>;
 
 // Layer source type

@@ -23,6 +23,7 @@ import "ol/ol.css";
 import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset } from "@shared/schema";
 import { useScene } from "@/contexts/scene-context";
 import { isHeatNetworkStyle, getHeatNetworkIconUrl, HEAT_ICON_SIZE, type HeatNetworkPointStyle } from "@/lib/heat-network-icons";
+import { isHeatNetworkLineStyle, getHeatNetworkLineConfig, type HeatNetworkLineStyle } from "@/lib/heat-network-lines";
 import type { DrawingMode } from "@/components/drawing-toolbar";
 import RegularShape from "ol/style/RegularShape";
 import GeoJSON from "ol/format/GeoJSON";
@@ -193,12 +194,20 @@ function createPointImageStyle(color: string, pointStyle: PointStyle = "circle")
 
 // Helper function to create stroke style based on lineStyle
 function createLineStroke(color: string, lineStyle: LineStyle = "solid"): Stroke | Stroke[] {
+  // Check for heat network line styles first
+  if (isHeatNetworkLineStyle(lineStyle)) {
+    const config = getHeatNetworkLineConfig(lineStyle);
+    return new Stroke({ 
+      color, 
+      width: config.width, 
+      lineDash: config.lineDash 
+    });
+  }
+  
   switch (lineStyle) {
     case "dashed":
       return new Stroke({ color, width: 2, lineDash: [8, 4] });
     case "double":
-      // For double lines, we return a single stroke since OpenLayers 
-      // will be using style function for double line effect
       return new Stroke({ color, width: 4 });
     case "solid":
     default:
@@ -224,6 +233,38 @@ function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
         stroke: new Stroke({ color: "#fff", width: 1.5 }),
       }),
     ];
+  }
+  
+  // Handle heat network line styles with special effects
+  if (isHeatNetworkLineStyle(lineStyle)) {
+    const config = getHeatNetworkLineConfig(lineStyle);
+    const styles: Style[] = [];
+    
+    // Add outline stroke if configured
+    if (config.outline) {
+      const outlineColor = config.outlineColor || "#666";
+      styles.push(new Style({
+        stroke: new Stroke({ 
+          color: outlineColor, 
+          width: config.outlineWidth || config.width + 2,
+          lineDash: config.lineDash
+        }),
+        fill: new Fill({ color: color + "40" }),
+      }));
+    }
+    
+    // Add main stroke
+    styles.push(new Style({
+      stroke: new Stroke({ 
+        color, 
+        width: config.width, 
+        lineDash: config.lineDash 
+      }),
+      fill: config.outline ? undefined : new Fill({ color: color + "40" }),
+      image: createPointImageStyle(color, pointStyle),
+    }));
+    
+    return styles.length === 1 ? styles[0] : styles;
   }
   
   return new Style({
