@@ -396,7 +396,6 @@ export function DataManager({ onClose }: DataManagerProps) {
     if (!files || files.length === 0) return;
 
     const file = files[0];
-    console.log("Excel file selected:", file.name);
     setIsParsingExcel(true);
 
     try {
@@ -409,16 +408,12 @@ export function DataManager({ onClose }: DataManagerProps) {
         credentials: "include",
       });
 
-      console.log("Excel parse response status:", response.status);
-
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || "Ошибка парсинга файла");
       }
 
       const result = await response.json();
-      console.log("Excel parse result:", result);
-      console.log("Setting excelParseResult...");
       setExcelParseResult(result);
     } catch (error) {
       console.error("Excel parse error:", error);
