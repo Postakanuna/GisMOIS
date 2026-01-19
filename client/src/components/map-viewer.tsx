@@ -1903,16 +1903,53 @@ export function MapViewer({
     if (drawActionsRef) {
       drawActionsRef.current = {
         removeLastPoint: () => {
-          if (drawInteractionRef.current) {
-            try {
-              drawInteractionRef.current.removeLastPoint();
-              return true;
-            } catch (e) {
-              // removeLastPoint throws if there are no points to remove
+          const draw = drawInteractionRef.current;
+          if (!draw) {
+            console.log("[DRAW UNDO] No draw interaction");
+            return false;
+          }
+          
+          // Check if there's a sketch feature being drawn
+          // The draw interaction exposes the internal sketch via private property
+          // We need to check if we're actively drawing with at least one point
+          try {
+            // Get sketch coordinates to check if there are points
+            const sketchFeature = (draw as any).sketchFeature_;
+            if (!sketchFeature) {
+              console.log("[DRAW UNDO] No sketch feature - not currently drawing");
               return false;
             }
+            
+            const geom = sketchFeature.getGeometry();
+            if (!geom) {
+              console.log("[DRAW UNDO] No geometry in sketch");
+              return false;
+            }
+            
+            // For LineString/Polygon, check coordinate count
+            let coordCount = 0;
+            if (geom.getType() === 'LineString') {
+              coordCount = (geom as any).getCoordinates().length;
+            } else if (geom.getType() === 'Polygon') {
+              const coords = (geom as any).getCoordinates();
+              coordCount = coords[0]?.length || 0;
+            }
+            
+            console.log("[DRAW UNDO] Sketch coordinate count:", coordCount);
+            
+            // Need at least 2 coordinates (current mouse + at least 1 placed point)
+            if (coordCount >= 2) {
+              draw.removeLastPoint();
+              console.log("[DRAW UNDO] Removed last point");
+              return true;
+            }
+            
+            console.log("[DRAW UNDO] Not enough points to remove");
+            return false;
+          } catch (e) {
+            console.error("[DRAW UNDO] Error:", e);
+            return false;
           }
-          return false;
         },
         abortDrawing: () => {
           if (drawInteractionRef.current) {
