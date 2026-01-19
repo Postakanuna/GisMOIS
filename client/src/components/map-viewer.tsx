@@ -148,7 +148,7 @@ function createPointImageStyle(color: string, pointStyle: PointStyle = "circle")
     const iconUrl = getHeatNetworkIconUrl(pointStyle as HeatNetworkPointStyle, color);
     return new Icon({
       src: iconUrl,
-      scale: 1,
+      scale: 0.75, // Scale down 24px icons to ~18px to match other point styles
       anchor: [0.5, 0.5],
       anchorXUnits: 'fraction',
       anchorYUnits: 'fraction',
