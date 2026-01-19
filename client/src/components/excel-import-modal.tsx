@@ -196,12 +196,8 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
 
   return (
     <DraggableModal
-      title={
-        <div className="flex items-center gap-2">
-          <FileSpreadsheet className="h-4 w-4" />
-          <span>Импорт из Excel</span>
-        </div>
-      }
+      isOpen={true}
+      title="Импорт из Excel"
       onClose={onClose}
       defaultWidth={900}
       defaultHeight={600}

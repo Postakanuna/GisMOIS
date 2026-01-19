@@ -163,7 +163,7 @@ export function DraggableModal({
   if (isMobile) {
     return (
       <div 
-        className="fixed inset-0 z-50 bg-background flex flex-col"
+        className="fixed inset-0 z-[60] bg-background flex flex-col"
         data-testid="draggable-modal-mobile"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50 shrink-0">
@@ -187,7 +187,7 @@ export function DraggableModal({
 
   return (
     <div 
-      className="fixed inset-0 z-50 pointer-events-none"
+      className="fixed inset-0 z-[60] pointer-events-none"
       data-testid="draggable-modal-overlay"
     >
       <Card
