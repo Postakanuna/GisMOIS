@@ -43,6 +43,21 @@ const upload = multer({
   },
 });
 
+const excelUpload = multer({
+  storage: diskStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for Excel files
+  },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === ".xls" || ext === ".xlsx") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .xls and .xlsx files are allowed"));
+    }
+  },
+});
+
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
 const ZWS_BASE_URL = "https://is.arki.mosreg.ru/zws";
@@ -942,6 +957,244 @@ export async function registerRoutes(
     }
   });
   
+  // ============================================
+  // EXCEL IMPORT API (Universal XLS/XLSX parser for points)
+  // ============================================
+
+  // Parse Excel file and return columns/preview data
+  app.post("/api/parse-excel", excelUpload.single("file"), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const filePath = req.file.path;
+      const workbook = new ExcelJS.Workbook();
+      
+      try {
+        if (req.file.originalname.toLowerCase().endsWith(".xlsx")) {
+          await workbook.xlsx.readFile(filePath);
+        } else {
+          // For .xls files, try xlsx first as ExcelJS can sometimes handle them
+          await workbook.xlsx.readFile(filePath);
+        }
+      } catch (readError) {
+        console.error("Error reading Excel file:", readError);
+        return res.status(400).json({ message: "Не удалось прочитать файл Excel. Убедитесь, что файл не повреждён." });
+      }
+
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        return res.status(400).json({ message: "Файл Excel не содержит листов" });
+      }
+
+      // Get column headers from first row
+      const headerRow = worksheet.getRow(1);
+      const columns: { index: number; name: string; detectedType: string }[] = [];
+      
+      headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        const cellValue = cell.value?.toString() || `Колонка ${colNumber}`;
+        columns.push({
+          index: colNumber,
+          name: cellValue,
+          detectedType: "text",
+        });
+      });
+
+      if (columns.length === 0) {
+        return res.status(400).json({ message: "Файл Excel не содержит данных в первой строке" });
+      }
+
+      // Detect coordinate columns by name patterns
+      const latPatterns = /^(lat|latitude|широта|ш|y|lat_wgs|latitude_wgs)$/i;
+      const lonPatterns = /^(lon|lng|longitude|долгота|д|x|lon_wgs|longitude_wgs|long)$/i;
+
+      for (const col of columns) {
+        if (latPatterns.test(col.name.trim())) {
+          col.detectedType = "latitude";
+        } else if (lonPatterns.test(col.name.trim())) {
+          col.detectedType = "longitude";
+        }
+      }
+
+      // Get ALL rows (not just preview) for full import capability
+      const allRows: Record<string, unknown>[] = [];
+      const totalRows = worksheet.rowCount - 1; // Exclude header
+
+      for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+        const row = worksheet.getRow(rowNum);
+        const rowData: Record<string, unknown> = {};
+        let hasData = false;
+        
+        for (const col of columns) {
+          const cell = row.getCell(col.index);
+          let value: unknown = null;
+          
+          if (cell.value !== null && cell.value !== undefined) {
+            if (typeof cell.value === "object" && "result" in cell.value) {
+              value = (cell.value as any).result;
+            } else if (typeof cell.value === "object" && "text" in cell.value) {
+              value = (cell.value as any).text;
+            } else {
+              value = cell.value;
+            }
+            hasData = true;
+          }
+          
+          rowData[col.name] = value;
+        }
+        
+        // Only add rows that have at least some data
+        if (hasData) {
+          allRows.push(rowData);
+        }
+      }
+
+      // Clean up temp file
+      fs.unlink(filePath, () => {});
+
+      // Return preview (first 100) and all rows for import
+      return res.json({
+        fileName: req.file.originalname,
+        columns,
+        previewRows: allRows.slice(0, 100),
+        allRows,
+        totalRows: allRows.length,
+      });
+    } catch (error) {
+      console.error("Parse Excel error:", error);
+      return res.status(500).json({ message: "Ошибка при обработке файла Excel" });
+    }
+  });
+
+  // Zod schema for Excel import validation
+  const excelImportSchema = z.object({
+    name: z.string().min(1, "Layer name is required"),
+    rows: z.array(z.record(z.string(), z.unknown())).min(1, "At least one row is required"),
+    columnMapping: z.object({
+      latitudeColumn: z.string().min(1, "Latitude column is required"),
+      longitudeColumn: z.string().min(1, "Longitude column is required"),
+      attributes: z.array(z.object({
+        sourceColumn: z.string(),
+        targetName: z.string(),
+      })).optional().default([]),
+    }),
+    sceneId: z.number().nullable().optional(),
+    color: z.string().optional(),
+    pointStyle: z.string().optional(),
+  });
+
+  // Import Excel data as point layer
+  app.post("/api/editable-layers/import-excel", async (req: Request, res: Response) => {
+    try {
+      // Validate request body
+      const parseResult = excelImportSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: parseResult.error.issues,
+        });
+      }
+
+      const { name, rows, columnMapping, sceneId, color, pointStyle } = parseResult.data;
+      const { latitudeColumn, longitudeColumn, attributes } = columnMapping;
+
+      // Filter out lat/lon columns from attributes to prevent duplicates
+      const filteredAttributes = (attributes || []).filter(
+        attr => attr.sourceColumn !== latitudeColumn && attr.sourceColumn !== longitudeColumn
+      );
+
+      // Create the editable layer
+      const layer = await storage.createEditableLayer({
+        sceneId: sceneId || null,
+        name,
+        geometryType: "Point",
+        color: color || "#3B82F6",
+        pointStyle: pointStyle || "circle",
+        lineStyle: "solid",
+        visible: true,
+        opacity: 1,
+        source: "import",
+        sourceFileName: `${name}.xlsx`,
+        crs: "EPSG:4326",
+      });
+
+      // Create layer schema from attributes (excluding lat/lon)
+      const fields = filteredAttributes.map((attr) => ({
+        name: attr.targetName,
+        type: "text" as const,
+        required: false,
+      }));
+
+      if (fields.length > 0) {
+        await storage.createLayerSchema({
+          layerId: layer.id,
+          fields,
+        });
+      }
+
+      // Process rows and create features
+      const validFeatures: any[] = [];
+      const invalidRows: { row: number; reason: string }[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const latValue = row[latitudeColumn];
+        const lonValue = row[longitudeColumn];
+
+        // Parse coordinates
+        const lat = typeof latValue === "string" ? parseFloat(latValue.replace(",", ".")) : Number(latValue);
+        const lon = typeof lonValue === "string" ? parseFloat(lonValue.replace(",", ".")) : Number(lonValue);
+
+        if (isNaN(lat) || isNaN(lon)) {
+          invalidRows.push({ row: i + 2, reason: "Невалидные координаты" });
+          continue;
+        }
+
+        if (lat < -90 || lat > 90) {
+          invalidRows.push({ row: i + 2, reason: `Широта вне диапазона: ${lat}` });
+          continue;
+        }
+
+        if (lon < -180 || lon > 180) {
+          invalidRows.push({ row: i + 2, reason: `Долгота вне диапазона: ${lon}` });
+          continue;
+        }
+
+        // Build properties from selected attributes (excluding lat/lon)
+        const properties: Record<string, unknown> = {};
+        for (const attr of filteredAttributes) {
+          properties[attr.targetName] = row[attr.sourceColumn];
+        }
+
+        validFeatures.push({
+          layerId: layer.id,
+          geometryType: "Point",
+          coordinates: [lon, lat], // GeoJSON format: [longitude, latitude]
+          properties,
+        });
+      }
+
+      // Batch create features
+      if (validFeatures.length > 0) {
+        await storage.createDrawnFeaturesBatch(validFeatures);
+      }
+
+      // Fetch updated layer with feature count
+      const updatedLayer = await storage.getEditableLayer(layer.id);
+
+      return res.status(201).json({
+        layer: updatedLayer,
+        importedCount: validFeatures.length,
+        skippedCount: invalidRows.length,
+        invalidRows: invalidRows.slice(0, 10), // Return first 10 invalid rows
+      });
+    } catch (error) {
+      console.error("Import Excel error:", error);
+      return res.status(500).json({ message: "Ошибка при импорте данных из Excel" });
+    }
+  });
+
   // Batch create features endpoint
   app.post("/api/editable-layers/:id/features/batch", async (req: Request, res: Response) => {
     try {

@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useScene } from "@/contexts/scene-context";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { ExcelImportModal } from "@/components/excel-import-modal";
 import {
   X,
   GripVertical,
@@ -39,6 +40,7 @@ import {
   Zap,
   Waves,
   Anchor,
+  FileSpreadsheet,
 } from "lucide-react";
 import { 
   getHeatNetworkPreviewIcon, 
@@ -120,9 +122,18 @@ export function DataManager({ onClose }: DataManagerProps) {
   const [isResizing, setIsResizing] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
   const [editingLayerId, setEditingLayerId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [expandedLayerId, setExpandedLayerId] = useState<number | null>(null);
+  const [excelParseResult, setExcelParseResult] = useState<{
+    fileName: string;
+    columns: { index: number; name: string; detectedType: string }[];
+    previewRows: Record<string, unknown>[];
+    allRows: Record<string, unknown>[];
+    totalRows: number;
+  } | null>(null);
+  const [isParsingExcel, setIsParsingExcel] = useState(false);
 
   const { data: sceneLayers = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
@@ -380,6 +391,45 @@ export function DataManager({ onClose }: DataManagerProps) {
     }
   };
 
+  const handleExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    setIsParsingExcel(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/parse-excel", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Ошибка парсинга файла");
+      }
+
+      const result = await response.json();
+      setExcelParseResult(result);
+    } catch (error) {
+      console.error("Excel parse error:", error);
+      toast({
+        title: "Ошибка чтения Excel",
+        description: error instanceof Error ? error.message : "Неизвестная ошибка",
+        variant: "destructive",
+      });
+    } finally {
+      setIsParsingExcel(false);
+      if (excelInputRef.current) {
+        excelInputRef.current.value = "";
+      }
+    }
+  };
+
   const getGeometryIcon = (type: string) => {
     switch (type) {
       case "Point":
@@ -462,6 +512,28 @@ export function DataManager({ onClose }: DataManagerProps) {
               multiple
               onChange={handleFileChange}
               data-testid="input-shapefile"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => excelInputRef.current?.click()}
+              disabled={isParsingExcel || !canEdit}
+              data-testid="button-upload-excel"
+            >
+              {isParsingExcel ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+              )}
+              Импорт XLS
+            </Button>
+            <input
+              ref={excelInputRef}
+              type="file"
+              className="hidden"
+              accept=".xls,.xlsx"
+              onChange={handleExcelFileChange}
+              data-testid="input-excel"
             />
           </div>
         </div>
@@ -744,6 +816,16 @@ export function DataManager({ onClose }: DataManagerProps) {
           className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
           onMouseDown={handleResizeMouseDown}
           data-testid="resize-handle"
+        />
+      )}
+
+      {excelParseResult && (
+        <ExcelImportModal
+          parseResult={excelParseResult}
+          onClose={() => setExcelParseResult(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+          }}
         />
       )}
     </div>
