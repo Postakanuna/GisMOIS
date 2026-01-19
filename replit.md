@@ -47,6 +47,20 @@ Preferred communication style: Simple, everyday language.
   - Permission-based access: create_point, read_scenes, read_layers
   - UI for API key management in Settings page
   - Tokens hashed with bcrypt, shown only once at creation
+- **ГОСТ-совместимые иконки для тепловых сетей (January 2026)**:
+  - Расширенная палитра с двумя секциями: "Базовые формы" и "Тепловые сети (ГОСТ)"
+  - 8 новых SVG-иконок для объектов теплосети:
+    - Теплоисточник (heat-source) — котёл с пламенем
+    - ЦТП (ctp) — центральный тепловой пункт
+    - ИТП (itp) — индивидуальный тепловой пункт  
+    - Задвижка (valve) — классический символ "бабочка"
+    - Тепловая камера (heat-chamber) — квадрат с крестом
+    - Насосная станция (pump-station) — круг с треугольником
+    - Компенсатор (compensator) — зигзаг
+    - Опора (support) — треугольная опора
+  - Иконки динамически окрашиваются в цвет слоя
+  - Иконки отображаются на карте через OpenLayers Icon style
+  - Базируется на стандартах: ГОСТ 21.705-2016, ГОСТ 21.403-80, ГОСТ 2.785-70
 
 ## System Architecture
 
