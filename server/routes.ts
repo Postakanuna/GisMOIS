@@ -1006,8 +1006,8 @@ export async function registerRoutes(
       }
 
       // Detect coordinate columns by name patterns
-      const latPatterns = /^(lat|latitude|широта|ш|y|lat_wgs|latitude_wgs)$/i;
-      const lonPatterns = /^(lon|lng|longitude|долгота|д|x|lon_wgs|longitude_wgs|long)$/i;
+      const latPatterns = /^(lat|latitude|широта|широт|ш|y|lat_wgs|latitude_wgs)$/i;
+      const lonPatterns = /^(lon|lng|longitude|долгота|долгот|д|x|lon_wgs|longitude_wgs|long)$/i;
 
       for (const col of columns) {
         if (latPatterns.test(col.name.trim())) {
