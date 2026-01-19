@@ -180,7 +180,6 @@ export default function Home() {
   const queryClient = useQueryClient();
   const zuluConnection = useZuluConnectionContext();
   const { currentScene, currentSceneId } = useScene();
-  const drawing = useDrawing();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo">("layers");
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
@@ -188,6 +187,8 @@ export default function Home() {
   const [showAttributeTable, setShowAttributeTable] = useState(false);
   const [showDataManager, setShowDataManager] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
+  const drawActionsRef = useRef<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>(null);
+  const drawing = useDrawing({ drawActionsRef });
   const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
   const [showTraceDialog, setShowTraceDialog] = useState(false);
@@ -307,6 +308,19 @@ export default function Home() {
   const handleTraceRouteResult = useCallback((result: { coordinates: [number, number][] }) => {
     setTraceRouteCoords(result.coordinates);
   }, []);
+
+  // Handle undo - during drawing mode, remove last point; otherwise use normal undo
+  const handleUndo = useCallback(() => {
+    // If we're in line or polygon drawing mode, try to remove the last point first
+    if (drawing.drawingMode === 'line' || drawing.drawingMode === 'polygon') {
+      const removed = drawActionsRef.current?.removeLastPoint();
+      if (removed) {
+        return; // Successfully removed a point during drawing
+      }
+    }
+    // Fall back to normal undo (undo completed actions)
+    drawing.undo();
+  }, [drawing.drawingMode, drawing]);
 
   // Auto-close attribute table modal when prerequisites are no longer met
   useEffect(() => {
@@ -487,9 +501,9 @@ export default function Home() {
                   }
                 }}
                 hasSelection={drawing.selectedFeatureIds.length > 0 || selectedFeatures.length > 0}
-                canUndo={drawing.canUndo}
+                canUndo={drawing.canUndo || drawing.drawingMode === 'line' || drawing.drawingMode === 'polygon'}
                 canRedo={drawing.canRedo}
-                onUndo={drawing.undo}
+                onUndo={handleUndo}
                 onRedo={drawing.redo}
                 onSave={drawing.save}
                 isSaving={drawing.isSaving}
@@ -543,6 +557,7 @@ export default function Home() {
               onClearEditableSelection={drawing.clearSelection}
               onSelectEditableLayer={drawing.selectLayer}
               selectionActionsRef={selectionActionsRef}
+              drawActionsRef={drawActionsRef}
               activeSceneDataset={activeSceneDataset}
               onDatasetFeatureUpdated={handleDatasetFeatureUpdated}
               traceRouteCoordinates={traceRouteCoords}

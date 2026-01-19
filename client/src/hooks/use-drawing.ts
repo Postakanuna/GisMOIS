@@ -30,7 +30,12 @@ export interface SnapSettings {
   snapLayerIds: number[]; // empty array = all visible layers
 }
 
-export function useDrawing() {
+interface UseDrawingOptions {
+  drawActionsRef?: React.MutableRefObject<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>;
+}
+
+export function useDrawing(options: UseDrawingOptions = {}) {
+  const { drawActionsRef } = options;
   const { toast } = useToast();
   const { currentSceneId } = useScene();
   
@@ -459,6 +464,14 @@ export function useDrawing() {
         if (activeLayer) setDrawingMode("modify");
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
+        // During line/polygon drawing, try to remove last point first
+        if ((drawingMode === "line" || drawingMode === "polygon") && drawActionsRef?.current) {
+          const removed = drawActionsRef.current.removeLastPoint();
+          if (removed) {
+            return; // Successfully removed a point during drawing
+          }
+        }
+        // Fall back to normal undo
         undo();
       } else if ((e.ctrlKey || e.metaKey) && e.key === "y") {
         e.preventDefault();
@@ -476,7 +489,7 @@ export function useDrawing() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeLayer, deleteSelectedFeatures, clearSelection, undo, redo, save, toggleSnap]);
+  }, [activeLayer, deleteSelectedFeatures, clearSelection, undo, redo, save, toggleSnap, drawingMode, drawActionsRef]);
 
   return {
     // State

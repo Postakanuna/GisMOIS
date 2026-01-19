@@ -112,6 +112,8 @@ interface MapViewerProps {
   onSelectEditableLayer?: (layer: EditableLayer) => void;
   // Selection callbacks exposed for external control
   selectionActionsRef?: React.MutableRefObject<{ clearSelection: () => void; deleteSelected: () => void } | null>;
+  // Drawing actions exposed for external control (undo last point during drawing)
+  drawActionsRef?: React.MutableRefObject<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>;
   // Scene dataset editing props
   activeSceneDataset?: SceneDatasetInfo | null;
   onDatasetFeatureCreated?: (datasetId: number, geometryType: string, coordinates: unknown, properties?: Record<string, unknown>) => void;
@@ -608,6 +610,7 @@ export function MapViewer({
   onClearEditableSelection,
   onSelectEditableLayer,
   selectionActionsRef,
+  drawActionsRef,
   activeSceneDataset,
   onDatasetFeatureCreated,
   onDatasetFeatureUpdated,
@@ -1894,6 +1897,36 @@ export function MapViewer({
       }
     };
   }, [selectionActionsRef, clearSelection, handleDeleteSelectedFeatures]);
+
+  // Expose drawing actions via ref for external control (undo last point during drawing)
+  useEffect(() => {
+    if (drawActionsRef) {
+      drawActionsRef.current = {
+        removeLastPoint: () => {
+          if (drawInteractionRef.current) {
+            try {
+              drawInteractionRef.current.removeLastPoint();
+              return true;
+            } catch (e) {
+              // removeLastPoint throws if there are no points to remove
+              return false;
+            }
+          }
+          return false;
+        },
+        abortDrawing: () => {
+          if (drawInteractionRef.current) {
+            drawInteractionRef.current.abortDrawing();
+          }
+        },
+      };
+    }
+    return () => {
+      if (drawActionsRef) {
+        drawActionsRef.current = null;
+      }
+    };
+  }, [drawActionsRef]);
 
   // Handle OSM base layer visibility and opacity (works without connection)
   useEffect(() => {
