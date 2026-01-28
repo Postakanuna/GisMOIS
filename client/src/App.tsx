@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ZuluConnectionProvider } from "@/contexts/zulu-connection-context";
 import { SceneProvider } from "@/contexts/scene-context";
 import { BaseLayersProvider } from "@/contexts/base-layers-context";
+import { ProjectionProvider } from "@/contexts/projection-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
@@ -53,12 +54,14 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <SceneProvider>
-          <BaseLayersProvider>
-            <ZuluConnectionProvider>
+          <ProjectionProvider>
+            <BaseLayersProvider>
+              <ZuluConnectionProvider>
               <Toaster />
               <Router />
             </ZuluConnectionProvider>
-          </BaseLayersProvider>
+            </BaseLayersProvider>
+          </ProjectionProvider>
         </SceneProvider>
       </TooltipProvider>
     </QueryClientProvider>

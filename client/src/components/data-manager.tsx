@@ -44,6 +44,8 @@ import {
   Map,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
+import { useProjection } from "@/contexts/projection-context";
+import { type ProjectionType } from "@/lib/projections";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { 
@@ -128,6 +130,7 @@ export function DataManager({ onClose }: DataManagerProps) {
   const { currentSceneId, canEdit } = useScene();
   const isMobile = useIsMobile();
   const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
+  const { currentProjection, setProjection, projectionInfo } = useProjection();
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [size, setSize] = useState({ width: 700, height: 450 });
@@ -560,6 +563,40 @@ export function DataManager({ onClose }: DataManagerProps) {
         
         <ScrollArea className="flex-1">
           <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Map className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Проекция карты</span>
+            </div>
+            <div className="rounded-md border bg-background p-3 mb-3">
+              <RadioGroup
+                value={currentProjection}
+                onValueChange={(value) => {
+                  setProjection(value as ProjectionType);
+                }}
+                className="space-y-2"
+                data-testid="projection-radio-group"
+              >
+                {(Object.keys(projectionInfo) as ProjectionType[]).map((projKey) => (
+                  <div key={projKey} className="flex items-center space-x-2">
+                    <RadioGroupItem
+                      value={projKey}
+                      id={`projection-${projKey}`}
+                      data-testid={`radio-projection-${projKey}`}
+                    />
+                    <Label
+                      htmlFor={`projection-${projKey}`}
+                      className="text-sm cursor-pointer"
+                    >
+                      {projectionInfo[projKey].name}
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({projectionInfo[projKey].description})
+                      </span>
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+
             <div className="flex items-center gap-2 mb-2">
               <Map className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">Базовые слои</span>

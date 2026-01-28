@@ -24,6 +24,9 @@ import "ol/ol.css";
 import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset } from "@shared/schema";
 import { useScene } from "@/contexts/scene-context";
 import { useBaseLayers } from "@/contexts/base-layers-context";
+import { useProjection } from "@/contexts/projection-context";
+import { registerProjections, YANDEX_TILE_GRID, YANDEX_MAP_URL, YANDEX_SATELLITE_URL, type ProjectionType } from "@/lib/projections";
+import { get as getProjection } from "ol/proj";
 import { isHeatNetworkStyle, getHeatNetworkIconUrl, HEAT_ICON_SIZE, type HeatNetworkPointStyle } from "@/lib/heat-network-icons";
 import { isHeatNetworkLineStyle, getHeatNetworkLineConfig, type HeatNetworkLineStyle } from "@/lib/heat-network-lines";
 import type { DrawingMode } from "@/components/drawing-toolbar";
@@ -628,6 +631,8 @@ export function MapViewer({
   const traceRouteLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const { toast } = useToast();
   const { activeBaseLayer } = useBaseLayers();
+  const { currentProjection } = useProjection();
+  const currentProjectionRef = useRef<ProjectionType>(currentProjection);
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
   const layersStateRef = useRef<LayerConfig[]>(layers);
@@ -1033,40 +1038,79 @@ export function MapViewer({
   }, [activeBaseLayer]);
 
   useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    
+    if (currentProjectionRef.current === currentProjection) return;
+    
+    const oldView = map.getView();
+    const currentCenter = oldView.getCenter();
+    const currentZoom = oldView.getZoom() || DEFAULT_ZOOM;
+    
+    let centerLonLat: [number, number] = DEFAULT_CENTER;
+    if (currentCenter) {
+      const lonLat = toLonLat(currentCenter, currentProjectionRef.current);
+      centerLonLat = [lonLat[0], lonLat[1]];
+    }
+    
+    currentProjectionRef.current = currentProjection;
+    
+    const newView = new View({
+      projection: currentProjection,
+      center: fromLonLat(centerLonLat, currentProjection),
+      zoom: currentZoom,
+    });
+    
+    map.setView(newView);
+    
+    console.log(`Projection changed to ${currentProjection}, center: ${centerLonLat}`);
+  }, [currentProjection]);
+
+  useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
+
+    registerProjections();
 
     const osmLayer = new TileLayer({
       source: new OSM(),
       properties: { id: "osm-base" },
-      visible: true,
+      visible: activeBaseLayer === "osm",
       zIndex: 0,
     });
 
     const yandexMapLayer = new TileLayer({
       source: new XYZ({
-        url: "https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=21.06.04-0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU",
+        url: YANDEX_MAP_URL,
         crossOrigin: "anonymous",
+        projection: "EPSG:3395",
+        tileGrid: YANDEX_TILE_GRID,
       }),
       properties: { id: "yandex-map" },
-      visible: false,
+      visible: activeBaseLayer === "yandex-map",
       zIndex: 0,
     });
 
     const yandexSatelliteLayer = new TileLayer({
       source: new XYZ({
-        url: "https://core-sat.maps.yandex.net/tiles?l=sat&v=3.1030.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU",
+        url: YANDEX_SATELLITE_URL,
         crossOrigin: "anonymous",
+        projection: "EPSG:3395",
+        tileGrid: YANDEX_TILE_GRID,
       }),
       properties: { id: "yandex-satellite" },
-      visible: false,
+      visible: activeBaseLayer === "yandex-satellite",
       zIndex: 0,
     });
+
+    const viewProjection = currentProjection;
+    currentProjectionRef.current = currentProjection;
 
     const map = new OLMap({
       target: mapContainerRef.current,
       layers: [osmLayer, yandexMapLayer, yandexSatelliteLayer],
       view: new View({
-        center: fromLonLat(DEFAULT_CENTER),
+        projection: viewProjection,
+        center: fromLonLat(DEFAULT_CENTER, viewProjection),
         zoom: DEFAULT_ZOOM,
       }),
       controls: defaultControls({ zoom: false, rotate: false }).extend([
