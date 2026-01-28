@@ -5,6 +5,7 @@ import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
 import ImageLayer from "ol/layer/Image";
 import OSM from "ol/source/OSM";
+import XYZ from "ol/source/XYZ";
 import VectorSource from "ol/source/Vector";
 import ImageWMS from "ol/source/ImageWMS";
 import Cluster from "ol/source/Cluster";
@@ -22,6 +23,7 @@ import "ol/ol.css";
 
 import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset } from "@shared/schema";
 import { useScene } from "@/contexts/scene-context";
+import { useBaseLayers } from "@/contexts/base-layers-context";
 import { isHeatNetworkStyle, getHeatNetworkIconUrl, HEAT_ICON_SIZE, type HeatNetworkPointStyle } from "@/lib/heat-network-icons";
 import { isHeatNetworkLineStyle, getHeatNetworkLineConfig, type HeatNetworkLineStyle } from "@/lib/heat-network-lines";
 import type { DrawingMode } from "@/components/drawing-toolbar";
@@ -133,7 +135,7 @@ interface MapViewerProps {
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
 const DEFAULT_ZOOM = 10;
 
-type LayerType = TileLayer<OSM> | VectorLayer<VectorSource> | ImageLayer<ImageWMS>;
+type LayerType = TileLayer<OSM> | TileLayer<XYZ> | VectorLayer<VectorSource> | ImageLayer<ImageWMS>;
 
 const LAYER_COLORS: Record<string, string> = {
   "ZR_VS_MO": "#2196F3",
@@ -625,6 +627,7 @@ export function MapViewer({
   const allEditableLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const traceRouteLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const { toast } = useToast();
+  const { activeBaseLayer } = useBaseLayers();
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
   const layersStateRef = useRef<LayerConfig[]>(layers);
@@ -1014,16 +1017,54 @@ export function MapViewer({
   }, [layers]);
 
   useEffect(() => {
+    const osmLayer = layersRef.current["osm-base"];
+    const yandexMapLayer = layersRef.current["yandex-map"];
+    const yandexSatelliteLayer = layersRef.current["yandex-satellite"];
+
+    if (osmLayer) {
+      osmLayer.setVisible(activeBaseLayer === "osm");
+    }
+    if (yandexMapLayer) {
+      yandexMapLayer.setVisible(activeBaseLayer === "yandex-map");
+    }
+    if (yandexSatelliteLayer) {
+      yandexSatelliteLayer.setVisible(activeBaseLayer === "yandex-satellite");
+    }
+  }, [activeBaseLayer]);
+
+  useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     const osmLayer = new TileLayer({
       source: new OSM(),
       properties: { id: "osm-base" },
+      visible: true,
+      zIndex: 0,
+    });
+
+    const yandexMapLayer = new TileLayer({
+      source: new XYZ({
+        url: "https://core-renderer-tiles.maps.yandex.net/tiles?l=map&v=21.06.04-0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU",
+        crossOrigin: "anonymous",
+      }),
+      properties: { id: "yandex-map" },
+      visible: false,
+      zIndex: 0,
+    });
+
+    const yandexSatelliteLayer = new TileLayer({
+      source: new XYZ({
+        url: "https://core-sat.maps.yandex.net/tiles?l=sat&v=3.1030.0&x={x}&y={y}&z={z}&scale=1&lang=ru_RU",
+        crossOrigin: "anonymous",
+      }),
+      properties: { id: "yandex-satellite" },
+      visible: false,
+      zIndex: 0,
     });
 
     const map = new OLMap({
       target: mapContainerRef.current,
-      layers: [osmLayer],
+      layers: [osmLayer, yandexMapLayer, yandexSatelliteLayer],
       view: new View({
         center: fromLonLat(DEFAULT_CENTER),
         zoom: DEFAULT_ZOOM,
@@ -1034,6 +1075,8 @@ export function MapViewer({
     });
 
     layersRef.current["osm-base"] = osmLayer;
+    layersRef.current["yandex-map"] = yandexMapLayer;
+    layersRef.current["yandex-satellite"] = yandexSatelliteLayer;
 
     const ticketsSource = new VectorSource();
     const ticketsLayer = new VectorLayer({

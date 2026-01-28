@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ZuluConnectionProvider } from "@/contexts/zulu-connection-context";
 import { SceneProvider } from "@/contexts/scene-context";
+import { BaseLayersProvider } from "@/contexts/base-layers-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
@@ -52,10 +53,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <SceneProvider>
-          <ZuluConnectionProvider>
-            <Toaster />
-            <Router />
-          </ZuluConnectionProvider>
+          <BaseLayersProvider>
+            <ZuluConnectionProvider>
+              <Toaster />
+              <Router />
+            </ZuluConnectionProvider>
+          </BaseLayersProvider>
         </SceneProvider>
       </TooltipProvider>
     </QueryClientProvider>

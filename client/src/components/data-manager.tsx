@@ -41,7 +41,11 @@ import {
   Waves,
   Anchor,
   FileSpreadsheet,
+  Map,
 } from "lucide-react";
+import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { 
   getHeatNetworkPreviewIcon, 
   isHeatNetworkStyle,
@@ -123,6 +127,7 @@ export function DataManager({ onClose }: DataManagerProps) {
   const { toast } = useToast();
   const { currentSceneId, canEdit } = useScene();
   const isMobile = useIsMobile();
+  const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [size, setSize] = useState({ width: 700, height: 450 });
@@ -495,7 +500,7 @@ export function DataManager({ onClose }: DataManagerProps) {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Слои сцены ({sceneLayers.length})</span>
+            <span className="text-sm font-medium">Слои</span>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -554,6 +559,44 @@ export function DataManager({ onClose }: DataManagerProps) {
         )}
         
         <ScrollArea className="flex-1">
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Map className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Базовые слои</span>
+            </div>
+            <div className="rounded-md border bg-background p-3">
+              <RadioGroup
+                value={activeBaseLayer}
+                onValueChange={(value) => {
+                  setActiveBaseLayer(value as BaseLayerType);
+                }}
+                className="space-y-2"
+                data-testid="base-layer-radio-group"
+              >
+                {baseLayers.map((layer) => (
+                  <div key={layer.id} className="flex items-center space-x-2">
+                    <RadioGroupItem
+                      value={layer.id}
+                      id={`base-layer-${layer.id}`}
+                      data-testid={`radio-base-layer-${layer.id}`}
+                    />
+                    <Label
+                      htmlFor={`base-layer-${layer.id}`}
+                      className="text-sm cursor-pointer"
+                    >
+                      {layer.name}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mb-2">
+            <Layers className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Слои сцены ({sceneLayers.length})</span>
+          </div>
+
           {sceneLoading ? (
             <div className="text-center py-8 text-muted-foreground">Загрузка...</div>
           ) : sceneLayers.length === 0 ? (
