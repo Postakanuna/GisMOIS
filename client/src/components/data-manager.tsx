@@ -887,9 +887,8 @@ export function DataManager({ onClose }: DataManagerProps) {
             </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="settings" className="flex-1 flex flex-col overflow-hidden mt-0 px-3 pb-3">
-            <ScrollArea className="flex-1">
-              <div className="py-3 space-y-4">
+          <TabsContent value="settings" className="flex-1 overflow-auto mt-0 px-3 pb-3">
+            <div className="py-3 space-y-4">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <Map className="h-4 w-4 text-muted-foreground" />
@@ -959,7 +958,6 @@ export function DataManager({ onClose }: DataManagerProps) {
                   </div>
                 </div>
               </div>
-            </ScrollArea>
           </TabsContent>
         </Tabs>
       </div>
