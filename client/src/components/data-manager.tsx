@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useScene } from "@/contexts/scene-context";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
@@ -42,6 +43,8 @@ import {
   Anchor,
   FileSpreadsheet,
   Map,
+  Globe,
+  Settings,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
@@ -499,152 +502,96 @@ export function DataManager({ onClose }: DataManagerProps) {
         </Button>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden p-3" data-no-drag>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Слои</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading || !canEdit}
-              data-testid="button-upload-shapefile"
-            >
-              {isUploading ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+      <div className="flex-1 flex flex-col overflow-hidden" data-no-drag>
+        <Tabs defaultValue="layers" className="flex-1 flex flex-col">
+          <TabsList className="mx-3 mt-3 grid w-auto grid-cols-3" data-testid="data-manager-tabs">
+            <TabsTrigger value="layers" className="gap-1.5" data-testid="tab-layers">
+              <Layers className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Слои</span>
+            </TabsTrigger>
+            <TabsTrigger value="sources" className="gap-1.5" data-testid="tab-sources">
+              <Globe className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Источники</span>
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="gap-1.5" data-testid="tab-settings">
+              <Settings className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Настройки</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="layers" className="flex-1 flex flex-col overflow-hidden mt-0 px-3 pb-3">
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Слои сцены ({sceneLayers.length})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading || !canEdit}
+                  data-testid="button-upload-shapefile"
+                >
+                  {isUploading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileUp className="h-4 w-4 mr-2" />
+                  )}
+                  SHP
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".zip,.shp"
+                  multiple
+                  onChange={handleFileChange}
+                  data-testid="input-shapefile"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => excelInputRef.current?.click()}
+                  disabled={isParsingExcel || !canEdit}
+                  data-testid="button-upload-excel"
+                >
+                  {isParsingExcel ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  )}
+                  XLS
+                </Button>
+                <input
+                  ref={excelInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".xls,.xlsx"
+                  onChange={handleExcelFileChange}
+                  data-testid="input-excel"
+                />
+              </div>
+            </div>
+            
+            {uploadProgress && (
+              <div className="mb-3 p-2 bg-muted rounded text-sm text-muted-foreground flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {uploadProgress}
+              </div>
+            )}
+            
+            <ScrollArea className="flex-1">
+              {sceneLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Загрузка...</div>
+              ) : sceneLayers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Layers className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>В сцене нет слоёв</p>
+                  <p className="text-xs mt-1">Импортируйте shapefile или создайте слой</p>
+                </div>
               ) : (
-                <FileUp className="h-4 w-4 mr-2" />
-              )}
-              Импорт SHP
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              accept=".zip,.shp"
-              multiple
-              onChange={handleFileChange}
-              data-testid="input-shapefile"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => excelInputRef.current?.click()}
-              disabled={isParsingExcel || !canEdit}
-              data-testid="button-upload-excel"
-            >
-              {isParsingExcel ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-              )}
-              Импорт XLS
-            </Button>
-            <input
-              ref={excelInputRef}
-              type="file"
-              className="hidden"
-              accept=".xls,.xlsx"
-              onChange={handleExcelFileChange}
-              data-testid="input-excel"
-            />
-          </div>
-        </div>
-        
-        {uploadProgress && (
-          <div className="mb-3 p-2 bg-muted rounded text-sm text-muted-foreground flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {uploadProgress}
-          </div>
-        )}
-        
-        <ScrollArea className="flex-1">
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Map className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Проекция карты</span>
-            </div>
-            <div className="rounded-md border bg-background p-3 mb-3">
-              <RadioGroup
-                value={currentProjection}
-                onValueChange={(value) => {
-                  setProjection(value as ProjectionType);
-                }}
-                className="space-y-2"
-                data-testid="projection-radio-group"
-              >
-                {(Object.keys(projectionInfo) as ProjectionType[]).map((projKey) => (
-                  <div key={projKey} className="flex items-center space-x-2">
-                    <RadioGroupItem
-                      value={projKey}
-                      id={`projection-${projKey}`}
-                      data-testid={`radio-projection-${projKey}`}
-                    />
-                    <Label
-                      htmlFor={`projection-${projKey}`}
-                      className="text-sm cursor-pointer"
-                    >
-                      {projectionInfo[projKey].name}
-                      <span className="text-xs text-muted-foreground ml-1">
-                        ({projectionInfo[projKey].description})
-                      </span>
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
-            </div>
-
-            <div className="flex items-center gap-2 mb-2">
-              <Map className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Базовые слои</span>
-            </div>
-            <div className="rounded-md border bg-background p-3">
-              <RadioGroup
-                value={activeBaseLayer}
-                onValueChange={(value) => {
-                  setActiveBaseLayer(value as BaseLayerType);
-                }}
-                className="space-y-2"
-                data-testid="base-layer-radio-group"
-              >
-                {baseLayers.map((layer) => (
-                  <div key={layer.id} className="flex items-center space-x-2">
-                    <RadioGroupItem
-                      value={layer.id}
-                      id={`base-layer-${layer.id}`}
-                      data-testid={`radio-base-layer-${layer.id}`}
-                    />
-                    <Label
-                      htmlFor={`base-layer-${layer.id}`}
-                      className="text-sm cursor-pointer"
-                    >
-                      {layer.name}
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 mb-2">
-            <Layers className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Слои сцены ({sceneLayers.length})</span>
-          </div>
-
-          {sceneLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Загрузка...</div>
-          ) : sceneLayers.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Layers className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>В сцене нет слоёв</p>
-              <p className="text-xs mt-1">Импортируйте shapefile или создайте слой</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {sceneLayers.map(layer => (
+                <div className="space-y-2">
+                  {sceneLayers.map(layer => (
                 <div
                   key={layer.id}
                   className="rounded-md border bg-background"
@@ -924,7 +871,97 @@ export function DataManager({ onClose }: DataManagerProps) {
               ))}
             </div>
           )}
-        </ScrollArea>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="sources" className="flex-1 flex flex-col overflow-hidden mt-0 px-3 pb-3">
+            <ScrollArea className="flex-1">
+              <div className="py-3">
+                <div className="text-center py-8 text-muted-foreground">
+                  <Globe className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Внешние источники данных</p>
+                  <p className="text-xs mt-1">WMS, WFS, ZWS сервисы</p>
+                  <p className="text-xs text-muted-foreground mt-4">Функционал в разработке</p>
+                </div>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="settings" className="flex-1 flex flex-col overflow-hidden mt-0 px-3 pb-3">
+            <ScrollArea className="flex-1">
+              <div className="py-3 space-y-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Map className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Проекция карты</span>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <RadioGroup
+                      value={currentProjection}
+                      onValueChange={(value) => {
+                        setProjection(value as ProjectionType);
+                      }}
+                      className="space-y-2"
+                      data-testid="projection-radio-group"
+                    >
+                      {(Object.keys(projectionInfo) as ProjectionType[]).map((projKey) => (
+                        <div key={projKey} className="flex items-center space-x-2">
+                          <RadioGroupItem
+                            value={projKey}
+                            id={`projection-${projKey}`}
+                            data-testid={`radio-projection-${projKey}`}
+                          />
+                          <Label
+                            htmlFor={`projection-${projKey}`}
+                            className="text-sm cursor-pointer"
+                          >
+                            {projectionInfo[projKey].name}
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({projectionInfo[projKey].description})
+                            </span>
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Layers className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Базовые слои</span>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <RadioGroup
+                      value={activeBaseLayer}
+                      onValueChange={(value) => {
+                        setActiveBaseLayer(value as BaseLayerType);
+                      }}
+                      className="space-y-2"
+                      data-testid="base-layer-radio-group"
+                    >
+                      {baseLayers.map((layer) => (
+                        <div key={layer.id} className="flex items-center space-x-2">
+                          <RadioGroupItem
+                            value={layer.id}
+                            id={`base-layer-${layer.id}`}
+                            data-testid={`radio-base-layer-${layer.id}`}
+                          />
+                          <Label
+                            htmlFor={`base-layer-${layer.id}`}
+                            className="text-sm cursor-pointer"
+                          >
+                            {layer.name}
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
       </div>
 
       {!isMobile && (
