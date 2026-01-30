@@ -149,11 +149,14 @@ const LAYER_COLORS: Record<string, string> = {
 // Calculate point radius and stroke width based on zoom level
 // Higher zoom = smaller points to avoid overlapping lines
 function getPointSizeForZoom(zoom: number): { radius: number; strokeWidth: number; iconScale: number } {
-  if (zoom >= 16) {
-    // High zoom (16+): 6px
+  if (zoom >= 19) {
+    // Ultra-high zoom (19+): 6px
     return { radius: 6, strokeWidth: 1, iconScale: 0.75 };
+  } else if (zoom >= 15) {
+    // High zoom (15-18): 5px
+    return { radius: 5, strokeWidth: 0.75, iconScale: 0.6 };
   } else if (zoom >= 9) {
-    // Medium zoom (9-15): 4px
+    // Medium zoom (9-14): 4px
     return { radius: 4, strokeWidth: 0.5, iconScale: 0.5 };
   } else {
     // Low zoom (<9): 8px
