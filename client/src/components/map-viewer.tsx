@@ -8,7 +8,7 @@ import OSM from "ol/source/OSM";
 import XYZ from "ol/source/XYZ";
 import VectorSource from "ol/source/Vector";
 import ImageWMS from "ol/source/ImageWMS";
-import Cluster from "ol/source/Cluster";
+// Cluster import removed - using server-side point sampling instead
 import { fromLonLat, toLonLat, transformExtent } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
 import WKT from "ol/format/WKT";
@@ -281,44 +281,8 @@ function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
   });
 }
 
-// Create cluster style for point layers at low zoom levels
-function createClusterStyle(color: string, pointStyle: PointStyle = "circle") {
-  return function(feature: Feature | import("ol/render/Feature").default) {
-    const clusteredFeatures = feature.get('features');
-    const size = clusteredFeatures ? clusteredFeatures.length : 1;
-    
-    if (size === 1) {
-      // Single feature - use normal point style
-      return new Style({
-        image: createPointImageStyle(color, pointStyle),
-      });
-    }
-    
-    // Cluster with multiple features - show count
-    const radius = Math.min(8 + Math.log2(size) * 4, 24);
-    return new Style({
-      image: new Circle({
-        radius: radius,
-        fill: new Fill({ color: color + "CC" }),
-        stroke: new Stroke({ color: "#fff", width: 2 }),
-      }),
-      text: new Text({
-        text: size > 99 ? "99+" : size.toString(),
-        fill: new Fill({ color: "#fff" }),
-        font: `bold ${Math.min(12 + Math.log2(size), 16)}px sans-serif`,
-        textAlign: 'center',
-        textBaseline: 'middle',
-      }),
-    });
-  };
-}
-
-// Cluster distance threshold in pixels (increased for better performance)
-const CLUSTER_DISTANCE = 60;
-// Zoom threshold below which clustering is enabled (lowered for earlier clustering)
-const CLUSTER_ZOOM_THRESHOLD = 12;
-// Minimum features to enable clustering (increased to avoid overhead on small layers)
-const CLUSTER_MIN_FEATURES = 200;
+// Note: Clustering removed in favor of server-side point sampling (GIS-style approach)
+// Points are now filtered on the server based on zoom level for better performance
 
 // Z-index constants for proper layer stacking
 // Polygons should render below lines, lines below points
@@ -933,6 +897,13 @@ export function MapViewer({
 
   // Track if any layer has limited features
   const [hasLimitedFeatures, setHasLimitedFeatures] = useState(false);
+  
+  // Track point sampling info for the sampling indicator
+  const [pointSamplingInfo, setPointSamplingInfo] = useState<{
+    totalPoints: number;
+    sampledPoints: number;
+    isFullData: boolean;
+  } | null>(null);
 
   // Stable layer IDs for query key (prevents cache invalidation on layer reference changes)
   const layerIdsKey = useMemo(() => 
@@ -946,6 +917,9 @@ export function MapViewer({
     queryFn: async () => {
       const featuresByLayer: Record<number, DrawnFeature[]> = {};
       let anyLimited = false;
+      let totalPoints = 0;
+      let sampledPoints = 0;
+      let hasAnySampling = false;
       
       await Promise.all(
         allEditableLayers.map(async (layer) => {
@@ -972,6 +946,14 @@ export function MapViewer({
                 if (data.limited) {
                   anyLimited = true;
                 }
+                // Track point sampling info
+                if (data.pointSampling) {
+                  totalPoints += data.pointSampling.totalPoints;
+                  sampledPoints += data.pointSampling.sampledPoints;
+                  if (!data.pointSampling.isFullData) {
+                    hasAnySampling = true;
+                  }
+                }
                 // Debug: Log polygon layers with 0 features
                 if (layer.geometryType === "Polygon" && data.features.length === 0) {
                   console.log(`[Debug] Layer ${layer.id} (${layer.name}): 0 features in viewport, total: ${data.total}`);
@@ -989,6 +971,17 @@ export function MapViewer({
         })
       );
       setHasLimitedFeatures(anyLimited);
+      
+      // Update point sampling info
+      if (totalPoints > 0) {
+        setPointSamplingInfo({
+          totalPoints,
+          sampledPoints,
+          isFullData: !hasAnySampling,
+        });
+      } else {
+        setPointSamplingInfo(null);
+      }
       
       return featuresByLayer;
     },
@@ -1511,49 +1504,19 @@ export function MapViewer({
           console.error("Failed to parse layer GeoJSON:", e);
         }
         
-        // Check if this is a Point-only layer for clustering
-        const isPointLayer = layerFeatures.length > 0 && 
-          layerFeatures.every(f => f.geometryType === "Point");
-        const currentZoom = fetchViewport?.zoom ?? 12;
-        const shouldCluster = isPointLayer && currentZoom < CLUSTER_ZOOM_THRESHOLD && layerFeatures.length > CLUSTER_MIN_FEATURES;
-        
-        if (shouldCluster) {
-          // Use Cluster source for point layers at low zoom levels
-          const clusterSource = new Cluster({
-            distance: CLUSTER_DISTANCE,
-            source: vectorSource,
-          });
-          
-          const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
-          vectorLayer = new VectorLayer({
-            source: clusterSource,
-            style: createClusterStyle(
-              editableLayerItem.color || "#1976D2",
-              (editableLayerItem.pointStyle as PointStyle) || "circle"
-            ),
-            properties: { 
-              editableLayerId: editableLayerItem.id, 
-              featureCount: layerFeatures.length,
-              isClustered: true,
-              originalSource: vectorSource,
-              styleKey,
-            },
-          });
-          console.log(`Created clustered layer for ${editableLayerItem.name}`);
-        } else {
-          const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
-          vectorLayer = new VectorLayer({
-            source: vectorSource,
-            style: createEditableLayerStyle(editableLayerItem),
-            properties: { 
-              editableLayerId: editableLayerItem.id, 
-              featureCount: layerFeatures.length,
-              isClustered: false,
-              originalSource: vectorSource,
-              styleKey,
-            },
-          });
-        }
+        // Server-side point sampling is used instead of client-side clustering
+        // Points are filtered on the server based on zoom level for better performance
+        const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
+        vectorLayer = new VectorLayer({
+          source: vectorSource,
+          style: createEditableLayerStyle(editableLayerItem),
+          properties: { 
+            editableLayerId: editableLayerItem.id, 
+            featureCount: layerFeatures.length,
+            originalSource: vectorSource,
+            styleKey,
+          },
+        });
         
         // Set z-index based on geometry type: Polygons bottom, Lines middle, Points top
         const layerZIndex = getLayerZIndex(layerFeatures);
@@ -1566,80 +1529,10 @@ export function MapViewer({
         // But skip if data is still loading (layerFeatures is empty but should have data)
         const storedCount = vectorLayer.get("featureCount");
         const hasDataForLayer = allLayerFeatures[editableLayerItem.id] !== undefined;
-        const isClustered = vectorLayer.get("isClustered");
         
-        // Check if clustering state should change based on zoom
-        const isPointLayer = layerFeatures.length > 0 && 
-          layerFeatures.every(f => f.geometryType === "Point");
-        const currentZoom = fetchViewport?.zoom ?? 12;
-        const shouldCluster = isPointLayer && currentZoom < CLUSTER_ZOOM_THRESHOLD && layerFeatures.length > CLUSTER_MIN_FEATURES;
-        
-        // If clustering state changed, recreate the layer
-        if (isPointLayer && isClustered !== shouldCluster) {
-          // Remove old layer and recreate with correct source type
-          map.removeLayer(vectorLayer);
-          allEditableLayersRef.current.delete(editableLayerItem.id);
-          
-          const originalSource = vectorLayer.get("originalSource") as VectorSource || new VectorSource();
-          originalSource.clear();
-          
-          if (geojsonData.features.length > 0) {
-            const features = geojsonFormat.readFeatures(geojsonData, {
-              dataProjection: "EPSG:4326",
-              featureProjection: "EPSG:3857",
-            });
-            originalSource.addFeatures(features);
-          }
-          
-          const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
-          if (shouldCluster) {
-            const clusterSource = new Cluster({
-              distance: CLUSTER_DISTANCE,
-              source: originalSource,
-            });
-            
-            vectorLayer = new VectorLayer({
-              source: clusterSource,
-              style: createClusterStyle(
-                editableLayerItem.color || "#1976D2",
-                (editableLayerItem.pointStyle as PointStyle) || "circle"
-              ),
-              properties: { 
-                editableLayerId: editableLayerItem.id, 
-                featureCount: layerFeatures.length,
-                isClustered: true,
-                originalSource: originalSource,
-                styleKey,
-              },
-            });
-            console.log(`Switched to clustered mode for ${editableLayerItem.name}`);
-          } else {
-            vectorLayer = new VectorLayer({
-              source: originalSource,
-              style: createEditableLayerStyle(editableLayerItem),
-              properties: { 
-                editableLayerId: editableLayerItem.id, 
-                featureCount: layerFeatures.length,
-                isClustered: false,
-                originalSource: originalSource,
-                styleKey,
-              },
-            });
-            console.log(`Switched to non-clustered mode for ${editableLayerItem.name}`);
-          }
-          
-          // Set z-index based on geometry type when recreating layer
-          const layerZIndex = getLayerZIndex(layerFeatures);
-          vectorLayer.setZIndex(layerZIndex);
-          
-          map.addLayer(vectorLayer);
-          allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
-        } else if (storedCount !== layerFeatures.length && hasDataForLayer) {
-          // Only update features if count changed
-          // For clustered layers, update the original source
-          const sourceToUpdate = isClustered 
-            ? vectorLayer.get("originalSource") as VectorSource
-            : vectorLayer.getSource() as VectorSource;
+        // Update features if count changed (server-side sampling handles point filtering)
+        if (storedCount !== layerFeatures.length && hasDataForLayer) {
+          const sourceToUpdate = vectorLayer.getSource() as VectorSource;
           
           if (sourceToUpdate) {
             sourceToUpdate.clear();
@@ -1652,7 +1545,7 @@ export function MapViewer({
                 sourceToUpdate.addFeatures(features);
               }
               vectorLayer.set("featureCount", layerFeatures.length);
-              console.log(`Refreshed layer ${editableLayerItem.name}: ${layerFeatures.length} features${isClustered ? " (clustered)" : ""}`);
+              console.log(`Refreshed layer ${editableLayerItem.name}: ${layerFeatures.length} features`);
             } catch (e) {
               console.error("Failed to refresh layer features:", e);
             }
@@ -1677,15 +1570,7 @@ export function MapViewer({
       }
       
       if (storedStyleKey !== currentStyleKey) {
-        const layerIsClustered = vectorLayer.get("isClustered");
-        if (layerIsClustered) {
-          vectorLayer.setStyle(createClusterStyle(
-            editableLayerItem.color || "#1976D2",
-            (editableLayerItem.pointStyle as PointStyle) || "circle"
-          ));
-        } else {
-          vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem));
-        }
+        vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem));
         vectorLayer.set("styleKey", currentStyleKey);
       }
     });
@@ -2350,27 +2235,11 @@ export function MapViewer({
       editableLayerModifyRef.current = null;
     }
 
-    // Track if we switched from clustered to non-clustered for cleanup
-    let switchedLayer: VectorLayer<VectorSource> | null = null;
-    let originalClusterSource: Cluster | null = null;
-
     // Only add modify interaction when in edit mode with "modify" drawing mode and an active layer
     if (activeEditableLayer && editMode && drawingMode === "modify") {
       const layer = allEditableLayersRef.current.get(activeEditableLayer.id);
       if (layer) {
-        const isClustered = layer.get("isClustered");
-        const originalSource = layer.get("originalSource") as VectorSource;
-        
-        // For clustered layers, temporarily switch to non-clustered source
-        // so that the Modify interaction can work with individual features
-        if (isClustered && originalSource) {
-          originalClusterSource = layer.getSource() as Cluster;
-          layer.setSource(originalSource);
-          layer.setStyle(createEditableLayerStyle(activeEditableLayer));
-          switchedLayer = layer;
-        }
-        
-        const source = originalSource || layer.getSource();
+        const source = layer.getSource();
         
         if (source) {
           const modify = new Modify({ source });
@@ -2411,18 +2280,6 @@ export function MapViewer({
       if (editableLayerModifyRef.current) {
         map.removeInteraction(editableLayerModifyRef.current);
         editableLayerModifyRef.current = null;
-      }
-      // Restore clustered source if we switched it
-      if (switchedLayer && originalClusterSource) {
-        switchedLayer.setSource(originalClusterSource);
-        const layerId = switchedLayer.get("editableLayerId");
-        const layerData = allEditableLayersDataRef.current?.find(l => l.id === layerId);
-        if (layerData) {
-          switchedLayer.setStyle(createClusterStyle(
-            layerData.color || "#1976D2",
-            (layerData.pointStyle as PointStyle) || "circle"
-          ));
-        }
       }
     };
   }, [activeEditableLayer, editMode, drawingMode]);
@@ -2810,7 +2667,12 @@ export function MapViewer({
         onToggleTicketMode={isConnected ? onToggleTicketMode : undefined}
       />
 
-      <CoordinateDisplay coordinates={mouseCoordinates} zoom={zoom} snapEnabled={editMode && snapSettings?.enabled} />
+      <CoordinateDisplay 
+        coordinates={mouseCoordinates} 
+        zoom={zoom} 
+        snapEnabled={editMode && snapSettings?.enabled}
+        pointSampling={pointSamplingInfo}
+      />
 
       <FeatureInfoPanel
         feature={selectedFeature}

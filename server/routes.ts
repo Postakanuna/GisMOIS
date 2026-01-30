@@ -15,7 +15,7 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance } from "./shapefile-parser";
+import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
 
 const uploadDir = path.join(os.tmpdir(), "gis-uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -2727,8 +2727,11 @@ export async function registerRoutes(
       // Apply limit before simplification for performance
       const limitedFeatures = filteredFeatures.slice(0, featureLimit);
 
+      // Apply point sampling based on zoom level (GIS-style approach)
+      const { sampled: sampledFeatures, totalPoints, samplingRate } = samplePointFeatures(limitedFeatures, zoomLevel);
+
       // Simplify geometries for lower zoom levels
-      const simplifiedFeatures = limitedFeatures.map(feature => {
+      const simplifiedFeatures = sampledFeatures.map(feature => {
         if (tolerance > 0 && feature.geometryType !== "Point") {
           return {
             ...feature,
@@ -2742,6 +2745,12 @@ export async function registerRoutes(
         features: simplifiedFeatures,
         total: filteredFeatures.length,
         limited: filteredFeatures.length > featureLimit,
+        pointSampling: {
+          totalPoints,
+          sampledPoints: samplingRate === Infinity ? 0 : Math.ceil(totalPoints / samplingRate),
+          samplingRate: samplingRate === Infinity ? 0 : samplingRate,
+          isFullData: samplingRate === 1,
+        },
       });
     } catch (error) {
       console.error("Get viewport features error:", error);
@@ -2852,8 +2861,11 @@ export async function registerRoutes(
       // Apply limit before simplification for performance
       const limitedFeatures = filteredFeatures.slice(0, featureLimit);
 
+      // Apply point sampling based on zoom level (GIS-style approach)
+      const { sampled: sampledFeatures, totalPoints, samplingRate } = samplePointFeatures(limitedFeatures, zoomLevel);
+
       // Simplify geometries for lower zoom levels
-      const simplifiedFeatures = limitedFeatures.map(feature => {
+      const simplifiedFeatures = sampledFeatures.map(feature => {
         if (tolerance > 0 && feature.geometryType !== "Point") {
           return {
             ...feature,
@@ -2867,6 +2879,12 @@ export async function registerRoutes(
         features: simplifiedFeatures,
         total: filteredFeatures.length,
         limited: filteredFeatures.length > featureLimit,
+        pointSampling: {
+          totalPoints,
+          sampledPoints: samplingRate === Infinity ? 0 : Math.ceil(totalPoints / samplingRate),
+          samplingRate: samplingRate === Infinity ? 0 : samplingRate,
+          isFullData: samplingRate === 1,
+        },
       });
     } catch (error) {
       console.error("Get viewport dataset features error:", error);

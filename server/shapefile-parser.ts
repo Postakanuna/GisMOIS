@@ -185,3 +185,60 @@ export function getSimplifyTolerance(zoom: number): number {
   if (zoom >= 4) return 0.003;        // Very coarse
   return 0.008;                        // Maximum simplification
 }
+
+// Point sampling rate based on zoom level (GIS-style approach)
+// Returns the sampling divisor: 1 = all points, 5 = every 5th point, etc.
+export function getPointSamplingRate(zoom: number): number {
+  if (zoom >= 12) return 1;      // All points visible
+  if (zoom >= 10) return 5;      // Every 5th point (20%)
+  if (zoom >= 8) return 20;      // Every 20th point (5%)
+  if (zoom >= 6) return 50;      // Every 50th point (2%)
+  return Infinity;               // No points at very low zoom
+}
+
+// Deterministic point sampling - ensures same points are shown at same zoom
+export function samplePointFeatures<T extends { geometryType: string }>(
+  features: T[],
+  zoom: number
+): { sampled: T[]; totalPoints: number; samplingRate: number } {
+  const samplingRate = getPointSamplingRate(zoom);
+  
+  // Separate points from other geometry types
+  const pointFeatures: T[] = [];
+  const otherFeatures: T[] = [];
+  
+  for (const feature of features) {
+    if (feature.geometryType === "Point" || feature.geometryType === "MultiPoint") {
+      pointFeatures.push(feature);
+    } else {
+      otherFeatures.push(feature);
+    }
+  }
+  
+  // If no sampling needed or no points, return all
+  if (samplingRate === 1 || pointFeatures.length === 0) {
+    return {
+      sampled: features,
+      totalPoints: pointFeatures.length,
+      samplingRate: 1,
+    };
+  }
+  
+  // If zoom too low, return only non-point features
+  if (samplingRate === Infinity) {
+    return {
+      sampled: otherFeatures,
+      totalPoints: pointFeatures.length,
+      samplingRate: Infinity,
+    };
+  }
+  
+  // Sample points deterministically by index
+  const sampledPoints = pointFeatures.filter((_, index) => index % samplingRate === 0);
+  
+  return {
+    sampled: [...otherFeatures, ...sampledPoints],
+    totalPoints: pointFeatures.length,
+    samplingRate,
+  };
+}
