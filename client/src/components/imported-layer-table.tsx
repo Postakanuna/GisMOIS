@@ -7,9 +7,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, X } from "lucide-react";
 
-interface DatasetFeature {
+interface DrawnFeature {
   id: number;
-  datasetId: number;
+  layerId: number;
   geometryType: string;
   coordinates: unknown;
   properties: Record<string, unknown>;
@@ -28,8 +28,8 @@ export function ImportedLayerTable({ layerId, layerName, onClose }: ImportedLaye
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
-  const { data: features = [], isLoading } = useQuery<DatasetFeature[]>({
-    queryKey: ["/api/datasets", layerId, "features"],
+  const { data: features = [], isLoading } = useQuery<DrawnFeature[]>({
+    queryKey: ["/api/editable-layers", layerId, "features"],
     enabled: !!layerId,
   });
 
