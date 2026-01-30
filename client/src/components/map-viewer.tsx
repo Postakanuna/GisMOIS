@@ -629,9 +629,6 @@ export function MapViewer({
     maxY: number;
     zoom: number;
   } | null>(null);
-  const [isLoadingFeatures, setIsLoadingFeatures] = useState(false);
-  
-  
   const [selectedMapFeatures, setSelectedMapFeatures] = useState<Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }>>([]);
   const selectedMapFeaturesRef = useRef(selectedMapFeatures);
   const [selectionCandidates, setSelectionCandidates] = useState<SelectionCandidate[]>([]);
@@ -895,9 +892,6 @@ export function MapViewer({
     return `${fetchViewport.minX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.minY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.zoom}`;
   }, [fetchViewport]);
 
-  // Track if any layer has limited features
-  const [hasLimitedFeatures, setHasLimitedFeatures] = useState(false);
-  
   // Track point sampling info for the sampling indicator
   const [pointSamplingInfo, setPointSamplingInfo] = useState<{
     totalPoints: number;
@@ -916,7 +910,6 @@ export function MapViewer({
     queryKey: ["/api/editable-layers/viewport-features", layerIdsKey, viewportKey],
     queryFn: async () => {
       const featuresByLayer: Record<number, DrawnFeature[]> = {};
-      let anyLimited = false;
       let totalPoints = 0;
       let sampledPoints = 0;
       let hasAnySampling = false;
@@ -943,9 +936,6 @@ export function MapViewer({
               // Handle new response format with features array and limit info
               if (data.features && Array.isArray(data.features)) {
                 featuresByLayer[layer.id] = data.features;
-                if (data.limited) {
-                  anyLimited = true;
-                }
                 // Track point sampling info
                 if (data.pointSampling) {
                   totalPoints += data.pointSampling.totalPoints;
@@ -970,7 +960,6 @@ export function MapViewer({
           }
         })
       );
-      setHasLimitedFeatures(anyLimited);
       
       // Update point sampling info
       if (totalPoints > 0) {
@@ -993,10 +982,6 @@ export function MapViewer({
     placeholderData: (previousData) => previousData,
   });
   
-  // Sync loading state with React Query's fetching state
-  useEffect(() => {
-    setIsLoadingFeatures(isFetchingFeatures);
-  }, [isFetchingFeatures]);
 
   useEffect(() => {
     activeFiltersRef.current = activeFilters;
@@ -2682,26 +2667,7 @@ export function MapViewer({
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
 
-      {/* Loading indicator for feature fetching */}
-      {isLoadingFeatures && (
-        <div 
-          className="absolute bottom-16 right-4 z-40 bg-background/90 border rounded-md px-3 py-1.5 shadow-sm flex items-center gap-2 text-sm"
-          data-testid="features-loading-indicator"
-        >
-          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span>Загрузка объектов...</span>
-        </div>
-      )}
 
-      {/* Warning when feature limit is reached */}
-      {hasLimitedFeatures && !isLoadingFeatures && (
-        <div 
-          className="absolute bottom-16 right-4 z-40 bg-amber-50 dark:bg-amber-900/50 border border-amber-200 dark:border-amber-700 rounded-md px-3 py-1.5 shadow-sm flex items-center gap-2 text-sm text-amber-700 dark:text-amber-200"
-          data-testid="features-limit-warning"
-        >
-          <span>Отображено не более 5000 объектов. Приблизьте карту для просмотра всех.</span>
-        </div>
-      )}
 
       {/* Layer Selection Dialog for overlapping features */}
       {selectionCandidates.length > 0 && (
