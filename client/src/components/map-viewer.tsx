@@ -150,13 +150,13 @@ const LAYER_COLORS: Record<string, string> = {
 // Higher zoom = smaller points to avoid overlapping lines
 function getPointSizeForZoom(zoom: number): { radius: number; strokeWidth: number; iconScale: number } {
   if (zoom >= 15) {
-    return { radius: 3, strokeWidth: 0.5, iconScale: 0.5 };
-  } else if (zoom >= 13) {
-    return { radius: 4, strokeWidth: 0.5, iconScale: 0.6 };
-  } else if (zoom >= 11) {
-    return { radius: 5, strokeWidth: 0.75, iconScale: 0.7 };
-  } else if (zoom >= 9) {
     return { radius: 6, strokeWidth: 1, iconScale: 0.75 };
+  } else if (zoom >= 13) {
+    return { radius: 6, strokeWidth: 1, iconScale: 0.75 };
+  } else if (zoom >= 11) {
+    return { radius: 6, strokeWidth: 1, iconScale: 0.75 };
+  } else if (zoom >= 9) {
+    return { radius: 7, strokeWidth: 1, iconScale: 0.8 };
   } else {
     return { radius: 8, strokeWidth: 1.5, iconScale: 0.9 };
   }
@@ -1205,12 +1205,9 @@ export function MapViewer({
       const lastRoundedZoom = Math.round(lastStyleZoomRef.current);
       
       if (roundedZoom !== lastRoundedZoom) {
-        console.log(`[Zoom Style Update] Zoom changed from ${lastRoundedZoom} to ${roundedZoom}, updating point styles`);
         lastStyleZoomRef.current = currentZoom;
         
         // Update editable layer styles
-        const editableLayerCount = allEditableLayersRef.current.size;
-        console.log(`[Zoom Style Update] Updating ${editableLayerCount} editable layers`);
         allEditableLayersRef.current.forEach((layer) => {
           const editableLayerId = layer.get("editableLayerId");
           const layerData = allEditableLayersDataRef.current?.find(l => l.id === editableLayerId);
@@ -1221,8 +1218,6 @@ export function MapViewer({
         });
         
         // Update scene dataset layer styles
-        const sceneLayerCount = sceneDatasetLayersRef.current.size;
-        console.log(`[Zoom Style Update] Updating ${sceneLayerCount} scene dataset layers`);
         sceneDatasetLayersRef.current.forEach((layer) => {
           const color = layer.get("color") || "#1976D2";
           const pointStyle = layer.get("pointStyle") || "circle";
