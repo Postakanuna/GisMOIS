@@ -146,17 +146,38 @@ const LAYER_COLORS: Record<string, string> = {
   "ZR_TS_MO": "#FF5722",
 };
 
-// Helper function to create point image style based on pointStyle
-function createPointImageStyle(color: string, pointStyle: PointStyle = "circle"): Circle | RegularShape | Icon {
+// Calculate point radius and stroke width based on zoom level
+// Higher zoom = smaller points to avoid overlapping lines
+function getPointSizeForZoom(zoom: number): { radius: number; strokeWidth: number; iconScale: number } {
+  if (zoom >= 15) {
+    return { radius: 3, strokeWidth: 0.5, iconScale: 0.5 };
+  } else if (zoom >= 13) {
+    return { radius: 4, strokeWidth: 0.5, iconScale: 0.6 };
+  } else if (zoom >= 11) {
+    return { radius: 5, strokeWidth: 0.75, iconScale: 0.7 };
+  } else if (zoom >= 9) {
+    return { radius: 6, strokeWidth: 1, iconScale: 0.75 };
+  } else {
+    return { radius: 8, strokeWidth: 1.5, iconScale: 0.9 };
+  }
+}
+
+// Helper function to create point image style based on pointStyle and zoom
+function createPointImageStyle(
+  color: string, 
+  pointStyle: PointStyle = "circle",
+  zoom?: number
+): Circle | RegularShape | Icon {
+  const sizes = getPointSizeForZoom(zoom ?? 10);
   const fill = new Fill({ color });
-  const stroke = new Stroke({ color: "#fff", width: 1 });
+  const stroke = new Stroke({ color: "#fff", width: sizes.strokeWidth });
   
   // Check if it's a heat network style
   if (isHeatNetworkStyle(pointStyle)) {
     const iconUrl = getHeatNetworkIconUrl(pointStyle as HeatNetworkPointStyle, color);
     return new Icon({
       src: iconUrl,
-      scale: 0.75, // Scale down 24px icons to ~18px to match other point styles
+      scale: sizes.iconScale,
       anchor: [0.5, 0.5],
       anchorXUnits: 'fraction',
       anchorYUnits: 'fraction',
@@ -169,7 +190,7 @@ function createPointImageStyle(color: string, pointStyle: PointStyle = "circle")
         fill,
         stroke,
         points: 4,
-        radius: 6,
+        radius: sizes.radius,
         angle: Math.PI / 4,
       });
     case "triangle":
@@ -177,7 +198,7 @@ function createPointImageStyle(color: string, pointStyle: PointStyle = "circle")
         fill,
         stroke,
         points: 3,
-        radius: 7,
+        radius: sizes.radius,
         angle: 0,
       });
     case "cloud":
@@ -185,14 +206,14 @@ function createPointImageStyle(color: string, pointStyle: PointStyle = "circle")
         fill,
         stroke,
         points: 5,
-        radius: 7,
-        radius2: 4,
+        radius: sizes.radius,
+        radius2: sizes.radius * 0.6,
         angle: 0,
       });
     case "circle":
     default:
       return new Circle({
-        radius: 6,
+        radius: sizes.radius,
         fill,
         stroke,
       });
@@ -223,7 +244,7 @@ function createLineStroke(color: string, lineStyle: LineStyle = "solid"): Stroke
 }
 
 // Create complete layer style based on layer properties
-function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
+function createEditableLayerStyle(layer: EditableLayer, zoom?: number): Style | Style[] {
   const color = layer.color || "#1976D2";
   const pointStyle = layer.pointStyle || "circle";
   const lineStyle = layer.lineStyle || "solid";
@@ -234,7 +255,7 @@ function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
       new Style({
         stroke: new Stroke({ color, width: 4 }),
         fill: new Fill({ color: color + "40" }),
-        image: createPointImageStyle(color, pointStyle),
+        image: createPointImageStyle(color, pointStyle, zoom),
       }),
       new Style({
         stroke: new Stroke({ color: "#fff", width: 1.5 }),
@@ -268,7 +289,7 @@ function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
         lineDash: config.lineDash 
       }),
       fill: config.outline ? undefined : new Fill({ color: color + "40" }),
-      image: createPointImageStyle(color, pointStyle),
+      image: createPointImageStyle(color, pointStyle, zoom),
     }));
     
     return styles.length === 1 ? styles[0] : styles;
@@ -277,7 +298,7 @@ function createEditableLayerStyle(layer: EditableLayer): Style | Style[] {
   return new Style({
     fill: new Fill({ color: color + "40" }),
     stroke: createLineStroke(color, lineStyle) as Stroke,
-    image: createPointImageStyle(color, pointStyle),
+    image: createPointImageStyle(color, pointStyle, zoom),
   });
 }
 
@@ -1491,15 +1512,17 @@ export function MapViewer({
         
         // Server-side point sampling is used instead of client-side clustering
         // Points are filtered on the server based on zoom level for better performance
-        const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
+        const currentZoom = fetchViewport?.zoom || 10;
+        const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${currentZoom}`;
         vectorLayer = new VectorLayer({
           source: vectorSource,
-          style: createEditableLayerStyle(editableLayerItem),
+          style: createEditableLayerStyle(editableLayerItem, currentZoom),
           properties: { 
             editableLayerId: editableLayerItem.id, 
             featureCount: layerFeatures.length,
             originalSource: vectorSource,
             styleKey,
+            lastZoom: currentZoom,
           },
         });
         
@@ -1554,9 +1577,15 @@ export function MapViewer({
         return; // Skip style update for this layer only
       }
       
-      if (storedStyleKey !== currentStyleKey) {
-        vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem));
-        vectorLayer.set("styleKey", currentStyleKey);
+      // Check if zoom changed significantly (by 1 or more) for point size updates
+      const storedZoom = vectorLayer.get("lastZoom") || 10;
+      const zoomChanged = Math.abs(storedZoom - (fetchViewport?.zoom || 10)) >= 1;
+      
+      if (storedStyleKey !== currentStyleKey || zoomChanged) {
+        const newZoom = fetchViewport?.zoom || 10;
+        vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem, newZoom));
+        vectorLayer.set("styleKey", `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${newZoom}`);
+        vectorLayer.set("lastZoom", newZoom);
       }
     });
   }, [allEditableLayers, allLayerFeatures, isFetchingFeatures, fetchViewport]);
@@ -1633,22 +1662,27 @@ export function MapViewer({
             console.warn("Failed to parse GeoJSON for dataset:", sd.datasetId, e);
           }
 
-          const style = new Style({
-            fill: new Fill({ color: sd.color + "33" }),
-            stroke: new Stroke({ color: sd.color, width: 2 }),
-            image: createPointImageStyle(sd.color, sd.pointStyle as PointStyle),
-          });
+          // Use style function for zoom-adaptive point sizing
+          const createZoomAdaptiveStyle = (layerColor: string, layerPointStyle: PointStyle, currentZoom: number) => {
+            return new Style({
+              fill: new Fill({ color: layerColor + "33" }),
+              stroke: new Stroke({ color: layerColor, width: 2 }),
+              image: createPointImageStyle(layerColor, layerPointStyle, currentZoom),
+            });
+          };
 
           vectorLayer = new VectorLayer({
             source: vectorSource,
-            style,
+            style: createZoomAdaptiveStyle(sd.color, sd.pointStyle as PointStyle, fetchViewport.zoom),
             opacity: sd.opacity,
             visible: !!sd.isVisible,
             properties: { 
               sceneDatasetId: sd.id,
               datasetId: sd.datasetId,
               color: sd.color,
+              pointStyle: sd.pointStyle,
               lastViewportKey: `${fetchViewport.minX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.minY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.zoom}`,
+              lastZoom: fetchViewport.zoom,
             },
             zIndex: sd.zIndex + 100,
           });
@@ -1665,14 +1699,18 @@ export function MapViewer({
         vectorLayer.setOpacity(sd.opacity);
         
         const storedColor = vectorLayer.get("color");
-        if (storedColor !== sd.color) {
+        const storedZoom = vectorLayer.get("lastZoom") || 10;
+        const zoomChanged = Math.abs(storedZoom - fetchViewport.zoom) >= 1;
+        
+        if (storedColor !== sd.color || zoomChanged) {
           const style = new Style({
             fill: new Fill({ color: sd.color + "33" }),
             stroke: new Stroke({ color: sd.color, width: 2 }),
-            image: createPointImageStyle(sd.color, sd.pointStyle as PointStyle),
+            image: createPointImageStyle(sd.color, sd.pointStyle as PointStyle, fetchViewport.zoom),
           });
           vectorLayer.setStyle(style);
           vectorLayer.set("color", sd.color);
+          vectorLayer.set("lastZoom", fetchViewport.zoom);
         }
         
         // Check if viewport changed significantly and refresh features (use same precision as main viewportKey)
