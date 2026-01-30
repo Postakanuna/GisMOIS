@@ -503,8 +503,8 @@ export function DataManager({ onClose }: DataManagerProps) {
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden" data-no-drag>
-        <Tabs defaultValue="layers" className="flex-1 flex flex-col">
-          <TabsList className="mx-3 mt-3 grid w-auto grid-cols-3" data-testid="data-manager-tabs">
+        <Tabs defaultValue="layers" className="flex-1 flex flex-col overflow-hidden">
+          <TabsList className="mx-3 mt-3 shrink-0 grid w-auto grid-cols-3" data-testid="data-manager-tabs">
             <TabsTrigger value="layers" className="gap-1.5" data-testid="tab-layers">
               <Layers className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Слои</span>
@@ -519,7 +519,7 @@ export function DataManager({ onClose }: DataManagerProps) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="layers" className="flex-1 flex flex-col overflow-hidden mt-0 px-3 pb-3">
+          <TabsContent value="layers" className="flex-1 flex flex-col overflow-hidden mt-0 px-3 pb-3 data-[state=inactive]:hidden">
             <div className="flex items-center justify-between py-3">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Слои сцены ({sceneLayers.length})</span>
@@ -874,20 +874,18 @@ export function DataManager({ onClose }: DataManagerProps) {
             </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="sources" className="flex-1 flex flex-col overflow-hidden mt-0 px-3 pb-3">
-            <ScrollArea className="flex-1">
-              <div className="py-3">
-                <div className="text-center py-8 text-muted-foreground">
-                  <Globe className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Внешние источники данных</p>
-                  <p className="text-xs mt-1">WMS, WFS, ZWS сервисы</p>
-                  <p className="text-xs text-muted-foreground mt-4">Функционал в разработке</p>
-                </div>
+          <TabsContent value="sources" className="flex-1 overflow-auto mt-0 px-3 pb-3 data-[state=inactive]:hidden">
+            <div className="py-3">
+              <div className="text-center py-8 text-muted-foreground">
+                <Globe className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>Внешние источники данных</p>
+                <p className="text-xs mt-1">WMS, WFS, ZWS сервисы</p>
+                <p className="text-xs text-muted-foreground mt-4">Функционал в разработке</p>
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
 
-          <TabsContent value="settings" className="flex-1 overflow-auto mt-0 px-3 pb-3">
+          <TabsContent value="settings" className="flex-1 overflow-auto mt-0 px-3 pb-3 data-[state=inactive]:hidden">
             <div className="py-3 space-y-4">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
