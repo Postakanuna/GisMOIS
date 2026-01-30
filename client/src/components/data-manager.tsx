@@ -154,10 +154,13 @@ export function DataManager({ onClose }: DataManagerProps) {
   } | null>(null);
   const [isParsingExcel, setIsParsingExcel] = useState(false);
 
-  const { data: sceneLayers = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
+  const { data: sceneLayersRaw = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
     enabled: !!currentSceneId,
   });
+  
+  // Sort layers by id to maintain consistent order
+  const sceneLayers = [...sceneLayersRaw].sort((a, b) => a.id - b.id);
 
   // Single query key for all editable layers operations
   const editableLayersQueryKey = ["/api/scenes", currentSceneId, "editable-layers"];
@@ -590,18 +593,18 @@ export function DataManager({ onClose }: DataManagerProps) {
                   <p className="text-xs mt-1">Импортируйте shapefile или создайте слой</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {sceneLayers.map(layer => (
                 <div
                   key={layer.id}
-                  className="rounded-md border bg-background"
+                  className="rounded border bg-background"
                   data-testid={`scene-layer-${layer.id}`}
                 >
-                  <div className="flex items-center gap-2 p-2">
+                  <div className="flex items-center gap-1.5 px-2 py-1">
                     {layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0 && (
                       <button
                         onClick={() => setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id)}
-                        className="shrink-0 p-0.5 hover:bg-muted rounded"
+                        className="shrink-0 hover:bg-muted rounded"
                         data-testid={`button-expand-${layer.id}`}
                       >
                         {expandedLayerId === layer.id ? (
@@ -612,20 +615,20 @@ export function DataManager({ onClose }: DataManagerProps) {
                       </button>
                     )}
                     <div 
-                      className="w-3 h-3 rounded-sm shrink-0" 
+                      className="w-2.5 h-2.5 rounded-sm shrink-0" 
                       style={{ backgroundColor: layer.color }}
                     />
-                    <span className="text-lg w-6 text-center shrink-0" title={layer.geometryType}>
+                    <span className="text-sm shrink-0" title={layer.geometryType}>
                       {getGeometryIcon(layer.geometryType)}
                     </span>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
                       {editingLayerId === layer.id ? (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-1">
                           <Input
                             value={editingName}
                             onChange={(e) => setEditingName(e.target.value)}
                             onKeyDown={(e) => handleKeyDown(e, layer.id)}
-                            className="h-6 text-sm"
+                            className="h-5 text-xs"
                             autoFocus
                             data-no-drag
                             data-testid={`input-layer-name-${layer.id}`}
@@ -633,7 +636,7 @@ export function DataManager({ onClose }: DataManagerProps) {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 shrink-0"
+                            className="h-5 w-5 shrink-0"
                             onClick={() => handleSaveName(layer.id)}
                             data-testid={`button-save-name-${layer.id}`}
                           >
@@ -641,31 +644,26 @@ export function DataManager({ onClose }: DataManagerProps) {
                           </Button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1">
-                          <div className="font-medium text-sm truncate">
+                        <>
+                          <span className="text-xs font-medium truncate">
                             {layer.name}
-                          </div>
+                          </span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            ({layer.featureCount})
+                          </span>
                           {canEdit && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-5 w-5 shrink-0 opacity-50 hover:opacity-100"
+                              className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
                               onClick={() => handleStartEditing(layer)}
                               data-testid={`button-edit-name-${layer.id}`}
                             >
-                              <Pencil className="h-3 w-3" />
+                              <Pencil className="h-2.5 w-2.5" />
                             </Button>
                           )}
-                        </div>
+                        </>
                       )}
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
-                        <span>{layer.featureCount} объектов</span>
-                        {layer.source === "import" && (
-                          <Badge variant="outline" className="text-[10px] px-1 py-0">
-                            импорт
-                          </Badge>
-                        )}
-                      </div>
                     </div>
                   
                     <Popover>
@@ -673,10 +671,10 @@ export function DataManager({ onClose }: DataManagerProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-6 w-6"
                         data-testid={`button-layer-style-${layer.id}`}
                       >
-                        <Palette className="h-4 w-4" />
+                        <Palette className="h-3.5 w-3.5" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-72 p-3" align="end">
@@ -814,7 +812,7 @@ export function DataManager({ onClose }: DataManagerProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-6 w-6"
                         onClick={() => toggleVisibilityMutation.mutate({
                           id: layer.id,
                           visible: !layer.visible,
@@ -822,9 +820,9 @@ export function DataManager({ onClose }: DataManagerProps) {
                         data-testid={`button-toggle-visibility-${layer.id}`}
                       >
                         {layer.visible ? (
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-3.5 w-3.5" />
                         ) : (
-                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                          <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
                         )}
                       </Button>
                     </TooltipTrigger>
@@ -836,11 +834,11 @@ export function DataManager({ onClose }: DataManagerProps) {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-destructive"
+                            className="h-6 w-6 text-destructive"
                             onClick={() => deleteLayerMutation.mutate(layer.id)}
                             data-testid={`button-delete-layer-${layer.id}`}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>Удалить слой</TooltipContent>
@@ -850,21 +848,20 @@ export function DataManager({ onClose }: DataManagerProps) {
                   
                   {/* Source files panel - shown when expanded */}
                   {expandedLayerId === layer.id && layer.sourceFiles && layer.sourceFiles.length > 0 && (
-                    <div className="px-3 py-2 border-t bg-muted/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Файлы shapefile:</p>
-                      <div className="flex flex-wrap gap-1">
+                    <div className="px-2 py-1.5 border-t bg-muted/30">
+                      <div className="flex flex-wrap gap-1 items-center">
+                        <span className="text-[10px] text-muted-foreground">SHP:</span>
                         {layer.sourceFiles.map((file, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-[10px] py-0">
-                            <FileText className="h-3 w-3 mr-1" />
+                          <Badge key={idx} variant="secondary" className="text-[9px] px-1 py-0 h-4">
                             {file}
                           </Badge>
                         ))}
+                        {layer.crs && (
+                          <span className="text-[10px] text-muted-foreground ml-1">
+                            CRS: {layer.crs}
+                          </span>
+                        )}
                       </div>
-                      {layer.crs && (
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                          CRS: {layer.crs}
-                        </p>
-                      )}
                     </div>
                   )}
                 </div>
