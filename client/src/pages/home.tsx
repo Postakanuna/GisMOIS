@@ -26,7 +26,7 @@ import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
 import { DraggableModal } from "@/components/ui/draggable-modal";
 import { DataManager } from "@/components/data-manager";
-import { ImportedLayerTable } from "@/components/imported-layer-table";
+import { LayerAttributeTableWrapper } from "@/components/layer-attribute-table-wrapper";
 import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
@@ -613,9 +613,9 @@ export default function Home() {
               />
             )}
 
-            {/* Imported Layer Attribute Table */}
+            {/* Layer Attribute Table from Data Manager */}
             {importedLayerTable && (
-              <ImportedLayerTable
+              <LayerAttributeTableWrapper
                 layerId={importedLayerTable.layerId}
                 layerName={importedLayerTable.layerName}
                 onClose={() => setImportedLayerTable(null)}
