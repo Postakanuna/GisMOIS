@@ -26,6 +26,7 @@ import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
 import { DraggableModal } from "@/components/ui/draggable-modal";
 import { DataManager } from "@/components/data-manager";
+import { ImportedLayerTable } from "@/components/imported-layer-table";
 import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
@@ -192,6 +193,7 @@ export default function Home() {
   const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
   const [showTraceDialog, setShowTraceDialog] = useState(false);
+  const [importedLayerTable, setImportedLayerTable] = useState<{ layerId: number; layerName: string } | null>(null);
   const [traceSourceInfo, setTraceSourceInfo] = useState<{
     coords: [number, number];
     layerName: string;
@@ -603,7 +605,21 @@ export default function Home() {
 
             {/* Data Manager */}
             {showDataManager && (
-              <DataManager onClose={() => setShowDataManager(false)} />
+              <DataManager 
+                onClose={() => setShowDataManager(false)} 
+                onOpenAttributeTable={(layerId, layerName) => {
+                  setImportedLayerTable({ layerId, layerName });
+                }}
+              />
+            )}
+
+            {/* Imported Layer Attribute Table */}
+            {importedLayerTable && (
+              <ImportedLayerTable
+                layerId={importedLayerTable.layerId}
+                layerName={importedLayerTable.layerName}
+                onClose={() => setImportedLayerTable(null)}
+              />
             )}
 
             {/* Trace Route Dialog */}

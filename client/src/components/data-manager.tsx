@@ -45,6 +45,7 @@ import {
   Map,
   Globe,
   Settings,
+  Table2,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
@@ -123,12 +124,13 @@ const HEAT_NETWORK_LINE_STYLES = getHeatNetworkLineStyles();
 
 interface DataManagerProps {
   onClose: () => void;
+  onOpenAttributeTable?: (layerId: number, layerName: string) => void;
 }
 
 const MIN_WIDTH = 500;
 const MIN_HEIGHT = 300;
 
-export function DataManager({ onClose }: DataManagerProps) {
+export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps) {
   const { toast } = useToast();
   const { currentSceneId, canEdit } = useScene();
   const isMobile = useIsMobile();
@@ -806,6 +808,23 @@ export function DataManager({ onClose }: DataManagerProps) {
                       </div>
                     </PopoverContent>
                   </Popover>
+                  
+                  {onOpenAttributeTable && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => onOpenAttributeTable(layer.id, layer.name)}
+                          data-testid={`button-attribute-table-${layer.id}`}
+                        >
+                          <Table2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Таблица атрибутов</TooltipContent>
+                    </Tooltip>
+                  )}
                   
                   <Tooltip>
                     <TooltipTrigger asChild>
