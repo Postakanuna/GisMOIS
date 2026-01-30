@@ -683,6 +683,8 @@ export function MapViewer({
 
   // Scene datasets refs
   const sceneDatasetLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
+  // Track last zoom used for point styling to trigger updates on zoom change
+  const lastStyleZoomRef = useRef<number>(DEFAULT_ZOOM);
   const { currentSceneId } = useScene();
   const activeSceneDatasetRef = useRef(activeSceneDataset);
   const onDatasetFeatureUpdatedRef = useRef(onDatasetFeatureUpdated);
@@ -1195,7 +1197,39 @@ export function MapViewer({
     });
 
     map.getView().on("change:resolution", () => {
-      setZoom(map.getView().getZoom() || DEFAULT_ZOOM);
+      const currentZoom = map.getView().getZoom() || DEFAULT_ZOOM;
+      setZoom(currentZoom);
+      
+      // Update point styles when zoom level changes by 1 or more (integer steps)
+      const roundedZoom = Math.round(currentZoom);
+      const lastRoundedZoom = Math.round(lastStyleZoomRef.current);
+      
+      if (roundedZoom !== lastRoundedZoom) {
+        lastStyleZoomRef.current = currentZoom;
+        
+        // Update editable layer styles
+        allEditableLayersRef.current.forEach((layer) => {
+          const editableLayerId = layer.get("editableLayerId");
+          const layerData = allEditableLayersDataRef.current?.find(l => l.id === editableLayerId);
+          if (layerData) {
+            layer.setStyle(createEditableLayerStyle(layerData, roundedZoom));
+            layer.set("lastZoom", roundedZoom);
+          }
+        });
+        
+        // Update scene dataset layer styles
+        sceneDatasetLayersRef.current.forEach((layer) => {
+          const color = layer.get("color") || "#1976D2";
+          const pointStyle = layer.get("pointStyle") || "circle";
+          const style = new Style({
+            fill: new Fill({ color: color + "33" }),
+            stroke: new Stroke({ color, width: 2 }),
+            image: createPointImageStyle(color, pointStyle as PointStyle, roundedZoom),
+          });
+          layer.setStyle(style);
+          layer.set("lastZoom", roundedZoom);
+        });
+      }
     });
 
     map.getView().on("change:rotation", () => {
