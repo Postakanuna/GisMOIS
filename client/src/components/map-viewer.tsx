@@ -154,9 +154,9 @@ function getPointSizeForZoom(zoom: number): { radius: number; strokeWidth: numbe
   } else if (zoom >= 13) {
     return { radius: 6, strokeWidth: 1, iconScale: 0.75 };
   } else if (zoom >= 11) {
-    return { radius: 6, strokeWidth: 1, iconScale: 0.75 };
+    return { radius: 4, strokeWidth: 0.5, iconScale: 0.5 };
   } else if (zoom >= 9) {
-    return { radius: 7, strokeWidth: 1, iconScale: 0.8 };
+    return { radius: 4, strokeWidth: 0.5, iconScale: 0.5 };
   } else {
     return { radius: 8, strokeWidth: 1.5, iconScale: 0.9 };
   }
