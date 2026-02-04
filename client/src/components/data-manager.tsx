@@ -847,22 +847,21 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                     </TooltipTrigger>
                     <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
                   </Tooltip>
-                    {canEdit && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-destructive"
-                            onClick={() => deleteLayerMutation.mutate(layer.id)}
-                            data-testid={`button-delete-layer-${layer.id}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Удалить слой</TooltipContent>
-                      </Tooltip>
-                    )}
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-destructive"
+                        onClick={() => deleteLayerMutation.mutate(layer.id)}
+                        data-testid={`button-delete-layer-${layer.id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Удалить слой</TooltipContent>
+                  </Tooltip>
                   </div>
                   
                   {/* Source files panel - shown when expanded */}
