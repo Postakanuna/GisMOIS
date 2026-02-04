@@ -170,13 +170,27 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const deleteLayerMutation = useMutation({
     mutationFn: async (layerId: number) => {
       await apiRequest("DELETE", `/api/editable-layers/${layerId}`);
+      return layerId;
+    },
+    onMutate: async (layerId: number) => {
+      await queryClient.cancelQueries({ queryKey: editableLayersQueryKey });
+      const previousLayers = queryClient.getQueryData<EditableLayer[]>(editableLayersQueryKey);
+      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => 
+        old ? old.filter(layer => layer.id !== layerId) : []
+      );
+      return { previousLayers };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
       toast({ title: "Слой удалён" });
     },
-    onError: () => {
+    onError: (_err, _layerId, context) => {
+      if (context?.previousLayers) {
+        queryClient.setQueryData(editableLayersQueryKey, context.previousLayers);
+      }
       toast({ title: "Ошибка удаления слоя", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     },
   });
 
