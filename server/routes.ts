@@ -1923,6 +1923,231 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // OBJECTS-IN-POLYGON ANALYSIS API
+  // ============================================
+
+  app.post("/api/analytics/objects-in-polygon", async (req: Request, res: Response) => {
+    try {
+      const {
+        polygonLayerId,
+        polygonFeatureIds = null,
+        polygonFilters = [],
+        targetLayerIds = [],
+        targetFilters = {},
+        reportConfig = {},
+      } = req.body;
+
+      const {
+        includeAttributes = {},
+        includeSummary = true,
+        format = "json",
+      } = reportConfig;
+
+      if (!polygonLayerId || !Array.isArray(targetLayerIds) || targetLayerIds.length === 0) {
+        return res.status(400).json({ message: "polygonLayerId and at least one targetLayerId are required" });
+      }
+
+      const polygonLayer = await storage.getEditableLayer(polygonLayerId);
+      if (!polygonLayer) {
+        return res.status(404).json({ message: "Polygon layer not found" });
+      }
+
+      const polygonFeaturesRaw = await storage.getDrawnFeatures(polygonLayerId);
+      let polygonFeatures = polygonFeaturesRaw.map(f => ({
+        id: f.id,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
+        properties: f.properties || {},
+      }));
+
+      polygonFeatures = applyFilters(polygonFeatures, polygonFilters) as typeof polygonFeatures;
+
+      if (polygonFeatureIds && Array.isArray(polygonFeatureIds) && polygonFeatureIds.length > 0) {
+        const idSet = new Set(polygonFeatureIds);
+        polygonFeatures = polygonFeatures.filter(f => idSet.has(f.id));
+      }
+
+      if (polygonFeatures.length === 0) {
+        return res.status(422).json({ message: "No polygon features match the selection/filters" });
+      }
+
+      const boundaryPolygons = polygonFeatures.map(f => ({
+        geometry: f.geometry,
+        properties: f.properties,
+      }));
+
+      const layerResults: {
+        layerId: number;
+        layerName: string;
+        geometryType: string;
+        totalCount: number;
+        matchedCount: number;
+        features: { id: number; properties: Record<string, unknown> }[];
+        availableAttributes: string[];
+      }[] = [];
+
+      let totalMatchedObjects = 0;
+
+      for (const targetLayerId of targetLayerIds) {
+        const targetLayer = await storage.getEditableLayer(targetLayerId);
+        if (!targetLayer) continue;
+
+        const featuresRaw = await storage.getDrawnFeatures(targetLayerId);
+        let features = featuresRaw.map(f => ({
+          id: f.id,
+          geometry: { type: f.geometryType, coordinates: f.coordinates },
+          properties: f.properties || {},
+        }));
+
+        const layerFilters = targetFilters[String(targetLayerId)] || [];
+        features = applyFilters(features, layerFilters) as typeof features;
+
+        const totalCount = features.length;
+
+        const matchedFeatures = features.filter(feature =>
+          isFeatureInBoundary(feature, boundaryPolygons, "inside")
+        );
+
+        const allPropKeys = new Set<string>();
+        for (const f of featuresRaw) {
+          if (f.properties) {
+            Object.keys(f.properties).forEach(k => allPropKeys.add(k));
+          }
+        }
+        const availableAttributes = Array.from(allPropKeys).sort();
+
+        const selectedAttrs: string[] | null = includeAttributes[String(targetLayerId)];
+        const outputFeatures = matchedFeatures.map(f => {
+          let props = f.properties;
+          if (selectedAttrs && selectedAttrs.length > 0) {
+            const filtered: Record<string, unknown> = {};
+            for (const attr of selectedAttrs) {
+              if (attr in props) {
+                filtered[attr] = props[attr];
+              }
+            }
+            props = filtered;
+          }
+          return { id: f.id, properties: props };
+        });
+
+        totalMatchedObjects += matchedFeatures.length;
+
+        layerResults.push({
+          layerId: targetLayerId,
+          layerName: targetLayer.name,
+          geometryType: targetLayer.geometryType,
+          totalCount,
+          matchedCount: matchedFeatures.length,
+          features: outputFeatures,
+          availableAttributes,
+        });
+      }
+
+      if (format === "xlsx") {
+        const workbook = new ExcelJS.Workbook();
+
+        if (includeSummary) {
+          const summarySheet = workbook.addWorksheet("Сводка");
+          summarySheet.columns = [
+            { header: "Слой", key: "layer", width: 30 },
+            { header: "Тип геометрии", key: "geomType", width: 18 },
+            { header: "Всего объектов", key: "total", width: 16 },
+            { header: "Попало в полигон", key: "matched", width: 18 },
+          ];
+          summarySheet.getRow(1).font = { bold: true };
+          summarySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+
+          for (const lr of layerResults) {
+            summarySheet.addRow({
+              layer: lr.layerName,
+              geomType: lr.geometryType === "Point" ? "Точка" : lr.geometryType === "LineString" ? "Линия" : "Полигон",
+              total: lr.totalCount,
+              matched: lr.matchedCount,
+            });
+          }
+
+          summarySheet.addRow({});
+          summarySheet.addRow({ layer: "ИТОГО", matched: totalMatchedObjects });
+        }
+
+        for (const lr of layerResults) {
+          if (lr.matchedCount === 0) continue;
+
+          const sheetName = lr.layerName.substring(0, 31).replace(/[\\/*?:\[\]]/g, "_");
+          const detailSheet = workbook.addWorksheet(sheetName);
+
+          const propKeys = new Set<string>();
+          for (const f of lr.features) {
+            Object.keys(f.properties).forEach(k => propKeys.add(k));
+          }
+          const propKeysArr = Array.from(propKeys).sort();
+
+          detailSheet.columns = [
+            { header: "ID", key: "id", width: 10 },
+            ...propKeysArr.map(k => ({ header: k, key: k, width: 18 })),
+          ];
+          detailSheet.getRow(1).font = { bold: true };
+          detailSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+
+          for (const f of lr.features) {
+            const row: Record<string, any> = { id: f.id };
+            for (const k of propKeysArr) {
+              row[k] = f.properties[k] ?? "";
+            }
+            detailSheet.addRow(row);
+          }
+        }
+
+        const metaSheet = workbook.addWorksheet("Метаданные");
+        metaSheet.columns = [
+          { header: "Параметр", key: "param", width: 35 },
+          { header: "Значение", key: "value", width: 50 },
+        ];
+        metaSheet.getRow(1).font = { bold: true };
+        metaSheet.addRow({ param: "Дата анализа", value: new Date().toLocaleString("ru-RU") });
+        metaSheet.addRow({ param: "Ограничивающий слой (полигоны)", value: polygonLayer.name });
+        metaSheet.addRow({ param: "Количество полигонов", value: polygonFeatures.length });
+        metaSheet.addRow({ param: "Анализируемые слои", value: layerResults.map(lr => lr.layerName).join(", ") });
+        metaSheet.addRow({ param: "Всего найдено объектов", value: totalMatchedObjects });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="objects_in_polygon_${Date.now()}.xlsx"`);
+        return res.send(Buffer.from(buffer));
+      }
+
+      return res.json({
+        summary: {
+          totalObjects: totalMatchedObjects,
+          polygonLayerName: polygonLayer.name,
+          polygonCount: polygonFeatures.length,
+          byLayer: layerResults.map(lr => ({
+            layerId: lr.layerId,
+            layerName: lr.layerName,
+            geometryType: lr.geometryType,
+            totalCount: lr.totalCount,
+            matchedCount: lr.matchedCount,
+          })),
+        },
+        details: Object.fromEntries(
+          layerResults.map(lr => [
+            lr.layerId,
+            {
+              layerName: lr.layerName,
+              geometryType: lr.geometryType,
+              availableAttributes: lr.availableAttributes,
+              features: lr.features,
+            },
+          ])
+        ),
+      });
+    } catch (error) {
+      console.error("Objects-in-polygon analysis error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
   // EDITABLE LAYERS API (User-created layers for drawing)
   // ============================================
 
