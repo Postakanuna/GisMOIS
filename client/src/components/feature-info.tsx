@@ -1,4 +1,4 @@
-import { X, Copy, Check, MapPin } from "lucide-react";
+import { X, Copy, Check, MapPin, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +36,7 @@ export function FeatureInfoPanel({
     return String(value);
   };
 
+  const isLoading = feature.properties._loading === true;
   const entries = Object.entries(feature.properties).filter(
     ([key]) => !key.startsWith("_") && key !== "geometry"
   );
@@ -89,7 +90,12 @@ export function FeatureInfoPanel({
 
         <ScrollArea className="h-auto max-h-72 overflow-auto">
           <div className="space-y-1 pr-3">
-            {entries.length > 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Загрузка атрибутов...</span>
+              </div>
+            ) : entries.length > 0 ? (
               entries.map(([key, value], index) => (
                 <div
                   key={key}

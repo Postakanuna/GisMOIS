@@ -26,6 +26,7 @@ Preferred communication style: Simple, everyday language.
 - Интерактивные функции: управление зумом, отображение координат, информация об объектах по клику.
 - Рендеринг наборов данных сцен в формате GeoJSON.
 - Оптимизированная загрузка объектов по области просмотра (viewport-based feature loading) с упрощением геометрии и кластеризацией точечных слоев.
+- Properties-on-demand: viewport-эндпоинты возвращают только геометрию (id, geometryType, coordinates), свойства загружаются отдельно через `/api/features/:id` при клике на объект. Уменьшение ответа с ~17 МБ до ~1.2 МБ.
 
 **Key Frontend Components**:
 - `MapViewer`: Основной компонент карты.

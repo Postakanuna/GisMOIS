@@ -1370,26 +1370,58 @@ export function MapViewer({
         });
 
         if (foundFeature && foundLayerId) {
-          const properties: Record<string, unknown> = {};
-          const keys = (foundFeature as Feature).getKeys();
-          
-          keys.forEach((key) => {
-            if (key !== "geometry") {
-              properties[key] = (foundFeature as Feature).get(key);
-            }
-          });
-
           const layerConfig = currentLayers.find((l) => l.id === foundLayerId);
-          const featureId = (foundFeature as Feature).getId?.() || 
-            (foundFeature as Feature).get("id") || 
-            `feature-${Date.now()}`;
+          const dbFeatureId = (foundFeature as Feature).get("featureId");
           
-          setSelectedFeature({
-            id: String(featureId),
-            layerName: layerConfig?.name || foundLayerId || "Объект",
-            properties,
-            geometry: undefined,
-          });
+          if (dbFeatureId) {
+            const isDataset = !!(foundFeature as Feature).get("datasetId");
+            const sourceParam = isDataset ? "?source=dataset" : "";
+            setSelectedFeature({
+              id: String(dbFeatureId),
+              layerName: layerConfig?.name || foundLayerId || "Объект",
+              properties: { _loading: true },
+              geometry: undefined,
+            });
+            fetch(`/api/features/${dbFeatureId}${sourceParam}`)
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                if (data && data.properties) {
+                  setSelectedFeature(prev => prev && prev.id === String(dbFeatureId) ? {
+                    ...prev,
+                    properties: data.properties,
+                  } : prev);
+                } else {
+                  setSelectedFeature(prev => prev && prev.id === String(dbFeatureId) ? {
+                    ...prev,
+                    properties: {},
+                  } : prev);
+                }
+              })
+              .catch(err => {
+                console.error("Failed to load feature properties:", err);
+                setSelectedFeature(prev => prev && prev.id === String(dbFeatureId) ? {
+                  ...prev,
+                  properties: {},
+                } : prev);
+              });
+          } else {
+            const properties: Record<string, unknown> = {};
+            const keys = (foundFeature as Feature).getKeys();
+            keys.forEach((key) => {
+              if (key !== "geometry") {
+                properties[key] = (foundFeature as Feature).get(key);
+              }
+            });
+            const featureId = (foundFeature as Feature).getId?.() || 
+              (foundFeature as Feature).get("id") || 
+              `feature-${Date.now()}`;
+            setSelectedFeature({
+              id: String(featureId),
+              layerName: layerConfig?.name || foundLayerId || "Объект",
+              properties,
+              geometry: undefined,
+            });
+          }
         } else {
           setSelectedFeature(null);
           setFeatureCoordinates(undefined);
@@ -1486,8 +1518,7 @@ export function MapViewer({
             coordinates: f.coordinates,
           },
           properties: {
-            featureId: f.id, // Include database ID for selection sync
-            ...f.properties,
+            featureId: f.id,
           },
         })),
       };
@@ -1557,7 +1588,7 @@ export function MapViewer({
                   features: toAdd.map(f => ({
                     type: "Feature" as const,
                     geometry: { type: f.geometryType, coordinates: f.coordinates },
-                    properties: { featureId: f.id, ...f.properties },
+                    properties: { featureId: f.id },
                   })),
                 };
                 const newOlFeatures = geojsonFormat.readFeatures(addGeoJson, {
@@ -1656,7 +1687,6 @@ export function MapViewer({
                 coordinates: f.coordinates,
               },
               properties: {
-                ...f.properties,
                 featureId: f.id,
                 datasetId: f.datasetId,
               },
@@ -1750,7 +1780,6 @@ export function MapViewer({
                     coordinates: f.coordinates,
                   },
                   properties: {
-                    ...f.properties,
                     featureId: f.id,
                     datasetId: f.datasetId,
                   },

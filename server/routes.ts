@@ -2294,13 +2294,15 @@ export async function registerRoutes(
         const features = featuresByLayer[id] || [];
         const { sampled, totalPoints, samplingRate } = samplePointFeatures(features, zoomLevel);
         const simplified = sampled.map(feature => {
-          if (tolerance > 0 && feature.geometryType !== "Point") {
-            return {
-              ...feature,
-              coordinates: simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance),
-            };
-          }
-          return feature;
+          const coords = (tolerance > 0 && feature.geometryType !== "Point")
+            ? simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance)
+            : feature.coordinates;
+          return {
+            id: feature.id,
+            layerId: feature.layerId,
+            geometryType: feature.geometryType,
+            coordinates: coords,
+          };
         });
         result[id] = {
           features: simplified,
@@ -2461,13 +2463,20 @@ export async function registerRoutes(
   app.get("/api/features/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const feature = await storage.getDrawnFeature(id);
-      if (!feature) {
-        return res.status(404).json({ message: "Feature not found" });
+      const source = req.query.source as string | undefined;
+      
+      if (source === "dataset") {
+        const datasetFeature = await storage.getDatasetFeature(id);
+        if (datasetFeature) return res.json(datasetFeature);
+      } else {
+        const feature = await storage.getDrawnFeature(id);
+        if (feature) return res.json(feature);
+        const datasetFeature = await storage.getDatasetFeature(id);
+        if (datasetFeature) return res.json(datasetFeature);
       }
-      return res.json(feature);
+      return res.status(404).json({ message: "Feature not found" });
     } catch (error) {
-      console.error("Error fetching drawn feature:", error);
+      console.error("Error fetching feature:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -3159,15 +3168,16 @@ export async function registerRoutes(
       // Apply point sampling based on zoom level (GIS-style approach)
       const { sampled: sampledFeatures, totalPoints, samplingRate } = samplePointFeatures(limitedFeatures, zoomLevel);
 
-      // Simplify geometries for lower zoom levels
       const simplifiedFeatures = sampledFeatures.map(feature => {
-        if (tolerance > 0 && feature.geometryType !== "Point") {
-          return {
-            ...feature,
-            coordinates: simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance),
-          };
-        }
-        return feature;
+        const coords = (tolerance > 0 && feature.geometryType !== "Point")
+          ? simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance)
+          : feature.coordinates;
+        return {
+          id: feature.id,
+          layerId: feature.layerId,
+          geometryType: feature.geometryType,
+          coordinates: coords,
+        };
       });
 
       return res.json({
@@ -3293,15 +3303,16 @@ export async function registerRoutes(
       // Apply point sampling based on zoom level (GIS-style approach)
       const { sampled: sampledFeatures, totalPoints, samplingRate } = samplePointFeatures(limitedFeatures, zoomLevel);
 
-      // Simplify geometries for lower zoom levels
       const simplifiedFeatures = sampledFeatures.map(feature => {
-        if (tolerance > 0 && feature.geometryType !== "Point") {
-          return {
-            ...feature,
-            coordinates: simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance),
-          };
-        }
-        return feature;
+        const coords = (tolerance > 0 && feature.geometryType !== "Point")
+          ? simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance)
+          : feature.coordinates;
+        return {
+          id: feature.id,
+          datasetId: feature.datasetId,
+          geometryType: feature.geometryType,
+          coordinates: coords,
+        };
       });
 
       return res.json({
