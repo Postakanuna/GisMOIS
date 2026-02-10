@@ -35,7 +35,6 @@ import {
   Download, 
   Plus, 
   X, 
-  Filter,
   Layers,
   Target,
   Square,
@@ -50,7 +49,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { EditableLayer, DrawnFeature, LayerSchemaDefinition, AttributeField } from "@shared/schema";
+import type { EditableLayer, DrawnFeature } from "@shared/schema";
 
 interface FilterCondition {
   id: string;
@@ -59,14 +58,8 @@ interface FilterCondition {
   value: string;
 }
 
-interface LayerFilterConfig {
-  layerId: string;
-  conditions: FilterCondition[];
-}
-
 type BoundaryMode = "inside" | "outside" | "none";
 type BoundaryType = "polygon" | "line";
-type AnalysisMode = "distance-binding" | "objects-in-polygon";
 type ModalStep = "config" | "report-constructor" | "results";
 
 interface LayerAnalysisResult {
@@ -85,10 +78,12 @@ interface LayerDetailResult {
 }
 
 interface AnalysisResults {
+  mode: "distance-binding" | "boundary-only";
   summary: {
     totalObjects: number;
-    polygonLayerName: string;
-    polygonCount: number;
+    boundaryLayerName: string | null;
+    boundaryCount: number;
+    targetLayerName: string | null;
     byLayer: LayerAnalysisResult[];
   };
   details: Record<string, LayerDetailResult>;
@@ -278,14 +273,14 @@ export function GeoAnalysisModal({
 }: GeoAnalysisModalProps) {
   const { toast } = useToast();
   
-  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("objects-in-polygon");
   const [step, setStep] = useState<ModalStep>("config");
 
-  // === Distance binding mode state (existing) ===
-  const [sourceLayerId, setSourceLayerId] = useState<string>("");
-  const [sourceConditions, setSourceConditions] = useState<FilterCondition[]>([]);
+  const [selectedSourceLayerIds, setSelectedSourceLayerIds] = useState<Set<number>>(new Set());
+  const [perSourceFilters, setPerSourceFilters] = useState<Record<string, FilterCondition[]>>({});
+
   const [targetLayerId, setTargetLayerId] = useState<string>("");
   const [targetConditions, setTargetConditions] = useState<FilterCondition[]>([]);
+
   const [boundaryEnabled, setBoundaryEnabled] = useState(false);
   const [boundaryType, setBoundaryType] = useState<BoundaryType>("polygon");
   const [boundaryLayerId, setBoundaryLayerId] = useState<string>("");
@@ -294,26 +289,14 @@ export function GeoAnalysisModal({
   const [bufferDistance, setBufferDistance] = useState<string>("10");
   const [maxDistance, setMaxDistance] = useState<string>("15");
 
-  // === Objects-in-polygon mode state ===
-  const [polygonLayerId, setPolygonLayerId] = useState<string>("");
-  const [polygonConditions, setPolygonConditions] = useState<FilterCondition[]>([]);
-  const [selectedTargetLayerIds, setSelectedTargetLayerIds] = useState<Set<number>>(new Set());
-  const [perLayerFilters, setPerLayerFilters] = useState<Record<string, FilterCondition[]>>({});
-
-  // Report constructor state
   const [includeSummary, setIncludeSummary] = useState(true);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, Set<string>>>({});
 
-  // Results state
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [expandedResultLayers, setExpandedResultLayers] = useState<Set<string>>(new Set());
+  const [sourceLayerAttributes, setSourceLayerAttributes] = useState<Record<string, string[]>>({});
 
-  const pointLayers = useMemo(() => 
-    editableLayers.filter(l => l.geometryType === "Point"), 
-    [editableLayers]
-  );
-  
   const lineLayers = useMemo(() => 
     editableLayers.filter(l => l.geometryType === "LineString"), 
     [editableLayers]
@@ -324,31 +307,18 @@ export function GeoAnalysisModal({
     [editableLayers]
   );
 
-  const nonPolygonLayers = useMemo(() =>
-    editableLayers.filter(l => l.id !== parseInt(polygonLayerId)),
-    [editableLayers, polygonLayerId]
-  );
-
-  // Queries for distance binding mode
-  const { data: sourceFeatures = [] } = useQuery<DrawnFeature[]>({
-    queryKey: ["/api/editable-layers", parseInt(sourceLayerId), "features"],
-    enabled: !!sourceLayerId && analysisMode === "distance-binding",
-  });
+  const actualTargetLayerId = targetLayerId === "__none__" ? "" : targetLayerId;
+  const hasTargetLayer = actualTargetLayerId !== "";
+  const isBoundaryOnlyMode = !hasTargetLayer;
 
   const { data: targetFeatures = [] } = useQuery<DrawnFeature[]>({
-    queryKey: ["/api/editable-layers", parseInt(targetLayerId), "features"],
-    enabled: !!targetLayerId && analysisMode === "distance-binding",
+    queryKey: ["/api/editable-layers", parseInt(actualTargetLayerId), "features"],
+    enabled: hasTargetLayer,
   });
 
   const { data: boundaryFeatures = [] } = useQuery<DrawnFeature[]>({
     queryKey: ["/api/editable-layers", parseInt(boundaryLayerId), "features"],
-    enabled: !!boundaryLayerId && boundaryEnabled && analysisMode === "distance-binding",
-  });
-
-  // Queries for objects-in-polygon mode
-  const { data: polygonFeatures = [] } = useQuery<DrawnFeature[]>({
-    queryKey: ["/api/editable-layers", parseInt(polygonLayerId), "features"],
-    enabled: !!polygonLayerId && analysisMode === "objects-in-polygon",
+    enabled: !!boundaryLayerId && boundaryEnabled,
   });
 
   const extractAttributes = useCallback((features: DrawnFeature[]): { attrs: string[], values: Record<string, Set<unknown>> } => {
@@ -368,10 +338,8 @@ export function GeoAnalysisModal({
     return { attrs: Array.from(attrSet).sort(), values };
   }, []);
 
-  const sourceAttrsData = useMemo(() => extractAttributes(sourceFeatures), [sourceFeatures, extractAttributes]);
   const targetAttrsData = useMemo(() => extractAttributes(targetFeatures), [targetFeatures, extractAttributes]);
   const boundaryAttrsData = useMemo(() => extractAttributes(boundaryFeatures), [boundaryFeatures, extractAttributes]);
-  const polygonAttrsData = useMemo(() => extractAttributes(polygonFeatures), [polygonFeatures, extractAttributes]);
 
   const applyFilter = useCallback((features: DrawnFeature[], conditions: FilterCondition[]): DrawnFeature[] => {
     if (conditions.length === 0) return features;
@@ -415,11 +383,6 @@ export function GeoAnalysisModal({
     });
   }, []);
 
-  const filteredSourceCount = useMemo(() => 
-    applyFilter(sourceFeatures, sourceConditions).length,
-    [sourceFeatures, sourceConditions, applyFilter]
-  );
-
   const filteredTargetCount = useMemo(() => 
     applyFilter(targetFeatures, targetConditions).length,
     [targetFeatures, targetConditions, applyFilter]
@@ -430,17 +393,11 @@ export function GeoAnalysisModal({
     [boundaryFeatures, boundaryConditions, boundaryEnabled, applyFilter]
   );
 
-  const filteredPolygonCount = useMemo(() =>
-    applyFilter(polygonFeatures, polygonConditions).length,
-    [polygonFeatures, polygonConditions, applyFilter]
-  );
-
   useEffect(() => {
     if (!isOpen) {
-      setAnalysisMode("objects-in-polygon");
       setStep("config");
-      setSourceLayerId("");
-      setSourceConditions([]);
+      setSelectedSourceLayerIds(new Set());
+      setPerSourceFilters({});
       setTargetLayerId("");
       setTargetConditions([]);
       setBoundaryEnabled(false);
@@ -450,14 +407,11 @@ export function GeoAnalysisModal({
       setBoundaryMode("inside");
       setBufferDistance("10");
       setMaxDistance("15");
-      setPolygonLayerId("");
-      setPolygonConditions([]);
-      setSelectedTargetLayerIds(new Set());
-      setPerLayerFilters({});
       setIncludeSummary(true);
       setSelectedAttributes({});
       setAnalysisResults(null);
       setExpandedResultLayers(new Set());
+      setSourceLayerAttributes({});
     }
   }, [isOpen]);
 
@@ -466,8 +420,31 @@ export function GeoAnalysisModal({
     setBoundaryConditions([]);
   }, [boundaryType]);
 
-  const toggleTargetLayer = (layerId: number) => {
-    setSelectedTargetLayerIds(prev => {
+  const loadSourceLayerAttributes = useCallback(async () => {
+    const attrsMap: Record<string, string[]> = {};
+    const promises = Array.from(selectedSourceLayerIds).map(async (layerId) => {
+      try {
+        const response = await fetch(`/api/editable-layers/${layerId}/attributes`);
+        if (response.ok) {
+          const attrs: string[] = await response.json();
+          attrsMap[String(layerId)] = attrs;
+        }
+      } catch {
+        attrsMap[String(layerId)] = [];
+      }
+    });
+    await Promise.all(promises);
+    setSourceLayerAttributes(attrsMap);
+  }, [selectedSourceLayerIds]);
+
+  useEffect(() => {
+    if (step === "report-constructor") {
+      loadSourceLayerAttributes();
+    }
+  }, [step, loadSourceLayerAttributes]);
+
+  const toggleSourceLayer = (layerId: number) => {
+    setSelectedSourceLayerIds(prev => {
       const next = new Set(prev);
       if (next.has(layerId)) {
         next.delete(layerId);
@@ -478,13 +455,13 @@ export function GeoAnalysisModal({
     });
   };
 
-  const selectAllLayers = () => {
-    const all = new Set(nonPolygonLayers.map(l => l.id));
-    setSelectedTargetLayerIds(all);
+  const selectAllSourceLayers = () => {
+    const all = new Set(editableLayers.map(l => l.id));
+    setSelectedSourceLayerIds(all);
   };
 
-  const deselectAllLayers = () => {
-    setSelectedTargetLayerIds(new Set());
+  const deselectAllSourceLayers = () => {
+    setSelectedSourceLayerIds(new Set());
   };
 
   const toggleAttributeSelection = (layerId: string, attr: string) => {
@@ -518,17 +495,23 @@ export function GeoAnalysisModal({
     }));
   };
 
-  // === Distance binding analysis (existing logic) ===
-  const runDistanceBindingAnalysis = async () => {
-    if (!sourceLayerId || !targetLayerId) {
-      toast({ title: "Ошибка", description: "Выберите исходный и целевой слои", variant: "destructive" });
+  const runAnalysis = async (format: "json" | "xlsx") => {
+    if (selectedSourceLayerIds.size === 0) {
+      toast({ title: "Ошибка", description: "Выберите хотя бы один исходный слой", variant: "destructive" });
       return;
     }
 
-    const distanceNum = parseFloat(maxDistance);
-    if (isNaN(distanceNum) || distanceNum <= 0) {
-      toast({ title: "Ошибка", description: "Укажите корректный порог расстояния", variant: "destructive" });
+    if (isBoundaryOnlyMode && (!boundaryEnabled || !boundaryLayerId)) {
+      toast({ title: "Ошибка", description: "Без целевого слоя необходимо включить ограничивающий слой (полигон/линия)", variant: "destructive" });
       return;
+    }
+
+    if (hasTargetLayer) {
+      const distanceNum = parseFloat(maxDistance);
+      if (isNaN(distanceNum) || distanceNum <= 0) {
+        toast({ title: "Ошибка", description: "Укажите корректный порог расстояния", variant: "destructive" });
+        return;
+      }
     }
 
     if (boundaryEnabled && !boundaryLayerId) {
@@ -539,75 +522,13 @@ export function GeoAnalysisModal({
     setIsAnalyzing(true);
     try {
       const bufferNum = parseFloat(bufferDistance);
-      const requestBody = {
-        sourceLayerId: parseInt(sourceLayerId),
-        sourceFilters: sourceConditions.filter(c => c.attribute && c.value),
-        targetLayerId: parseInt(targetLayerId),
-        targetFilters: targetConditions.filter(c => c.attribute && c.value),
-        boundaryLayerId: boundaryEnabled && boundaryLayerId ? parseInt(boundaryLayerId) : null,
-        boundaryFilters: boundaryEnabled ? boundaryConditions.filter(c => c.attribute && c.value) : [],
-        boundaryMode: boundaryEnabled ? boundaryMode : "none",
-        boundaryType: boundaryEnabled ? boundaryType : "polygon",
-        bufferDistanceMeters: boundaryType === "line" ? (isNaN(bufferNum) ? 10 : bufferNum) : null,
-        maxDistanceMeters: distanceNum,
-      };
+      const distanceNum = parseFloat(maxDistance);
 
-      const response = await fetch("/api/analytics/geospatial", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Ошибка анализа");
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `geospatial_analysis_${Date.now()}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast({ title: "Анализ завершён", description: "Файл XLSX загружен" });
-      onClose();
-    } catch (error) {
-      console.error("Geospatial analysis error:", error);
-      toast({
-        title: "Ошибка",
-        description: error instanceof Error ? error.message : "Не удалось выполнить анализ",
-        variant: "destructive",
-      });
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  // === Objects-in-polygon analysis ===
-  const runObjectsInPolygonAnalysis = async (format: "json" | "xlsx") => {
-    if (!polygonLayerId || selectedTargetLayerIds.size === 0) {
-      toast({ title: "Ошибка", description: "Выберите полигональный слой и хотя бы один анализируемый слой", variant: "destructive" });
-      return;
-    }
-
-    setIsAnalyzing(true);
-    try {
-      const includeAttrs: Record<string, string[]> = {};
-      for (const [layerId, attrs] of Object.entries(selectedAttributes)) {
-        if (attrs.size > 0) {
-          includeAttrs[layerId] = Array.from(attrs);
-        }
-      }
-
-      const targetFiltersForRequest: Record<string, { attribute: string; operator: string; value: string }[]> = {};
-      for (const [layerId, conditions] of Object.entries(perLayerFilters)) {
+      const sourceFiltersForRequest: Record<string, { attribute: string; operator: string; value: string }[]> = {};
+      for (const [layerId, conditions] of Object.entries(perSourceFilters)) {
         const filtered = conditions.filter(c => c.attribute && c.value);
         if (filtered.length > 0) {
-          targetFiltersForRequest[layerId] = filtered.map(c => ({
+          sourceFiltersForRequest[layerId] = filtered.map(c => ({
             attribute: c.attribute,
             operator: c.operator,
             value: c.value,
@@ -615,11 +536,24 @@ export function GeoAnalysisModal({
         }
       }
 
-      const requestBody = {
-        polygonLayerId: parseInt(polygonLayerId),
-        polygonFilters: polygonConditions.filter(c => c.attribute && c.value),
-        targetLayerIds: Array.from(selectedTargetLayerIds),
-        targetFilters: targetFiltersForRequest,
+      const includeAttrs: Record<string, string[]> = {};
+      for (const [layerId, attrs] of Object.entries(selectedAttributes)) {
+        if (attrs.size > 0) {
+          includeAttrs[layerId] = Array.from(attrs);
+        }
+      }
+
+      const requestBody: Record<string, unknown> = {
+        sourceLayerIds: Array.from(selectedSourceLayerIds),
+        sourceFilters: sourceFiltersForRequest,
+        targetLayerId: hasTargetLayer ? parseInt(actualTargetLayerId) : null,
+        targetFilters: hasTargetLayer ? targetConditions.filter(c => c.attribute && c.value) : [],
+        boundaryLayerId: boundaryEnabled && boundaryLayerId ? parseInt(boundaryLayerId) : null,
+        boundaryFilters: boundaryEnabled ? boundaryConditions.filter(c => c.attribute && c.value) : [],
+        boundaryMode: boundaryEnabled ? boundaryMode : "none",
+        boundaryType: boundaryEnabled ? boundaryType : "polygon",
+        bufferDistanceMeters: boundaryType === "line" ? (isNaN(bufferNum) ? 10 : bufferNum) : null,
+        maxDistanceMeters: hasTargetLayer ? distanceNum : 15,
         reportConfig: {
           includeAttributes: includeAttrs,
           includeSummary,
@@ -627,7 +561,7 @@ export function GeoAnalysisModal({
         },
       };
 
-      const response = await fetch("/api/analytics/objects-in-polygon", {
+      const response = await fetch("/api/analytics/geospatial", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
@@ -643,7 +577,7 @@ export function GeoAnalysisModal({
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `objects_in_polygon_${Date.now()}.xlsx`;
+        a.download = `geospatial_analysis_${Date.now()}.xlsx`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -656,7 +590,7 @@ export function GeoAnalysisModal({
         toast({ title: "Анализ завершён", description: `Найдено ${data.summary.totalObjects} объектов` });
       }
     } catch (error) {
-      console.error("Objects-in-polygon analysis error:", error);
+      console.error("Geospatial analysis error:", error);
       toast({
         title: "Ошибка",
         description: error instanceof Error ? error.message : "Не удалось выполнить анализ",
@@ -679,95 +613,19 @@ export function GeoAnalysisModal({
     });
   };
 
-  const canProceedToReportConstructor = polygonLayerId && selectedTargetLayerIds.size > 0;
-  const canRunDistanceBinding = sourceLayerId && targetLayerId && (!boundaryEnabled || boundaryLayerId);
+  const canProceed = selectedSourceLayerIds.size > 0 && (hasTargetLayer || (boundaryEnabled && !!boundaryLayerId));
 
-  // === Render helpers ===
-
-  const renderModeSelector = () => (
-    <div className="flex gap-2 p-3 border-b">
-      <Button
-        size="sm"
-        variant={analysisMode === "objects-in-polygon" ? "default" : "outline"}
-        onClick={() => { setAnalysisMode("objects-in-polygon"); setStep("config"); }}
-        className="flex-1 text-xs"
-        data-testid="button-mode-objects-in-polygon"
-      >
-        <Square className="h-3.5 w-3.5 mr-1.5" />
-        Объекты в полигоне
-      </Button>
-      <Button
-        size="sm"
-        variant={analysisMode === "distance-binding" ? "default" : "outline"}
-        onClick={() => { setAnalysisMode("distance-binding"); setStep("config"); }}
-        className="flex-1 text-xs"
-        data-testid="button-mode-distance-binding"
-      >
-        <Target className="h-3.5 w-3.5 mr-1.5" />
-        Привязка по расстоянию
-      </Button>
-    </div>
-  );
-
-  const renderObjectsInPolygonConfig = () => (
+  const renderConfig = () => (
     <div className="p-4 space-y-4">
-      <Accordion type="multiple" defaultValue={["polygon", "targets"]} className="space-y-2">
-        <AccordionItem value="polygon" className="border rounded-md px-3">
-          <AccordionTrigger className="py-2 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Square className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Ограничивающий полигон</span>
-              {polygonLayerId && (
-                <Badge variant="secondary" className="text-xs">
-                  {filteredPolygonCount} полигонов
-                </Badge>
-              )}
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="space-y-3 pb-3">
-            <div className="space-y-2">
-              <Label className="text-xs">Полигональный слой</Label>
-              <Select value={polygonLayerId} onValueChange={setPolygonLayerId}>
-                <SelectTrigger data-testid="select-polygon-layer">
-                  <SelectValue placeholder="Выберите полигональный слой" />
-                </SelectTrigger>
-                <SelectContent>
-                  {polygonLayers.map(layer => (
-                    <SelectItem key={layer.id} value={String(layer.id)}>
-                      {layer.name} ({layer.featureCount} объектов)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {polygonLayers.length === 0 && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <AlertCircle className="h-3 w-3" />
-                  Нет полигональных слоёв. Создайте слой с типом "Полигон" и нарисуйте полигоны.
-                </div>
-              )}
-            </div>
-
-            {polygonLayerId && (
-              <AttributeFilterBuilder
-                layerId={polygonLayerId}
-                conditions={polygonConditions}
-                onConditionsChange={setPolygonConditions}
-                availableAttributes={polygonAttrsData.attrs}
-                attributeValues={polygonAttrsData.values}
-                label="Фильтры полигонов (опционально)"
-              />
-            )}
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="targets" className="border rounded-md px-3">
+      <Accordion type="multiple" defaultValue={["source", "target"]} className="space-y-2">
+        <AccordionItem value="source" className="border rounded-md px-3">
           <AccordionTrigger className="py-2 hover:no-underline">
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Анализируемые слои</span>
-              {selectedTargetLayerIds.size > 0 && (
+              <span className="font-medium text-sm">Исходные слои</span>
+              {selectedSourceLayerIds.size > 0 && (
                 <Badge variant="secondary" className="text-xs">
-                  {selectedTargetLayerIds.size} слоёв
+                  {selectedSourceLayerIds.size} слоёв
                 </Badge>
               )}
             </div>
@@ -776,30 +634,30 @@ export function GeoAnalysisModal({
             <div className="flex items-center justify-between">
               <Label className="text-xs text-muted-foreground">Выберите слои для анализа</Label>
               <div className="flex gap-1">
-                <Button size="sm" variant="ghost" onClick={selectAllLayers} className="h-6 text-xs" data-testid="button-select-all-layers">
+                <Button size="sm" variant="ghost" onClick={selectAllSourceLayers} className="h-6 text-xs" data-testid="button-select-all-sources">
                   Все
                 </Button>
-                <Button size="sm" variant="ghost" onClick={deselectAllLayers} className="h-6 text-xs" data-testid="button-deselect-all-layers">
+                <Button size="sm" variant="ghost" onClick={deselectAllSourceLayers} className="h-6 text-xs" data-testid="button-deselect-all-sources">
                   Сбросить
                 </Button>
               </div>
             </div>
 
             <div className="space-y-1 max-h-[200px] overflow-y-auto">
-              {nonPolygonLayers.length === 0 && (
+              {editableLayers.length === 0 && (
                 <p className="text-xs text-muted-foreground italic">Нет доступных слоёв</p>
               )}
-              {nonPolygonLayers.map(layer => {
+              {editableLayers.map(layer => {
                 const GeomIcon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin;
                 return (
                   <label
                     key={layer.id}
                     className="flex items-center gap-2 p-1.5 rounded-md hover-elevate cursor-pointer"
-                    data-testid={`checkbox-layer-${layer.id}`}
+                    data-testid={`checkbox-source-layer-${layer.id}`}
                   >
                     <Checkbox
-                      checked={selectedTargetLayerIds.has(layer.id)}
-                      onCheckedChange={() => toggleTargetLayer(layer.id)}
+                      checked={selectedSourceLayerIds.has(layer.id)}
+                      onCheckedChange={() => toggleSourceLayer(layer.id)}
                     />
                     <GeomIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <span className="text-sm flex-1 truncate">{layer.name}</span>
@@ -813,270 +671,13 @@ export function GeoAnalysisModal({
             </div>
           </AccordionContent>
         </AccordionItem>
-      </Accordion>
-    </div>
-  );
-
-  const renderReportConstructor = () => {
-    const selectedLayers = editableLayers.filter(l => selectedTargetLayerIds.has(l.id));
-
-    return (
-      <div className="p-4 space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Button size="sm" variant="ghost" onClick={() => setStep("config")} data-testid="button-back-to-config">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Назад
-          </Button>
-          <span className="font-medium text-sm">Конструктор отчёта</span>
-        </div>
-
-        <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
-          <Switch
-            checked={includeSummary}
-            onCheckedChange={setIncludeSummary}
-            data-testid="switch-include-summary"
-          />
-          <Label className="text-sm">Включить сводную таблицу</Label>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Атрибуты для каждого слоя</Label>
-          <p className="text-xs text-muted-foreground">
-            Выберите, какие атрибуты включить в отчёт. Если ничего не выбрано — будут включены все.
-          </p>
-
-          <Accordion type="multiple" className="space-y-2">
-            {selectedLayers.map(layer => {
-              const layerIdStr = String(layer.id);
-              const attrs = analysisResults?.details?.[layerIdStr]?.availableAttributes || [];
-              const selected = selectedAttributes[layerIdStr] || new Set<string>();
-
-              return (
-                <AccordionItem key={layer.id} value={layerIdStr} className="border rounded-md px-3">
-                  <AccordionTrigger className="py-2 hover:no-underline">
-                    <div className="flex items-center gap-2">
-                      {(() => { const Icon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin; return <Icon className="h-3.5 w-3.5 text-muted-foreground" />; })()}
-                      <span className="text-sm">{layer.name}</span>
-                      <Badge variant="secondary" className="text-[10px]">
-                        {selected.size > 0 ? `${selected.size} атр.` : "все"}
-                      </Badge>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-2 pb-3">
-                    {attrs.length === 0 ? (
-                      <p className="text-xs text-muted-foreground italic">
-                        Атрибуты будут доступны после запуска предварительного анализа
-                      </p>
-                    ) : (
-                      <>
-                        <div className="flex gap-1 mb-1">
-                          <Button size="sm" variant="ghost" onClick={() => selectAllAttrsForLayer(layerIdStr, attrs)} className="h-6 text-xs">
-                            Все
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => deselectAllAttrsForLayer(layerIdStr)} className="h-6 text-xs">
-                            Сбросить
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1">
-                          {attrs.map(attr => (
-                            <label key={attr} className="flex items-center gap-1.5 text-xs cursor-pointer p-1 rounded hover-elevate">
-                              <Checkbox
-                                checked={selected.has(attr)}
-                                onCheckedChange={() => toggleAttributeSelection(layerIdStr, attr)}
-                              />
-                              <span className="truncate">{attr}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </AccordionContent>
-                </AccordionItem>
-              );
-            })}
-          </Accordion>
-        </div>
-      </div>
-    );
-  };
-
-  const renderResults = () => {
-    if (!analysisResults) return null;
-
-    const { summary, details } = analysisResults;
-
-    return (
-      <div className="p-4 space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Button size="sm" variant="ghost" onClick={() => setStep("report-constructor")} data-testid="button-back-to-constructor">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Назад
-          </Button>
-          <span className="font-medium text-sm">Результаты анализа</span>
-        </div>
-
-        {includeSummary && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-primary" />
-              <Label className="text-sm font-medium">Сводка</Label>
-            </div>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Слой</TableHead>
-                    <TableHead className="text-xs">Тип</TableHead>
-                    <TableHead className="text-xs text-right">Всего</TableHead>
-                    <TableHead className="text-xs text-right">Попало</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {summary.byLayer.map(lr => (
-                    <TableRow key={lr.layerId} data-testid={`row-summary-${lr.layerId}`}>
-                      <TableCell className="text-xs font-medium">{lr.layerName}</TableCell>
-                      <TableCell className="text-xs">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {GEOM_TYPE_LABELS[lr.geometryType] || lr.geometryType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-right">{lr.totalCount}</TableCell>
-                      <TableCell className="text-xs text-right font-medium">{lr.matchedCount}</TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="font-bold">
-                    <TableCell className="text-xs" colSpan={3}>ИТОГО</TableCell>
-                    <TableCell className="text-xs text-right">{summary.totalObjects}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Полигональный слой: {summary.polygonLayerName} ({summary.polygonCount} полигонов)
-            </p>
-          </div>
-        )}
-
-        <Separator />
-
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Детали по слоям</Label>
-
-          {Object.entries(details).map(([layerId, detail]) => {
-            const isExpanded = expandedResultLayers.has(layerId);
-            const propKeys = detail.features.length > 0
-              ? Object.keys(detail.features[0].properties).sort()
-              : detail.availableAttributes;
-
-            return (
-              <div key={layerId} className="border rounded-md">
-                <button
-                  className="w-full flex items-center gap-2 p-2 text-left hover-elevate rounded-md"
-                  onClick={() => toggleResultLayerExpand(layerId)}
-                  data-testid={`button-expand-layer-${layerId}`}
-                >
-                  <ChevronRight className={`h-4 w-4 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
-                  {(() => { const Icon = GEOM_TYPE_ICONS[detail.geometryType] || MapPin; return <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />; })()}
-                  <span className="text-sm font-medium flex-1 truncate">{detail.layerName}</span>
-                  <Badge variant="secondary" className="text-[10px] shrink-0">
-                    {detail.features.length} объектов
-                  </Badge>
-                </button>
-
-                {isExpanded && detail.features.length > 0 && (
-                  <div className="border-t overflow-x-auto max-h-[300px] overflow-y-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs sticky top-0 bg-background">ID</TableHead>
-                          {propKeys.map(key => (
-                            <TableHead key={key} className="text-xs sticky top-0 bg-background">{key}</TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {detail.features.map(f => (
-                          <TableRow key={f.id} data-testid={`row-detail-${layerId}-${f.id}`}>
-                            <TableCell className="text-xs">{f.id}</TableCell>
-                            {propKeys.map(key => (
-                              <TableCell key={key} className="text-xs max-w-[200px] truncate">
-                                {f.properties[key] !== undefined && f.properties[key] !== null
-                                  ? String(f.properties[key])
-                                  : ""}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-
-                {isExpanded && detail.features.length === 0 && (
-                  <div className="p-3 text-xs text-muted-foreground italic border-t">
-                    Нет объектов в выбранном полигоне
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  const renderDistanceBindingConfig = () => (
-    <div className="p-4 space-y-4">
-      <Accordion type="multiple" defaultValue={["source", "target"]} className="space-y-2">
-        <AccordionItem value="source" className="border rounded-md px-3">
-          <AccordionTrigger className="py-2 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Исходный слой</span>
-              {sourceLayerId && (
-                <Badge variant="secondary" className="text-xs">
-                  {filteredSourceCount} объектов
-                </Badge>
-              )}
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="space-y-3 pb-3">
-            <div className="space-y-2">
-              <Label htmlFor="source-layer" className="text-xs">Выберите слой</Label>
-              <Select value={sourceLayerId} onValueChange={setSourceLayerId}>
-                <SelectTrigger id="source-layer" data-testid="select-source-layer">
-                  <SelectValue placeholder="Выберите слой" />
-                </SelectTrigger>
-                <SelectContent>
-                  {editableLayers.map(layer => (
-                    <SelectItem key={layer.id} value={String(layer.id)}>
-                      {layer.name} ({layer.geometryType}, {layer.featureCount} объектов)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {sourceLayerId && (
-              <AttributeFilterBuilder
-                layerId={sourceLayerId}
-                conditions={sourceConditions}
-                onConditionsChange={setSourceConditions}
-                availableAttributes={sourceAttrsData.attrs}
-                attributeValues={sourceAttrsData.values}
-                label="Фильтры по атрибутам (условия объединяются через И)"
-              />
-            )}
-          </AccordionContent>
-        </AccordionItem>
 
         <AccordionItem value="target" className="border rounded-md px-3">
           <AccordionTrigger className="py-2 hover:no-underline">
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
               <span className="font-medium text-sm">Целевой слой привязки</span>
+              <Badge variant="outline" className="text-[10px]">опционально</Badge>
               {targetLayerId && (
                 <Badge variant="secondary" className="text-xs">
                   {filteredTargetCount} объектов
@@ -1085,13 +686,17 @@ export function GeoAnalysisModal({
             </div>
           </AccordionTrigger>
           <AccordionContent className="space-y-3 pb-3">
+            <p className="text-xs text-muted-foreground">
+              Если целевой слой не выбран, анализ покажет только объекты внутри/снаружи ограничивающего слоя.
+            </p>
             <div className="space-y-2">
               <Label htmlFor="target-layer" className="text-xs">Выберите слой</Label>
               <Select value={targetLayerId} onValueChange={setTargetLayerId}>
                 <SelectTrigger id="target-layer" data-testid="select-target-layer">
-                  <SelectValue placeholder="Выберите слой" />
+                  <SelectValue placeholder="Не выбран (только пространственный анализ)" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">Не выбран</SelectItem>
                   {editableLayers.map(layer => (
                     <SelectItem key={layer.id} value={String(layer.id)}>
                       {layer.name} ({layer.geometryType}, {layer.featureCount} объектов)
@@ -1101,9 +706,9 @@ export function GeoAnalysisModal({
               </Select>
             </div>
             
-            {targetLayerId && (
+            {hasTargetLayer && (
               <AttributeFilterBuilder
-                layerId={targetLayerId}
+                layerId={actualTargetLayerId}
                 conditions={targetConditions}
                 onConditionsChange={setTargetConditions}
                 availableAttributes={targetAttrsData.attrs}
@@ -1118,7 +723,13 @@ export function GeoAnalysisModal({
           <AccordionTrigger className="py-2 hover:no-underline">
             <div className="flex items-center gap-2">
               <Square className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Ограничивающий слой (опционально)</span>
+              <span className="font-medium text-sm">Ограничивающий слой</span>
+              {isBoundaryOnlyMode && (
+                <Badge variant="default" className="text-[10px]">обязательно</Badge>
+              )}
+              {!isBoundaryOnlyMode && (
+                <Badge variant="outline" className="text-[10px]">опционально</Badge>
+              )}
               {boundaryEnabled && boundaryLayerId && (
                 <Badge variant="secondary" className="text-xs">
                   {filteredBoundaryCount} {boundaryType === "polygon" ? "полигонов" : "линий"}
@@ -1136,6 +747,13 @@ export function GeoAnalysisModal({
               <Label className="text-xs">Использовать пространственные ограничения</Label>
             </div>
             
+            {isBoundaryOnlyMode && !boundaryEnabled && (
+              <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                <AlertCircle className="h-3 w-3" />
+                Без целевого слоя необходимо включить ограничивающий слой
+              </div>
+            )}
+
             {boundaryEnabled && (
               <>
                 <div className="space-y-2">
@@ -1251,35 +869,264 @@ export function GeoAnalysisModal({
         </AccordionItem>
       </Accordion>
 
-      <Separator />
-
-      <div className="space-y-2">
-        <Label htmlFor="max-distance" className="text-sm font-medium">Порог расстояния (метры)</Label>
-        <Input
-          id="max-distance"
-          type="number"
-          value={maxDistance}
-          onChange={e => setMaxDistance(e.target.value)}
-          min="1"
-          max="10000"
-          className="max-w-[200px]"
-          data-testid="input-max-distance"
-        />
-        <p className="text-xs text-muted-foreground">
-          Объекты дальше порога не будут привязаны к целевому слою
-        </p>
-      </div>
+      {hasTargetLayer && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <Label htmlFor="max-distance" className="text-sm font-medium">Порог расстояния (метры)</Label>
+            <Input
+              id="max-distance"
+              type="number"
+              value={maxDistance}
+              onChange={e => setMaxDistance(e.target.value)}
+              min="1"
+              max="10000"
+              className="max-w-[200px]"
+              data-testid="input-max-distance"
+            />
+            <p className="text-xs text-muted-foreground">
+              Объекты дальше порога не будут привязаны к целевому слою
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 
+  const renderReportConstructor = () => {
+    const selectedLayers = editableLayers.filter(l => selectedSourceLayerIds.has(l.id));
+
+    return (
+      <div className="p-4 space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Button size="sm" variant="ghost" onClick={() => setStep("config")} data-testid="button-back-to-config">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Назад
+          </Button>
+          <span className="font-medium text-sm">Конструктор отчёта</span>
+        </div>
+
+        <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
+          <Switch
+            checked={includeSummary}
+            onCheckedChange={setIncludeSummary}
+            data-testid="switch-include-summary"
+          />
+          <Label className="text-sm">Включить сводную таблицу</Label>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">Атрибуты для каждого слоя</Label>
+          <p className="text-xs text-muted-foreground">
+            Выберите, какие атрибуты включить в отчёт. Если ничего не выбрано — будут включены все.
+          </p>
+
+          <Accordion type="multiple" className="space-y-2">
+            {selectedLayers.map(layer => {
+              const layerIdStr = String(layer.id);
+              const attrs = sourceLayerAttributes[layerIdStr] || [];
+              const selected = selectedAttributes[layerIdStr] || new Set<string>();
+
+              return (
+                <AccordionItem key={layer.id} value={layerIdStr} className="border rounded-md px-3">
+                  <AccordionTrigger className="py-2 hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      {(() => { const Icon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin; return <Icon className="h-3.5 w-3.5 text-muted-foreground" />; })()}
+                      <span className="text-sm">{layer.name}</span>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {selected.size > 0 ? `${selected.size} атр.` : "все"}
+                      </Badge>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-2 pb-3">
+                    {attrs.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">
+                        Загрузка атрибутов...
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex gap-1 mb-1">
+                          <Button size="sm" variant="ghost" onClick={() => selectAllAttrsForLayer(layerIdStr, attrs)} className="h-6 text-xs">
+                            Все
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => deselectAllAttrsForLayer(layerIdStr)} className="h-6 text-xs">
+                            Сбросить
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          {attrs.map(attr => (
+                            <label key={attr} className="flex items-center gap-1.5 text-xs cursor-pointer p-1 rounded hover-elevate">
+                              <Checkbox
+                                checked={selected.has(attr)}
+                                onCheckedChange={() => toggleAttributeSelection(layerIdStr, attr)}
+                              />
+                              <span className="truncate">{attr}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
+          </Accordion>
+        </div>
+      </div>
+    );
+  };
+
+  const renderResults = () => {
+    if (!analysisResults) return null;
+
+    const { summary, details } = analysisResults;
+
+    return (
+      <div className="p-4 space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Button size="sm" variant="ghost" onClick={() => setStep("report-constructor")} data-testid="button-back-to-constructor">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Назад
+          </Button>
+          <span className="font-medium text-sm">Результаты анализа</span>
+          {analysisResults.mode === "distance-binding" && (
+            <Badge variant="outline" className="text-[10px]">Привязка по расстоянию</Badge>
+          )}
+          {analysisResults.mode === "boundary-only" && (
+            <Badge variant="outline" className="text-[10px]">Пространственный анализ</Badge>
+          )}
+        </div>
+
+        {includeSummary && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary" />
+              <Label className="text-sm font-medium">Сводка</Label>
+            </div>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Слой</TableHead>
+                    <TableHead className="text-xs">Тип</TableHead>
+                    <TableHead className="text-xs text-right">Всего</TableHead>
+                    <TableHead className="text-xs text-right">
+                      {analysisResults.mode === "distance-binding" ? "Привязано" : "Попало"}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summary.byLayer.map(lr => (
+                    <TableRow key={lr.layerId} data-testid={`row-summary-${lr.layerId}`}>
+                      <TableCell className="text-xs font-medium">{lr.layerName}</TableCell>
+                      <TableCell className="text-xs">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {GEOM_TYPE_LABELS[lr.geometryType] || lr.geometryType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-right">{lr.totalCount}</TableCell>
+                      <TableCell className="text-xs text-right font-medium">{lr.matchedCount}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="font-bold">
+                    <TableCell className="text-xs" colSpan={3}>ИТОГО</TableCell>
+                    <TableCell className="text-xs text-right">{summary.totalObjects}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+            {summary.boundaryLayerName && (
+              <p className="text-xs text-muted-foreground">
+                Ограничивающий слой: {summary.boundaryLayerName} ({summary.boundaryCount} объектов)
+              </p>
+            )}
+            {summary.targetLayerName && (
+              <p className="text-xs text-muted-foreground">
+                Целевой слой привязки: {summary.targetLayerName}
+              </p>
+            )}
+          </div>
+        )}
+
+        <Separator />
+
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Детали по слоям</Label>
+
+          {Object.entries(details).map(([layerId, detail]) => {
+            const isExpanded = expandedResultLayers.has(layerId);
+            const propKeys = detail.features.length > 0
+              ? Object.keys(detail.features[0].properties).sort()
+              : detail.availableAttributes;
+
+            return (
+              <div key={layerId} className="border rounded-md">
+                <button
+                  className="w-full flex items-center gap-2 p-2 text-left hover-elevate rounded-md"
+                  onClick={() => toggleResultLayerExpand(layerId)}
+                  data-testid={`button-expand-layer-${layerId}`}
+                >
+                  <ChevronRight className={`h-4 w-4 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+                  {(() => { const Icon = GEOM_TYPE_ICONS[detail.geometryType] || MapPin; return <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />; })()}
+                  <span className="text-sm font-medium flex-1 truncate">{detail.layerName}</span>
+                  <Badge variant="secondary" className="text-[10px] shrink-0">
+                    {detail.features.length} объектов
+                  </Badge>
+                </button>
+
+                {isExpanded && detail.features.length > 0 && (
+                  <div className="border-t overflow-x-auto max-h-[300px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs sticky top-0 bg-background">ID</TableHead>
+                          {propKeys.map(key => (
+                            <TableHead key={key} className="text-xs sticky top-0 bg-background">{key}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {detail.features.map(f => (
+                          <TableRow key={f.id} data-testid={`row-detail-${layerId}-${f.id}`}>
+                            <TableCell className="text-xs">{f.id}</TableCell>
+                            {propKeys.map(key => (
+                              <TableCell key={key} className="text-xs max-w-[200px] truncate">
+                                {f.properties[key] !== undefined && f.properties[key] !== null
+                                  ? String(f.properties[key])
+                                  : ""}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {isExpanded && detail.features.length === 0 && (
+                  <div className="p-3 text-xs text-muted-foreground italic border-t">
+                    Нет объектов в выбранной области
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const renderFooter = () => {
-    if (analysisMode === "distance-binding") {
+    if (step === "config") {
       return (
         <div className="border-t p-3 flex items-center justify-between gap-2 shrink-0">
           <div className="text-xs text-muted-foreground">
-            {sourceLayerId && targetLayerId && (
+            {selectedSourceLayerIds.size > 0 && (
               <span>
-                Анализ: {filteredSourceCount} исходных → {filteredTargetCount} целевых
+                {selectedSourceLayerIds.size} исходных слоёв
+                {hasTargetLayer && ` → ${filteredTargetCount} целевых`}
                 {boundaryEnabled && boundaryLayerId && (
                   boundaryType === "polygon" 
                     ? ` (${boundaryMode === "inside" ? "внутри" : "вне"} ${filteredBoundaryCount} полигонов)`
@@ -1293,48 +1140,12 @@ export function GeoAnalysisModal({
               Отмена
             </Button>
             <Button
-              onClick={runDistanceBindingAnalysis}
-              disabled={isAnalyzing || !canRunDistanceBinding}
-              data-testid="button-run-analysis"
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Анализ...
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Выполнить и скачать XLSX
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (step === "config") {
-      return (
-        <div className="border-t p-3 flex items-center justify-between gap-2 shrink-0">
-          <div className="text-xs text-muted-foreground">
-            {polygonLayerId && selectedTargetLayerIds.size > 0 && (
-              <span>
-                {filteredPolygonCount} полигонов → {selectedTargetLayerIds.size} слоёв для анализа
-              </span>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} data-testid="button-cancel-analysis">
-              Отмена
-            </Button>
-            <Button
               onClick={() => setStep("report-constructor")}
-              disabled={!canProceedToReportConstructor}
+              disabled={!canProceed}
               data-testid="button-proceed-to-constructor"
             >
               <ChevronRight className="h-4 w-4 mr-1" />
-              Конструктор отчёта
+              Далее
             </Button>
           </div>
         </div>
@@ -1345,7 +1156,7 @@ export function GeoAnalysisModal({
       return (
         <div className="border-t p-3 flex items-center justify-between gap-2 shrink-0">
           <div className="text-xs text-muted-foreground">
-            {selectedTargetLayerIds.size} слоёв для анализа
+            {selectedSourceLayerIds.size} слоёв для анализа
           </div>
           <div className="flex flex-wrap gap-2 justify-end">
             <Button variant="outline" onClick={onClose} data-testid="button-cancel-analysis">
@@ -1353,7 +1164,7 @@ export function GeoAnalysisModal({
             </Button>
             <Button
               variant="outline"
-              onClick={() => runObjectsInPolygonAnalysis("xlsx")}
+              onClick={() => runAnalysis("xlsx")}
               disabled={isAnalyzing}
               data-testid="button-export-xlsx"
             >
@@ -1365,7 +1176,7 @@ export function GeoAnalysisModal({
               Скачать XLSX
             </Button>
             <Button
-              onClick={() => runObjectsInPolygonAnalysis("json")}
+              onClick={() => runAnalysis("json")}
               disabled={isAnalyzing}
               data-testid="button-run-and-preview"
             >
@@ -1398,7 +1209,7 @@ export function GeoAnalysisModal({
             </Button>
             <Button
               variant="outline"
-              onClick={() => runObjectsInPolygonAnalysis("xlsx")}
+              onClick={() => runAnalysis("xlsx")}
               disabled={isAnalyzing}
               data-testid="button-export-results-xlsx"
             >
@@ -1428,13 +1239,10 @@ export function GeoAnalysisModal({
       minHeight={400}
     >
       <div className="flex flex-col h-full">
-        {renderModeSelector()}
-
         <ScrollArea className="flex-1">
-          {analysisMode === "distance-binding" && renderDistanceBindingConfig()}
-          {analysisMode === "objects-in-polygon" && step === "config" && renderObjectsInPolygonConfig()}
-          {analysisMode === "objects-in-polygon" && step === "report-constructor" && renderReportConstructor()}
-          {analysisMode === "objects-in-polygon" && step === "results" && renderResults()}
+          {step === "config" && renderConfig()}
+          {step === "report-constructor" && renderReportConstructor()}
+          {step === "results" && renderResults()}
         </ScrollArea>
 
         {renderFooter()}

@@ -1619,20 +1619,35 @@ export async function registerRoutes(
   app.post("/api/analytics/geospatial", async (req: Request, res: Response) => {
     try {
       const {
-        sourceLayerId,
-        sourceFilters = [],
-        targetLayerId,
+        sourceLayerIds = [],
+        sourceFilters = {},
+        targetLayerId = null,
         targetFilters = [],
         boundaryLayerId,
         boundaryFilters = [],
         boundaryMode = "none",
         boundaryType = "polygon",
         bufferDistanceMeters = 10,
-        maxDistanceMeters = 15
+        maxDistanceMeters = 15,
+        reportConfig = {},
       } = req.body;
 
-      if (!sourceLayerId || !targetLayerId) {
-        return res.status(400).json({ message: "sourceLayerId and targetLayerId are required" });
+      const {
+        includeAttributes = {},
+        includeSummary = true,
+        format = "xlsx",
+      } = reportConfig;
+
+      if (!Array.isArray(sourceLayerIds) || sourceLayerIds.length === 0) {
+        return res.status(400).json({ message: "sourceLayerIds must be a non-empty array" });
+      }
+
+      const isDistanceBinding = targetLayerId != null;
+
+      if (!isDistanceBinding) {
+        if (!boundaryLayerId || boundaryMode === "none") {
+          return res.status(400).json({ message: "Boundary must be enabled when no target layer is selected" });
+        }
       }
 
       if (boundaryType === "line" && boundaryMode !== "none" && boundaryLayerId) {
@@ -1642,37 +1657,27 @@ export async function registerRoutes(
         }
       }
 
-      const sourceLayer = await storage.getEditableLayer(sourceLayerId);
-      const targetLayer = await storage.getEditableLayer(targetLayerId);
+      let targetLayer: Awaited<ReturnType<typeof storage.getEditableLayer>> = null;
+      let targetFeatures: { id: number; geometry: { type: string; coordinates: any }; properties: Record<string, unknown> }[] = [];
 
-      if (!sourceLayer) {
-        return res.status(404).json({ message: "Source layer not found" });
+      if (isDistanceBinding) {
+        targetLayer = await storage.getEditableLayer(targetLayerId);
+        if (!targetLayer) {
+          return res.status(404).json({ message: "Target layer not found" });
+        }
+
+        const targetFeaturesRaw = await storage.getDrawnFeatures(targetLayerId);
+        targetFeatures = targetFeaturesRaw.map(f => ({
+          id: f.id,
+          geometry: { type: f.geometryType, coordinates: f.coordinates },
+          properties: f.properties || {},
+        }));
+        targetFeatures = applyFilters(targetFeatures, targetFilters) as typeof targetFeatures;
       }
-      if (!targetLayer) {
-        return res.status(404).json({ message: "Target layer not found" });
-      }
-
-      const sourceFeaturesRaw = await storage.getDrawnFeatures(sourceLayerId);
-      const targetFeaturesRaw = await storage.getDrawnFeatures(targetLayerId);
-
-      let sourceFeatures = sourceFeaturesRaw.map(f => ({
-        id: f.id,
-        geometry: { type: f.geometryType, coordinates: f.coordinates },
-        properties: f.properties || {},
-      }));
-
-      let targetFeatures = targetFeaturesRaw.map(f => ({
-        id: f.id,
-        geometry: { type: f.geometryType, coordinates: f.coordinates },
-        properties: f.properties || {},
-      }));
-
-      sourceFeatures = applyFilters(sourceFeatures, sourceFilters);
-      targetFeatures = applyFilters(targetFeatures, targetFilters);
 
       let boundaryFeatures: { geometry: { type: string; coordinates: any }; properties: Record<string, unknown> }[] = [];
       let boundaryLayer = null;
-      
+
       if (boundaryLayerId && boundaryMode !== "none") {
         boundaryLayer = await storage.getEditableLayer(boundaryLayerId);
         if (boundaryLayer) {
@@ -1685,295 +1690,330 @@ export async function registerRoutes(
         }
       }
 
-      if (boundaryFeatures.length > 0 && (boundaryMode === "inside" || boundaryMode === "outside")) {
+      if (isDistanceBinding && boundaryFeatures.length > 0 && (boundaryMode === "inside" || boundaryMode === "outside")) {
         if (boundaryType === "line") {
-          sourceFeatures = sourceFeatures.filter(feature => {
-            return isFeatureNearLines(feature, boundaryFeatures, bufferDistanceMeters, boundaryMode as "inside" | "outside");
-          });
-
           targetFeatures = targetFeatures.filter(feature => {
             return isFeatureNearLines(feature, boundaryFeatures, bufferDistanceMeters, boundaryMode as "inside" | "outside");
           });
         } else {
-          sourceFeatures = sourceFeatures.filter(feature => {
-            return isFeatureInBoundary(feature, boundaryFeatures, boundaryMode as "inside" | "outside");
-          });
-
           targetFeatures = targetFeatures.filter(feature => {
             return isFeatureInBoundary(feature, boundaryFeatures, boundaryMode as "inside" | "outside");
           });
         }
       }
 
-      if (sourceFeatures.length === 0) {
-        return res.status(422).json({ message: "No source features match the filters" });
-      }
-      if (targetFeatures.length === 0) {
+      if (isDistanceBinding && targetFeatures.length === 0) {
         return res.status(422).json({ message: "No target features match the filters" });
       }
 
-      const targetMatchCounts: Map<number, number> = new Map();
-      const sourceMatches: { sourceIdx: number; targetIdx: number; distance: number }[] = [];
-      let unmatchedCount = 0;
+      if (isDistanceBinding) {
+        const targetMatchCounts: Map<number, Map<string, number>> = new Map();
+        const allSourceMatches: { sourceLayerId: number; sourceLayerName: string; sourceIdx: number; sourceFeature: any; targetIdx: number; distance: number }[] = [];
+        let totalUnmatched = 0;
+        let totalSourceCount = 0;
 
-      for (let srcIdx = 0; srcIdx < sourceFeatures.length; srcIdx++) {
-        const sourceFeature = sourceFeatures[srcIdx];
-        const sourceCentroid = getFeatureCentroid(sourceFeature);
-        
-        if (!sourceCentroid) {
-          unmatchedCount++;
-          continue;
-        }
+        const layerSummaries: { layerId: number; layerName: string; geometryType: string; totalCount: number; matchedCount: number }[] = [];
 
-        const sourcePoint = turf.point(sourceCentroid);
-        let nearestTargetIndex = -1;
-        let nearestDistance = Infinity;
+        const allSourcePropKeys = new Set<string>();
 
-        for (let tgtIdx = 0; tgtIdx < targetFeatures.length; tgtIdx++) {
-          const targetFeature = targetFeatures[tgtIdx];
-          
-          try {
-            let minDistForThisTarget = Infinity;
-            const geomType = targetFeature.geometry.type;
-            
-            if (geomType === "Point") {
-              const targetPoint = turf.point(targetFeature.geometry.coordinates);
-              minDistForThisTarget = turf.distance(sourcePoint, targetPoint);
-            } else if (geomType === "LineString") {
-              const line = turf.lineString(targetFeature.geometry.coordinates);
-              const nearestPoint = turf.nearestPointOnLine(line, sourcePoint);
-              if (nearestPoint.properties.dist !== undefined) {
-                minDistForThisTarget = nearestPoint.properties.dist;
-              }
-            } else if (geomType === "MultiLineString") {
-              const coords = targetFeature.geometry.coordinates as number[][][];
-              for (const lineCoords of coords) {
-                if (lineCoords.length < 2) continue;
-                const line = turf.lineString(lineCoords);
-                const nearestPoint = turf.nearestPointOnLine(line, sourcePoint);
-                if (nearestPoint.properties.dist !== undefined && nearestPoint.properties.dist < minDistForThisTarget) {
-                  minDistForThisTarget = nearestPoint.properties.dist;
-                }
-              }
-            } else if (geomType === "Polygon") {
-              const polygon = turf.polygon(targetFeature.geometry.coordinates);
-              const targetCentroid = turf.centroid(polygon);
-              minDistForThisTarget = turf.distance(sourcePoint, targetCentroid);
-            } else if (geomType === "MultiPolygon") {
-              const multiPolygon = turf.multiPolygon(targetFeature.geometry.coordinates);
-              const targetCentroid = turf.centroid(multiPolygon);
-              minDistForThisTarget = turf.distance(sourcePoint, targetCentroid);
+        for (const srcLayerId of sourceLayerIds) {
+          const sourceLayer = await storage.getEditableLayer(srcLayerId);
+          if (!sourceLayer) continue;
+
+          const sourceFeaturesRaw = await storage.getDrawnFeatures(srcLayerId);
+          let sourceFeatures = sourceFeaturesRaw.map(f => ({
+            id: f.id,
+            geometry: { type: f.geometryType, coordinates: f.coordinates },
+            properties: f.properties || {},
+          }));
+
+          const layerFilters: FilterCondition[] = sourceFilters[String(srcLayerId)] || [];
+          sourceFeatures = applyFilters(sourceFeatures, layerFilters) as typeof sourceFeatures;
+
+          if (boundaryFeatures.length > 0 && (boundaryMode === "inside" || boundaryMode === "outside")) {
+            if (boundaryType === "line") {
+              sourceFeatures = sourceFeatures.filter(feature => {
+                return isFeatureNearLines(feature, boundaryFeatures, bufferDistanceMeters, boundaryMode as "inside" | "outside");
+              });
+            } else {
+              sourceFeatures = sourceFeatures.filter(feature => {
+                return isFeatureInBoundary(feature, boundaryFeatures, boundaryMode as "inside" | "outside");
+              });
             }
-
-            if (minDistForThisTarget < nearestDistance) {
-              nearestDistance = minDistForThisTarget;
-              nearestTargetIndex = tgtIdx;
-            }
-          } catch (e) {
-            continue;
           }
+
+          for (const feature of sourceFeatures) {
+            Object.keys(feature.properties).forEach(k => allSourcePropKeys.add(k));
+          }
+
+          totalSourceCount += sourceFeatures.length;
+          let layerMatchedCount = 0;
+
+          for (let srcIdx = 0; srcIdx < sourceFeatures.length; srcIdx++) {
+            const sourceFeature = sourceFeatures[srcIdx];
+            const sourceCentroid = getFeatureCentroid(sourceFeature);
+
+            if (!sourceCentroid) {
+              totalUnmatched++;
+              continue;
+            }
+
+            const sourcePoint = turf.point(sourceCentroid);
+            let nearestTargetIndex = -1;
+            let nearestDistance = Infinity;
+
+            for (let tgtIdx = 0; tgtIdx < targetFeatures.length; tgtIdx++) {
+              const targetFeature = targetFeatures[tgtIdx];
+
+              try {
+                let minDistForThisTarget = Infinity;
+                const geomType = targetFeature.geometry.type;
+
+                if (geomType === "Point") {
+                  const targetPoint = turf.point(targetFeature.geometry.coordinates);
+                  minDistForThisTarget = turf.distance(sourcePoint, targetPoint);
+                } else if (geomType === "LineString") {
+                  const line = turf.lineString(targetFeature.geometry.coordinates);
+                  const nearestPoint = turf.nearestPointOnLine(line, sourcePoint);
+                  if (nearestPoint.properties.dist !== undefined) {
+                    minDistForThisTarget = nearestPoint.properties.dist;
+                  }
+                } else if (geomType === "MultiLineString") {
+                  const coords = targetFeature.geometry.coordinates as number[][][];
+                  for (const lineCoords of coords) {
+                    if (lineCoords.length < 2) continue;
+                    const line = turf.lineString(lineCoords);
+                    const nearestPoint = turf.nearestPointOnLine(line, sourcePoint);
+                    if (nearestPoint.properties.dist !== undefined && nearestPoint.properties.dist < minDistForThisTarget) {
+                      minDistForThisTarget = nearestPoint.properties.dist;
+                    }
+                  }
+                } else if (geomType === "Polygon") {
+                  const polygon = turf.polygon(targetFeature.geometry.coordinates);
+                  const targetCentroid = turf.centroid(polygon);
+                  minDistForThisTarget = turf.distance(sourcePoint, targetCentroid);
+                } else if (geomType === "MultiPolygon") {
+                  const multiPolygon = turf.multiPolygon(targetFeature.geometry.coordinates);
+                  const targetCentroid = turf.centroid(multiPolygon);
+                  minDistForThisTarget = turf.distance(sourcePoint, targetCentroid);
+                }
+
+                if (minDistForThisTarget < nearestDistance) {
+                  nearestDistance = minDistForThisTarget;
+                  nearestTargetIndex = tgtIdx;
+                }
+              } catch (e) {
+                continue;
+              }
+            }
+
+            const distanceInMeters = nearestDistance * 1000;
+
+            if (nearestTargetIndex >= 0 && distanceInMeters <= maxDistanceMeters) {
+              if (!targetMatchCounts.has(nearestTargetIndex)) {
+                targetMatchCounts.set(nearestTargetIndex, new Map());
+              }
+              const layerCounts = targetMatchCounts.get(nearestTargetIndex)!;
+              layerCounts.set(String(srcLayerId), (layerCounts.get(String(srcLayerId)) || 0) + 1);
+
+              allSourceMatches.push({
+                sourceLayerId: srcLayerId,
+                sourceLayerName: sourceLayer.name,
+                sourceIdx: srcIdx,
+                sourceFeature,
+                targetIdx: nearestTargetIndex,
+                distance: distanceInMeters,
+              });
+              layerMatchedCount++;
+            } else {
+              totalUnmatched++;
+            }
+          }
+
+          layerSummaries.push({
+            layerId: srcLayerId,
+            layerName: sourceLayer.name,
+            geometryType: sourceLayer.geometryType,
+            totalCount: sourceFeatures.length,
+            matchedCount: layerMatchedCount,
+          });
         }
 
-        const distanceInMeters = nearestDistance * 1000;
+        if (format === "json") {
+          const details: Record<string, any> = {};
+          for (const ls of layerSummaries) {
+            const layerMatchesForThis = allSourceMatches.filter(m => m.sourceLayerId === ls.layerId);
+            const featuresOut = layerMatchesForThis.map(m => ({
+              id: m.sourceFeature.id,
+              properties: m.sourceFeature.properties,
+            }));
+            const allKeys = new Set<string>();
+            for (const m of layerMatchesForThis) {
+              Object.keys(m.sourceFeature.properties).forEach(k => allKeys.add(k));
+            }
+            details[String(ls.layerId)] = {
+              layerName: ls.layerName,
+              geometryType: ls.geometryType,
+              availableAttributes: Array.from(allKeys).sort(),
+              features: featuresOut,
+            };
+          }
 
-        if (nearestTargetIndex >= 0 && distanceInMeters <= maxDistanceMeters) {
-          const currentCount = targetMatchCounts.get(nearestTargetIndex) || 0;
-          targetMatchCounts.set(nearestTargetIndex, currentCount + 1);
-          sourceMatches.push({ sourceIdx: srcIdx, targetIdx: nearestTargetIndex, distance: distanceInMeters });
-        } else {
-          unmatchedCount++;
+          return res.json({
+            mode: "distance-binding",
+            summary: {
+              totalObjects: totalSourceCount,
+              boundaryLayerName: boundaryLayer ? boundaryLayer.name : null,
+              boundaryCount: boundaryFeatures.length,
+              targetLayerName: targetLayer ? targetLayer.name : null,
+              byLayer: layerSummaries,
+            },
+            details,
+          });
         }
-      }
 
-      const workbook = new ExcelJS.Workbook();
+        const workbook = new ExcelJS.Workbook();
 
-      const resultsSheet = workbook.addWorksheet("Результаты привязки");
-      
-      const targetPropKeys = new Set<string>();
-      for (const feature of targetFeatures) {
-        Object.keys(feature.properties).forEach(k => targetPropKeys.add(k));
-      }
-      const targetPropKeysArr = Array.from(targetPropKeys).sort();
+        const resultsSheet = workbook.addWorksheet("Результаты привязки");
 
-      const columns = [
-        { header: "ID объекта", key: "id", width: 12 },
-        ...targetPropKeysArr.map(k => ({ header: k, key: k, width: 15 })),
-        { header: "Количество привязок", key: "match_count", width: 18 },
-      ];
-      resultsSheet.columns = columns;
+        const targetPropKeys = new Set<string>();
+        for (const feature of targetFeatures) {
+          Object.keys(feature.properties).forEach(k => targetPropKeys.add(k));
+        }
+        const targetPropKeysArr = Array.from(targetPropKeys).sort();
 
-      resultsSheet.getRow(1).font = { bold: true };
-      resultsSheet.getRow(1).fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFE0E0E0" },
-      };
+        const sourceLayerNames = layerSummaries.map(ls => ls.layerName);
 
-      const rows: any[] = [];
-      for (let i = 0; i < targetFeatures.length; i++) {
-        const feature = targetFeatures[i];
-        const matchCount = targetMatchCounts.get(i) || 0;
+        const columns = [
+          { header: "ID объекта", key: "id", width: 12 },
+          ...targetPropKeysArr.map(k => ({ header: k, key: k, width: 15 })),
+          { header: "Количество привязок (всего)", key: "match_count_total", width: 22 },
+          ...sourceLayerNames.map((name, idx) => ({ header: `Привязки: ${name}`, key: `match_layer_${idx}`, width: 20 })),
+        ];
+        resultsSheet.columns = columns;
 
-        const row: Record<string, any> = {
-          id: (feature as any).id || i + 1,
-          match_count: matchCount,
+        resultsSheet.getRow(1).font = { bold: true };
+        resultsSheet.getRow(1).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFE0E0E0" },
         };
-        
-        for (const key of targetPropKeysArr) {
-          row[key] = feature.properties[key] ?? "";
+
+        const rows: any[] = [];
+        for (let i = 0; i < targetFeatures.length; i++) {
+          const feature = targetFeatures[i];
+          const layerCounts = targetMatchCounts.get(i);
+          let totalCount = 0;
+
+          const row: Record<string, any> = {
+            id: (feature as any).id || i + 1,
+          };
+
+          for (const key of targetPropKeysArr) {
+            row[key] = feature.properties[key] ?? "";
+          }
+
+          for (let idx = 0; idx < layerSummaries.length; idx++) {
+            const cnt = layerCounts ? (layerCounts.get(String(layerSummaries[idx].layerId)) || 0) : 0;
+            row[`match_layer_${idx}`] = cnt;
+            totalCount += cnt;
+          }
+
+          row.match_count_total = totalCount;
+          rows.push(row);
         }
-        
-        rows.push(row);
-      }
 
-      const filteredRows = rows.filter(r => r.match_count > 0);
-      filteredRows.sort((a, b) => b.match_count - a.match_count);
+        const filteredRows = rows.filter(r => r.match_count_total > 0);
+        filteredRows.sort((a, b) => b.match_count_total - a.match_count_total);
 
-      for (const row of filteredRows) {
-        resultsSheet.addRow(row);
-      }
+        for (const row of filteredRows) {
+          resultsSheet.addRow(row);
+        }
 
-      const detailsSheet = workbook.addWorksheet("Детали привязок");
-      
-      const sourcePropKeys = new Set<string>();
-      for (const feature of sourceFeatures) {
-        Object.keys(feature.properties).forEach(k => sourcePropKeys.add(k));
-      }
-      const sourcePropKeysArr = Array.from(sourcePropKeys).sort();
+        const detailsSheet = workbook.addWorksheet("Детали привязок");
 
-      detailsSheet.columns = [
-        { header: "Исходный ID", key: "source_id", width: 12 },
-        ...sourcePropKeysArr.map(k => ({ header: `Исх: ${k}`, key: `src_${k}`, width: 15 })),
-        { header: "Целевой ID", key: "target_id", width: 12 },
-        ...targetPropKeysArr.map(k => ({ header: `Цел: ${k}`, key: `tgt_${k}`, width: 15 })),
-        { header: "Расстояние (м)", key: "distance", width: 15 },
-      ];
+        const sourcePropKeysArr = Array.from(allSourcePropKeys).sort();
 
-      detailsSheet.getRow(1).font = { bold: true };
-      detailsSheet.getRow(1).fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFE0E0E0" },
-      };
+        detailsSheet.columns = [
+          { header: "Слой", key: "source_layer", width: 20 },
+          { header: "Исходный ID", key: "source_id", width: 12 },
+          ...sourcePropKeysArr.map(k => ({ header: `Исх: ${k}`, key: `src_${k}`, width: 15 })),
+          { header: "Целевой ID", key: "target_id", width: 12 },
+          ...targetPropKeysArr.map(k => ({ header: `Цел: ${k}`, key: `tgt_${k}`, width: 15 })),
+          { header: "Расстояние (м)", key: "distance", width: 15 },
+        ];
 
-      for (const match of sourceMatches) {
-        const sourceFeature = sourceFeatures[match.sourceIdx];
-        const targetFeature = targetFeatures[match.targetIdx];
-        
-        const detailRow: Record<string, any> = {
-          source_id: (sourceFeature as any).id || match.sourceIdx + 1,
-          target_id: (targetFeature as any).id || match.targetIdx + 1,
-          distance: Math.round(match.distance * 100) / 100,
+        detailsSheet.getRow(1).font = { bold: true };
+        detailsSheet.getRow(1).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFE0E0E0" },
         };
-        
-        for (const key of sourcePropKeysArr) {
-          detailRow[`src_${key}`] = sourceFeature.properties[key] ?? "";
+
+        for (const match of allSourceMatches) {
+          const targetFeature = targetFeatures[match.targetIdx];
+
+          const detailRow: Record<string, any> = {
+            source_layer: match.sourceLayerName,
+            source_id: match.sourceFeature.id || 0,
+            target_id: (targetFeature as any).id || match.targetIdx + 1,
+            distance: Math.round(match.distance * 100) / 100,
+          };
+
+          for (const key of sourcePropKeysArr) {
+            detailRow[`src_${key}`] = match.sourceFeature.properties[key] ?? "";
+          }
+          for (const key of targetPropKeysArr) {
+            detailRow[`tgt_${key}`] = targetFeature.properties[key] ?? "";
+          }
+
+          detailsSheet.addRow(detailRow);
         }
-        for (const key of targetPropKeysArr) {
-          detailRow[`tgt_${key}`] = targetFeature.properties[key] ?? "";
+
+        const metaSheet = workbook.addWorksheet("Метаданные");
+        metaSheet.columns = [
+          { header: "Параметр", key: "param", width: 35 },
+          { header: "Значение", key: "value", width: 50 },
+        ];
+        metaSheet.getRow(1).font = { bold: true };
+
+        metaSheet.addRow({ param: "Дата анализа", value: new Date().toLocaleString("ru-RU") });
+        metaSheet.addRow({ param: "Исходные слои", value: layerSummaries.map(ls => ls.layerName).join(", ") });
+        for (const ls of layerSummaries) {
+          const layerFilters: FilterCondition[] = sourceFilters[String(ls.layerId)] || [];
+          metaSheet.addRow({ param: `Фильтры слоя "${ls.layerName}"`, value: layerFilters.length > 0 ? layerFilters.map((f: FilterCondition) => `${f.attribute} ${f.operator} ${f.value}`).join("; ") : "Без фильтров" });
         }
-        
-        detailsSheet.addRow(detailRow);
-      }
+        metaSheet.addRow({ param: "Целевой слой", value: targetLayer!.name });
+        metaSheet.addRow({ param: "Фильтры целевого слоя", value: targetFilters.length > 0 ? targetFilters.map((f: FilterCondition) => `${f.attribute} ${f.operator} ${f.value}`).join("; ") : "Без фильтров" });
 
-      const metaSheet = workbook.addWorksheet("Метаданные");
-      metaSheet.columns = [
-        { header: "Параметр", key: "param", width: 35 },
-        { header: "Значение", key: "value", width: 50 },
-      ];
-      metaSheet.getRow(1).font = { bold: true };
-
-      metaSheet.addRow({ param: "Дата анализа", value: new Date().toLocaleString("ru-RU") });
-      metaSheet.addRow({ param: "Исходный слой", value: sourceLayer.name });
-      metaSheet.addRow({ param: "Фильтры исходного слоя", value: sourceFilters.length > 0 ? sourceFilters.map((f: FilterCondition) => `${f.attribute} ${f.operator} ${f.value}`).join("; ") : "Без фильтров" });
-      metaSheet.addRow({ param: "Целевой слой", value: targetLayer.name });
-      metaSheet.addRow({ param: "Фильтры целевого слоя", value: targetFilters.length > 0 ? targetFilters.map((f: FilterCondition) => `${f.attribute} ${f.operator} ${f.value}`).join("; ") : "Без фильтров" });
-      
-      if (boundaryLayer && boundaryMode !== "none") {
-        metaSheet.addRow({ param: "Ограничивающий слой", value: boundaryLayer.name });
-        metaSheet.addRow({ param: "Тип ограничения", value: boundaryType === "line" ? "Линейный" : "Полигональный" });
-        if (boundaryType === "line") {
-          metaSheet.addRow({ param: "Буферная зона (м)", value: bufferDistanceMeters });
-          metaSheet.addRow({ param: "Режим ограничения", value: boundaryMode === "inside" ? "Вблизи линий" : "Вдали от линий" });
-        } else {
-          metaSheet.addRow({ param: "Режим ограничения", value: boundaryMode === "inside" ? "Внутри полигонов" : "Вне полигонов" });
+        if (boundaryLayer && boundaryMode !== "none") {
+          metaSheet.addRow({ param: "Ограничивающий слой", value: boundaryLayer.name });
+          metaSheet.addRow({ param: "Тип ограничения", value: boundaryType === "line" ? "Линейный" : "Полигональный" });
+          if (boundaryType === "line") {
+            metaSheet.addRow({ param: "Буферная зона (м)", value: bufferDistanceMeters });
+            metaSheet.addRow({ param: "Режим ограничения", value: boundaryMode === "inside" ? "Вблизи линий" : "Вдали от линий" });
+          } else {
+            metaSheet.addRow({ param: "Режим ограничения", value: boundaryMode === "inside" ? "Внутри полигонов" : "Вне полигонов" });
+          }
+          metaSheet.addRow({ param: "Фильтры ограничивающего слоя", value: boundaryFilters.length > 0 ? boundaryFilters.map((f: FilterCondition) => `${f.attribute} ${f.operator} ${f.value}`).join("; ") : "Без фильтров" });
         }
-        metaSheet.addRow({ param: "Фильтры ограничивающего слоя", value: boundaryFilters.length > 0 ? boundaryFilters.map((f: FilterCondition) => `${f.attribute} ${f.operator} ${f.value}`).join("; ") : "Без фильтров" });
+
+        metaSheet.addRow({ param: "Порог расстояния (м)", value: maxDistanceMeters });
+        metaSheet.addRow({ param: "Всего исходных объектов (после фильтров)", value: totalSourceCount });
+        metaSheet.addRow({ param: "Всего целевых объектов (после фильтров)", value: targetFeatures.length });
+        metaSheet.addRow({ param: "Привязано объектов", value: totalSourceCount - totalUnmatched });
+        metaSheet.addRow({ param: "Непривязано объектов", value: totalUnmatched });
+        metaSheet.addRow({
+          param: "Целевых объектов с привязками",
+          value: Array.from(targetMatchCounts.keys()).length,
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="geospatial_analysis_${Date.now()}.xlsx"`);
+        return res.send(Buffer.from(buffer));
       }
-      
-      metaSheet.addRow({ param: "Порог расстояния (м)", value: maxDistanceMeters });
-      metaSheet.addRow({ param: "Всего исходных объектов (после фильтров)", value: sourceFeatures.length });
-      metaSheet.addRow({ param: "Всего целевых объектов (после фильтров)", value: targetFeatures.length });
-      metaSheet.addRow({ param: "Привязано объектов", value: sourceFeatures.length - unmatchedCount });
-      metaSheet.addRow({ param: "Непривязано объектов", value: unmatchedCount });
-      metaSheet.addRow({ 
-        param: "Целевых объектов с привязками", 
-        value: Array.from(targetMatchCounts.values()).filter(c => c > 0).length 
-      });
-
-      const buffer = await workbook.xlsx.writeBuffer();
-
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.setHeader("Content-Disposition", `attachment; filename="geospatial_analysis_${Date.now()}.xlsx"`);
-      return res.send(Buffer.from(buffer));
-    } catch (error) {
-      console.error("Geospatial analysis error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // ============================================
-  // OBJECTS-IN-POLYGON ANALYSIS API
-  // ============================================
-
-  app.post("/api/analytics/objects-in-polygon", async (req: Request, res: Response) => {
-    try {
-      const {
-        polygonLayerId,
-        polygonFeatureIds = null,
-        polygonFilters = [],
-        targetLayerIds = [],
-        targetFilters = {},
-        reportConfig = {},
-      } = req.body;
-
-      const {
-        includeAttributes = {},
-        includeSummary = true,
-        format = "json",
-      } = reportConfig;
-
-      if (!polygonLayerId || !Array.isArray(targetLayerIds) || targetLayerIds.length === 0) {
-        return res.status(400).json({ message: "polygonLayerId and at least one targetLayerId are required" });
-      }
-
-      const polygonLayer = await storage.getEditableLayer(polygonLayerId);
-      if (!polygonLayer) {
-        return res.status(404).json({ message: "Polygon layer not found" });
-      }
-
-      const polygonFeaturesRaw = await storage.getDrawnFeatures(polygonLayerId);
-      let polygonFeatures = polygonFeaturesRaw.map(f => ({
-        id: f.id,
-        geometry: { type: f.geometryType, coordinates: f.coordinates },
-        properties: f.properties || {},
-      }));
-
-      polygonFeatures = applyFilters(polygonFeatures, polygonFilters) as typeof polygonFeatures;
-
-      if (polygonFeatureIds && Array.isArray(polygonFeatureIds) && polygonFeatureIds.length > 0) {
-        const idSet = new Set(polygonFeatureIds);
-        polygonFeatures = polygonFeatures.filter(f => idSet.has(f.id));
-      }
-
-      if (polygonFeatures.length === 0) {
-        return res.status(422).json({ message: "No polygon features match the selection/filters" });
-      }
-
-      const boundaryPolygons = polygonFeatures.map(f => ({
-        geometry: f.geometry,
-        properties: f.properties,
-      }));
 
       const layerResults: {
         layerId: number;
@@ -1987,24 +2027,24 @@ export async function registerRoutes(
 
       let totalMatchedObjects = 0;
 
-      for (const targetLayerId of targetLayerIds) {
-        const targetLayer = await storage.getEditableLayer(targetLayerId);
-        if (!targetLayer) continue;
+      for (const srcLayerId of sourceLayerIds) {
+        const sourceLayer = await storage.getEditableLayer(srcLayerId);
+        if (!sourceLayer) continue;
 
-        const featuresRaw = await storage.getDrawnFeatures(targetLayerId);
+        const featuresRaw = await storage.getDrawnFeatures(srcLayerId);
         let features = featuresRaw.map(f => ({
           id: f.id,
           geometry: { type: f.geometryType, coordinates: f.coordinates },
           properties: f.properties || {},
         }));
 
-        const layerFilters = targetFilters[String(targetLayerId)] || [];
+        const layerFilters: FilterCondition[] = sourceFilters[String(srcLayerId)] || [];
         features = applyFilters(features, layerFilters) as typeof features;
 
         const totalCount = features.length;
 
         const matchedFeatures = features.filter(feature =>
-          isFeatureInBoundary(feature, boundaryPolygons, "inside")
+          isFeatureInBoundary(feature, boundaryFeatures, boundaryMode as "inside" | "outside")
         );
 
         const allPropKeys = new Set<string>();
@@ -2015,7 +2055,7 @@ export async function registerRoutes(
         }
         const availableAttributes = Array.from(allPropKeys).sort();
 
-        const selectedAttrs: string[] | null = includeAttributes[String(targetLayerId)];
+        const selectedAttrs: string[] | null = includeAttributes[String(srcLayerId)];
         const outputFeatures = matchedFeatures.map(f => {
           let props = f.properties;
           if (selectedAttrs && selectedAttrs.length > 0) {
@@ -2033,9 +2073,9 @@ export async function registerRoutes(
         totalMatchedObjects += matchedFeatures.length;
 
         layerResults.push({
-          layerId: targetLayerId,
-          layerName: targetLayer.name,
-          geometryType: targetLayer.geometryType,
+          layerId: srcLayerId,
+          layerName: sourceLayer.name,
+          geometryType: sourceLayer.geometryType,
           totalCount,
           matchedCount: matchedFeatures.length,
           features: outputFeatures,
@@ -2105,22 +2145,25 @@ export async function registerRoutes(
         ];
         metaSheet.getRow(1).font = { bold: true };
         metaSheet.addRow({ param: "Дата анализа", value: new Date().toLocaleString("ru-RU") });
-        metaSheet.addRow({ param: "Ограничивающий слой (полигоны)", value: polygonLayer.name });
-        metaSheet.addRow({ param: "Количество полигонов", value: polygonFeatures.length });
+        metaSheet.addRow({ param: "Ограничивающий слой (полигоны)", value: boundaryLayer ? boundaryLayer.name : "" });
+        metaSheet.addRow({ param: "Количество полигонов", value: boundaryFeatures.length });
+        metaSheet.addRow({ param: "Режим ограничения", value: boundaryMode === "inside" ? "Внутри полигонов" : "Вне полигонов" });
         metaSheet.addRow({ param: "Анализируемые слои", value: layerResults.map(lr => lr.layerName).join(", ") });
         metaSheet.addRow({ param: "Всего найдено объектов", value: totalMatchedObjects });
 
         const buffer = await workbook.xlsx.writeBuffer();
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        res.setHeader("Content-Disposition", `attachment; filename="objects_in_polygon_${Date.now()}.xlsx"`);
+        res.setHeader("Content-Disposition", `attachment; filename="geospatial_analysis_${Date.now()}.xlsx"`);
         return res.send(Buffer.from(buffer));
       }
 
       return res.json({
+        mode: "boundary-only",
         summary: {
           totalObjects: totalMatchedObjects,
-          polygonLayerName: polygonLayer.name,
-          polygonCount: polygonFeatures.length,
+          boundaryLayerName: boundaryLayer ? boundaryLayer.name : null,
+          boundaryCount: boundaryFeatures.length,
+          targetLayerName: null,
           byLayer: layerResults.map(lr => ({
             layerId: lr.layerId,
             layerName: lr.layerName,
@@ -2142,7 +2185,7 @@ export async function registerRoutes(
         ),
       });
     } catch (error) {
-      console.error("Objects-in-polygon analysis error:", error);
+      console.error("Geospatial analysis error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -2250,6 +2293,24 @@ export async function registerRoutes(
       return res.json(features);
     } catch (error) {
       console.error("Error fetching drawn features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/editable-layers/:layerId/attributes", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const features = await storage.getDrawnFeatures(layerId);
+      const attrSet = new Set<string>();
+      const sampleSize = Math.min(features.length, 100);
+      for (let i = 0; i < sampleSize; i++) {
+        if (features[i].properties) {
+          Object.keys(features[i].properties as Record<string, unknown>).forEach(k => attrSet.add(k));
+        }
+      }
+      return res.json(Array.from(attrSet).sort());
+    } catch (error) {
+      console.error("Error fetching layer attributes:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
