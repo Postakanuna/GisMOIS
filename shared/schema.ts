@@ -270,10 +270,15 @@ export const drawnFeatures = pgTable("drawn_features", {
   coordinates: jsonb("coordinates").notNull(),
   properties: jsonb("properties").notNull().default({}),
   version: integer("version").notNull().default(1),
+  bboxMinX: real("bbox_min_x"),
+  bboxMinY: real("bbox_min_y"),
+  bboxMaxX: real("bbox_max_x"),
+  bboxMaxY: real("bbox_max_y"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
   index("drawn_features_layer_id_idx").on(table.layerId),
+  index("drawn_features_bbox_idx").on(table.layerId, table.bboxMinX, table.bboxMinY, table.bboxMaxX, table.bboxMaxY),
 ]);
 
 export const featureHistory = pgTable("feature_history", {

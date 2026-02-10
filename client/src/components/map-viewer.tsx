@@ -930,80 +930,43 @@ export function MapViewer({
     [allEditableLayers]
   );
 
-  // Fetch features for all editable layers using viewport-based loading for optimization
   const { data: allLayerFeatures = {}, isFetching: isFetchingFeatures } = useQuery<Record<number, DrawnFeature[]>>({
     queryKey: ["/api/editable-layers/viewport-features", layerIdsKey, viewportKey],
     queryFn: async () => {
-      const featuresByLayer: Record<number, DrawnFeature[]> = {};
-      let totalPoints = 0;
-      let sampledPoints = 0;
-      let hasAnySampling = false;
-      
-      await Promise.all(
-        allEditableLayers.map(async (layer) => {
-          try {
-            // Use viewport endpoint with bbox and zoom for optimized loading
-            let url = `/api/editable-layers/${layer.id}/features/viewport`;
-            if (fetchViewport) {
-              const params = new URLSearchParams({
-                minX: fetchViewport.minX.toString(),
-                minY: fetchViewport.minY.toString(),
-                maxX: fetchViewport.maxX.toString(),
-                maxY: fetchViewport.maxY.toString(),
-                zoom: fetchViewport.zoom.toString(),
-              });
-              url += `?${params.toString()}`;
-            }
-            
-            const response = await fetch(url);
-            if (response.ok) {
-              const data = await response.json();
-              // Handle new response format with features array and limit info
-              if (data.features && Array.isArray(data.features)) {
-                featuresByLayer[layer.id] = data.features;
-                // Track point sampling info
-                if (data.pointSampling) {
-                  totalPoints += data.pointSampling.totalPoints;
-                  sampledPoints += data.pointSampling.sampledPoints;
-                  if (!data.pointSampling.isFullData) {
-                    hasAnySampling = true;
-                  }
-                }
-                // Debug: Log polygon layers with 0 features
-                if (layer.geometryType === "Polygon" && data.features.length === 0) {
-                  console.log(`[Debug] Layer ${layer.id} (${layer.name}): 0 features in viewport, total: ${data.total}`);
-                }
-              } else if (Array.isArray(data)) {
-                // Backward compatibility with old format
-                featuresByLayer[layer.id] = data;
-              }
-            } else {
-              console.warn(`Fetch failed for layer ${layer.id}: ${response.status}`);
-            }
-          } catch (e) {
-            console.warn(`Failed to fetch features for layer ${layer.id}:`, e);
-          }
-        })
-      );
-      
-      // Update point sampling info
-      if (totalPoints > 0) {
-        setPointSamplingInfo({
-          totalPoints,
-          sampledPoints,
-          isFullData: !hasAnySampling,
-        });
-      } else {
-        setPointSamplingInfo(null);
+      if (!fetchViewport || allEditableLayers.length === 0) return {};
+
+      const layerIds = allEditableLayers.map(l => l.id).join(",");
+      const params = new URLSearchParams({
+        layerIds,
+        minX: fetchViewport.minX.toString(),
+        minY: fetchViewport.minY.toString(),
+        maxX: fetchViewport.maxX.toString(),
+        maxY: fetchViewport.maxY.toString(),
+        zoom: fetchViewport.zoom.toString(),
+      });
+
+      const response = await fetch(`/api/editable-layers/viewport-batch?${params.toString()}`);
+      if (!response.ok) {
+        console.warn("Batch viewport fetch failed:", response.status);
+        return {};
       }
-      
+
+      const data = await response.json();
+      const featuresByLayer: Record<number, DrawnFeature[]> = {};
+
+      if (data.layers) {
+        for (const [idStr, layerData] of Object.entries(data.layers) as [string, any][]) {
+          const id = parseInt(idStr);
+          featuresByLayer[id] = layerData.features || [];
+        }
+      }
+
       return featuresByLayer;
     },
     enabled: allEditableLayers.length > 0 && fetchViewport !== null,
     refetchOnWindowFocus: false,
-    staleTime: 1000 * 30, // 30 seconds - shorter for viewport-based data
-    gcTime: 1000 * 60 * 2, // Keep in cache for 2 minutes for panning back
-    // Keep previous data while fetching new viewport data - prevents UI flicker and empty state
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 2,
     placeholderData: (previousData) => previousData,
   });
   
@@ -1569,29 +1532,43 @@ export function MapViewer({
         map.addLayer(vectorLayer);
         allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
       } else {
-        // Check if feature count changed - need to refresh the source
-        // But skip if data is still loading (layerFeatures is empty but should have data)
-        const storedCount = vectorLayer.get("featureCount");
         const hasDataForLayer = allLayerFeatures[editableLayerItem.id] !== undefined;
-        
-        // Update features if count changed (server-side sampling handles point filtering)
-        if (storedCount !== layerFeatures.length && hasDataForLayer) {
+        if (hasDataForLayer) {
           const sourceToUpdate = vectorLayer.getSource() as VectorSource;
-          
           if (sourceToUpdate) {
-            sourceToUpdate.clear();
             try {
-              if (geojsonData.features.length > 0) {
-                const features = geojsonFormat.readFeatures(geojsonData, {
+              const newFeatureIds = new Set(layerFeatures.map(f => f.id));
+              const existingFeatures = sourceToUpdate.getFeatures();
+              const existingIds = new Set<number>();
+
+              for (const olFeature of existingFeatures) {
+                const fId = olFeature.get("featureId") as number;
+                if (fId !== undefined && !newFeatureIds.has(fId)) {
+                  sourceToUpdate.removeFeature(olFeature);
+                } else if (fId !== undefined) {
+                  existingIds.add(fId);
+                }
+              }
+
+              const toAdd = layerFeatures.filter(f => !existingIds.has(f.id));
+              if (toAdd.length > 0) {
+                const addGeoJson = {
+                  type: "FeatureCollection" as const,
+                  features: toAdd.map(f => ({
+                    type: "Feature" as const,
+                    geometry: { type: f.geometryType, coordinates: f.coordinates },
+                    properties: { featureId: f.id, ...f.properties },
+                  })),
+                };
+                const newOlFeatures = geojsonFormat.readFeatures(addGeoJson, {
                   dataProjection: "EPSG:4326",
                   featureProjection: "EPSG:3857",
                 });
-                sourceToUpdate.addFeatures(features);
+                sourceToUpdate.addFeatures(newOlFeatures);
               }
               vectorLayer.set("featureCount", layerFeatures.length);
-              console.log(`Refreshed layer ${editableLayerItem.name}: ${layerFeatures.length} features`);
             } catch (e) {
-              console.error("Failed to refresh layer features:", e);
+              console.error("Failed to incrementally update layer features:", e);
             }
           }
         }

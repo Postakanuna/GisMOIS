@@ -16,7 +16,7 @@ import {
   scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, sql, and, inArray, gte, lte } from "drizzle-orm";
 
 export interface IStorage {
   getTickets(): Promise<Ticket[]>;
@@ -30,6 +30,7 @@ export interface IStorage {
   updateEditableLayer(id: number, updates: Partial<InsertEditableLayer>): Promise<EditableLayer | undefined>;
   deleteEditableLayer(id: number): Promise<boolean>;
   getDrawnFeatures(layerId: number): Promise<DrawnFeature[]>;
+  getDrawnFeaturesByViewport(layerIds: number[], bbox: { minX: number; minY: number; maxX: number; maxY: number }, limit?: number): Promise<Record<number, DrawnFeature[]>>;
   getDrawnFeature(id: number): Promise<DrawnFeature | undefined>;
   createDrawnFeature(feature: InsertDrawnFeature): Promise<DrawnFeature>;
   createDrawnFeaturesBatch(features: InsertDrawnFeature[]): Promise<DrawnFeature[]>;
@@ -127,6 +128,29 @@ function toDrawnFeature(row: typeof drawnFeatures.$inferSelect): DrawnFeature {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function computeBbox(coordinates: any, geometryType: string): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  if (!coordinates) return null;
+  const allCoords: number[][] = [];
+  function extract(coords: any): void {
+    if (!coords || !Array.isArray(coords)) return;
+    if (typeof coords[0] === 'number') {
+      allCoords.push(coords as number[]);
+    } else {
+      coords.forEach(extract);
+    }
+  }
+  extract(coordinates);
+  if (allCoords.length === 0) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of allCoords) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY };
 }
 
 function toLayerSchema(row: typeof layerSchemas.$inferSelect): LayerSchemaDefinition {
@@ -234,17 +258,50 @@ export class DatabaseStorage implements IStorage {
     return rows.map(toDrawnFeature);
   }
 
+  async getDrawnFeaturesByViewport(
+    layerIds: number[],
+    bbox: { minX: number; minY: number; maxX: number; maxY: number },
+    limit: number = 5000
+  ): Promise<Record<number, DrawnFeature[]>> {
+    if (layerIds.length === 0) return {};
+    const result: Record<number, DrawnFeature[]> = {};
+    for (const id of layerIds) result[id] = [];
+
+    const rows = await db.select().from(drawnFeatures).where(
+      and(
+        inArray(drawnFeatures.layerId, layerIds),
+        lte(drawnFeatures.bboxMinX, bbox.maxX),
+        gte(drawnFeatures.bboxMaxX, bbox.minX),
+        lte(drawnFeatures.bboxMinY, bbox.maxY),
+        gte(drawnFeatures.bboxMaxY, bbox.minY),
+      )
+    ).limit(limit);
+
+    for (const row of rows) {
+      const f = toDrawnFeature(row);
+      if (result[f.layerId]) {
+        result[f.layerId].push(f);
+      }
+    }
+    return result;
+  }
+
   async getDrawnFeature(id: number): Promise<DrawnFeature | undefined> {
     const [row] = await db.select().from(drawnFeatures).where(eq(drawnFeatures.id, id));
     return row ? toDrawnFeature(row) : undefined;
   }
 
   async createDrawnFeature(feature: InsertDrawnFeature): Promise<DrawnFeature> {
+    const bbox = computeBbox(feature.coordinates, feature.geometryType);
     const [row] = await db.insert(drawnFeatures).values({
       layerId: feature.layerId,
       geometryType: feature.geometryType,
       coordinates: feature.coordinates,
       properties: feature.properties || {},
+      bboxMinX: bbox?.minX ?? null,
+      bboxMinY: bbox?.minY ?? null,
+      bboxMaxX: bbox?.maxX ?? null,
+      bboxMaxY: bbox?.maxY ?? null,
     }).returning();
     
     await db.update(editableLayers)
@@ -261,12 +318,19 @@ export class DatabaseStorage implements IStorage {
     if (features.length === 0) return [];
     
     const rows = await db.insert(drawnFeatures).values(
-      features.map(f => ({
-        layerId: f.layerId,
-        geometryType: f.geometryType,
-        coordinates: f.coordinates,
-        properties: f.properties || {},
-      }))
+      features.map(f => {
+        const bbox = computeBbox(f.coordinates, f.geometryType);
+        return {
+          layerId: f.layerId,
+          geometryType: f.geometryType,
+          coordinates: f.coordinates,
+          properties: f.properties || {},
+          bboxMinX: bbox?.minX ?? null,
+          bboxMinY: bbox?.minY ?? null,
+          bboxMaxX: bbox?.maxX ?? null,
+          bboxMaxY: bbox?.maxY ?? null,
+        };
+      })
     ).returning();
 
     const layerCounts = new Map<number, number>();
@@ -292,7 +356,14 @@ export class DatabaseStorage implements IStorage {
       version: sql`${drawnFeatures.version} + 1`
     };
     if (updates.geometryType !== undefined) updateData.geometryType = updates.geometryType;
-    if (updates.coordinates !== undefined) updateData.coordinates = updates.coordinates;
+    if (updates.coordinates !== undefined) {
+      updateData.coordinates = updates.coordinates;
+      const bbox = computeBbox(updates.coordinates, updates.geometryType || "Point");
+      updateData.bboxMinX = bbox?.minX ?? null;
+      updateData.bboxMinY = bbox?.minY ?? null;
+      updateData.bboxMaxX = bbox?.maxX ?? null;
+      updateData.bboxMaxY = bbox?.maxY ?? null;
+    }
     if (updates.properties !== undefined) updateData.properties = updates.properties;
 
     const [row] = await db.update(drawnFeatures)

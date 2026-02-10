@@ -10,7 +10,7 @@ import { isApiAuthenticated, generateApiToken, hashApiToken, type ApiAuthenticat
 import { externalCreatePointSchema, apiKeys } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
@@ -112,6 +112,37 @@ function getBasicAuthHeader(): string {
   return `Basic ${credentials}`;
 }
 
+async function backfillBboxColumns() {
+  try {
+    const result = await db.execute(sql`SELECT COUNT(*) as cnt FROM drawn_features WHERE bbox_min_x IS NULL`);
+    const count = Number((result as any).rows?.[0]?.cnt || 0);
+    if (count === 0) {
+      console.log("[Bbox Backfill] All features already have bbox values");
+      return;
+    }
+    console.log(`[Bbox Backfill] Backfilling ${count} features...`);
+    const batchSize = 500;
+    let processed = 0;
+    while (processed < count) {
+      const rows = await db.execute(sql`SELECT id, coordinates, geometry_type FROM drawn_features WHERE bbox_min_x IS NULL LIMIT ${batchSize}`);
+      const features = (rows as any).rows || [];
+      if (features.length === 0) break;
+      for (const f of features) {
+        const coords = typeof f.coordinates === 'string' ? JSON.parse(f.coordinates) : f.coordinates;
+        const bbox = getFeatureBounds(coords, f.geometry_type);
+        if (bbox) {
+          await db.execute(sql`UPDATE drawn_features SET bbox_min_x = ${bbox.minX}, bbox_min_y = ${bbox.minY}, bbox_max_x = ${bbox.maxX}, bbox_max_y = ${bbox.maxY} WHERE id = ${f.id}`);
+        }
+      }
+      processed += features.length;
+      console.log(`[Bbox Backfill] ${processed}/${count} features processed`);
+    }
+    console.log("[Bbox Backfill] Complete");
+  } catch (error) {
+    console.error("[Bbox Backfill] Error:", error);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -125,6 +156,8 @@ export async function registerRoutes(
   setupAuth(app);
   registerAuthRoutes(app);
   await seedAdminUser();
+
+  backfillBboxColumns();
 
   app.post("/api/zulu/zws/layers", async (_req: Request, res: Response) => {
     try {
@@ -2222,6 +2255,63 @@ export async function registerRoutes(
       return res.json(layers);
     } catch (error) {
       console.error("Error fetching scene editable layers:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/editable-layers/viewport-batch", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { layerIds, minX, minY, maxX, maxY, zoom, limit } = req.query;
+      if (!layerIds || !minX || !minY || !maxX || !maxY) {
+        return res.status(400).json({ message: "Missing required parameters: layerIds, minX, minY, maxX, maxY" });
+      }
+
+      const ids = (layerIds as string).split(",").map(Number).filter(n => !isNaN(n));
+      if (ids.length === 0) {
+        return res.json({ layers: {} });
+      }
+
+      const featureLimit = limit ? parseInt(limit as string) : 10000;
+      const zoomLevel = zoom ? parseInt(zoom as string) : 10;
+      const tolerance = getSimplifyTolerance(zoomLevel);
+
+      const bbox = {
+        minX: parseFloat(minX as string),
+        minY: parseFloat(minY as string),
+        maxX: parseFloat(maxX as string),
+        maxY: parseFloat(maxY as string),
+      };
+
+      const featuresByLayer = await storage.getDrawnFeaturesByViewport(ids, bbox, featureLimit);
+
+      const result: Record<number, { features: any[]; total: number; limited: boolean }> = {};
+      for (const id of ids) {
+        const features = featuresByLayer[id] || [];
+        const { sampled, totalPoints, samplingRate } = samplePointFeatures(features, zoomLevel);
+        const simplified = sampled.map(feature => {
+          if (tolerance > 0 && feature.geometryType !== "Point") {
+            return {
+              ...feature,
+              coordinates: simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance),
+            };
+          }
+          return feature;
+        });
+        result[id] = {
+          features: simplified,
+          total: features.length,
+          limited: features.length >= featureLimit,
+        };
+      }
+
+      return res.json({ layers: result, zoom: zoomLevel });
+    } catch (error) {
+      console.error("Batch viewport features error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
