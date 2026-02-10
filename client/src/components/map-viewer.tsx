@@ -537,7 +537,7 @@ function offsetLineStringConsistent(coords: number[][], offsetMeters: number): n
   return needsReverse ? result.reverse() : result;
 }
 
-function parseZwsResponse(xml: string): Feature[] {
+function parseZwsResponse(xml: string, viewProjection: string = "EPSG:3857"): Feature[] {
   const features: Feature[] = [];
   const wktFormat = new WKT();
   
@@ -553,7 +553,7 @@ function parseZwsResponse(xml: string): Feature[] {
       try {
         const geometry = wktFormat.readGeometry(wkt, {
           dataProjection: "EPSG:4326",
-          featureProjection: "EPSG:3857",
+          featureProjection: viewProjection,
         });
         
         const feature = new Feature({ geometry });
@@ -1009,13 +1009,14 @@ export function MapViewer({
     
     if (currentProjectionRef.current === currentProjection) return;
     
+    const oldProjection = currentProjectionRef.current;
     const oldView = map.getView();
     const currentCenter = oldView.getCenter();
     const currentZoom = oldView.getZoom() || DEFAULT_ZOOM;
     
     let centerLonLat: [number, number] = DEFAULT_CENTER;
     if (currentCenter) {
-      const lonLat = toLonLat(currentCenter, currentProjectionRef.current);
+      const lonLat = toLonLat(currentCenter, oldProjection);
       centerLonLat = [lonLat[0], lonLat[1]];
     }
     
@@ -1029,7 +1030,86 @@ export function MapViewer({
     
     map.setView(newView);
     
-    console.log(`Projection changed to ${currentProjection}, center: ${centerLonLat}`);
+    const reprojectFeatures = (features: Feature<Geometry>[]) => {
+      features.forEach((feature) => {
+        const geom = feature.getGeometry();
+        if (geom) {
+          geom.transform(oldProjection, currentProjection);
+        }
+      });
+    };
+    
+    const reprojectedSources = new Set<VectorSource>();
+    
+    allEditableLayersRef.current.forEach((layer) => {
+      const source = layer.getSource();
+      if (!source || reprojectedSources.has(source)) return;
+      reprojectedSources.add(source);
+      reprojectFeatures(source.getFeatures());
+    });
+    
+    sceneDatasetLayersRef.current.forEach((layer) => {
+      const source = layer.getSource();
+      if (!source || reprojectedSources.has(source)) return;
+      reprojectedSources.add(source);
+      reprojectFeatures(source.getFeatures());
+    });
+    
+    Object.entries(layersRef.current).forEach(([id, layer]) => {
+      if (id === "osm-base" || id === "yandex-map" || id === "yandex-satellite") return;
+      if (layer instanceof VectorLayer) {
+        const source = (layer as VectorLayer<VectorSource>).getSource();
+        if (!source || reprojectedSources.has(source)) return;
+        reprojectedSources.add(source);
+        reprojectFeatures(source.getFeatures());
+      }
+    });
+    
+    if (ticketsLayerRef.current) {
+      const source = ticketsLayerRef.current.getSource();
+      if (source && !reprojectedSources.has(source)) {
+        reprojectedSources.add(source);
+        reprojectFeatures(source.getFeatures());
+      }
+    }
+    
+    if (editableLayerRef.current) {
+      const source = editableLayerRef.current.getSource();
+      if (source && !reprojectedSources.has(source)) {
+        reprojectedSources.add(source);
+        reprojectFeatures(source.getFeatures());
+      }
+    }
+    
+    if (selectionGlowLayerRef.current) {
+      const source = selectionGlowLayerRef.current.getSource();
+      if (source && !reprojectedSources.has(source)) {
+        reprojectedSources.add(source);
+        reprojectFeatures(source.getFeatures());
+      }
+    }
+    
+    bufferedExtentRef.current = null;
+    
+    setTimeout(() => {
+      const extent = map.getView().calculateExtent(map.getSize());
+      const extentWGS84 = transformExtent(extent, currentProjection, "EPSG:4326");
+      const zoom = Math.round(map.getView().getZoom() || DEFAULT_ZOOM);
+      const width = extentWGS84[2] - extentWGS84[0];
+      const height = extentWGS84[3] - extentWGS84[1];
+      const bufferX = width * VIEWPORT_BUFFER_RATIO;
+      const bufferY = height * VIEWPORT_BUFFER_RATIO;
+      bufferedExtentRef.current = {
+        minX: extentWGS84[0] - bufferX,
+        minY: extentWGS84[1] - bufferY,
+        maxX: extentWGS84[2] + bufferX,
+        maxY: extentWGS84[3] + bufferY,
+        zoom,
+      };
+      setFetchViewport(bufferedExtentRef.current);
+    }, 100);
+    
+    console.log(`Projection changed from ${oldProjection} to ${currentProjection}, center: ${centerLonLat}`);
   }, [currentProjection]);
 
   useEffect(() => {
@@ -1157,7 +1237,7 @@ export function MapViewer({
     dragBoxRef.current = dragBox;
 
     map.on("pointermove", (evt) => {
-      const coords = toLonLat(evt.coordinate);
+      const coords = toLonLat(evt.coordinate, currentProjectionRef.current);
       setMouseCoordinates([coords[0], coords[1]]);
     });
 
@@ -1204,7 +1284,7 @@ export function MapViewer({
     // Debounced viewport update with hysteresis for optimized feature loading
     const updateViewport = () => {
       const extent = map.getView().calculateExtent(map.getSize());
-      const extentWGS84 = transformExtent(extent, "EPSG:3857", "EPSG:4326");
+      const extentWGS84 = transformExtent(extent, currentProjectionRef.current, "EPSG:4326");
       const currentZoom = Math.round(map.getView().getZoom() || DEFAULT_ZOOM);
       
       const currentExtent = {
@@ -1267,7 +1347,7 @@ export function MapViewer({
       const currentSelectionMode = selectionModeRef.current;
       const currentEditMode = editModeRef.current;
 
-      const coords = toLonLat(evt.coordinate);
+      const coords = toLonLat(evt.coordinate, currentProjectionRef.current);
       setFeatureCoordinates([coords[0], coords[1]]);
 
       // Selection only works in edit mode
@@ -1530,7 +1610,7 @@ export function MapViewer({
           if (geojsonData.features.length > 0) {
             const features = geojsonFormat.readFeatures(geojsonData, {
               dataProjection: "EPSG:4326",
-              featureProjection: "EPSG:3857",
+              featureProjection: currentProjectionRef.current,
             });
             
             vectorSource.addFeatures(features);
@@ -1593,7 +1673,7 @@ export function MapViewer({
                 };
                 const newOlFeatures = geojsonFormat.readFeatures(addGeoJson, {
                   dataProjection: "EPSG:4326",
-                  featureProjection: "EPSG:3857",
+                  featureProjection: currentProjectionRef.current,
                 });
                 sourceToUpdate.addFeatures(newOlFeatures);
               }
@@ -1698,7 +1778,7 @@ export function MapViewer({
           try {
             const olFeatures = geojsonFormat.readFeatures(geojsonData, {
               dataProjection: "EPSG:4326",
-              featureProjection: "EPSG:3857",
+              featureProjection: currentProjectionRef.current,
             });
             vectorSource.addFeatures(olFeatures);
           } catch (e) {
@@ -1791,7 +1871,7 @@ export function MapViewer({
                 source.clear();
                 const olFeatures = geojsonFormat.readFeatures(geojsonData, {
                   dataProjection: "EPSG:4326",
-                  featureProjection: "EPSG:3857",
+                  featureProjection: currentProjectionRef.current,
                 });
                 source.addFeatures(olFeatures);
                 vectorLayer.set("lastViewportKey", currentViewportKey);
@@ -2070,7 +2150,7 @@ export function MapViewer({
         // Convert geometry to coordinates
         const format = new GeoJSON();
         const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
-          featureProjection: "EPSG:3857",
+          featureProjection: currentProjectionRef.current,
           dataProjection: "EPSG:4326",
         }));
 
@@ -2210,7 +2290,7 @@ export function MapViewer({
         };
         
         const olFeatures = format.readFeatures(geoJsonFeature, {
-          featureProjection: "EPSG:3857",
+          featureProjection: currentProjectionRef.current,
           dataProjection: "EPSG:4326",
         });
         
@@ -2256,7 +2336,7 @@ export function MapViewer({
                 if (geom) {
                   const format = new GeoJSON();
                   const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
-                    featureProjection: "EPSG:3857",
+                    featureProjection: currentProjectionRef.current,
                     dataProjection: "EPSG:4326",
                   }));
                   onDatasetFeatureUpdatedRef.current(currentDataset.datasetId, featureId, {
@@ -2318,7 +2398,7 @@ export function MapViewer({
                 if (geom) {
                   const format = new GeoJSON();
                   const geoJsonGeom = JSON.parse(format.writeGeometry(geom, {
-                    featureProjection: "EPSG:3857",
+                    featureProjection: currentProjectionRef.current,
                     dataProjection: "EPSG:4326",
                   }));
                   onFeatureUpdatedRef.current(featureId, { coordinates: geoJsonGeom.coordinates });
@@ -2397,7 +2477,7 @@ export function MapViewer({
                     throw new Error(data.message);
                   }
                   if (data.raw) {
-                    const features = parseZwsResponse(data.raw);
+                    const features = parseZwsResponse(data.raw, currentProjectionRef.current);
                     console.log(`Loaded ${features.length} features for ${layerConfig.id}`);
                     
                     allFeaturesRef.current[layerConfig.id] = features;
@@ -2486,7 +2566,7 @@ export function MapViewer({
     
     tickets.forEach((ticket) => {
       const ticketFeature = new Feature({
-        geometry: new OlPoint(fromLonLat([ticket.lon, ticket.lat])),
+        geometry: new OlPoint(fromLonLat([ticket.lon, ticket.lat], currentProjectionRef.current)),
         ticketId: ticket.id,
         status: ticket.status,
         nameIst: ticket.nameIst,
@@ -2545,7 +2625,7 @@ export function MapViewer({
   const handleResetView = useCallback(() => {
     if (!mapRef.current) return;
     mapRef.current.getView().animate({
-      center: fromLonLat(DEFAULT_CENTER),
+      center: fromLonLat(DEFAULT_CENTER, currentProjectionRef.current),
       zoom: DEFAULT_ZOOM,
       rotation: 0,
       duration: 500,
@@ -2577,11 +2657,11 @@ export function MapViewer({
         const geom = feature.getGeometry();
         if (!geom) return;
 
-        const clickPoint = toLonLat(clickCoord);
+        const clickPoint = toLonLat(clickCoord, currentProjectionRef.current);
         
         if (geom instanceof OlPolygon || geom instanceof OlMultiPolygon) {
           const closestPoint = geom.getClosestPoint(clickCoord);
-          const closestPointLonLat = toLonLat(closestPoint);
+          const closestPointLonLat = toLonLat(closestPoint, currentProjectionRef.current);
           const distance = getDistance(clickPoint, closestPointLonLat);
           
           if (distance < minDistance && distance <= maxDistanceMeters) {
@@ -2626,7 +2706,7 @@ export function MapViewer({
       
       if (ticketsLayerRef.current) {
         const ticketFeature = new Feature({
-          geometry: new OlPoint(fromLonLat([lon, lat])),
+          geometry: new OlPoint(fromLonLat([lon, lat], currentProjectionRef.current)),
           ticketId: newTicket.id,
           status: newTicket.status,
         });
@@ -2658,7 +2738,7 @@ export function MapViewer({
       const routeSource = new VectorSource();
       
       // Create line feature
-      const lineCoords = traceRouteCoordinates.map(coord => fromLonLat(coord));
+      const lineCoords = traceRouteCoordinates.map(coord => fromLonLat(coord, currentProjectionRef.current));
       const lineFeature = new Feature({
         geometry: new LineString(lineCoords),
       });
