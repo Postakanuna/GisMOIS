@@ -2315,6 +2315,58 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/editable-layers/:layerId/attribute-values", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const features = await storage.getDrawnFeatures(layerId);
+      const attrSet = new Set<string>();
+      const valuesMap: Record<string, Set<string>> = {};
+
+      for (const feature of features) {
+        if (feature.properties) {
+          for (const [key, val] of Object.entries(feature.properties as Record<string, unknown>)) {
+            attrSet.add(key);
+            if (!valuesMap[key]) valuesMap[key] = new Set();
+            if (val !== null && val !== undefined && valuesMap[key].size < 200) {
+              valuesMap[key].add(String(val));
+            }
+          }
+        }
+      }
+
+      const result: Record<string, string[]> = {};
+      for (const [key, valSet] of Object.entries(valuesMap)) {
+        result[key] = Array.from(valSet).sort();
+      }
+
+      return res.json({
+        attrs: Array.from(attrSet).sort(),
+        values: result,
+        totalFeatures: features.length,
+      });
+    } catch (error) {
+      console.error("Error fetching attribute values:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/editable-layers/:layerId/count-filtered", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const { filters = [] } = req.body;
+      const featuresRaw = await storage.getDrawnFeatures(layerId);
+      const features = featuresRaw.map(f => ({
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
+        properties: (f.properties || {}) as Record<string, unknown>,
+      }));
+      const filtered = applyFilters(features, filters);
+      return res.json({ count: filtered.length, total: features.length });
+    } catch (error) {
+      console.error("Error counting filtered features:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/features/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);

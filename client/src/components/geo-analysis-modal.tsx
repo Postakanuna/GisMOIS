@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -30,11 +31,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { 
-  Loader2, 
-  Download, 
-  Plus, 
-  X, 
+import {
+  Loader2,
+  Download,
+  Plus,
+  X,
   Layers,
   Target,
   Square,
@@ -47,6 +48,12 @@ import {
   Minus as LineIcon,
   Pentagon,
   BarChart3,
+  Play,
+  RotateCcw,
+  Settings,
+  Search,
+  Filter,
+  Pencil,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { EditableLayer, DrawnFeature } from "@shared/schema";
@@ -56,6 +63,12 @@ interface FilterCondition {
   attribute: string;
   operator: string;
   value: string;
+}
+
+interface SelectedLayerEntry {
+  layerId: number;
+  filters: FilterCondition[];
+  filterSqlPreview: string;
 }
 
 type BoundaryMode = "inside" | "outside" | "none";
@@ -97,161 +110,26 @@ interface GeoAnalysisModalProps {
 }
 
 const OPERATORS = [
-  { value: "=", label: "равно" },
-  { value: "!=", label: "не равно" },
-  { value: ">", label: "больше" },
-  { value: "<", label: "меньше" },
-  { value: ">=", label: "больше или равно" },
-  { value: "<=", label: "меньше или равно" },
-  { value: "contains", label: "содержит" },
-  { value: "not_contains", label: "не содержит" },
+  { value: "=", label: "=" },
+  { value: "!=", label: "!=" },
+  { value: ">", label: ">" },
+  { value: "<", label: "<" },
+  { value: ">=", label: ">=" },
+  { value: "<=", label: "<=" },
+  { value: "contains", label: "LIKE" },
+  { value: "not_contains", label: "NOT LIKE" },
 ];
 
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 9);
-}
-
-function AttributeFilterBuilder({
-  layerId,
-  conditions,
-  onConditionsChange,
-  availableAttributes,
-  attributeValues,
-  label,
-}: {
-  layerId: string;
-  conditions: FilterCondition[];
-  onConditionsChange: (conditions: FilterCondition[]) => void;
-  availableAttributes: string[];
-  attributeValues: Record<string, Set<unknown>>;
-  label: string;
-}) {
-  const addCondition = () => {
-    const newCondition: FilterCondition = {
-      id: generateId(),
-      attribute: "",
-      operator: "=",
-      value: "",
-    };
-    onConditionsChange([...conditions, newCondition]);
-  };
-
-  const updateCondition = (id: string, field: keyof FilterCondition, value: string) => {
-    onConditionsChange(
-      conditions.map(c => c.id === id ? { ...c, [field]: value } : c)
-    );
-  };
-
-  const removeCondition = (id: string) => {
-    onConditionsChange(conditions.filter(c => c.id !== id));
-  };
-
-  const getValuesForAttribute = (attr: string): string[] => {
-    const values = attributeValues[attr];
-    if (!values) return [];
-    return Array.from(values)
-      .filter(v => v !== null && v !== undefined)
-      .map(v => String(v))
-      .sort();
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs text-muted-foreground">{label}</Label>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={addCondition}
-          disabled={!layerId}
-          className="h-6 text-xs"
-          data-testid="button-add-filter-condition"
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          Добавить условие
-        </Button>
-      </div>
-      
-      {conditions.length > 0 && (
-        <div className="space-y-2 p-2 bg-muted/30 rounded-md">
-          {conditions.map((condition, index) => (
-            <div key={condition.id} className="flex items-center gap-1">
-              {index > 0 && (
-                <Badge variant="secondary" className="text-[10px] px-1">И</Badge>
-              )}
-              <Select
-                value={condition.attribute}
-                onValueChange={(v) => updateCondition(condition.id, "attribute", v)}
-              >
-                <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-filter-attribute-${index}`}>
-                  <SelectValue placeholder="Атрибут" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableAttributes.map(attr => (
-                    <SelectItem key={attr} value={attr}>{attr}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <Select
-                value={condition.operator}
-                onValueChange={(v) => updateCondition(condition.id, "operator", v)}
-              >
-                <SelectTrigger className="h-7 text-xs w-24" data-testid={`select-filter-operator-${index}`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {OPERATORS.map(op => (
-                    <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {condition.attribute && getValuesForAttribute(condition.attribute).length > 0 && getValuesForAttribute(condition.attribute).length <= 50 ? (
-                <Select
-                  value={condition.value}
-                  onValueChange={(v) => updateCondition(condition.id, "value", v)}
-                >
-                  <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-filter-value-${index}`}>
-                    <SelectValue placeholder="Значение" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getValuesForAttribute(condition.attribute).map(val => (
-                      <SelectItem key={val} value={val}>{val}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  value={condition.value}
-                  onChange={(e) => updateCondition(condition.id, "value", e.target.value)}
-                  placeholder="Значение"
-                  className="h-7 text-xs flex-1"
-                  data-testid={`input-filter-value-${index}`}
-                />
-              )}
-              
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => removeCondition(condition.id)}
-                data-testid={`button-remove-condition-${index}`}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-      
-      {conditions.length === 0 && layerId && (
-        <p className="text-xs text-muted-foreground italic">
-          Без фильтров — все объекты слоя
-        </p>
-      )}
-    </div>
-  );
-}
+const OPERATOR_LABELS: Record<string, string> = {
+  "=": "равно",
+  "!=": "не равно",
+  ">": "больше",
+  "<": "меньше",
+  ">=": "больше или равно",
+  "<=": "меньше или равно",
+  "contains": "содержит",
+  "not_contains": "не содержит",
+};
 
 const GEOM_TYPE_LABELS: Record<string, string> = {
   Point: "Точка",
@@ -265,6 +143,448 @@ const GEOM_TYPE_ICONS: Record<string, typeof MapPin> = {
   Polygon: Pentagon,
 };
 
+function generateId(): string {
+  return Math.random().toString(36).substring(2, 9);
+}
+
+function buildSqlPreview(conditions: FilterCondition[]): string {
+  const valid = conditions.filter(c => c.attribute && c.value !== "");
+  if (valid.length === 0) return "";
+  return valid.map(c => {
+    const val = isNaN(Number(c.value)) ? `'${c.value}'` : c.value;
+    if (c.operator === "contains") return `${c.attribute} LIKE '%${c.value}%'`;
+    if (c.operator === "not_contains") return `${c.attribute} NOT LIKE '%${c.value}%'`;
+    return `${c.attribute} ${c.operator} ${val}`;
+  }).join(" AND ");
+}
+
+function LayerPickerDialog({
+  isOpen,
+  onClose,
+  editableLayers,
+  excludeLayerIds,
+  title,
+  filterGeometryTypes,
+  onSelect,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  editableLayers: EditableLayer[];
+  excludeLayerIds: Set<number>;
+  title: string;
+  filterGeometryTypes?: string[];
+  onSelect: (layer: EditableLayer) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSearch("");
+      setSelectedId(null);
+    }
+  }, [isOpen]);
+
+  const filteredLayers = useMemo(() => {
+    let layers = editableLayers;
+    if (filterGeometryTypes && filterGeometryTypes.length > 0) {
+      layers = layers.filter(l => filterGeometryTypes.includes(l.geometryType));
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      layers = layers.filter(l => l.name.toLowerCase().includes(q));
+    }
+    return layers;
+  }, [editableLayers, filterGeometryTypes, search]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center" data-testid="layer-picker-overlay">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <Card className="relative z-10 w-[420px] max-h-[500px] flex flex-col shadow-xl">
+        <div className="flex items-center justify-between p-3 border-b shrink-0">
+          <span className="font-medium text-sm">{title}</span>
+          <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-picker">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="p-3 border-b shrink-0">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Поиск по названию..."
+              className="pl-8 h-8 text-sm"
+              data-testid="input-layer-search"
+            />
+          </div>
+        </div>
+        <ScrollArea className="flex-1 max-h-[320px]">
+          <div className="p-2 space-y-0.5">
+            {filteredLayers.length === 0 && (
+              <p className="text-xs text-muted-foreground italic p-3 text-center">Нет подходящих слоёв</p>
+            )}
+            {filteredLayers.map(layer => {
+              const isExcluded = excludeLayerIds.has(layer.id);
+              const isSelected = selectedId === layer.id;
+              const GeomIcon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin;
+              return (
+                <button
+                  key={layer.id}
+                  disabled={isExcluded}
+                  className={`w-full flex items-center gap-2 p-2 rounded-md text-left transition-colors ${
+                    isExcluded
+                      ? "opacity-40 cursor-not-allowed"
+                      : isSelected
+                        ? "bg-primary/10 border border-primary/30"
+                        : "hover-elevate cursor-pointer"
+                  }`}
+                  onClick={() => !isExcluded && setSelectedId(layer.id)}
+                  data-testid={`picker-layer-${layer.id}`}
+                >
+                  <GeomIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm flex-1 truncate">{layer.name}</span>
+                  <Badge variant="secondary" className="text-[10px] shrink-0">
+                    {GEOM_TYPE_LABELS[layer.geometryType] || layer.geometryType}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground shrink-0">{layer.featureCount}</span>
+                  {isExcluded && (
+                    <Badge variant="outline" className="text-[10px] shrink-0">добавлен</Badge>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </ScrollArea>
+        <div className="border-t p-3 flex items-center justify-end gap-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={onClose} data-testid="button-picker-cancel">
+            Отмена
+          </Button>
+          <Button
+            size="sm"
+            disabled={selectedId === null}
+            onClick={() => {
+              const layer = editableLayers.find(l => l.id === selectedId);
+              if (layer) onSelect(layer);
+            }}
+            data-testid="button-picker-select"
+          >
+            Выбрать
+            <ChevronRight className="h-3.5 w-3.5 ml-1" />
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function LayerFilterDialog({
+  isOpen,
+  onClose,
+  layer,
+  initialConditions,
+  onApply,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  layer: EditableLayer | null;
+  initialConditions: FilterCondition[];
+  onApply: (conditions: FilterCondition[]) => void;
+}) {
+  const [conditions, setConditions] = useState<FilterCondition[]>([]);
+  const [attrData, setAttrData] = useState<{ attrs: string[]; values: Record<string, string[]> }>({ attrs: [], values: {} });
+  const [isLoadingAttrs, setIsLoadingAttrs] = useState(false);
+  const [matchCount, setMatchCount] = useState<number | null>(null);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [isCountingMatches, setIsCountingMatches] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && layer) {
+      setConditions(initialConditions.length > 0 ? initialConditions.map(c => ({ ...c })) : []);
+      loadAttributes(layer.id);
+    }
+  }, [isOpen, layer?.id]);
+
+  const loadAttributes = async (layerId: number) => {
+    setIsLoadingAttrs(true);
+    try {
+      const response = await fetch(`/api/editable-layers/${layerId}/attribute-values`);
+      if (response.ok) {
+        const data = await response.json();
+        setAttrData(data);
+        setTotalCount(data.totalFeatures || 0);
+        setMatchCount(null);
+      }
+    } catch {
+      setAttrData({ attrs: [], values: {} });
+    } finally {
+      setIsLoadingAttrs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || !layer) return;
+    const validConditions = conditions.filter(c => c.attribute && c.value !== "");
+    if (validConditions.length === 0) {
+      setMatchCount(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsCountingMatches(true);
+      try {
+        const response = await fetch(`/api/editable-layers/${layer.id}/count-filtered`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filters: validConditions.map(c => ({ attribute: c.attribute, operator: c.operator, value: c.value })) }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setMatchCount(data.count);
+        }
+      } catch { /* ignore */ } finally {
+        setIsCountingMatches(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [conditions, isOpen, layer?.id]);
+
+  const addCondition = () => {
+    setConditions(prev => [...prev, { id: generateId(), attribute: "", operator: "=", value: "" }]);
+  };
+
+  const updateCondition = (id: string, field: keyof FilterCondition, value: string) => {
+    setConditions(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+  };
+
+  const removeCondition = (id: string) => {
+    setConditions(prev => prev.filter(c => c.id !== id));
+  };
+
+  const sqlPreview = buildSqlPreview(conditions);
+
+  if (!isOpen || !layer) return null;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center" data-testid="filter-dialog-overlay">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <Card className="relative z-10 w-[520px] max-h-[550px] flex flex-col shadow-xl">
+        <div className="flex items-center justify-between p-3 border-b shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Filter className="h-4 w-4 text-primary shrink-0" />
+            <span className="font-medium text-sm truncate">Фильтр: {layer.name}</span>
+          </div>
+          <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-filter">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <ScrollArea className="flex-1 p-4">
+          {isLoadingAttrs ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Загрузка атрибутов...</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Label className="text-xs font-mono text-muted-foreground">WHERE</Label>
+
+              {conditions.length === 0 && (
+                <p className="text-xs text-muted-foreground italic py-2">
+                  Нет условий — будут использованы все объекты слоя ({totalCount} шт.)
+                </p>
+              )}
+
+              <div className="space-y-2">
+                {conditions.map((condition, index) => (
+                  <div key={condition.id} className="space-y-1">
+                    {index > 0 && (
+                      <div className="flex items-center gap-2 pl-2">
+                        <Badge variant="secondary" className="text-[10px] font-mono">AND</Badge>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5">
+                      <Select
+                        value={condition.attribute}
+                        onValueChange={(v) => updateCondition(condition.id, "attribute", v)}
+                      >
+                        <SelectTrigger className="h-8 text-xs flex-1" data-testid={`filter-attr-${index}`}>
+                          <SelectValue placeholder="Атрибут" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {attrData.attrs.map(attr => (
+                            <SelectItem key={attr} value={attr}>{attr}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={condition.operator}
+                        onValueChange={(v) => updateCondition(condition.id, "operator", v)}
+                      >
+                        <SelectTrigger className="h-8 text-xs w-[90px]" data-testid={`filter-op-${index}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {OPERATORS.map(op => (
+                            <SelectItem key={op.value} value={op.value}>
+                              {op.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {condition.attribute &&
+                        attrData.values[condition.attribute] &&
+                        attrData.values[condition.attribute].length > 0 &&
+                        attrData.values[condition.attribute].length <= 50 ? (
+                        <Select
+                          value={condition.value}
+                          onValueChange={(v) => updateCondition(condition.id, "value", v)}
+                        >
+                          <SelectTrigger className="h-8 text-xs flex-1" data-testid={`filter-val-${index}`}>
+                            <SelectValue placeholder="Значение" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {attrData.values[condition.attribute].map(val => (
+                              <SelectItem key={val} value={val}>{val}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          value={condition.value}
+                          onChange={(e) => updateCondition(condition.id, "value", e.target.value)}
+                          placeholder="Значение"
+                          className="h-8 text-xs flex-1"
+                          data-testid={`filter-val-input-${index}`}
+                        />
+                      )}
+
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeCondition(condition.id)}
+                        data-testid={`filter-remove-${index}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={addCondition}
+                className="text-xs"
+                data-testid="button-add-filter-condition"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Добавить условие
+              </Button>
+
+              {sqlPreview && (
+                <div className="mt-3 p-2.5 bg-muted/50 rounded-md border">
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">SQL Preview</Label>
+                  <p className="text-xs font-mono mt-1 break-all">WHERE {sqlPreview}</p>
+                  <div className="flex items-center gap-1 mt-1.5">
+                    {isCountingMatches ? (
+                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                    ) : matchCount !== null ? (
+                      <span className="text-xs text-muted-foreground">
+                        Результат: <span className="font-medium text-foreground">{matchCount}</span> из {totalCount} объектов
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </ScrollArea>
+
+        <div className="border-t p-3 flex items-center justify-between gap-2 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConditions([])}
+            className="text-xs"
+            data-testid="button-clear-filter"
+          >
+            <RotateCcw className="h-3 w-3 mr-1" />
+            Без фильтра
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onClose} data-testid="button-filter-cancel">
+              Отмена
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => onApply(conditions)}
+              data-testid="button-filter-apply"
+            >
+              Применить
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function LayerCard({
+  entry,
+  layer,
+  onEditFilter,
+  onRemove,
+}: {
+  entry: SelectedLayerEntry;
+  layer: EditableLayer | undefined;
+  onEditFilter: () => void;
+  onRemove: () => void;
+}) {
+  if (!layer) return null;
+  const GeomIcon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin;
+  const hasFilter = entry.filters.length > 0 && entry.filters.some(c => c.attribute && c.value);
+  const sqlPreview = entry.filterSqlPreview;
+
+  return (
+    <div className="border rounded-md p-2.5 space-y-1.5 bg-card" data-testid={`layer-card-${entry.layerId}`}>
+      <div className="flex items-center gap-2">
+        <GeomIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="text-xs font-medium flex-1 truncate">{layer.name}</span>
+        <Badge variant="secondary" className="text-[10px] shrink-0">
+          {layer.featureCount}
+        </Badge>
+        <Button size="icon" variant="ghost" onClick={onRemove} data-testid={`button-remove-layer-${entry.layerId}`}>
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {hasFilter ? (
+          <p className="text-[11px] font-mono text-muted-foreground flex-1 truncate" title={sqlPreview}>
+            {sqlPreview}
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground italic flex-1">Все объекты</p>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onEditFilter}
+          className="h-6 text-[11px] shrink-0"
+          data-testid={`button-edit-filter-${entry.layerId}`}
+        >
+          <Pencil className="h-3 w-3 mr-1" />
+          Фильтр
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function GeoAnalysisModal({
   isOpen,
   onClose,
@@ -272,170 +592,94 @@ export function GeoAnalysisModal({
   sceneId,
 }: GeoAnalysisModalProps) {
   const { toast } = useToast();
-  
+
   const [step, setStep] = useState<ModalStep>("config");
 
-  const [selectedSourceLayerIds, setSelectedSourceLayerIds] = useState<Set<number>>(new Set());
-  const [perSourceFilters, setPerSourceFilters] = useState<Record<string, FilterCondition[]>>({});
+  const [sourceLayers, setSourceLayers] = useState<SelectedLayerEntry[]>([]);
+  const [targetLayer, setTargetLayer] = useState<SelectedLayerEntry | null>(null);
+  const [boundaryLayer, setBoundaryLayer] = useState<SelectedLayerEntry | null>(null);
 
-  const [targetLayerId, setTargetLayerId] = useState<string>("");
-  const [targetConditions, setTargetConditions] = useState<FilterCondition[]>([]);
-
-  const [boundaryEnabled, setBoundaryEnabled] = useState(false);
   const [boundaryType, setBoundaryType] = useState<BoundaryType>("polygon");
-  const [boundaryLayerId, setBoundaryLayerId] = useState<string>("");
-  const [boundaryConditions, setBoundaryConditions] = useState<FilterCondition[]>([]);
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>("inside");
   const [bufferDistance, setBufferDistance] = useState<string>("10");
   const [maxDistance, setMaxDistance] = useState<string>("15");
 
   const [includeSummary, setIncludeSummary] = useState(true);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, Set<string>>>({});
+  const [sourceLayerAttributes, setSourceLayerAttributes] = useState<Record<string, string[]>>({});
 
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [expandedResultLayers, setExpandedResultLayers] = useState<Set<string>>(new Set());
-  const [sourceLayerAttributes, setSourceLayerAttributes] = useState<Record<string, string[]>>({});
 
-  const lineLayers = useMemo(() => 
-    editableLayers.filter(l => l.geometryType === "LineString"), 
+  const [pickerOpen, setPickerOpen] = useState<"source" | "target" | "boundary" | null>(null);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [filterDialogLayer, setFilterDialogLayer] = useState<EditableLayer | null>(null);
+  const [filterDialogConditions, setFilterDialogConditions] = useState<FilterCondition[]>([]);
+  const [filterDialogTarget, setFilterDialogTarget] = useState<"source" | "target" | "boundary">("source");
+  const [filterDialogSourceIndex, setFilterDialogSourceIndex] = useState<number>(-1);
+
+  const hasTargetLayer = targetLayer !== null;
+  const hasBoundaryLayer = boundaryLayer !== null;
+
+  const lineLayers = useMemo(() =>
+    editableLayers.filter(l => l.geometryType === "LineString"),
     [editableLayers]
   );
-  
-  const polygonLayers = useMemo(() => 
-    editableLayers.filter(l => l.geometryType === "Polygon"), 
+
+  const polygonLayers = useMemo(() =>
+    editableLayers.filter(l => l.geometryType === "Polygon"),
     [editableLayers]
   );
 
-  const actualTargetLayerId = targetLayerId === "__none__" ? "" : targetLayerId;
-  const hasTargetLayer = actualTargetLayerId !== "";
-  const isBoundaryOnlyMode = !hasTargetLayer;
-
-  const { data: targetFeatures = [] } = useQuery<DrawnFeature[]>({
-    queryKey: ["/api/editable-layers", parseInt(actualTargetLayerId), "features"],
-    enabled: hasTargetLayer,
-  });
-
-  const { data: boundaryFeatures = [] } = useQuery<DrawnFeature[]>({
-    queryKey: ["/api/editable-layers", parseInt(boundaryLayerId), "features"],
-    enabled: !!boundaryLayerId && boundaryEnabled,
-  });
-
-  const extractAttributes = useCallback((features: DrawnFeature[]): { attrs: string[], values: Record<string, Set<unknown>> } => {
-    const attrSet = new Set<string>();
-    const values: Record<string, Set<unknown>> = {};
-    
-    for (const feature of features) {
-      if (feature.properties) {
-        for (const [key, value] of Object.entries(feature.properties)) {
-          attrSet.add(key);
-          if (!values[key]) values[key] = new Set();
-          values[key].add(value);
-        }
-      }
-    }
-    
-    return { attrs: Array.from(attrSet).sort(), values };
-  }, []);
-
-  const targetAttrsData = useMemo(() => extractAttributes(targetFeatures), [targetFeatures, extractAttributes]);
-  const boundaryAttrsData = useMemo(() => extractAttributes(boundaryFeatures), [boundaryFeatures, extractAttributes]);
-
-  const applyFilter = useCallback((features: DrawnFeature[], conditions: FilterCondition[]): DrawnFeature[] => {
-    if (conditions.length === 0) return features;
-    
-    return features.filter(feature => {
-      return conditions.every(condition => {
-        if (!condition.attribute || condition.value === "") return true;
-        
-        const propValue = feature.properties?.[condition.attribute];
-        const filterValue = condition.value;
-        
-        if (propValue === undefined || propValue === null) {
-          return condition.operator === "!=" || condition.operator === "not_contains";
-        }
-        
-        const propStr = String(propValue);
-        const propNum = parseFloat(propStr);
-        const filterNum = parseFloat(filterValue);
-        
-        switch (condition.operator) {
-          case "=":
-            return propStr === filterValue;
-          case "!=":
-            return propStr !== filterValue;
-          case ">":
-            return !isNaN(propNum) && !isNaN(filterNum) && propNum > filterNum;
-          case "<":
-            return !isNaN(propNum) && !isNaN(filterNum) && propNum < filterNum;
-          case ">=":
-            return !isNaN(propNum) && !isNaN(filterNum) && propNum >= filterNum;
-          case "<=":
-            return !isNaN(propNum) && !isNaN(filterNum) && propNum <= filterNum;
-          case "contains":
-            return propStr.toLowerCase().includes(filterValue.toLowerCase());
-          case "not_contains":
-            return !propStr.toLowerCase().includes(filterValue.toLowerCase());
-          default:
-            return true;
-        }
-      });
-    });
-  }, []);
-
-  const filteredTargetCount = useMemo(() => 
-    applyFilter(targetFeatures, targetConditions).length,
-    [targetFeatures, targetConditions, applyFilter]
-  );
-
-  const filteredBoundaryCount = useMemo(() => 
-    boundaryEnabled ? applyFilter(boundaryFeatures, boundaryConditions).length : 0,
-    [boundaryFeatures, boundaryConditions, boundaryEnabled, applyFilter]
-  );
+  const sourceExcludeIds = useMemo(() => new Set(sourceLayers.map(s => s.layerId)), [sourceLayers]);
+  const targetExcludeIds = useMemo(() => {
+    const ids = new Set<number>();
+    if (targetLayer) ids.add(targetLayer.layerId);
+    return ids;
+  }, [targetLayer]);
+  const boundaryExcludeIds = useMemo(() => {
+    const ids = new Set<number>();
+    if (boundaryLayer) ids.add(boundaryLayer.layerId);
+    return ids;
+  }, [boundaryLayer]);
 
   useEffect(() => {
     if (!isOpen) {
       setStep("config");
-      setSelectedSourceLayerIds(new Set());
-      setPerSourceFilters({});
-      setTargetLayerId("");
-      setTargetConditions([]);
-      setBoundaryEnabled(false);
+      setSourceLayers([]);
+      setTargetLayer(null);
+      setBoundaryLayer(null);
       setBoundaryType("polygon");
-      setBoundaryLayerId("");
-      setBoundaryConditions([]);
       setBoundaryMode("inside");
       setBufferDistance("10");
       setMaxDistance("15");
       setIncludeSummary(true);
       setSelectedAttributes({});
+      setSourceLayerAttributes({});
       setAnalysisResults(null);
       setExpandedResultLayers(new Set());
-      setSourceLayerAttributes({});
+      setPickerOpen(null);
+      setFilterDialogOpen(false);
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    setBoundaryLayerId("");
-    setBoundaryConditions([]);
-  }, [boundaryType]);
-
   const loadSourceLayerAttributes = useCallback(async () => {
     const attrsMap: Record<string, string[]> = {};
-    const promises = Array.from(selectedSourceLayerIds).map(async (layerId) => {
+    const promises = sourceLayers.map(async (entry) => {
       try {
-        const response = await fetch(`/api/editable-layers/${layerId}/attributes`);
+        const response = await fetch(`/api/editable-layers/${entry.layerId}/attributes`);
         if (response.ok) {
           const attrs: string[] = await response.json();
-          attrsMap[String(layerId)] = attrs;
+          attrsMap[String(entry.layerId)] = attrs;
         }
       } catch {
-        attrsMap[String(layerId)] = [];
+        attrsMap[String(entry.layerId)] = [];
       }
     });
     await Promise.all(promises);
     setSourceLayerAttributes(attrsMap);
-  }, [selectedSourceLayerIds]);
+  }, [sourceLayers]);
 
   useEffect(() => {
     if (step === "report-constructor") {
@@ -443,25 +687,91 @@ export function GeoAnalysisModal({
     }
   }, [step, loadSourceLayerAttributes]);
 
-  const toggleSourceLayer = (layerId: number) => {
-    setSelectedSourceLayerIds(prev => {
-      const next = new Set(prev);
-      if (next.has(layerId)) {
-        next.delete(layerId);
-      } else {
-        next.add(layerId);
+  const handlePickerSelect = (layer: EditableLayer) => {
+    if (pickerOpen === "source") {
+      setPickerOpen(null);
+      const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
+      setSourceLayers(prev => [...prev, entry]);
+      setFilterDialogLayer(layer);
+      setFilterDialogConditions([]);
+      setFilterDialogTarget("source");
+      setFilterDialogSourceIndex(sourceLayers.length);
+      setFilterDialogOpen(true);
+    } else if (pickerOpen === "target") {
+      setPickerOpen(null);
+      const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
+      setTargetLayer(entry);
+      setFilterDialogLayer(layer);
+      setFilterDialogConditions([]);
+      setFilterDialogTarget("target");
+      setFilterDialogSourceIndex(-1);
+      setFilterDialogOpen(true);
+    } else if (pickerOpen === "boundary") {
+      setPickerOpen(null);
+      const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
+      setBoundaryLayer(entry);
+      setFilterDialogLayer(layer);
+      setFilterDialogConditions([]);
+      setFilterDialogTarget("boundary");
+      setFilterDialogSourceIndex(-1);
+      setFilterDialogOpen(true);
+    }
+  };
+
+  const openFilterForSource = (index: number) => {
+    const entry = sourceLayers[index];
+    const layer = editableLayers.find(l => l.id === entry.layerId);
+    if (layer) {
+      setFilterDialogLayer(layer);
+      setFilterDialogConditions(entry.filters);
+      setFilterDialogTarget("source");
+      setFilterDialogSourceIndex(index);
+      setFilterDialogOpen(true);
+    }
+  };
+
+  const openFilterForTarget = () => {
+    if (targetLayer) {
+      const layer = editableLayers.find(l => l.id === targetLayer.layerId);
+      if (layer) {
+        setFilterDialogLayer(layer);
+        setFilterDialogConditions(targetLayer.filters);
+        setFilterDialogTarget("target");
+        setFilterDialogSourceIndex(-1);
+        setFilterDialogOpen(true);
       }
-      return next;
-    });
+    }
   };
 
-  const selectAllSourceLayers = () => {
-    const all = new Set(editableLayers.map(l => l.id));
-    setSelectedSourceLayerIds(all);
+  const openFilterForBoundary = () => {
+    if (boundaryLayer) {
+      const layer = editableLayers.find(l => l.id === boundaryLayer.layerId);
+      if (layer) {
+        setFilterDialogLayer(layer);
+        setFilterDialogConditions(boundaryLayer.filters);
+        setFilterDialogTarget("boundary");
+        setFilterDialogSourceIndex(-1);
+        setFilterDialogOpen(true);
+      }
+    }
   };
 
-  const deselectAllSourceLayers = () => {
-    setSelectedSourceLayerIds(new Set());
+  const handleFilterApply = (conditions: FilterCondition[]) => {
+    const preview = buildSqlPreview(conditions);
+    if (filterDialogTarget === "source" && filterDialogSourceIndex >= 0) {
+      setSourceLayers(prev => prev.map((e, i) =>
+        i === filterDialogSourceIndex ? { ...e, filters: conditions, filterSqlPreview: preview } : e
+      ));
+    } else if (filterDialogTarget === "target" && targetLayer) {
+      setTargetLayer({ ...targetLayer, filters: conditions, filterSqlPreview: preview });
+    } else if (filterDialogTarget === "boundary" && boundaryLayer) {
+      setBoundaryLayer({ ...boundaryLayer, filters: conditions, filterSqlPreview: preview });
+    }
+    setFilterDialogOpen(false);
+  };
+
+  const removeSourceLayer = (index: number) => {
+    setSourceLayers(prev => prev.filter((_, i) => i !== index));
   };
 
   const toggleAttributeSelection = (layerId: string, attr: string) => {
@@ -495,14 +805,38 @@ export function GeoAnalysisModal({
     }));
   };
 
+  const toggleResultLayerExpand = (layerId: string) => {
+    setExpandedResultLayers(prev => {
+      const next = new Set(prev);
+      if (next.has(layerId)) {
+        next.delete(layerId);
+      } else {
+        next.add(layerId);
+      }
+      return next;
+    });
+  };
+
+  const canProceed = sourceLayers.length > 0 && (hasTargetLayer || hasBoundaryLayer);
+
+  const resetAll = () => {
+    setSourceLayers([]);
+    setTargetLayer(null);
+    setBoundaryLayer(null);
+    setBoundaryType("polygon");
+    setBoundaryMode("inside");
+    setBufferDistance("10");
+    setMaxDistance("15");
+  };
+
   const runAnalysis = async (format: "json" | "xlsx") => {
-    if (selectedSourceLayerIds.size === 0) {
-      toast({ title: "Ошибка", description: "Выберите хотя бы один исходный слой", variant: "destructive" });
+    if (sourceLayers.length === 0) {
+      toast({ title: "Ошибка", description: "Добавьте хотя бы один исходный слой", variant: "destructive" });
       return;
     }
 
-    if (isBoundaryOnlyMode && (!boundaryEnabled || !boundaryLayerId)) {
-      toast({ title: "Ошибка", description: "Без целевого слоя необходимо включить ограничивающий слой (полигон/линия)", variant: "destructive" });
+    if (!hasTargetLayer && !hasBoundaryLayer) {
+      toast({ title: "Ошибка", description: "Добавьте целевой или ограничивающий слой", variant: "destructive" });
       return;
     }
 
@@ -514,27 +848,30 @@ export function GeoAnalysisModal({
       }
     }
 
-    if (boundaryEnabled && !boundaryLayerId) {
-      toast({ title: "Ошибка", description: "Выберите ограничивающий слой или отключите его", variant: "destructive" });
-      return;
-    }
-
     setIsAnalyzing(true);
     try {
       const bufferNum = parseFloat(bufferDistance);
       const distanceNum = parseFloat(maxDistance);
 
       const sourceFiltersForRequest: Record<string, { attribute: string; operator: string; value: string }[]> = {};
-      for (const [layerId, conditions] of Object.entries(perSourceFilters)) {
-        const filtered = conditions.filter(c => c.attribute && c.value);
+      for (const entry of sourceLayers) {
+        const filtered = entry.filters.filter(c => c.attribute && c.value);
         if (filtered.length > 0) {
-          sourceFiltersForRequest[layerId] = filtered.map(c => ({
+          sourceFiltersForRequest[String(entry.layerId)] = filtered.map(c => ({
             attribute: c.attribute,
             operator: c.operator,
             value: c.value,
           }));
         }
       }
+
+      const targetFiltersList = targetLayer
+        ? targetLayer.filters.filter(c => c.attribute && c.value).map(c => ({ attribute: c.attribute, operator: c.operator, value: c.value }))
+        : [];
+
+      const boundaryFiltersList = boundaryLayer
+        ? boundaryLayer.filters.filter(c => c.attribute && c.value).map(c => ({ attribute: c.attribute, operator: c.operator, value: c.value }))
+        : [];
 
       const includeAttrs: Record<string, string[]> = {};
       for (const [layerId, attrs] of Object.entries(selectedAttributes)) {
@@ -544,14 +881,14 @@ export function GeoAnalysisModal({
       }
 
       const requestBody: Record<string, unknown> = {
-        sourceLayerIds: Array.from(selectedSourceLayerIds),
+        sourceLayerIds: sourceLayers.map(e => e.layerId),
         sourceFilters: sourceFiltersForRequest,
-        targetLayerId: hasTargetLayer ? parseInt(actualTargetLayerId) : null,
-        targetFilters: hasTargetLayer ? targetConditions.filter(c => c.attribute && c.value) : [],
-        boundaryLayerId: boundaryEnabled && boundaryLayerId ? parseInt(boundaryLayerId) : null,
-        boundaryFilters: boundaryEnabled ? boundaryConditions.filter(c => c.attribute && c.value) : [],
-        boundaryMode: boundaryEnabled ? boundaryMode : "none",
-        boundaryType: boundaryEnabled ? boundaryType : "polygon",
+        targetLayerId: targetLayer ? targetLayer.layerId : null,
+        targetFilters: targetFiltersList,
+        boundaryLayerId: boundaryLayer ? boundaryLayer.layerId : null,
+        boundaryFilters: boundaryFiltersList,
+        boundaryMode: boundaryLayer ? boundaryMode : "none",
+        boundaryType: boundaryType,
         bufferDistanceMeters: boundaryType === "line" ? (isNaN(bufferNum) ? 10 : bufferNum) : null,
         maxDistanceMeters: hasTargetLayer ? distanceNum : 15,
         reportConfig: {
@@ -601,379 +938,392 @@ export function GeoAnalysisModal({
     }
   };
 
-  const toggleResultLayerExpand = (layerId: string) => {
-    setExpandedResultLayers(prev => {
-      const next = new Set(prev);
-      if (next.has(layerId)) {
-        next.delete(layerId);
-      } else {
-        next.add(layerId);
-      }
-      return next;
-    });
+  const getFilterSummary = (entry: SelectedLayerEntry): string => {
+    if (entry.filterSqlPreview) return entry.filterSqlPreview;
+    return "Все объекты";
   };
 
-  const canProceed = selectedSourceLayerIds.size > 0 && (hasTargetLayer || (boundaryEnabled && !!boundaryLayerId));
+  const renderToolbar = () => {
+    if (step === "config") {
+      return (
+        <div className="flex items-center gap-1.5 p-2 border-b bg-muted/30 shrink-0 flex-wrap">
+          <Button
+            size="sm"
+            onClick={() => setStep("report-constructor")}
+            disabled={!canProceed}
+            data-testid="button-proceed-to-constructor"
+          >
+            <ChevronRight className="h-3.5 w-3.5 mr-1" />
+            Далее
+          </Button>
+          <Separator orientation="vertical" className="h-6" />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={resetAll}
+            data-testid="button-reset-all"
+          >
+            <RotateCcw className="h-3.5 w-3.5 mr-1" />
+            Сбросить
+          </Button>
+          <div className="flex-1" />
+          {hasTargetLayer && (
+            <div className="flex items-center gap-1.5">
+              <Settings className="h-3.5 w-3.5 text-muted-foreground" />
+              <Label className="text-xs text-muted-foreground">Порог:</Label>
+              <Input
+                type="number"
+                value={maxDistance}
+                onChange={e => setMaxDistance(e.target.value)}
+                className="h-7 w-16 text-xs"
+                min="1"
+                max="10000"
+                data-testid="input-max-distance"
+              />
+              <span className="text-xs text-muted-foreground">м</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (step === "report-constructor") {
+      return (
+        <div className="flex items-center gap-1.5 p-2 border-b bg-muted/30 shrink-0 flex-wrap">
+          <Button size="sm" variant="ghost" onClick={() => setStep("config")} data-testid="button-back-to-config">
+            <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+            Назад
+          </Button>
+          <Separator orientation="vertical" className="h-6" />
+          <Button
+            size="sm"
+            onClick={() => runAnalysis("json")}
+            disabled={isAnalyzing}
+            data-testid="button-run-analysis"
+          >
+            {isAnalyzing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Play className="h-3.5 w-3.5 mr-1" />}
+            Запустить
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => runAnalysis("xlsx")}
+            disabled={isAnalyzing}
+            data-testid="button-export-xlsx"
+          >
+            {isAnalyzing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />}
+            XLSX
+          </Button>
+          <div className="flex-1" />
+          <div className="flex items-center gap-1.5">
+            <Switch
+              checked={includeSummary}
+              onCheckedChange={setIncludeSummary}
+              data-testid="switch-include-summary"
+            />
+            <Label className="text-xs">Сводка</Label>
+          </div>
+        </div>
+      );
+    }
+
+    if (step === "results") {
+      return (
+        <div className="flex items-center gap-1.5 p-2 border-b bg-muted/30 shrink-0 flex-wrap">
+          <Button size="sm" variant="ghost" onClick={() => setStep("report-constructor")} data-testid="button-back-to-constructor">
+            <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+            Назад
+          </Button>
+          <Separator orientation="vertical" className="h-6" />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => runAnalysis("xlsx")}
+            disabled={isAnalyzing}
+            data-testid="button-export-results-xlsx"
+          >
+            {isAnalyzing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+            Скачать XLSX
+          </Button>
+          <div className="flex-1" />
+          {analysisResults && (
+            <Badge variant="outline" className="text-[10px]">
+              {analysisResults.mode === "distance-binding" ? "Привязка" : "Пространственный"}
+            </Badge>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   const renderConfig = () => (
-    <div className="p-4 space-y-4">
-      <Accordion type="multiple" defaultValue={["source", "target"]} className="space-y-2">
-        <AccordionItem value="source" className="border rounded-md px-3">
-          <AccordionTrigger className="py-2 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Исходные слои</span>
-              {selectedSourceLayerIds.size > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {selectedSourceLayerIds.size} слоёв
-                </Badge>
-              )}
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="space-y-3 pb-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Выберите слои для анализа</Label>
-              <div className="flex gap-1">
-                <Button size="sm" variant="ghost" onClick={selectAllSourceLayers} className="h-6 text-xs" data-testid="button-select-all-sources">
-                  Все
-                </Button>
-                <Button size="sm" variant="ghost" onClick={deselectAllSourceLayers} className="h-6 text-xs" data-testid="button-deselect-all-sources">
-                  Сбросить
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1 max-h-[200px] overflow-y-auto">
-              {editableLayers.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">Нет доступных слоёв</p>
-              )}
-              {editableLayers.map(layer => {
-                const GeomIcon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin;
-                return (
-                  <label
-                    key={layer.id}
-                    className="flex items-center gap-2 p-1.5 rounded-md hover-elevate cursor-pointer"
-                    data-testid={`checkbox-source-layer-${layer.id}`}
-                  >
-                    <Checkbox
-                      checked={selectedSourceLayerIds.has(layer.id)}
-                      onCheckedChange={() => toggleSourceLayer(layer.id)}
-                    />
-                    <GeomIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-sm flex-1 truncate">{layer.name}</span>
-                    <Badge variant="secondary" className="text-[10px] shrink-0">
-                      {GEOM_TYPE_LABELS[layer.geometryType] || layer.geometryType}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground shrink-0">{layer.featureCount}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="target" className="border rounded-md px-3">
-          <AccordionTrigger className="py-2 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Target className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Целевой слой привязки</span>
-              <Badge variant="outline" className="text-[10px]">опционально</Badge>
-              {targetLayerId && (
-                <Badge variant="secondary" className="text-xs">
-                  {filteredTargetCount} объектов
-                </Badge>
-              )}
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="space-y-3 pb-3">
-            <p className="text-xs text-muted-foreground">
-              Если целевой слой не выбран, анализ покажет только объекты внутри/снаружи ограничивающего слоя.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="target-layer" className="text-xs">Выберите слой</Label>
-              <Select value={targetLayerId} onValueChange={setTargetLayerId}>
-                <SelectTrigger id="target-layer" data-testid="select-target-layer">
-                  <SelectValue placeholder="Не выбран (только пространственный анализ)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Не выбран</SelectItem>
-                  {editableLayers.map(layer => (
-                    <SelectItem key={layer.id} value={String(layer.id)}>
-                      {layer.name} ({layer.geometryType}, {layer.featureCount} объектов)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {hasTargetLayer && (
-              <AttributeFilterBuilder
-                layerId={actualTargetLayerId}
-                conditions={targetConditions}
-                onConditionsChange={setTargetConditions}
-                availableAttributes={targetAttrsData.attrs}
-                attributeValues={targetAttrsData.values}
-                label="Фильтры по атрибутам (условия объединяются через И)"
-              />
+    <div className="flex h-full min-h-0">
+      <div className="flex-1 flex flex-col border-r min-w-0">
+        <div className="flex items-center gap-2 p-2.5 border-b bg-muted/20 shrink-0">
+          <Layers className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-xs font-medium">Исходные слои</span>
+          {sourceLayers.length > 0 && (
+            <Badge variant="secondary" className="text-[10px]">{sourceLayers.length}</Badge>
+          )}
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-2 space-y-1.5">
+            {sourceLayers.length === 0 && (
+              <p className="text-xs text-muted-foreground italic text-center py-4">
+                Добавьте слои для анализа
+              </p>
             )}
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="boundary" className="border rounded-md px-3">
-          <AccordionTrigger className="py-2 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Square className="h-4 w-4 text-primary" />
-              <span className="font-medium text-sm">Ограничивающий слой</span>
-              {isBoundaryOnlyMode && (
-                <Badge variant="default" className="text-[10px]">обязательно</Badge>
-              )}
-              {!isBoundaryOnlyMode && (
-                <Badge variant="outline" className="text-[10px]">опционально</Badge>
-              )}
-              {boundaryEnabled && boundaryLayerId && (
-                <Badge variant="secondary" className="text-xs">
-                  {filteredBoundaryCount} {boundaryType === "polygon" ? "полигонов" : "линий"}
-                </Badge>
-              )}
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="space-y-3 pb-3">
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={boundaryEnabled}
-                onCheckedChange={setBoundaryEnabled}
-                data-testid="switch-boundary-enabled"
-              />
-              <Label className="text-xs">Использовать пространственные ограничения</Label>
-            </div>
-            
-            {isBoundaryOnlyMode && !boundaryEnabled && (
-              <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                <AlertCircle className="h-3 w-3" />
-                Без целевого слоя необходимо включить ограничивающий слой
-              </div>
-            )}
-
-            {boundaryEnabled && (
-              <>
-                <div className="space-y-2">
-                  <Label className="text-xs">Тип ограничивающего слоя</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant={boundaryType === "polygon" ? "default" : "outline"}
-                      onClick={() => setBoundaryType("polygon")}
-                      className="flex-1 text-xs"
-                      data-testid="button-boundary-type-polygon"
-                    >
-                      Полигоны
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={boundaryType === "line" ? "default" : "outline"}
-                      onClick={() => setBoundaryType("line")}
-                      className="flex-1 text-xs"
-                      data-testid="button-boundary-type-line"
-                    >
-                      Линии
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="boundary-layer" className="text-xs">
-                    {boundaryType === "polygon" ? "Слой полигонов" : "Слой линий"}
-                  </Label>
-                  <Select value={boundaryLayerId} onValueChange={setBoundaryLayerId}>
-                    <SelectTrigger id="boundary-layer" data-testid="select-boundary-layer">
-                      <SelectValue placeholder="Выберите слой" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(boundaryType === "polygon" ? polygonLayers : lineLayers).map(layer => (
-                        <SelectItem key={layer.id} value={String(layer.id)}>
-                          {layer.name} ({layer.featureCount} объектов)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {boundaryType === "polygon" && polygonLayers.length === 0 && (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <AlertCircle className="h-3 w-3" />
-                      Нет полигональных слоёв
-                    </div>
-                  )}
-                  {boundaryType === "line" && lineLayers.length === 0 && (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <AlertCircle className="h-3 w-3" />
-                      Нет линейных слоёв
-                    </div>
-                  )}
-                </div>
-                
-                {boundaryType === "line" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="buffer-distance" className="text-xs">Буферная зона (метры)</Label>
-                    <Input
-                      id="buffer-distance"
-                      type="number"
-                      value={bufferDistance}
-                      onChange={e => setBufferDistance(e.target.value)}
-                      min="1"
-                      max="1000"
-                      className="max-w-[150px]"
-                      data-testid="input-buffer-distance"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Радиус вокруг линий для определения попадания объектов
-                    </p>
-                  </div>
-                )}
-                
-                <div className="space-y-2">
-                  <Label className="text-xs">Режим ограничения</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant={boundaryMode === "inside" ? "default" : "outline"}
-                      onClick={() => setBoundaryMode("inside")}
-                      className="flex-1 text-xs"
-                      data-testid="button-boundary-inside"
-                    >
-                      {boundaryType === "polygon" ? "Внутри полигонов" : "Вблизи линий"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={boundaryMode === "outside" ? "default" : "outline"}
-                      onClick={() => setBoundaryMode("outside")}
-                      className="flex-1 text-xs"
-                      data-testid="button-boundary-outside"
-                    >
-                      {boundaryType === "polygon" ? "Вне полигонов" : "Вдали от линий"}
-                    </Button>
-                  </div>
-                </div>
-                
-                {boundaryLayerId && (
-                  <AttributeFilterBuilder
-                    layerId={boundaryLayerId}
-                    conditions={boundaryConditions}
-                    onConditionsChange={setBoundaryConditions}
-                    availableAttributes={boundaryAttrsData.attrs}
-                    attributeValues={boundaryAttrsData.values}
-                    label={boundaryType === "polygon" ? "Фильтры по атрибутам полигонов" : "Фильтры по атрибутам линий"}
-                  />
-                )}
-              </>
-            )}
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
-
-      {hasTargetLayer && (
-        <>
-          <Separator />
-          <div className="space-y-2">
-            <Label htmlFor="max-distance" className="text-sm font-medium">Порог расстояния (метры)</Label>
-            <Input
-              id="max-distance"
-              type="number"
-              value={maxDistance}
-              onChange={e => setMaxDistance(e.target.value)}
-              min="1"
-              max="10000"
-              className="max-w-[200px]"
-              data-testid="input-max-distance"
-            />
-            <p className="text-xs text-muted-foreground">
-              Объекты дальше порога не будут привязаны к целевому слою
-            </p>
+            {sourceLayers.map((entry, index) => {
+              const layer = editableLayers.find(l => l.id === entry.layerId);
+              return (
+                <LayerCard
+                  key={`${entry.layerId}-${index}`}
+                  entry={entry}
+                  layer={layer}
+                  onEditFilter={() => openFilterForSource(index)}
+                  onRemove={() => removeSourceLayer(index)}
+                />
+              );
+            })}
           </div>
-        </>
-      )}
+        </ScrollArea>
+        <div className="p-2 border-t shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPickerOpen("source")}
+            className="w-full text-xs"
+            data-testid="button-add-source-layer"
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Добавить слой
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col border-r min-w-0">
+        <div className="flex items-center gap-2 p-2.5 border-b bg-muted/20 shrink-0">
+          <Target className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-xs font-medium">Целевой слой</span>
+          <Badge variant="outline" className="text-[10px]">привязка</Badge>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-2 space-y-2">
+            {!targetLayer ? (
+              <div className="text-center py-4 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Слой для привязки исходных объектов по расстоянию
+                </p>
+                <p className="text-[11px] text-muted-foreground italic">
+                  Если не выбран — только пространственный анализ
+                </p>
+              </div>
+            ) : (
+              <LayerCard
+                entry={targetLayer}
+                layer={editableLayers.find(l => l.id === targetLayer.layerId)}
+                onEditFilter={openFilterForTarget}
+                onRemove={() => setTargetLayer(null)}
+              />
+            )}
+          </div>
+        </ScrollArea>
+        <div className="p-2 border-t shrink-0">
+          {!targetLayer ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPickerOpen("target")}
+              className="w-full text-xs"
+              data-testid="button-add-target-layer"
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Выбрать слой
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setPickerOpen("target")}
+              className="w-full text-xs"
+              data-testid="button-change-target-layer"
+            >
+              Заменить слой
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex items-center gap-2 p-2.5 border-b bg-muted/20 shrink-0">
+          <Square className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-xs font-medium">Ограничение</span>
+          {!hasTargetLayer && (
+            <Badge variant="default" className="text-[10px]">обязательно</Badge>
+          )}
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-2 space-y-2">
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant={boundaryType === "polygon" ? "default" : "outline"}
+                onClick={() => { setBoundaryType("polygon"); if (boundaryLayer) { const l = editableLayers.find(la => la.id === boundaryLayer.layerId); if (l && l.geometryType !== "Polygon") setBoundaryLayer(null); } }}
+                className="flex-1 text-[11px]"
+                data-testid="button-boundary-polygon"
+              >
+                Полигон
+              </Button>
+              <Button
+                size="sm"
+                variant={boundaryType === "line" ? "default" : "outline"}
+                onClick={() => { setBoundaryType("line"); if (boundaryLayer) { const l = editableLayers.find(la => la.id === boundaryLayer.layerId); if (l && l.geometryType !== "LineString") setBoundaryLayer(null); } }}
+                className="flex-1 text-[11px]"
+                data-testid="button-boundary-line"
+              >
+                Линия
+              </Button>
+            </div>
+
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant={boundaryMode === "inside" ? "default" : "outline"}
+                onClick={() => setBoundaryMode("inside")}
+                className="flex-1 text-[11px]"
+                data-testid="button-boundary-inside"
+              >
+                {boundaryType === "polygon" ? "Внутри" : "Вблизи"}
+              </Button>
+              <Button
+                size="sm"
+                variant={boundaryMode === "outside" ? "default" : "outline"}
+                onClick={() => setBoundaryMode("outside")}
+                className="flex-1 text-[11px]"
+                data-testid="button-boundary-outside"
+              >
+                {boundaryType === "polygon" ? "Снаружи" : "Вдали"}
+              </Button>
+            </div>
+
+            {boundaryType === "line" && (
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">Буфер (м)</Label>
+                <Input
+                  type="number"
+                  value={bufferDistance}
+                  onChange={e => setBufferDistance(e.target.value)}
+                  min="1"
+                  max="1000"
+                  className="h-7 text-xs"
+                  data-testid="input-buffer-distance"
+                />
+              </div>
+            )}
+
+            {boundaryLayer ? (
+              <LayerCard
+                entry={boundaryLayer}
+                layer={editableLayers.find(l => l.id === boundaryLayer.layerId)}
+                onEditFilter={openFilterForBoundary}
+                onRemove={() => setBoundaryLayer(null)}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground italic text-center py-2">
+                {boundaryType === "polygon"
+                  ? (polygonLayers.length === 0 ? "Нет полигональных слоёв" : "Выберите ограничивающий слой")
+                  : (lineLayers.length === 0 ? "Нет линейных слоёв" : "Выберите ограничивающий слой")
+                }
+              </p>
+            )}
+          </div>
+        </ScrollArea>
+        <div className="p-2 border-t shrink-0">
+          {!boundaryLayer ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPickerOpen("boundary")}
+              className="w-full text-xs"
+              disabled={boundaryType === "polygon" ? polygonLayers.length === 0 : lineLayers.length === 0}
+              data-testid="button-add-boundary-layer"
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Выбрать слой
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setPickerOpen("boundary")}
+              className="w-full text-xs"
+              data-testid="button-change-boundary-layer"
+            >
+              Заменить слой
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 
   const renderReportConstructor = () => {
-    const selectedLayers = editableLayers.filter(l => selectedSourceLayerIds.has(l.id));
-
     return (
-      <div className="p-4 space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Button size="sm" variant="ghost" onClick={() => setStep("config")} data-testid="button-back-to-config">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Назад
-          </Button>
-          <span className="font-medium text-sm">Конструктор отчёта</span>
-        </div>
+      <div className="flex h-full min-h-0">
+        {sourceLayers.map((entry, colIndex) => {
+          const layer = editableLayers.find(l => l.id === entry.layerId);
+          if (!layer) return null;
+          const layerIdStr = String(entry.layerId);
+          const attrs = sourceLayerAttributes[layerIdStr] || [];
+          const selected = selectedAttributes[layerIdStr] || new Set<string>();
+          const GeomIcon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin;
 
-        <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
-          <Switch
-            checked={includeSummary}
-            onCheckedChange={setIncludeSummary}
-            data-testid="switch-include-summary"
-          />
-          <Label className="text-sm">Включить сводную таблицу</Label>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Атрибуты для каждого слоя</Label>
-          <p className="text-xs text-muted-foreground">
-            Выберите, какие атрибуты включить в отчёт. Если ничего не выбрано — будут включены все.
-          </p>
-
-          <Accordion type="multiple" className="space-y-2">
-            {selectedLayers.map(layer => {
-              const layerIdStr = String(layer.id);
-              const attrs = sourceLayerAttributes[layerIdStr] || [];
-              const selected = selectedAttributes[layerIdStr] || new Set<string>();
-
-              return (
-                <AccordionItem key={layer.id} value={layerIdStr} className="border rounded-md px-3">
-                  <AccordionTrigger className="py-2 hover:no-underline">
-                    <div className="flex items-center gap-2">
-                      {(() => { const Icon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin; return <Icon className="h-3.5 w-3.5 text-muted-foreground" />; })()}
-                      <span className="text-sm">{layer.name}</span>
-                      <Badge variant="secondary" className="text-[10px]">
-                        {selected.size > 0 ? `${selected.size} атр.` : "все"}
-                      </Badge>
+          return (
+            <div
+              key={`${entry.layerId}-${colIndex}`}
+              className={`flex-1 flex flex-col min-w-0 ${colIndex < sourceLayers.length - 1 ? "border-r" : ""}`}
+            >
+              <div className="p-2.5 border-b bg-muted/20 shrink-0 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <GeomIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-medium truncate">{layer.name}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground font-mono truncate" title={getFilterSummary(entry)}>
+                  {entry.filterSqlPreview || "Все объекты"}
+                </p>
+              </div>
+              <div className="p-2 flex gap-1 shrink-0">
+                <Button size="sm" variant="ghost" onClick={() => selectAllAttrsForLayer(layerIdStr, attrs)} className="h-6 text-[11px] flex-1">
+                  Все
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => deselectAllAttrsForLayer(layerIdStr)} className="h-6 text-[11px] flex-1">
+                  Сброс
+                </Button>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="px-2 pb-2 space-y-0.5">
+                  {attrs.length === 0 ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                     </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-2 pb-3">
-                    {attrs.length === 0 ? (
-                      <p className="text-xs text-muted-foreground italic">
-                        Загрузка атрибутов...
-                      </p>
-                    ) : (
-                      <>
-                        <div className="flex gap-1 mb-1">
-                          <Button size="sm" variant="ghost" onClick={() => selectAllAttrsForLayer(layerIdStr, attrs)} className="h-6 text-xs">
-                            Все
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => deselectAllAttrsForLayer(layerIdStr)} className="h-6 text-xs">
-                            Сбросить
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1">
-                          {attrs.map(attr => (
-                            <label key={attr} className="flex items-center gap-1.5 text-xs cursor-pointer p-1 rounded hover-elevate">
-                              <Checkbox
-                                checked={selected.has(attr)}
-                                onCheckedChange={() => toggleAttributeSelection(layerIdStr, attr)}
-                              />
-                              <span className="truncate">{attr}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </AccordionContent>
-                </AccordionItem>
-              );
-            })}
-          </Accordion>
-        </div>
+                  ) : (
+                    attrs.map(attr => (
+                      <label key={attr} className="flex items-center gap-1.5 text-[11px] cursor-pointer p-1 rounded hover-elevate">
+                        <Checkbox
+                          checked={selected.has(attr)}
+                          onCheckedChange={() => toggleAttributeSelection(layerIdStr, attr)}
+                        />
+                        <span className="truncate">{attr}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -985,20 +1335,6 @@ export function GeoAnalysisModal({
 
     return (
       <div className="p-4 space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Button size="sm" variant="ghost" onClick={() => setStep("report-constructor")} data-testid="button-back-to-constructor">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Назад
-          </Button>
-          <span className="font-medium text-sm">Результаты анализа</span>
-          {analysisResults.mode === "distance-binding" && (
-            <Badge variant="outline" className="text-[10px]">Привязка по расстоянию</Badge>
-          )}
-          {analysisResults.mode === "boundary-only" && (
-            <Badge variant="outline" className="text-[10px]">Пространственный анализ</Badge>
-          )}
-        </div>
-
         {includeSummary && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -1018,18 +1354,29 @@ export function GeoAnalysisModal({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summary.byLayer.map(lr => (
-                    <TableRow key={lr.layerId} data-testid={`row-summary-${lr.layerId}`}>
-                      <TableCell className="text-xs font-medium">{lr.layerName}</TableCell>
-                      <TableCell className="text-xs">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {GEOM_TYPE_LABELS[lr.geometryType] || lr.geometryType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-right">{lr.totalCount}</TableCell>
-                      <TableCell className="text-xs text-right font-medium">{lr.matchedCount}</TableCell>
-                    </TableRow>
-                  ))}
+                  {summary.byLayer.map(lr => {
+                    const srcEntry = sourceLayers.find(s => s.layerId === lr.layerId);
+                    const filterLabel = srcEntry?.filterSqlPreview || "";
+                    return (
+                      <TableRow key={lr.layerId} data-testid={`row-summary-${lr.layerId}`}>
+                        <TableCell className="text-xs">
+                          <div>
+                            <span className="font-medium">{lr.layerName}</span>
+                            {filterLabel && (
+                              <p className="text-[10px] text-muted-foreground font-mono truncate max-w-[200px]">{filterLabel}</p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {GEOM_TYPE_LABELS[lr.geometryType] || lr.geometryType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-right">{lr.totalCount}</TableCell>
+                        <TableCell className="text-xs text-right font-medium">{lr.matchedCount}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                   <TableRow className="font-bold">
                     <TableCell className="text-xs" colSpan={3}>ИТОГО</TableCell>
                     <TableCell className="text-xs text-right">{summary.totalObjects}</TableCell>
@@ -1039,12 +1386,12 @@ export function GeoAnalysisModal({
             </div>
             {summary.boundaryLayerName && (
               <p className="text-xs text-muted-foreground">
-                Ограничивающий слой: {summary.boundaryLayerName} ({summary.boundaryCount} объектов)
+                Ограничение: {summary.boundaryLayerName} ({summary.boundaryCount} объектов, {boundaryMode === "inside" ? "внутри" : "снаружи"})
               </p>
             )}
             {summary.targetLayerName && (
               <p className="text-xs text-muted-foreground">
-                Целевой слой привязки: {summary.targetLayerName}
+                Целевой слой: {summary.targetLayerName}
               </p>
             )}
           </div>
@@ -1060,6 +1407,8 @@ export function GeoAnalysisModal({
             const propKeys = detail.features.length > 0
               ? Object.keys(detail.features[0].properties).sort()
               : detail.availableAttributes;
+            const srcEntry = sourceLayers.find(s => String(s.layerId) === layerId);
+            const filterLabel = srcEntry?.filterSqlPreview || "";
 
             return (
               <div key={layerId} className="border rounded-md">
@@ -1070,7 +1419,12 @@ export function GeoAnalysisModal({
                 >
                   <ChevronRight className={`h-4 w-4 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
                   {(() => { const Icon = GEOM_TYPE_ICONS[detail.geometryType] || MapPin; return <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />; })()}
-                  <span className="text-sm font-medium flex-1 truncate">{detail.layerName}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium truncate block">{detail.layerName}</span>
+                    {filterLabel && (
+                      <span className="text-[10px] text-muted-foreground font-mono truncate block">{filterLabel}</span>
+                    )}
+                  </div>
                   <Badge variant="secondary" className="text-[10px] shrink-0">
                     {detail.features.length} объектов
                   </Badge>
@@ -1118,135 +1472,93 @@ export function GeoAnalysisModal({
     );
   };
 
-  const renderFooter = () => {
-    if (step === "config") {
-      return (
-        <div className="border-t p-3 flex items-center justify-between gap-2 shrink-0">
-          <div className="text-xs text-muted-foreground">
-            {selectedSourceLayerIds.size > 0 && (
-              <span>
-                {selectedSourceLayerIds.size} исходных слоёв
-                {hasTargetLayer && ` → ${filteredTargetCount} целевых`}
-                {boundaryEnabled && boundaryLayerId && (
-                  boundaryType === "polygon" 
-                    ? ` (${boundaryMode === "inside" ? "внутри" : "вне"} ${filteredBoundaryCount} полигонов)`
-                    : ` (${boundaryMode === "inside" ? "вблизи" : "вдали от"} ${filteredBoundaryCount} линий, буфер ${bufferDistance}м)`
-                )}
-              </span>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} data-testid="button-cancel-analysis">
-              Отмена
-            </Button>
-            <Button
-              onClick={() => setStep("report-constructor")}
-              disabled={!canProceed}
-              data-testid="button-proceed-to-constructor"
-            >
-              <ChevronRight className="h-4 w-4 mr-1" />
-              Далее
-            </Button>
-          </div>
-        </div>
-      );
+  const pickerGeomFilter = useMemo(() => {
+    if (pickerOpen === "boundary") {
+      return boundaryType === "polygon" ? ["Polygon"] : ["LineString"];
     }
+    return undefined;
+  }, [pickerOpen, boundaryType]);
 
-    if (step === "report-constructor") {
-      return (
-        <div className="border-t p-3 flex items-center justify-between gap-2 shrink-0">
-          <div className="text-xs text-muted-foreground">
-            {selectedSourceLayerIds.size} слоёв для анализа
-          </div>
-          <div className="flex flex-wrap gap-2 justify-end">
-            <Button variant="outline" onClick={onClose} data-testid="button-cancel-analysis">
-              Отмена
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => runAnalysis("xlsx")}
-              disabled={isAnalyzing}
-              data-testid="button-export-xlsx"
-            >
-              {isAnalyzing ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <FileSpreadsheet className="h-4 w-4 mr-1.5" />
-              )}
-              Скачать XLSX
-            </Button>
-            <Button
-              onClick={() => runAnalysis("json")}
-              disabled={isAnalyzing}
-              data-testid="button-run-and-preview"
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  Анализ...
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-1.5" />
-                  Просмотр результатов
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      );
+  const pickerExcludeIds = useMemo(() => {
+    if (pickerOpen === "source") return sourceExcludeIds;
+    if (pickerOpen === "target") return targetExcludeIds;
+    if (pickerOpen === "boundary") return boundaryExcludeIds;
+    return new Set<number>();
+  }, [pickerOpen, sourceExcludeIds, targetExcludeIds, boundaryExcludeIds]);
+
+  const pickerTitle = useMemo(() => {
+    if (pickerOpen === "source") return "Выбор исходного слоя";
+    if (pickerOpen === "target") return "Выбор целевого слоя";
+    if (pickerOpen === "boundary") return boundaryType === "polygon" ? "Выбор полигонального слоя" : "Выбор линейного слоя";
+    return "Выбор слоя";
+  }, [pickerOpen, boundaryType]);
+
+  const statusText = useMemo(() => {
+    const parts: string[] = [];
+    if (sourceLayers.length > 0) {
+      parts.push(`${sourceLayers.length} исх.`);
     }
-
-    if (step === "results") {
-      return (
-        <div className="border-t p-3 flex items-center justify-between gap-2 shrink-0">
-          <div className="text-xs text-muted-foreground">
-            Найдено: {analysisResults?.summary.totalObjects ?? 0} объектов
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} data-testid="button-close-results">
-              Закрыть
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => runAnalysis("xlsx")}
-              disabled={isAnalyzing}
-              data-testid="button-export-results-xlsx"
-            >
-              {isAnalyzing ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-1.5" />
-              )}
-              Скачать XLSX
-            </Button>
-          </div>
-        </div>
-      );
+    if (targetLayer) {
+      const tl = editableLayers.find(l => l.id === targetLayer.layerId);
+      if (tl) parts.push(`→ ${tl.name}`);
     }
-
-    return null;
-  };
+    if (boundaryLayer) {
+      const bl = editableLayers.find(l => l.id === boundaryLayer.layerId);
+      if (bl) parts.push(`(${boundaryMode === "inside" ? "внутри" : "снаружи"} ${bl.name})`);
+    }
+    return parts.join(" ");
+  }, [sourceLayers, targetLayer, boundaryLayer, boundaryMode, editableLayers]);
 
   return (
-    <DraggableModal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Геопространственный анализ"
-      defaultWidth={750}
-      defaultHeight={650}
-      minWidth={500}
-      minHeight={400}
-    >
-      <div className="flex flex-col h-full">
-        <ScrollArea className="flex-1">
-          {step === "config" && renderConfig()}
-          {step === "report-constructor" && renderReportConstructor()}
-          {step === "results" && renderResults()}
-        </ScrollArea>
+    <>
+      <DraggableModal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Геопространственный анализ"
+        defaultWidth={950}
+        defaultHeight={600}
+        minWidth={700}
+        minHeight={400}
+      >
+        <div className="flex flex-col h-full">
+          {renderToolbar()}
 
-        {renderFooter()}
-      </div>
-    </DraggableModal>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {step === "config" && renderConfig()}
+            {step === "report-constructor" && renderReportConstructor()}
+            {step === "results" && (
+              <ScrollArea className="h-full">
+                {renderResults()}
+              </ScrollArea>
+            )}
+          </div>
+
+          <div className="border-t px-3 py-1.5 shrink-0 flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground flex-1 truncate">{statusText}</span>
+            <Button variant="ghost" size="sm" onClick={onClose} className="text-xs h-7" data-testid="button-close-analysis">
+              Закрыть
+            </Button>
+          </div>
+        </div>
+      </DraggableModal>
+
+      <LayerPickerDialog
+        isOpen={pickerOpen !== null}
+        onClose={() => setPickerOpen(null)}
+        editableLayers={editableLayers}
+        excludeLayerIds={pickerExcludeIds}
+        title={pickerTitle}
+        filterGeometryTypes={pickerGeomFilter}
+        onSelect={handlePickerSelect}
+      />
+
+      <LayerFilterDialog
+        isOpen={filterDialogOpen}
+        onClose={() => setFilterDialogOpen(false)}
+        layer={filterDialogLayer}
+        initialConditions={filterDialogConditions}
+        onApply={handleFilterApply}
+      />
+    </>
   );
 }
