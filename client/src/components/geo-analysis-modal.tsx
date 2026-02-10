@@ -447,7 +447,9 @@ function LayerFilterDialog({
                             <SelectValue placeholder="Значение" />
                           </SelectTrigger>
                           <SelectContent>
-                            {attrData.values[condition.attribute].map(val => (
+                            {attrData.values[condition.attribute]
+                              .filter((val: string) => val !== "")
+                              .map((val: string) => (
                               <SelectItem key={val} value={val}>{val}</SelectItem>
                             ))}
                           </SelectContent>

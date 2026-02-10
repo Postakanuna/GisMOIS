@@ -2327,8 +2327,9 @@ export async function registerRoutes(
           for (const [key, val] of Object.entries(feature.properties as Record<string, unknown>)) {
             attrSet.add(key);
             if (!valuesMap[key]) valuesMap[key] = new Set();
-            if (val !== null && val !== undefined && valuesMap[key].size < 200) {
-              valuesMap[key].add(String(val));
+            if (val !== null && val !== undefined && val !== "" && valuesMap[key].size < 200) {
+              const strVal = String(val).trim();
+              if (strVal !== "") valuesMap[key].add(strVal);
             }
           }
         }
