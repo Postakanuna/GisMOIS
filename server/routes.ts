@@ -3739,6 +3739,177 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/external/layers/:layerId/features-in-polygon/:featureId", isApiAuthenticated("spatial_query"), async (req: ApiAuthenticatedRequest, res: Response) => {
+    try {
+      const apiKey = req.apiKey!;
+      const layerId = parseInt(req.params.layerId);
+      const featureIdParam = req.params.featureId;
+
+      if (isNaN(layerId)) {
+        return res.status(400).json({ error: "Bad request", message: "Invalid layerId" });
+      }
+
+      if (!featureIdParam || featureIdParam.trim() === "") {
+        return res.status(400).json({ error: "Bad request", message: "featureId is required" });
+      }
+
+      const featureId = parseInt(featureIdParam);
+      if (isNaN(featureId)) {
+        return res.status(404).json({ error: "Not found", message: `Feature with id '${featureIdParam}' not found in layer ${layerId}` });
+      }
+
+      const boundaryLayer = await storage.getEditableLayer(layerId);
+      if (!boundaryLayer) {
+        return res.status(404).json({ error: "Not found", message: "Layer not found" });
+      }
+
+      if (apiKey.sceneId && boundaryLayer.sceneId !== apiKey.sceneId) {
+        return res.status(403).json({ error: "Forbidden", message: "API key restricted to different scene" });
+      }
+
+      if (!boundaryLayer.sceneId) {
+        return res.status(400).json({ error: "Bad request", message: "Global layers are not supported for spatial queries. Layer must belong to a scene." });
+      }
+
+      const apiUser = req.apiUser!;
+      if (!apiKey.sceneId) {
+        const membership = await storage.getSceneMember(boundaryLayer.sceneId, apiUser.id);
+        if (!membership && apiUser.role !== "admin") {
+          return res.status(403).json({ error: "Forbidden", message: "Access denied to this scene" });
+        }
+      }
+
+      if (boundaryLayer.geometryType !== "Polygon" && boundaryLayer.geometryType !== "MultiPolygon") {
+        return res.status(400).json({ error: "Bad request", message: "Layer must be of type Polygon or MultiPolygon" });
+      }
+
+      const boundaryFeatureRaw = await storage.getDrawnFeature(featureId);
+      if (!boundaryFeatureRaw || boundaryFeatureRaw.layerId !== layerId) {
+        return res.status(404).json({ error: "Not found", message: `Feature with id '${featureIdParam}' not found in layer ${layerId}` });
+      }
+
+      const boundaryFeature = {
+        geometry: { type: boundaryFeatureRaw.geometryType, coordinates: boundaryFeatureRaw.coordinates },
+        properties: boundaryFeatureRaw.properties || {},
+      };
+      const boundaryFeatures = [boundaryFeature];
+
+      const sourceLayerIdsParam = req.query.sourceLayerIds;
+      let sourceLayerIds: number[] = [];
+
+      if (sourceLayerIdsParam) {
+        const raw = Array.isArray(sourceLayerIdsParam) ? sourceLayerIdsParam : [sourceLayerIdsParam];
+        sourceLayerIds = raw.map(v => parseInt(String(v))).filter(v => !isNaN(v));
+      }
+
+      if (sourceLayerIds.length === 0) {
+        const sceneLayers = await storage.getEditableLayersByScene(boundaryLayer.sceneId);
+        sourceLayerIds = sceneLayers.filter(l => l.id !== layerId).map(l => l.id);
+      }
+
+      if (sourceLayerIds.length === 0) {
+        return res.json({
+          boundaryLayer: { id: boundaryLayer.id, name: boundaryLayer.name, featureCount: 1 },
+          boundaryFeature: {
+            id: String(boundaryFeatureRaw.id),
+            properties: boundaryFeature.properties,
+            geometry: boundaryFeature.geometry,
+          },
+          results: [],
+          meta: { analyzedAt: new Date().toISOString(), totalLayersAnalyzed: 0, totalFeaturesMatched: 0 },
+        });
+      }
+
+      const includeAttrsParam = req.query.includeAttributes;
+      let includeAttributes: string[] | null = null;
+      if (includeAttrsParam) {
+        const raw = Array.isArray(includeAttrsParam) ? includeAttrsParam : [includeAttrsParam];
+        includeAttributes = raw.map(v => String(v));
+      }
+
+      const MAX_FEATURES = 10000;
+      let totalFeaturesMatched = 0;
+      const results: {
+        layerId: number;
+        layerName: string;
+        geometryType: string;
+        totalCount: number;
+        matchedCount: number;
+        features: { id: number; properties: Record<string, unknown>; geometry: { type: string; coordinates: any } }[];
+      }[] = [];
+
+      for (const srcLayerId of sourceLayerIds) {
+        const sourceLayer = await storage.getEditableLayer(srcLayerId);
+        if (!sourceLayer) continue;
+
+        if (apiKey.sceneId && sourceLayer.sceneId !== apiKey.sceneId) continue;
+        if (!apiKey.sceneId && sourceLayer.sceneId !== boundaryLayer.sceneId) continue;
+
+        const sourceFeaturesRaw = await storage.getDrawnFeatures(srcLayerId);
+        const sourceFeatures = sourceFeaturesRaw.map(f => ({
+          id: f.id,
+          geometry: { type: f.geometryType, coordinates: f.coordinates },
+          properties: f.properties || {},
+        }));
+
+        const matched = sourceFeatures.filter(feature =>
+          isFeatureInBoundary(feature, boundaryFeatures, "inside")
+        );
+
+        let featureResults = matched.map(f => {
+          let props = f.properties;
+          if (includeAttributes) {
+            const filtered: Record<string, unknown> = {};
+            for (const attr of includeAttributes) {
+              if (attr in props) filtered[attr] = props[attr];
+            }
+            props = filtered;
+          }
+          return { id: f.id, properties: props, geometry: f.geometry };
+        });
+
+        if (totalFeaturesMatched + featureResults.length > MAX_FEATURES) {
+          featureResults = featureResults.slice(0, MAX_FEATURES - totalFeaturesMatched);
+        }
+
+        totalFeaturesMatched += featureResults.length;
+
+        results.push({
+          layerId: sourceLayer.id,
+          layerName: sourceLayer.name,
+          geometryType: sourceLayer.geometryType,
+          totalCount: sourceFeatures.length,
+          matchedCount: matched.length,
+          features: featureResults,
+        });
+
+        if (totalFeaturesMatched >= MAX_FEATURES) break;
+      }
+
+      return res.json({
+        boundaryLayer: {
+          id: boundaryLayer.id,
+          name: boundaryLayer.name,
+          featureCount: 1,
+        },
+        boundaryFeature: {
+          id: String(boundaryFeatureRaw.id),
+          properties: boundaryFeature.properties,
+          geometry: boundaryFeature.geometry,
+        },
+        results,
+        meta: {
+          analyzedAt: new Date().toISOString(),
+          totalLayersAnalyzed: results.length,
+          totalFeaturesMatched,
+        },
+      });
+    } catch (error) {
+      console.error("External spatial query (single feature) API error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.get("/api/external/layers/:layerId/features-in-polygon", isApiAuthenticated("spatial_query"), async (req: ApiAuthenticatedRequest, res: Response) => {
     try {
       const apiKey = req.apiKey!;
