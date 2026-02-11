@@ -28,12 +28,13 @@ interface Scene {
   name: string;
 }
 
-type Permission = "create_point" | "read_scenes" | "read_layers";
+type Permission = "create_point" | "read_scenes" | "read_layers" | "spatial_query";
 
 const PERMISSIONS: { value: Permission; label: string }[] = [
   { value: "create_point", label: "Создание точек" },
   { value: "read_scenes", label: "Чтение сцен" },
   { value: "read_layers", label: "Чтение слоёв" },
+  { value: "spatial_query", label: "Пространственный запрос" },
 ];
 
 export function ApiKeysManager() {

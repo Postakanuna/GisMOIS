@@ -458,7 +458,7 @@ export const apiKeys = pgTable("api_keys", {
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = typeof apiKeys.$inferInsert;
 
-export const apiKeyPermissionSchema = z.enum(["create_point", "read_layers", "read_scenes"]);
+export const apiKeyPermissionSchema = z.enum(["create_point", "read_layers", "read_scenes", "spatial_query"]);
 export type ApiKeyPermission = z.infer<typeof apiKeyPermissionSchema>;
 
 export const insertApiKeySchema = z.object({
