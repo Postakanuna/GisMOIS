@@ -133,6 +133,7 @@ interface MapViewerProps {
     snapRadius: number;
     snapLayerIds: number[];
   };
+  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void } | null>;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -608,6 +609,7 @@ export function MapViewer({
   onDatasetFeatureUpdated,
   traceRouteCoordinates,
   snapSettings,
+  mapActionsRef,
 }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
@@ -2081,6 +2083,58 @@ export function MapViewer({
       }
     };
   }, [drawActionsRef]);
+
+  useEffect(() => {
+    if (mapActionsRef) {
+      mapActionsRef.current = {
+        zoomToFeature: (feature: DrawnFeature) => {
+          const map = mapRef.current;
+          if (!map) return;
+
+          const geojsonFormat = new GeoJSON();
+          const geojsonObj = {
+            type: "Feature" as const,
+            geometry: {
+              type: feature.geometryType,
+              coordinates: feature.coordinates,
+            },
+            properties: {},
+          };
+
+          try {
+            const olFeature = geojsonFormat.readFeature(geojsonObj, {
+              dataProjection: "EPSG:4326",
+              featureProjection: map.getView().getProjection(),
+            });
+            const geom = olFeature.getGeometry();
+            if (!geom) return;
+
+            const extent = geom.getExtent();
+            if (feature.geometryType === "Point") {
+              map.getView().animate({
+                center: [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2],
+                zoom: 18,
+                duration: 500,
+              });
+            } else {
+              map.getView().fit(extent, {
+                padding: [80, 80, 80, 80],
+                maxZoom: 19,
+                duration: 500,
+              });
+            }
+          } catch (e) {
+            console.error("[ZOOM TO FEATURE] Error:", e);
+          }
+        },
+      };
+    }
+    return () => {
+      if (mapActionsRef) {
+        mapActionsRef.current = null;
+      }
+    };
+  }, [mapActionsRef]);
 
   // Handle OSM base layer visibility and opacity (works without connection)
   useEffect(() => {

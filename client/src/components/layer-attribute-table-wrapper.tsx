@@ -10,12 +10,14 @@ interface LayerAttributeTableWrapperProps {
   layerId: number;
   layerName: string;
   onClose: () => void;
+  onZoomToFeature?: (feature: DrawnFeature) => void;
 }
 
 export function LayerAttributeTableWrapper({
   layerId,
   layerName,
   onClose,
+  onZoomToFeature,
 }: LayerAttributeTableWrapperProps) {
   const queryClient = useQueryClient();
   const [selectedFeatureIds, setSelectedFeatureIds] = useState<number[]>([]);
@@ -152,6 +154,7 @@ export function LayerAttributeTableWrapper({
         onSchemaUpdate={handleSchemaUpdate}
         onSelectAll={handleSelectAll}
         onClearSelection={handleClearSelection}
+        onZoomToFeature={onZoomToFeature}
         onRequestClose={handleRequestClose}
         closeRef={closeRef}
         layerName={layerName}

@@ -31,7 +31,7 @@ import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
-import type { ConnectionStatus, EditableLayer, GeometryType } from "@shared/schema";
+import type { ConnectionStatus, EditableLayer, GeometryType, DrawnFeature } from "@shared/schema";
 
 interface SceneDataset {
   id: number;
@@ -189,6 +189,7 @@ export default function Home() {
   const [showDataManager, setShowDataManager] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
   const drawActionsRef = useRef<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>(null);
+  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void } | null>(null);
   const drawing = useDrawing({ drawActionsRef });
   const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
@@ -564,6 +565,7 @@ export default function Home() {
               onDatasetFeatureUpdated={handleDatasetFeatureUpdated}
               traceRouteCoordinates={traceRouteCoords}
               snapSettings={drawing.snapSettings}
+              mapActionsRef={mapActionsRef}
             />
 
             {/* Attribute Table Modal */}
@@ -596,6 +598,7 @@ export default function Home() {
                   onSchemaUpdate={drawing.updateSchema}
                   onSelectAll={drawing.selectAllFeatures}
                   onClearSelection={drawing.clearSelection}
+                  onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
                   onRequestClose={() => setShowAttributeTable(false)}
                   closeRef={attributeTableCloseRef}
                   layerName={drawing.activeLayer.name}
@@ -619,6 +622,7 @@ export default function Home() {
                 layerId={importedLayerTable.layerId}
                 layerName={importedLayerTable.layerName}
                 onClose={() => setImportedLayerTable(null)}
+                onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
               />
             )}
 

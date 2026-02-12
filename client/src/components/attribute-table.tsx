@@ -35,7 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown, ArrowUpDown, ArrowUp, Filter, CheckSquare, Square, Undo2 } from "lucide-react";
+import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown, ArrowUpDown, ArrowUp, Filter, CheckSquare, Square, Undo2, Crosshair } from "lucide-react";
 import type { DrawnFeature, AttributeField, AttributeFieldType, LayerSchemaDefinition } from "@shared/schema";
 
 interface PendingEdit {
@@ -59,6 +59,7 @@ interface AttributeTableProps {
   onSchemaUpdate: (fields: AttributeField[]) => void;
   onSelectAll?: (featureIds: number[]) => void;
   onClearSelection?: () => void;
+  onZoomToFeature?: (feature: DrawnFeature) => void;
   onRequestClose?: (hasUnsavedChanges: boolean) => void;
   closeRef?: React.MutableRefObject<AttributeTableCloseRef | null>;
   layerName: string;
@@ -89,6 +90,7 @@ export function AttributeTable({
   onSchemaUpdate,
   onSelectAll,
   onClearSelection,
+  onZoomToFeature,
   onRequestClose,
   closeRef,
   layerName,
@@ -532,6 +534,15 @@ export function AttributeTable({
     onBatchDelete(selectedFeatureIds);
   }, [onBatchDelete, selectedFeatureIds]);
 
+  const handleZoomToSelected = useCallback(() => {
+    if (!onZoomToFeature || selectedFeatureIds.length === 0) return;
+    const targetId = selectedFeatureIds[selectedFeatureIds.length > 1 ? currentSelectedIndex : 0];
+    const feature = features.find(f => f.id === targetId);
+    if (feature) {
+      onZoomToFeature(feature);
+    }
+  }, [onZoomToFeature, selectedFeatureIds, currentSelectedIndex, features]);
+
   const renderCellValue = (feature: DrawnFeature, field: AttributeField) => {
     const pendingEdit = pendingEdits.get(feature.id);
     const displayValue = pendingEdit ? pendingEdit.newProperties[field.name] : feature.properties[field.name];
@@ -747,6 +758,22 @@ export function AttributeTable({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Удалить выбранные ({selectedFeatureIds.length})</TooltipContent>
+              </Tooltip>
+            )}
+            {onZoomToFeature && selectedFeatureIds.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={handleZoomToSelected}
+                    data-testid="button-zoom-to-feature"
+                  >
+                    <Crosshair className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Приблизить к объекту</TooltipContent>
               </Tooltip>
             )}
             {hasPendingChanges && (
