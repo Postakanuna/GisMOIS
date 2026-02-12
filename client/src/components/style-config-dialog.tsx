@@ -71,17 +71,40 @@ export function StyleConfigDialog({ open, onOpenChange, layer, onSave }: StyleCo
     setDefaultColor(sc?.defaultStyle?.color || "#888888");
   }, [layer.styleConfig, open]);
 
-  const { data: schemaData } = useQuery<{ id: number; layerId: number; fields: AttributeField[] }>({
-    queryKey: ["/api/layer-schemas", layer.id],
+  const { data: schemaData } = useQuery<{ layerId: number; fields: AttributeField[] }>({
+    queryKey: ["/api/editable-layers", layer.id, "schema"],
     queryFn: async () => {
-      const res = await fetch(`/api/layer-schemas/${layer.id}`);
-      if (!res.ok) return null;
+      const res = await fetch(`/api/editable-layers/${layer.id}/schema`);
+      if (!res.ok) return { layerId: layer.id, fields: [] };
       return res.json();
     },
     enabled: open,
   });
 
-  const fields = useMemo(() => schemaData?.fields || [], [schemaData]);
+  const { data: fallbackAttrs } = useQuery<{ name: string; type: string }[]>({
+    queryKey: ["/api/editable-layers", layer.id, "attributes-fallback"],
+    queryFn: async () => {
+      const res = await fetch(`/api/editable-layers/${layer.id}/attributes`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const attrs: string[] = Array.isArray(data) ? data : (data.attributes || []);
+      return attrs.map((a: any) => ({
+        name: typeof a === "string" ? a : (a.name || String(a)),
+        type: typeof a === "object" && a.type ? a.type : "text",
+      }));
+    },
+    enabled: open && (!schemaData || schemaData.fields.length === 0),
+  });
+
+  const fields = useMemo(() => {
+    const schemaFields = schemaData?.fields || [];
+    if (schemaFields.length > 0) return schemaFields;
+    return (fallbackAttrs || []).map(a => ({
+      name: a.name,
+      type: a.type as any,
+      required: false,
+    }));
+  }, [schemaData, fallbackAttrs]);
 
   const numericFields = useMemo(
     () => fields.filter(f => f.type === "number"),
