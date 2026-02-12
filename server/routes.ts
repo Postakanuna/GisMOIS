@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -2302,6 +2302,7 @@ export async function registerRoutes(
             layerId: feature.layerId,
             geometryType: feature.geometryType,
             coordinates: coords,
+            properties: feature.properties || {},
           };
         });
         result[id] = {
@@ -2314,6 +2315,60 @@ export async function registerRoutes(
       return res.json({ layers: result, zoom: zoomLevel });
     } catch (error) {
       console.error("Batch viewport features error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/editable-layers/:id/field-stats", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const field = req.query.field as string;
+      if (!field) {
+        return res.status(400).json({ message: "Missing field parameter" });
+      }
+      const features = await storage.getDrawnFeatures(id);
+      const nums: number[] = [];
+      for (const f of features) {
+        const raw = (f.properties as Record<string, unknown>)?.[field];
+        if (raw !== undefined && raw !== null) {
+          const n = Number(raw);
+          if (!isNaN(n)) nums.push(n);
+        }
+      }
+      if (nums.length === 0) {
+        return res.json({ min: 0, max: 100, count: 0 });
+      }
+      nums.sort((a, b) => a - b);
+      return res.json({
+        min: nums[0],
+        max: nums[nums.length - 1],
+        count: nums.length,
+      });
+    } catch (error) {
+      console.error("Error fetching field stats:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/editable-layers/:id/unique-values", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const field = req.query.field as string;
+      if (!field) {
+        return res.status(400).json({ message: "Missing field parameter" });
+      }
+      const features = await storage.getDrawnFeatures(id);
+      const valueSet = new Set<string>();
+      for (const f of features) {
+        const val = (f.properties as Record<string, unknown>)?.[field];
+        if (val !== undefined && val !== null) {
+          valueSet.add(String(val));
+        }
+      }
+      const values = Array.from(valueSet).sort();
+      return res.json({ values });
+    } catch (error) {
+      console.error("Error fetching unique values:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -2349,6 +2404,13 @@ export async function registerRoutes(
   app.patch("/api/editable-layers/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
+      if (req.body.styleConfig !== undefined) {
+        const parsed = styleConfigSchema.safeParse(req.body.styleConfig);
+        if (!parsed.success) {
+          return res.status(400).json({ message: "Invalid styleConfig", errors: parsed.error.errors });
+        }
+        req.body.styleConfig = parsed.data;
+      }
       const layer = await storage.updateEditableLayer(id, req.body);
       if (!layer) {
         return res.status(404).json({ message: "Layer not found" });

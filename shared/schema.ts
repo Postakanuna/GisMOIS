@@ -148,6 +148,43 @@ export type LineStyle = z.infer<typeof lineStyleSchema>;
 export const layerSourceSchema = z.enum(["user", "import"]);
 export type LayerSource = z.infer<typeof layerSourceSchema>;
 
+// Style renderer types (inspired by QGIS/ArcGIS)
+export const rendererTypeSchema = z.enum(["single", "categorized", "graduated"]);
+export type RendererType = z.infer<typeof rendererTypeSchema>;
+
+export const styleClassItemSchema = z.object({
+  color: z.string(),
+  pointStyle: pointStyleSchema.optional(),
+  lineStyle: lineStyleSchema.optional(),
+  strokeWidth: z.number().optional(),
+  fillOpacity: z.number().min(0).max(1).optional(),
+});
+export type StyleClassItem = z.infer<typeof styleClassItemSchema>;
+
+export const categorizedClassSchema = z.object({
+  value: z.union([z.string(), z.number(), z.boolean()]),
+  label: z.string(),
+  style: styleClassItemSchema,
+});
+export type CategorizedClass = z.infer<typeof categorizedClassSchema>;
+
+export const graduatedClassSchema = z.object({
+  min: z.number(),
+  max: z.number(),
+  label: z.string(),
+  style: styleClassItemSchema,
+});
+export type GraduatedClass = z.infer<typeof graduatedClassSchema>;
+
+export const styleConfigSchema = z.object({
+  renderer: rendererTypeSchema.default("single"),
+  field: z.string().optional(),
+  categorizedClasses: z.array(categorizedClassSchema).optional(),
+  graduatedClasses: z.array(graduatedClassSchema).optional(),
+  defaultStyle: styleClassItemSchema.optional(),
+});
+export type StyleConfig = z.infer<typeof styleConfigSchema>;
+
 // Geometry types for drawn features
 export const geometryTypeSchema = z.enum(["Point", "LineString", "Polygon"]);
 export type GeometryType = z.infer<typeof geometryTypeSchema>;
@@ -228,6 +265,7 @@ export const editableLayerSchema = z.object({
   sourceFileName: z.string().optional(), // original filename for imported layers
   sourceFiles: z.array(z.string()).optional(), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
   crs: z.string().default("EPSG:4326"), // coordinate reference system for imported layers
+  styleConfig: styleConfigSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -259,6 +297,7 @@ export const editableLayers = pgTable("editable_layers", {
   sourceFileName: text("source_file_name"), // original filename for imported layers
   sourceFiles: jsonb("source_files").default([]), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
   crs: text("crs").notNull().default("EPSG:4326"), // coordinate reference system
+  styleConfig: jsonb("style_config"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

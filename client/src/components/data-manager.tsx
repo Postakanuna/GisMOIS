@@ -69,6 +69,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { StyleConfigDialog } from "@/components/style-config-dialog";
+import type { StyleConfig } from "@shared/schema";
 
 interface EditableLayer {
   id: number;
@@ -87,6 +89,7 @@ interface EditableLayer {
   crs: string;
   createdAt: string;
   updatedAt: string;
+  styleConfig?: any;
 }
 
 const LAYER_COLORS = [
@@ -155,6 +158,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     totalRows: number;
   } | null>(null);
   const [isParsingExcel, setIsParsingExcel] = useState(false);
+  const [styleConfigLayerId, setStyleConfigLayerId] = useState<number | null>(null);
 
   const { data: sceneLayersRaw = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
@@ -218,7 +222,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   });
 
   const updateLayerStyleMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; color?: string; pointStyle?: string; lineStyle?: string; name?: string }) => {
+    mutationFn: async ({ id, ...data }: { id: number; color?: string; pointStyle?: string; lineStyle?: string; name?: string; styleConfig?: any }) => {
       const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, data);
       return res.json();
     },
@@ -819,6 +823,22 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                             </div>
                           </div>
                         )}
+                        
+                        <div className="pt-2 border-t">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs"
+                            onClick={() => setStyleConfigLayerId(layer.id)}
+                            data-testid={`button-advanced-style-${layer.id}`}
+                          >
+                            <Settings className="h-3 w-3 mr-1" />
+                            {layer.styleConfig?.renderer && layer.styleConfig.renderer !== "single"
+                              ? `${layer.styleConfig.renderer === "categorized" ? "Категоризированный" : "Градуированный"}: ${layer.styleConfig.field || ""}`
+                              : "Стилизация по атрибутам"
+                            }
+                          </Button>
+                        </div>
                       </div>
                     </PopoverContent>
                   </Popover>
@@ -1006,6 +1026,22 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           }}
         />
       )}
+
+      {styleConfigLayerId && (() => {
+        const targetLayer = sceneLayers.find(l => l.id === styleConfigLayerId);
+        if (!targetLayer) return null;
+        return (
+          <StyleConfigDialog
+            open={true}
+            onOpenChange={(open) => { if (!open) setStyleConfigLayerId(null); }}
+            layer={targetLayer}
+            onSave={(styleConfig: StyleConfig) => {
+              updateLayerStyleMutation.mutate({ id: targetLayer.id, styleConfig });
+              setStyleConfigLayerId(null);
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -21,7 +21,7 @@ import type { DrawEvent } from "ol/interaction/Draw";
 import type { ModifyEvent } from "ol/interaction/Modify";
 import "ol/ol.css";
 
-import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset } from "@shared/schema";
+import type { LayerConfig, FeatureInfo, ZuluConnection, Ticket, InsertTicket, PointStyle, LineStyle, EditableLayer, DrawnFeature, GeometryType, InsertDrawnFeature, Dataset, StyleConfig, StyleClassItem } from "@shared/schema";
 import { useScene } from "@/contexts/scene-context";
 import { useBaseLayers } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
@@ -35,6 +35,7 @@ import GeoJSON from "ol/format/GeoJSON";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { MapControls } from "./map-controls";
 import { CoordinateDisplay } from "./coordinate-display";
+import { MapLegend } from "./map-legend";
 import { FeatureInfoPanel } from "./feature-info";
 import { LoadingOverlay } from "./loading-overlay";
 import { getDistance, getLength } from "ol/sphere";
@@ -303,6 +304,102 @@ function createEditableLayerStyle(layer: EditableLayer, zoom?: number): Style | 
     stroke: createLineStroke(color, lineStyle) as Stroke,
     image: createPointImageStyle(color, pointStyle, zoom),
   });
+}
+
+function createStyleFromClassItem(classItem: StyleClassItem, fallbackLayer: EditableLayer, zoom?: number): Style | Style[] {
+  const color = classItem.color;
+  const pointStyle = classItem.pointStyle || fallbackLayer.pointStyle || "circle";
+  const lineStyle = classItem.lineStyle || fallbackLayer.lineStyle || "solid";
+  const strokeWidth = classItem.strokeWidth;
+  const fillOpacity = classItem.fillOpacity !== undefined ? classItem.fillOpacity : 0.25;
+  const fillHex = Math.round(fillOpacity * 255).toString(16).padStart(2, "0");
+
+  if (lineStyle === "double") {
+    return [
+      new Style({
+        stroke: new Stroke({ color, width: strokeWidth || 4 }),
+        fill: new Fill({ color: color + fillHex }),
+        image: createPointImageStyle(color, pointStyle, zoom),
+      }),
+      new Style({
+        stroke: new Stroke({ color: "#fff", width: 1.5 }),
+      }),
+    ];
+  }
+
+  if (isHeatNetworkLineStyle(lineStyle)) {
+    const config = getHeatNetworkLineConfig(lineStyle);
+    const styles: Style[] = [];
+    if (config.outline) {
+      styles.push(new Style({
+        stroke: new Stroke({ color: config.outlineColor || "#666", width: config.outlineWidth || config.width + 2, lineDash: config.lineDash }),
+        fill: new Fill({ color: color + fillHex }),
+      }));
+    }
+    styles.push(new Style({
+      stroke: new Stroke({ color, width: strokeWidth || config.width, lineDash: config.lineDash }),
+      fill: config.outline ? undefined : new Fill({ color: color + fillHex }),
+      image: createPointImageStyle(color, pointStyle, zoom),
+    }));
+    return styles.length === 1 ? styles[0] : styles;
+  }
+
+  return new Style({
+    fill: new Fill({ color: color + fillHex }),
+    stroke: strokeWidth
+      ? new Stroke({ color, width: strokeWidth })
+      : createLineStroke(color, lineStyle) as Stroke,
+    image: createPointImageStyle(color, pointStyle, zoom),
+  });
+}
+
+function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number): (feature: Feature) => Style | Style[] {
+  const styleConfig = layer.styleConfig as StyleConfig | undefined;
+
+  if (!styleConfig || styleConfig.renderer === "single") {
+    const baseStyle = createEditableLayerStyle(layer, zoom);
+    return () => baseStyle;
+  }
+
+  const defaultStyle = styleConfig.defaultStyle
+    ? createStyleFromClassItem(styleConfig.defaultStyle, layer, zoom)
+    : createEditableLayerStyle(layer, zoom);
+
+  if (styleConfig.renderer === "categorized" && styleConfig.field && styleConfig.categorizedClasses) {
+    const styleCache = new Map<string, Style | Style[]>();
+    for (const cls of styleConfig.categorizedClasses) {
+      const key = String(cls.value);
+      styleCache.set(key, createStyleFromClassItem(cls.style, layer, zoom));
+    }
+
+    return (feature: Feature) => {
+      const val = feature.get(styleConfig.field!);
+      if (val === undefined || val === null) return defaultStyle;
+      const cached = styleCache.get(String(val));
+      return cached || defaultStyle;
+    };
+  }
+
+  if (styleConfig.renderer === "graduated" && styleConfig.field && styleConfig.graduatedClasses) {
+    const classes = styleConfig.graduatedClasses;
+    const classStyles = classes.map(cls => createStyleFromClassItem(cls.style, layer, zoom));
+
+    return (feature: Feature) => {
+      const raw = feature.get(styleConfig.field!);
+      if (raw === undefined || raw === null) return defaultStyle;
+      const val = typeof raw === "number" ? raw : Number(raw);
+      if (isNaN(val)) return defaultStyle;
+      for (let i = 0; i < classes.length; i++) {
+        if (val >= classes[i].min && val < classes[i].max) return classStyles[i];
+      }
+      if (classes.length > 0 && val === classes[classes.length - 1].max) {
+        return classStyles[classStyles.length - 1];
+      }
+      return defaultStyle;
+    };
+  }
+
+  return () => defaultStyle;
 }
 
 // Note: Clustering removed in favor of server-side point sampling (GIS-style approach)
@@ -1259,7 +1356,7 @@ export function MapViewer({
           const editableLayerId = layer.get("editableLayerId");
           const layerData = allEditableLayersDataRef.current?.find(l => l.id === editableLayerId);
           if (layerData) {
-            layer.setStyle(createEditableLayerStyle(layerData, roundedZoom));
+            layer.setStyle(createEditableLayerStyleFunction(layerData, roundedZoom) as any);
             layer.set("lastZoom", roundedZoom);
           }
         });
@@ -1590,7 +1687,6 @@ export function MapViewer({
       const geojsonFormat = new GeoJSON();
       const layerFeatures = allLayerFeatures[editableLayerItem.id] || [];
       
-      // Convert drawn features to GeoJSON format
       const geojsonData = {
         type: "FeatureCollection" as const,
         features: layerFeatures.map(f => ({
@@ -1601,6 +1697,7 @@ export function MapViewer({
           },
           properties: {
             featureId: f.id,
+            ...f.properties,
           },
         })),
       };
@@ -1625,10 +1722,11 @@ export function MapViewer({
         // Server-side point sampling is used instead of client-side clustering
         // Points are filtered on the server based on zoom level for better performance
         const currentZoom = fetchViewport?.zoom || 10;
-        const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${currentZoom}`;
+        const styleConfigStr = editableLayerItem.styleConfig ? JSON.stringify(editableLayerItem.styleConfig) : "";
+        const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${styleConfigStr}|${currentZoom}`;
         vectorLayer = new VectorLayer({
           source: vectorSource,
-          style: createEditableLayerStyle(editableLayerItem, currentZoom),
+          style: createEditableLayerStyleFunction(editableLayerItem, currentZoom) as any,
           properties: { 
             editableLayerId: editableLayerItem.id, 
             featureCount: layerFeatures.length,
@@ -1693,7 +1791,8 @@ export function MapViewer({
       
       // Only update style when style properties actually changed
       // Use a style key to detect changes without storing duplicate values
-      const currentStyleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}`;
+      const currentStyleConfigStr = editableLayerItem.styleConfig ? JSON.stringify(editableLayerItem.styleConfig) : "";
+      const currentStyleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${currentStyleConfigStr}`;
       const storedStyleKey = vectorLayer.get("styleKey");
       
       // Skip style sync for the specific layer being auto-selected from object click
@@ -1709,8 +1808,9 @@ export function MapViewer({
       
       if (storedStyleKey !== currentStyleKey || zoomChanged) {
         const newZoom = fetchViewport?.zoom || 10;
-        vectorLayer.setStyle(createEditableLayerStyle(editableLayerItem, newZoom));
-        vectorLayer.set("styleKey", `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${newZoom}`);
+        const newStyleConfigStr = editableLayerItem.styleConfig ? JSON.stringify(editableLayerItem.styleConfig) : "";
+        vectorLayer.setStyle(createEditableLayerStyleFunction(editableLayerItem, newZoom) as any);
+        vectorLayer.set("styleKey", `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${newStyleConfigStr}|${newZoom}`);
         vectorLayer.set("lastZoom", newZoom);
       }
     });
@@ -2865,6 +2965,8 @@ export function MapViewer({
         ticketMode={ticketMode}
         onToggleTicketMode={isConnected ? onToggleTicketMode : undefined}
       />
+
+      <MapLegend layers={allEditableLayers} />
 
       <CoordinateDisplay 
         coordinates={mouseCoordinates} 
