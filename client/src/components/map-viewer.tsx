@@ -432,6 +432,35 @@ async function loadCustomIconSvgs(ids: number[]): Promise<Map<number, string>> {
   return buildIconMapFromCache(ids);
 }
 
+function stripFillFromStyle(style: Style | Style[]): Style | Style[] {
+  if (Array.isArray(style)) {
+    return style.map(s => new Style({
+      stroke: s.getStroke() || undefined,
+      image: s.getImage() || undefined,
+      text: s.getText() || undefined,
+    }));
+  }
+  return new Style({
+    stroke: style.getStroke() || undefined,
+    image: style.getImage() || undefined,
+    text: style.getText() || undefined,
+  });
+}
+
+function isLineGeometry(feature: Feature): boolean {
+  const geom = feature.getGeometry();
+  if (!geom) return false;
+  const type = geom.getType();
+  return type === 'LineString' || type === 'MultiLineString';
+}
+
+function applyGeometryAwareFill(style: Style | Style[], feature: Feature): Style | Style[] {
+  if (isLineGeometry(feature)) {
+    return stripFillFromStyle(style);
+  }
+  return style;
+}
+
 function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, customIconSvgMap?: Map<number, string>): (feature: Feature) => Style | Style[] {
   const styleConfig = layer.styleConfig as StyleConfig | undefined;
   const iconMap = customIconSvgMap || new Map<number, string>();
@@ -440,9 +469,9 @@ function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, c
     const baseStyle = createEditableLayerStyle(layer, zoom);
     if (styleConfig?.defaultStyle) {
       const styledDefault = createStyleFromClassItem(styleConfig.defaultStyle, layer, zoom, iconMap);
-      return () => styledDefault;
+      return (feature: Feature) => applyGeometryAwareFill(styledDefault, feature);
     }
-    return () => baseStyle;
+    return (feature: Feature) => applyGeometryAwareFill(baseStyle, feature);
   }
 
   const defaultStyle = styleConfig.defaultStyle
@@ -458,9 +487,9 @@ function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, c
 
     return (feature: Feature) => {
       const val = feature.get(styleConfig.field!);
-      if (val === undefined || val === null) return defaultStyle;
+      if (val === undefined || val === null) return applyGeometryAwareFill(defaultStyle, feature);
       const cached = styleCache.get(String(val));
-      return cached || defaultStyle;
+      return applyGeometryAwareFill(cached || defaultStyle, feature);
     };
   }
 
@@ -470,20 +499,20 @@ function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, c
 
     return (feature: Feature) => {
       const raw = feature.get(styleConfig.field!);
-      if (raw === undefined || raw === null) return defaultStyle;
+      if (raw === undefined || raw === null) return applyGeometryAwareFill(defaultStyle, feature);
       const val = typeof raw === "number" ? raw : Number(raw);
-      if (isNaN(val)) return defaultStyle;
+      if (isNaN(val)) return applyGeometryAwareFill(defaultStyle, feature);
       for (let i = 0; i < classes.length; i++) {
-        if (val >= classes[i].min && val < classes[i].max) return classStyles[i];
+        if (val >= classes[i].min && val < classes[i].max) return applyGeometryAwareFill(classStyles[i], feature);
       }
       if (classes.length > 0 && val === classes[classes.length - 1].max) {
-        return classStyles[classStyles.length - 1];
+        return applyGeometryAwareFill(classStyles[classStyles.length - 1], feature);
       }
-      return defaultStyle;
+      return applyGeometryAwareFill(defaultStyle, feature);
     };
   }
 
-  return () => defaultStyle;
+  return (feature: Feature) => applyGeometryAwareFill(defaultStyle, feature);
 }
 
 // Note: Clustering removed in favor of server-side point sampling (GIS-style approach)
@@ -2009,18 +2038,22 @@ export function MapViewer({
             console.warn("Failed to parse GeoJSON for dataset:", sd.datasetId, e);
           }
 
-          // Use style function for zoom-adaptive point sizing
-          const createZoomAdaptiveStyle = (layerColor: string, layerPointStyle: PointStyle, currentZoom: number) => {
-            return new Style({
+          const createZoomAdaptiveStyleFn = (layerColor: string, layerPointStyle: PointStyle, currentZoom: number) => {
+            const baseStyle = new Style({
               fill: new Fill({ color: layerColor + "33" }),
               stroke: new Stroke({ color: layerColor, width: 2 }),
               image: createPointImageStyle(layerColor, layerPointStyle, currentZoom),
             });
+            const lineStyle = new Style({
+              stroke: new Stroke({ color: layerColor, width: 2 }),
+              image: createPointImageStyle(layerColor, layerPointStyle, currentZoom),
+            });
+            return (feature: Feature) => isLineGeometry(feature) ? lineStyle : baseStyle;
           };
 
           vectorLayer = new VectorLayer({
             source: vectorSource,
-            style: createZoomAdaptiveStyle(sd.color, sd.pointStyle as PointStyle, fetchViewport.zoom),
+            style: createZoomAdaptiveStyleFn(sd.color, sd.pointStyle as PointStyle, fetchViewport.zoom) as any,
             opacity: sd.opacity,
             visible: !!sd.isVisible,
             properties: { 
@@ -2050,12 +2083,16 @@ export function MapViewer({
         const zoomChanged = Math.abs(storedZoom - fetchViewport.zoom) >= 1;
         
         if (storedColor !== sd.color || zoomChanged) {
-          const style = new Style({
+          const baseStyle = new Style({
             fill: new Fill({ color: sd.color + "33" }),
             stroke: new Stroke({ color: sd.color, width: 2 }),
             image: createPointImageStyle(sd.color, sd.pointStyle as PointStyle, fetchViewport.zoom),
           });
-          vectorLayer.setStyle(style);
+          const lineOnlyStyle = new Style({
+            stroke: new Stroke({ color: sd.color, width: 2 }),
+            image: createPointImageStyle(sd.color, sd.pointStyle as PointStyle, fetchViewport.zoom),
+          });
+          vectorLayer.setStyle(((feature: Feature) => isLineGeometry(feature) ? lineOnlyStyle : baseStyle) as any);
           vectorLayer.set("color", sd.color);
           vectorLayer.set("lastZoom", fetchViewport.zoom);
         }

@@ -384,13 +384,18 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
     // ZULU uses a perfect sphere (sradiusa=sradiusb=6378137) for its Mercator projection
     // When exporting to degrees, it uses spherical formulas which produce incorrect
     // latitude values when rendered on an ellipsoidal basemap (OpenStreetMap)
+    //
+    // IMPORTANT: Only apply correction for confirmed ZULU spherical exports.
+    // Generic "Mercator" in .prj does NOT mean spherical distortion — many tools
+    // (QGIS, ArcGIS) export proper WGS84 degrees with Mercator in their .prj metadata.
+    // Applying correction to non-ZULU data introduces a ~20-50m latitude shift.
     const isZuluSpherical = prjContent && (
       prjContent.includes('Auxiliary_Sphere') ||
       prjContent.includes('sradiusa=6378137') ||
       (prjContent.includes('SPHEROID["WGS_84"') && prjContent.includes('sradiusb=6378137'))
     );
     
-    if (isZuluSpherical || prjContent?.includes('Mercator')) {
+    if (isZuluSpherical) {
       
       // Apply spherical-to-ellipsoidal latitude correction
       const correctedFeatures: Feature[] = fc.features.map(feature => ({

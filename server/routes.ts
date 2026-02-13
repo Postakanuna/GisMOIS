@@ -3119,7 +3119,7 @@ export async function registerRoutes(
         const batch = parseResult.features.slice(i, i + BATCH_SIZE);
         const insertFeatures = batch.map((feature) => ({
           layerId: layer.id,
-          geometryType: normalizeGeometryType(feature.geometry?.type || parseResult.geometryType),
+          geometryType: feature.geometry?.type || parseResult.geometryType,
           coordinates: feature.geometry?.coordinates || [],
           properties: feature.properties || {},
         }));
