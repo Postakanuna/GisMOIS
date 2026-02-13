@@ -558,10 +558,18 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                   className="rounded border bg-background"
                   data-testid={`scene-layer-${layer.id}`}
                 >
-                  <div className="flex items-center gap-1.5 px-2 py-1">
+                  <div 
+                    className={`flex items-center gap-1.5 px-2 py-1 ${layer.styleConfig && layer.styleConfig.renderer !== "single" ? "cursor-pointer" : ""}`}
+                    onClick={() => {
+                      const sc = layer.styleConfig;
+                      if (sc && sc.renderer !== "single") {
+                        setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
+                      }
+                    }}
+                  >
                     {layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0 && (
                       <button
-                        onClick={() => setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id)}
+                        onClick={(e) => { e.stopPropagation(); setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id); }}
                         className="shrink-0 hover:bg-muted rounded"
                         data-testid={`button-expand-${layer.id}`}
                       >
@@ -604,13 +612,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                       ) : (
                         <>
                           <span 
-                            className={`text-xs font-medium truncate ${layer.styleConfig && layer.styleConfig.renderer !== "single" ? "cursor-pointer hover:underline" : ""}`}
-                            onClick={() => {
-                              const sc = layer.styleConfig;
-                              if (sc && sc.renderer !== "single") {
-                                setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
-                              }
-                            }}
+                            className="text-xs font-medium truncate"
                             data-testid={`label-layer-name-${layer.id}`}
                           >
                             {layer.name}
@@ -623,7 +625,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                               variant="ghost"
                               size="icon"
                               className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
-                              onClick={() => handleStartEditing(layer)}
+                              onClick={(e) => { e.stopPropagation(); handleStartEditing(layer); }}
                               data-testid={`button-edit-name-${layer.id}`}
                             >
                               <Pencil className="h-2.5 w-2.5" />
@@ -638,7 +640,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => setStyleConfigLayerId(layer.id)}
+                          onClick={(e) => { e.stopPropagation(); setStyleConfigLayerId(layer.id); }}
                           data-testid={`button-layer-style-${layer.id}`}
                         >
                           <Palette className="h-3.5 w-3.5" />
@@ -656,7 +658,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
-                          onClick={() => onOpenAttributeTable(layer.id, layer.name)}
+                          onClick={(e) => { e.stopPropagation(); onOpenAttributeTable(layer.id, layer.name); }}
                           data-testid={`button-attribute-table-${layer.id}`}
                         >
                           <Table2 className="h-3.5 w-3.5" />
@@ -672,10 +674,10 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
-                        onClick={() => toggleVisibilityMutation.mutate({
+                        onClick={(e) => { e.stopPropagation(); toggleVisibilityMutation.mutate({
                           id: layer.id,
                           visible: !layer.visible,
-                        })}
+                        }); }}
                         data-testid={`button-toggle-visibility-${layer.id}`}
                       >
                         {layer.visible ? (
@@ -694,7 +696,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 text-destructive"
-                        onClick={() => deleteLayerMutation.mutate(layer.id)}
+                        onClick={(e) => { e.stopPropagation(); deleteLayerMutation.mutate(layer.id); }}
                         data-testid={`button-delete-layer-${layer.id}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
