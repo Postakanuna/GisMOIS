@@ -158,6 +158,8 @@ export const styleClassItemSchema = z.object({
   lineStyle: lineStyleSchema.optional(),
   strokeWidth: z.number().optional(),
   fillOpacity: z.number().min(0).max(1).optional(),
+  iconSize: z.number().min(4).max(128).optional(),
+  customIconId: z.number().optional(),
 });
 export type StyleClassItem = z.infer<typeof styleClassItemSchema>;
 
@@ -479,6 +481,26 @@ export const insertUploadSchema = z.object({
   filename: z.string(),
   originalFilename: z.string(),
   createdBy: z.string(),
+});
+
+// Custom icons - user-uploaded SVG icons for styling
+export const customIcons = pgTable("custom_icons", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  svgContent: text("svg_content").notNull(),
+  category: text("category").default("custom"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type CustomIcon = typeof customIcons.$inferSelect;
+export type InsertCustomIcon = typeof customIcons.$inferInsert;
+
+export const insertCustomIconSchema = z.object({
+  name: z.string().min(1),
+  svgContent: z.string().min(1),
+  category: z.string().default("custom"),
+  createdBy: z.string().optional(),
 });
 
 // API Keys for external integrations (Telegram bot, etc.)

@@ -3681,6 +3681,88 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // CUSTOM ICONS API
+  // ============================================
+
+  app.get("/api/custom-icons", async (_req: Request, res: Response) => {
+    try {
+      const icons = await storage.getCustomIcons();
+      return res.json(icons);
+    } catch (error) {
+      console.error("Error fetching custom icons:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/custom-icons/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const icon = await storage.getCustomIcon(id);
+      if (!icon) {
+        return res.status(404).json({ message: "Icon not found" });
+      }
+      return res.json(icon);
+    } catch (error) {
+      console.error("Error fetching custom icon:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/custom-icons/:id/svg", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const color = (req.query.color as string) || "#000000";
+      const icon = await storage.getCustomIcon(id);
+      if (!icon) {
+        return res.status(404).json({ message: "Icon not found" });
+      }
+      let svg = icon.svgContent;
+      svg = svg.replace(/\{color\}/g, color);
+      svg = svg.replace(/currentColor/g, color);
+      res.setHeader("Content-Type", "image/svg+xml");
+      return res.send(svg);
+    } catch (error) {
+      console.error("Error fetching custom icon SVG:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/custom-icons", async (req: Request, res: Response) => {
+    try {
+      const { name, svgContent, category } = req.body;
+      if (!name || !svgContent) {
+        return res.status(400).json({ message: "Name and svgContent are required" });
+      }
+      if (!svgContent.includes("<svg")) {
+        return res.status(400).json({ message: "Invalid SVG content" });
+      }
+      const icon = await storage.createCustomIcon({
+        name,
+        svgContent,
+        category: category || "custom",
+      });
+      return res.status(201).json(icon);
+    } catch (error) {
+      console.error("Error creating custom icon:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/custom-icons/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteCustomIcon(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Icon not found" });
+      }
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting custom icon:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
   // EXTERNAL API (for Telegram bot and other integrations)
   // ============================================
 

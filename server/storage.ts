@@ -12,8 +12,9 @@ import {
   type Upload, type InsertUpload,
   type SceneRole,
   type ApiKey, type InsertApiKey, type ApiKeyPermission,
+  type CustomIcon, type InsertCustomIcon,
   editableLayers, drawnFeatures, layerSchemas,
-  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys
+  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, sql, and, inArray, gte, lte } from "drizzle-orm";
@@ -94,6 +95,12 @@ export interface IStorage {
   createApiKey(apiKey: { userId: string; name: string; tokenHash: string; sceneId?: number; permissions?: ApiKeyPermission[] }): Promise<ApiKey>;
   updateApiKeyLastUsed(id: number): Promise<void>;
   revokeApiKey(id: number): Promise<boolean>;
+  
+  // Custom icons methods
+  getCustomIcons(): Promise<CustomIcon[]>;
+  getCustomIcon(id: number): Promise<CustomIcon | undefined>;
+  createCustomIcon(icon: { name: string; svgContent: string; category?: string; createdBy?: string }): Promise<CustomIcon>;
+  deleteCustomIcon(id: number): Promise<boolean>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -790,6 +797,30 @@ export class DatabaseStorage implements IStorage {
       .set({ isActive: 0 })
       .where(eq(apiKeys.id, id))
       .returning();
+    return !!row;
+  }
+
+  async getCustomIcons(): Promise<CustomIcon[]> {
+    return db.select().from(customIcons).orderBy(customIcons.createdAt);
+  }
+
+  async getCustomIcon(id: number): Promise<CustomIcon | undefined> {
+    const [row] = await db.select().from(customIcons).where(eq(customIcons.id, id));
+    return row;
+  }
+
+  async createCustomIcon(icon: { name: string; svgContent: string; category?: string; createdBy?: string }): Promise<CustomIcon> {
+    const [row] = await db.insert(customIcons).values({
+      name: icon.name,
+      svgContent: icon.svgContent,
+      category: icon.category || "custom",
+      createdBy: icon.createdBy || null,
+    }).returning();
+    return row;
+  }
+
+  async deleteCustomIcon(id: number): Promise<boolean> {
+    const [row] = await db.delete(customIcons).where(eq(customIcons.id, id)).returning();
     return !!row;
   }
 }

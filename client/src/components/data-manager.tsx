@@ -22,29 +22,14 @@ import {
   FileUp,
   Loader2,
   Palette,
-  Circle,
-  Square,
-  Triangle,
-  Cloud,
-  Minus,
-  MoreHorizontal,
   Pencil,
   Check,
   FileText,
   ChevronDown,
   ChevronRight,
-  Flame,
-  Building2,
-  Home,
-  Gauge,
-  Box,
-  Zap,
-  Waves,
-  Anchor,
   FileSpreadsheet,
   Map,
   Globe,
-  Settings,
   Table2,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
@@ -52,25 +37,8 @@ import { useProjection } from "@/contexts/projection-context";
 import { type ProjectionType } from "@/lib/projections";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { 
-  getHeatNetworkPreviewIcon, 
-  isHeatNetworkStyle,
-  type HeatNetworkPointStyle 
-} from "@/lib/heat-network-icons";
-import {
-  getHeatNetworkLineStyles,
-  getLinePreviewDataUrl,
-  isHeatNetworkLineStyle,
-  type HeatNetworkLineStyle
-} from "@/lib/heat-network-lines";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { StyleConfigDialog } from "@/components/style-config-dialog";
-import type { StyleConfig } from "@shared/schema";
+import { LayerStylePanel } from "@/components/layer-style-panel";
 
 interface EditableLayer {
   id: number;
@@ -92,38 +60,6 @@ interface EditableLayer {
   styleConfig?: any;
 }
 
-const LAYER_COLORS = [
-  "#1976D2", "#D32F2F", "#388E3C", "#7B1FA2",
-  "#F57C00", "#0097A7", "#C2185B", "#512DA8",
-];
-
-// Basic geometric shapes
-const BASIC_POINT_STYLES = [
-  { value: "circle", label: "Круг", icon: Circle },
-  { value: "square", label: "Квадрат", icon: Square },
-  { value: "triangle", label: "Треугольник", icon: Triangle },
-  { value: "cloud", label: "Облачко", icon: Cloud },
-];
-
-// ГОСТ heat network symbols - using lucide icons as fallback for palette display
-const HEAT_NETWORK_STYLES: { value: HeatNetworkPointStyle; label: string; icon: typeof Flame }[] = [
-  { value: "heat-source", label: "Теплоисточник", icon: Flame },
-  { value: "ctp", label: "ЦТП", icon: Building2 },
-  { value: "itp", label: "ИТП", icon: Home },
-  { value: "valve", label: "Задвижка", icon: Gauge },
-  { value: "heat-chamber", label: "Тепловая камера", icon: Box },
-  { value: "pump-station", label: "Насосная станция", icon: Zap },
-  { value: "compensator", label: "Компенсатор", icon: Waves },
-  { value: "support", label: "Опора", icon: Anchor },
-];
-
-const BASIC_LINE_STYLES = [
-  { value: "solid", label: "Сплошная" },
-  { value: "dashed", label: "Пунктирная" },
-  { value: "double", label: "Двойная" },
-];
-
-const HEAT_NETWORK_LINE_STYLES = getHeatNetworkLineStyles();
 
 interface DataManagerProps {
   onClose: () => void;
@@ -686,162 +622,21 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                       )}
                     </div>
                   
-                    <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        data-testid={`button-layer-style-${layer.id}`}
-                      >
-                        <Palette className="h-3.5 w-3.5" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 p-3" align="end">
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-xs font-medium mb-2">Цвет</p>
-                          <div className="flex flex-wrap gap-1">
-                            {LAYER_COLORS.map((color) => (
-                              <button
-                                key={color}
-                                className={`h-6 w-6 rounded-sm border ${layer.color === color ? "ring-2 ring-primary ring-offset-1" : ""}`}
-                                style={{ backgroundColor: color }}
-                                onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, color })}
-                                data-testid={`color-option-${layer.id}-${color}`}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        
-                        {layer.geometryType === "Point" && (
-                          <div className="space-y-3">
-                            <div>
-                              <p className="text-xs font-medium mb-2">Базовые формы</p>
-                              <div className="flex flex-wrap gap-1">
-                                {BASIC_POINT_STYLES.map(({ value, label, icon: Icon }) => (
-                                  <Tooltip key={value}>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        className={`h-7 w-7 flex items-center justify-center rounded border ${layer.pointStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
-                                        onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, pointStyle: value })}
-                                        data-testid={`point-style-${layer.id}-${value}`}
-                                      >
-                                        <Icon className="h-4 w-4" />
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">
-                                      <p className="text-xs">{label}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ))}
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <p className="text-xs font-medium mb-2">Тепловые сети (ГОСТ)</p>
-                              <div className="flex flex-wrap gap-1">
-                                {HEAT_NETWORK_STYLES.map(({ value, label, icon: Icon }) => (
-                                  <Tooltip key={value}>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        className={`h-7 w-7 flex items-center justify-center rounded border ${layer.pointStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
-                                        onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, pointStyle: value })}
-                                        data-testid={`point-style-${layer.id}-${value}`}
-                                      >
-                                        {isHeatNetworkStyle(value) ? (
-                                          <img 
-                                            src={getHeatNetworkPreviewIcon(value, layer.color)} 
-                                            alt={label}
-                                            className="h-5 w-5"
-                                          />
-                                        ) : (
-                                          <Icon className="h-4 w-4" />
-                                        )}
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">
-                                      <p className="text-xs">{label}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {layer.geometryType === "LineString" && (
-                          <div className="space-y-3">
-                            <div>
-                              <p className="text-xs font-medium mb-2">Базовые стили</p>
-                              <div className="flex gap-1">
-                                {BASIC_LINE_STYLES.map(({ value, label }) => (
-                                  <Tooltip key={value}>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        className={`h-7 px-2 flex items-center justify-center rounded border text-xs ${layer.lineStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
-                                        onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, lineStyle: value })}
-                                        data-testid={`line-style-${layer.id}-${value}`}
-                                      >
-                                        {value === "solid" && <Minus className="h-4 w-4" />}
-                                        {value === "dashed" && <MoreHorizontal className="h-4 w-4" />}
-                                        {value === "double" && <span className="font-bold">=</span>}
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">
-                                      <p className="text-xs">{label}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ))}
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <p className="text-xs font-medium mb-2">Тепловые сети (ГОСТ)</p>
-                              <div className="flex flex-wrap gap-1">
-                                {HEAT_NETWORK_LINE_STYLES.map(({ value, label }) => (
-                                  <Tooltip key={value}>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        className={`h-8 px-1 flex items-center justify-center rounded border ${layer.lineStyle === value ? "bg-primary/20 border-primary" : "border-border"}`}
-                                        onClick={() => updateLayerStyleMutation.mutate({ id: layer.id, lineStyle: value })}
-                                        data-testid={`line-style-${layer.id}-${value}`}
-                                      >
-                                        <img 
-                                          src={getLinePreviewDataUrl(value, layer.color)} 
-                                          alt={label}
-                                          className="h-4 w-12"
-                                        />
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom">
-                                      <p className="text-xs">{label}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="pt-2 border-t">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full text-xs"
-                            onClick={() => setStyleConfigLayerId(layer.id)}
-                            data-testid={`button-advanced-style-${layer.id}`}
-                          >
-                            <Settings className="h-3 w-3 mr-1" />
-                            {layer.styleConfig?.renderer && layer.styleConfig.renderer !== "single"
-                              ? `${layer.styleConfig.renderer === "categorized" ? "Категоризированный" : "Градуированный"}: ${layer.styleConfig.field || ""}`
-                              : "Стилизация по атрибутам"
-                            }
-                          </Button>
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setStyleConfigLayerId(layer.id)}
+                          data-testid={`button-layer-style-${layer.id}`}
+                        >
+                          <Palette className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="text-xs">Стилизация слоя</p>
+                      </TooltipContent>
+                    </Tooltip>
                   
                   {onOpenAttributeTable && (
                     <Tooltip>
@@ -1031,12 +826,12 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         const targetLayer = sceneLayers.find(l => l.id === styleConfigLayerId);
         if (!targetLayer) return null;
         return (
-          <StyleConfigDialog
+          <LayerStylePanel
             open={true}
             onOpenChange={(open) => { if (!open) setStyleConfigLayerId(null); }}
             layer={targetLayer}
-            onSave={(styleConfig: StyleConfig) => {
-              updateLayerStyleMutation.mutate({ id: targetLayer.id, styleConfig });
+            onSave={(updates) => {
+              updateLayerStyleMutation.mutate({ id: targetLayer.id, ...updates });
               setStyleConfigLayerId(null);
             }}
           />

@@ -166,27 +166,80 @@ function getPointSizeForZoom(zoom: number): { radius: number; strokeWidth: numbe
   }
 }
 
+const customIconCache = new Map<number, string>();
+const customIconFetchPromises = new Map<number, Promise<string | null>>();
+
+function fetchCustomIconSvg(iconId: number): Promise<string | null> {
+  if (customIconCache.has(iconId)) return Promise.resolve(customIconCache.get(iconId)!);
+  if (customIconFetchPromises.has(iconId)) return customIconFetchPromises.get(iconId)!;
+  const promise = fetch(`/api/custom-icons/${iconId}`)
+    .then(res => { if (!res.ok) return null; return res.json(); })
+    .then(data => { if (data?.svgContent) { customIconCache.set(iconId, data.svgContent); return data.svgContent; } return null; })
+    .catch(() => null)
+    .finally(() => { customIconFetchPromises.delete(iconId); });
+  customIconFetchPromises.set(iconId, promise);
+  return promise;
+}
+
+function buildIconMapFromCache(ids: number[]): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const id of ids) {
+    const svg = customIconCache.get(id);
+    if (svg) map.set(id, svg);
+  }
+  return map;
+}
+
+function allIconsCached(ids: number[]): boolean {
+  return ids.every(id => customIconCache.has(id));
+}
+
+function createCustomIconImage(svgContent: string, color: string, iconSize: number, zoom?: number): Icon {
+  const sizes = getPointSizeForZoom(zoom ?? 10);
+  let svg = svgContent.replace(/\{color\}/g, color);
+  svg = svg.replace(/currentColor/g, color);
+  const encoded = encodeURIComponent(svg);
+  const dataUrl = `data:image/svg+xml,${encoded}`;
+  const baseScale = iconSize / 24;
+  return new Icon({
+    src: dataUrl,
+    scale: baseScale * sizes.iconScale,
+    anchor: [0.5, 0.5],
+    anchorXUnits: 'fraction',
+    anchorYUnits: 'fraction',
+  });
+}
+
 // Helper function to create point image style based on pointStyle and zoom
 function createPointImageStyle(
   color: string, 
   pointStyle: PointStyle = "circle",
-  zoom?: number
+  zoom?: number,
+  iconSize?: number,
+  customIconSvg?: string
 ): Circle | RegularShape | Icon {
   const sizes = getPointSizeForZoom(zoom ?? 10);
+  const sizeMultiplier = iconSize ? iconSize / 24 : 1;
   const fill = new Fill({ color });
   const stroke = new Stroke({ color: "#fff", width: sizes.strokeWidth });
+
+  if (customIconSvg) {
+    return createCustomIconImage(customIconSvg, color, iconSize || 24, zoom);
+  }
   
   // Check if it's a heat network style
   if (isHeatNetworkStyle(pointStyle)) {
     const iconUrl = getHeatNetworkIconUrl(pointStyle as HeatNetworkPointStyle, color);
     return new Icon({
       src: iconUrl,
-      scale: sizes.iconScale,
+      scale: sizes.iconScale * sizeMultiplier,
       anchor: [0.5, 0.5],
       anchorXUnits: 'fraction',
       anchorYUnits: 'fraction',
     });
   }
+  
+  const scaledRadius = sizes.radius * sizeMultiplier;
   
   switch (pointStyle) {
     case "square":
@@ -194,7 +247,7 @@ function createPointImageStyle(
         fill,
         stroke,
         points: 4,
-        radius: sizes.radius,
+        radius: scaledRadius,
         angle: Math.PI / 4,
       });
     case "triangle":
@@ -202,7 +255,7 @@ function createPointImageStyle(
         fill,
         stroke,
         points: 3,
-        radius: sizes.radius,
+        radius: scaledRadius,
         angle: 0,
       });
     case "cloud":
@@ -210,14 +263,14 @@ function createPointImageStyle(
         fill,
         stroke,
         points: 5,
-        radius: sizes.radius,
-        radius2: sizes.radius * 0.6,
+        radius: scaledRadius,
+        radius2: scaledRadius * 0.6,
         angle: 0,
       });
     case "circle":
     default:
       return new Circle({
-        radius: sizes.radius,
+        radius: scaledRadius,
         fill,
         stroke,
       });
@@ -306,20 +359,22 @@ function createEditableLayerStyle(layer: EditableLayer, zoom?: number): Style | 
   });
 }
 
-function createStyleFromClassItem(classItem: StyleClassItem, fallbackLayer: EditableLayer, zoom?: number): Style | Style[] {
+function createStyleFromClassItem(classItem: StyleClassItem, fallbackLayer: EditableLayer, zoom?: number, customIconSvgMap?: Map<number, string>): Style | Style[] {
   const color = classItem.color;
   const pointStyle = classItem.pointStyle || fallbackLayer.pointStyle || "circle";
   const lineStyle = classItem.lineStyle || fallbackLayer.lineStyle || "solid";
   const strokeWidth = classItem.strokeWidth;
   const fillOpacity = classItem.fillOpacity !== undefined ? classItem.fillOpacity : 0.25;
   const fillHex = Math.round(fillOpacity * 255).toString(16).padStart(2, "0");
+  const iconSize = classItem.iconSize;
+  const customIconSvg = classItem.customIconId && customIconSvgMap ? customIconSvgMap.get(classItem.customIconId) : undefined;
 
   if (lineStyle === "double") {
     return [
       new Style({
         stroke: new Stroke({ color, width: strokeWidth || 4 }),
         fill: new Fill({ color: color + fillHex }),
-        image: createPointImageStyle(color, pointStyle, zoom),
+        image: createPointImageStyle(color, pointStyle, zoom, iconSize, customIconSvg),
       }),
       new Style({
         stroke: new Stroke({ color: "#fff", width: 1.5 }),
@@ -339,7 +394,7 @@ function createStyleFromClassItem(classItem: StyleClassItem, fallbackLayer: Edit
     styles.push(new Style({
       stroke: new Stroke({ color, width: strokeWidth || config.width, lineDash: config.lineDash }),
       fill: config.outline ? undefined : new Fill({ color: color + fillHex }),
-      image: createPointImageStyle(color, pointStyle, zoom),
+      image: createPointImageStyle(color, pointStyle, zoom, iconSize, customIconSvg),
     }));
     return styles.length === 1 ? styles[0] : styles;
   }
@@ -349,27 +404,57 @@ function createStyleFromClassItem(classItem: StyleClassItem, fallbackLayer: Edit
     stroke: strokeWidth
       ? new Stroke({ color, width: strokeWidth })
       : createLineStroke(color, lineStyle) as Stroke,
-    image: createPointImageStyle(color, pointStyle, zoom),
+    image: createPointImageStyle(color, pointStyle, zoom, iconSize, customIconSvg),
   });
 }
 
-function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number): (feature: Feature) => Style | Style[] {
+function collectCustomIconIds(styleConfig?: StyleConfig): number[] {
+  if (!styleConfig) return [];
+  const ids: number[] = [];
+  if (styleConfig.defaultStyle?.customIconId) ids.push(styleConfig.defaultStyle.customIconId);
+  if (styleConfig.categorizedClasses) {
+    for (const cls of styleConfig.categorizedClasses) {
+      if (cls.style.customIconId) ids.push(cls.style.customIconId);
+    }
+  }
+  if (styleConfig.graduatedClasses) {
+    for (const cls of styleConfig.graduatedClasses) {
+      if (cls.style.customIconId) ids.push(cls.style.customIconId);
+    }
+  }
+  return [...new Set(ids)];
+}
+
+async function loadCustomIconSvgs(ids: number[]): Promise<Map<number, string>> {
+  const uncached = ids.filter(id => !customIconCache.has(id));
+  if (uncached.length > 0) {
+    await Promise.all(uncached.map(id => fetchCustomIconSvg(id)));
+  }
+  return buildIconMapFromCache(ids);
+}
+
+function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, customIconSvgMap?: Map<number, string>): (feature: Feature) => Style | Style[] {
   const styleConfig = layer.styleConfig as StyleConfig | undefined;
+  const iconMap = customIconSvgMap || new Map<number, string>();
 
   if (!styleConfig || styleConfig.renderer === "single") {
     const baseStyle = createEditableLayerStyle(layer, zoom);
+    if (styleConfig?.defaultStyle) {
+      const styledDefault = createStyleFromClassItem(styleConfig.defaultStyle, layer, zoom, iconMap);
+      return () => styledDefault;
+    }
     return () => baseStyle;
   }
 
   const defaultStyle = styleConfig.defaultStyle
-    ? createStyleFromClassItem(styleConfig.defaultStyle, layer, zoom)
+    ? createStyleFromClassItem(styleConfig.defaultStyle, layer, zoom, iconMap)
     : createEditableLayerStyle(layer, zoom);
 
   if (styleConfig.renderer === "categorized" && styleConfig.field && styleConfig.categorizedClasses) {
     const styleCache = new Map<string, Style | Style[]>();
     for (const cls of styleConfig.categorizedClasses) {
       const key = String(cls.value);
-      styleCache.set(key, createStyleFromClassItem(cls.style, layer, zoom));
+      styleCache.set(key, createStyleFromClassItem(cls.style, layer, zoom, iconMap));
     }
 
     return (feature: Feature) => {
@@ -382,7 +467,7 @@ function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number): 
 
   if (styleConfig.renderer === "graduated" && styleConfig.field && styleConfig.graduatedClasses) {
     const classes = styleConfig.graduatedClasses;
-    const classStyles = classes.map(cls => createStyleFromClassItem(cls.style, layer, zoom));
+    const classStyles = classes.map(cls => createStyleFromClassItem(cls.style, layer, zoom, iconMap));
 
     return (feature: Feature) => {
       const raw = feature.get(styleConfig.field!);
@@ -1351,12 +1436,13 @@ export function MapViewer({
       if (roundedZoom !== lastRoundedZoom) {
         lastStyleZoomRef.current = currentZoom;
         
-        // Update editable layer styles
         allEditableLayersRef.current.forEach((layer) => {
           const editableLayerId = layer.get("editableLayerId");
           const layerData = allEditableLayersDataRef.current?.find(l => l.id === editableLayerId);
           if (layerData) {
-            layer.setStyle(createEditableLayerStyleFunction(layerData, roundedZoom) as any);
+            const iconIds = collectCustomIconIds(layerData.styleConfig as StyleConfig | undefined);
+            const cachedMap = iconIds.length > 0 ? buildIconMapFromCache(iconIds) : undefined;
+            layer.setStyle(createEditableLayerStyleFunction(layerData, roundedZoom, cachedMap) as any);
             layer.set("lastZoom", roundedZoom);
           }
         });
@@ -1724,9 +1810,13 @@ export function MapViewer({
         const currentZoom = fetchViewport?.zoom || 10;
         const styleConfigStr = editableLayerItem.styleConfig ? JSON.stringify(editableLayerItem.styleConfig) : "";
         const styleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${styleConfigStr}|${currentZoom}`;
+
+        const iconIds = collectCustomIconIds(editableLayerItem.styleConfig as StyleConfig | undefined);
+        const cachedIconMap = iconIds.length > 0 ? buildIconMapFromCache(iconIds) : undefined;
+
         vectorLayer = new VectorLayer({
           source: vectorSource,
-          style: createEditableLayerStyleFunction(editableLayerItem, currentZoom) as any,
+          style: createEditableLayerStyleFunction(editableLayerItem, currentZoom, cachedIconMap) as any,
           properties: { 
             editableLayerId: editableLayerItem.id, 
             featureCount: layerFeatures.length,
@@ -1742,6 +1832,16 @@ export function MapViewer({
         
         map.addLayer(vectorLayer);
         allEditableLayersRef.current.set(editableLayerItem.id, vectorLayer);
+
+        if (iconIds.length > 0 && !allIconsCached(iconIds)) {
+          const layerRef = vectorLayer;
+          const layerStyleKey = styleKey;
+          loadCustomIconSvgs(iconIds).then(iconMap => {
+            if (layerRef.get("styleKey") === layerStyleKey) {
+              layerRef.setStyle(createEditableLayerStyleFunction(editableLayerItem, currentZoom, iconMap) as any);
+            }
+          });
+        }
       } else {
         const hasDataForLayer = allLayerFeatures[editableLayerItem.id] !== undefined;
         if (hasDataForLayer) {
@@ -1809,9 +1909,21 @@ export function MapViewer({
       if (storedStyleKey !== currentStyleKey || zoomChanged) {
         const newZoom = fetchViewport?.zoom || 10;
         const newStyleConfigStr = editableLayerItem.styleConfig ? JSON.stringify(editableLayerItem.styleConfig) : "";
-        vectorLayer.setStyle(createEditableLayerStyleFunction(editableLayerItem, newZoom) as any);
-        vectorLayer.set("styleKey", `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${newStyleConfigStr}|${newZoom}`);
+        const newFullStyleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${newStyleConfigStr}|${newZoom}`;
+        const iconIds = collectCustomIconIds(editableLayerItem.styleConfig as StyleConfig | undefined);
+        const cachedMap = iconIds.length > 0 ? buildIconMapFromCache(iconIds) : undefined;
+        vectorLayer.setStyle(createEditableLayerStyleFunction(editableLayerItem, newZoom, cachedMap) as any);
+        vectorLayer.set("styleKey", newFullStyleKey);
         vectorLayer.set("lastZoom", newZoom);
+
+        if (iconIds.length > 0 && !allIconsCached(iconIds)) {
+          const layerRef = vectorLayer;
+          loadCustomIconSvgs(iconIds).then(iconMap => {
+            if (layerRef.get("styleKey") === newFullStyleKey) {
+              layerRef.setStyle(createEditableLayerStyleFunction(editableLayerItem, newZoom, iconMap) as any);
+            }
+          });
+        }
       }
     });
   }, [allEditableLayers, allLayerFeatures, isFetchingFeatures, fetchViewport]);
