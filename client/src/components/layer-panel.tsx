@@ -132,6 +132,7 @@ export function LayerPanel({
   const [newLayerDialogOpen, setNewLayerDialogOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerGeomType, setNewLayerGeomType] = useState<GeometryType>("Point");
+  const [legendLayerId, setLegendLayerId] = useState<number | null>(null);
 
   const { data: sceneDatasets = [] } = useQuery<SceneDataset[]>({
     queryKey: ["/api/scenes", currentSceneId, "datasets"],
@@ -563,48 +564,96 @@ export function LayerPanel({
           </AccordionTrigger>
           <AccordionContent className="space-y-1 pt-1 min-w-0">
             <div className="space-y-1 min-w-0">
-              {editableLayers.map((layer) => (
-                <div
-                  key={layer.id}
-                  className={`flex items-center gap-1 rounded-md border px-2 py-1 cursor-pointer transition-colors overflow-hidden ${
+              {editableLayers.map((layer) => {
+                const sc = layer.styleConfig as any;
+                const hasLegend = sc && sc.renderer !== "single";
+                return (
+                  <div key={layer.id} className={`rounded-md border transition-colors overflow-hidden ${
                     activeEditableLayer?.id === layer.id
                       ? "border-primary bg-primary/10"
                       : "border-sidebar-border hover:bg-accent/50"
-                  }`}
-                  onClick={() => {
-                    if (activeEditableLayer?.id !== layer.id) {
-                      onSelectEditableLayer?.(layer);
-                    }
-                  }}
-                  data-testid={`editable-layer-item-${layer.id}`}
-                >
-                  {/* Left controls - color indicator */}
-                  <div className="flex items-center gap-1 shrink-0">
+                  }`}>
                     <div
-                      className="h-3 w-3 rounded-sm"
-                      style={{ backgroundColor: layer.color }}
-                    />
-                  </div>
-                  
-                  {/* Layer name - flex-1 min-w-0 to allow shrinking */}
-                  <div className="flex-1 min-w-0 flex items-center gap-1">
-                    <span className="text-xs font-medium" title={layer.name}>
-                      {truncateName(layer.name)}
-                    </span>
-                    {layer.source === "import" && (
-                      <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                      className="flex items-center gap-1 px-2 py-1 cursor-pointer"
+                      onClick={() => {
+                        if (hasLegend) {
+                          setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
+                        }
+                        if (activeEditableLayer?.id !== layer.id) {
+                          onSelectEditableLayer?.(layer);
+                        }
+                      }}
+                      data-testid={`editable-layer-item-${layer.id}`}
+                    >
+                      <div className="flex items-center gap-1 shrink-0">
+                        <div
+                          className="h-3 w-3 rounded-sm"
+                          style={{ backgroundColor: layer.color }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0 flex items-center gap-1">
+                        <span className="text-xs font-medium" title={layer.name}>
+                          {truncateName(layer.name)}
+                        </span>
+                        {layer.source === "import" && (
+                          <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                        )}
+                        {!layer.visible && (
+                          <EyeOff className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                        )}
+                        {hasLegend && (
+                          <ChevronRight className={`h-2.5 w-2.5 text-muted-foreground shrink-0 transition-transform ${legendLayerId === layer.id ? "rotate-90" : ""}`} />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {layer.featureCount || 0}
+                      </span>
+                    </div>
+                    {legendLayerId === layer.id && hasLegend && (
+                      <div className="px-3 py-2 border-t bg-muted/20 space-y-1" data-testid={`legend-layer-${layer.id}`}>
+                        <p className="text-[10px] text-muted-foreground font-medium mb-1">
+                          {sc.renderer === "categorized" ? "Категории" : "Градация"}: {sc.field}
+                        </p>
+                        {sc.renderer === "categorized" && sc.categorizedClasses && (
+                          <div className="space-y-0.5">
+                            {sc.categorizedClasses.map((cls: any, i: number) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <span
+                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                                  style={{ backgroundColor: cls.style.color }}
+                                />
+                                <span className="text-[11px] truncate">{cls.label || String(cls.value)}</span>
+                              </div>
+                            ))}
+                            {sc.defaultStyle && (
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                                  style={{ backgroundColor: sc.defaultStyle.color }}
+                                />
+                                <span className="text-[11px] truncate text-muted-foreground">Прочее</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {sc.renderer === "graduated" && sc.graduatedClasses && (
+                          <div className="space-y-0.5">
+                            {sc.graduatedClasses.map((cls: any, i: number) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <span
+                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                                  style={{ backgroundColor: cls.style.color }}
+                                />
+                                <span className="text-[11px] truncate">{cls.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     )}
-                    {!layer.visible && (
-                      <EyeOff className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-                    )}
                   </div>
-                  
-                  {/* Right - feature count */}
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {layer.featureCount || 0}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
               {editableLayers.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-2">
                   Нажмите "+" для создания слоя
