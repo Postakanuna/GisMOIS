@@ -1852,12 +1852,23 @@ export function MapViewer({
               const existingFeatures = sourceToUpdate.getFeatures();
               const existingIds = new Set<number>();
 
+              const featurePropsMap = new Map<number, Record<string, any>>();
+              for (const f of layerFeatures) {
+                if (f.properties) featurePropsMap.set(f.id, f.properties);
+              }
+
               for (const olFeature of existingFeatures) {
                 const fId = olFeature.get("featureId") as number;
                 if (fId !== undefined && !newFeatureIds.has(fId)) {
                   sourceToUpdate.removeFeature(olFeature);
                 } else if (fId !== undefined) {
                   existingIds.add(fId);
+                  const newProps = featurePropsMap.get(fId);
+                  if (newProps) {
+                    for (const [key, value] of Object.entries(newProps)) {
+                      olFeature.set(key, value, true);
+                    }
+                  }
                 }
               }
 
@@ -1868,7 +1879,7 @@ export function MapViewer({
                   features: toAdd.map(f => ({
                     type: "Feature" as const,
                     geometry: { type: f.geometryType, coordinates: f.coordinates },
-                    properties: { featureId: f.id },
+                    properties: { featureId: f.id, ...f.properties },
                   })),
                 };
                 const newOlFeatures = geojsonFormat.readFeatures(addGeoJson, {
