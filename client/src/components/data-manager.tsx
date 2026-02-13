@@ -30,6 +30,7 @@ import {
   FileSpreadsheet,
   Map,
   Globe,
+  Settings,
   Table2,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
