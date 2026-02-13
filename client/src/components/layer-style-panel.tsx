@@ -19,9 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Card } from "@/components/ui/card";
 import {
   Trash2,
   Plus,
@@ -98,6 +96,230 @@ interface LayerStylePanelProps {
   }) => void;
 }
 
+function StyleControls({
+  color,
+  setColor,
+  pointStyle,
+  setPointStyle,
+  lineStyle,
+  setLineStyle,
+  iconSize,
+  setIconSize,
+  strokeWidth,
+  setStrokeWidth,
+  fillOpacity,
+  setFillOpacity,
+  opacity,
+  setOpacity,
+  customIconId,
+  setCustomIconId,
+  customIcons,
+  isPoint,
+  isLine,
+  heatNetworkLineStyles,
+}: {
+  color: string;
+  setColor: (c: string) => void;
+  pointStyle: string;
+  setPointStyle: (s: string) => void;
+  lineStyle: string;
+  setLineStyle: (s: string) => void;
+  iconSize: number;
+  setIconSize: (s: number) => void;
+  strokeWidth: number;
+  setStrokeWidth: (s: number) => void;
+  fillOpacity: number;
+  setFillOpacity: (s: number) => void;
+  opacity: number;
+  setOpacity: (s: number) => void;
+  customIconId: number | undefined;
+  setCustomIconId: (id: number | undefined) => void;
+  customIcons: CustomIcon[];
+  isPoint: boolean;
+  isLine: boolean;
+  heatNetworkLineStyles: { value: string; label: string }[];
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <Label className="text-xs font-medium mb-2 block">Цвет</Label>
+        <div className="flex flex-wrap gap-1">
+          {LAYER_COLORS.map((c) => (
+            <button
+              key={c}
+              className={`h-6 w-6 rounded-sm border ${
+                color === c ? "ring-2 ring-primary ring-offset-1" : ""
+              }`}
+              style={{ backgroundColor: c }}
+              onClick={() => setColor(c)}
+              data-testid={`color-swatch-${c}`}
+            />
+          ))}
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            className="w-8 h-8 rounded border cursor-pointer"
+            data-testid="input-custom-color"
+          />
+          <span className="text-xs text-muted-foreground">Произвольный</span>
+        </div>
+      </div>
+
+      {isPoint && (
+        <div>
+          <Label className="text-xs font-medium mb-2 block">Иконка</Label>
+          <div className="flex items-center gap-2">
+            <IconPicker
+              selectedPointStyle={pointStyle}
+              selectedCustomIconId={customIconId}
+              color={color}
+              onSelect={(sel) => {
+                if (sel.pointStyle !== undefined) setPointStyle(sel.pointStyle || "circle");
+                if (sel.customIconId !== undefined) {
+                  setCustomIconId(sel.customIconId);
+                  if (sel.customIconId) setPointStyle("circle");
+                } else {
+                  setCustomIconId(undefined);
+                }
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              {customIconId
+                ? customIcons.find((i) => i.id === customIconId)?.name || "Своя"
+                : isHeatNetworkStyle(pointStyle)
+                ? HEAT_NETWORK_LABELS[pointStyle as HeatNetworkPointStyle]
+                : pointStyle}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {isPoint && (
+        <div>
+          <Label className="text-xs font-medium mb-1 block">
+            Размер: {iconSize}px
+          </Label>
+          <Slider
+            value={[iconSize]}
+            onValueChange={([v]) => setIconSize(v)}
+            min={8}
+            max={64}
+            step={1}
+            className="w-full"
+            data-testid="slider-icon-size"
+          />
+        </div>
+      )}
+
+      {isLine && (
+        <div>
+          <Label className="text-xs font-medium mb-2 block">Стиль линии</Label>
+          <div className="space-y-1">
+            <div className="flex gap-1 flex-wrap">
+              {BASIC_LINE_STYLES.map(({ value, label }) => (
+                <Tooltip key={value}>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={`h-8 px-2 flex items-center justify-center rounded border text-xs ${
+                        lineStyle === value
+                          ? "bg-primary/20 border-primary"
+                          : "border-border"
+                      }`}
+                      onClick={() => setLineStyle(value)}
+                      data-testid={`line-style-${value}`}
+                    >
+                      {value === "solid" && <Minus className="h-4 w-4" />}
+                      {value === "dashed" && <MoreHorizontal className="h-4 w-4" />}
+                      {value === "double" && <span className="font-bold">=</span>}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">{label}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {heatNetworkLineStyles.map(({ value, label }) => (
+                <Tooltip key={value}>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={`h-8 px-1 flex items-center justify-center rounded border ${
+                        lineStyle === value
+                          ? "bg-primary/20 border-primary"
+                          : "border-border"
+                      }`}
+                      onClick={() => setLineStyle(value)}
+                      data-testid={`line-style-${value}`}
+                    >
+                      <img
+                        src={getLinePreviewDataUrl(value as any, color)}
+                        alt={label}
+                        className="h-4 w-12"
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">{label}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <Label className="text-xs font-medium mb-1 block">
+          Толщина обводки: {strokeWidth}px
+        </Label>
+        <Slider
+          value={[strokeWidth]}
+          onValueChange={([v]) => setStrokeWidth(v)}
+          min={0.5}
+          max={10}
+          step={0.5}
+          className="w-full"
+          data-testid="slider-stroke-width"
+        />
+      </div>
+
+      <div>
+        <Label className="text-xs font-medium mb-1 block">
+          Прозрачность заливки: {Math.round(fillOpacity * 100)}%
+        </Label>
+        <Slider
+          value={[fillOpacity]}
+          onValueChange={([v]) => setFillOpacity(v)}
+          min={0}
+          max={1}
+          step={0.05}
+          className="w-full"
+          data-testid="slider-fill-opacity"
+        />
+      </div>
+
+      <div>
+        <Label className="text-xs font-medium mb-1 block">
+          Непрозрачность слоя: {Math.round(opacity * 100)}%
+        </Label>
+        <Slider
+          value={[opacity]}
+          onValueChange={([v]) => setOpacity(v)}
+          min={0}
+          max={1}
+          step={0.05}
+          className="w-full"
+          data-testid="slider-layer-opacity"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function LayerStylePanel({
   open,
   onOpenChange,
@@ -150,6 +372,48 @@ export function LayerStylePanel({
     setCategorizedClasses(sc?.categorizedClasses || []);
     setGraduatedClasses(sc?.graduatedClasses || []);
   }, [layer, open]);
+
+  const getIconPreview = (style: StyleClassItem) => {
+    if (style.customIconId) {
+      const icon = customIcons.find((i) => i.id === style.customIconId);
+      if (icon) {
+        return (
+          <img
+            src={getCustomIconPreview(icon.svgContent, style.color)}
+            alt=""
+            className="h-5 w-5 flex-shrink-0"
+          />
+        );
+      }
+    }
+    if (style.pointStyle && isHeatNetworkStyle(style.pointStyle)) {
+      return (
+        <img
+          src={getHeatNetworkPreviewIcon(
+            style.pointStyle as HeatNetworkPointStyle,
+            style.color
+          )}
+          alt=""
+          className="h-5 w-5 flex-shrink-0"
+        />
+      );
+    }
+    if (isLine && style.lineStyle && isHeatNetworkLineStyle(style.lineStyle)) {
+      return (
+        <img
+          src={getLinePreviewDataUrl(style.lineStyle as any, style.color)}
+          alt=""
+          className="h-4 w-10 flex-shrink-0"
+        />
+      );
+    }
+    return (
+      <div
+        className="h-4 w-4 rounded-full border flex-shrink-0"
+        style={{ backgroundColor: style.color }}
+      />
+    );
+  };
 
   const { data: schemaData } = useQuery<{ layerId: number; fields: AttributeField[] }>({
     queryKey: ["/api/editable-layers", layer.id, "schema"],
@@ -340,47 +604,29 @@ export function LayerStylePanel({
     ]);
   };
 
-  const getIconPreview = (style: StyleClassItem) => {
-    if (style.customIconId) {
-      const icon = customIcons.find((i) => i.id === style.customIconId);
-      if (icon) {
-        return (
-          <img
-            src={getCustomIconPreview(icon.svgContent, style.color)}
-            alt=""
-            className="h-5 w-5"
-          />
-        );
-      }
-    }
-    if (style.pointStyle && isHeatNetworkStyle(style.pointStyle)) {
-      return (
-        <img
-          src={getHeatNetworkPreviewIcon(
-            style.pointStyle as HeatNetworkPointStyle,
-            style.color
-          )}
-          alt=""
-          className="h-5 w-5"
-        />
-      );
-    }
-    return (
-      <div
-        className="h-4 w-4 rounded-full border"
-        style={{ backgroundColor: style.color }}
-      />
-    );
-  };
-
   const isPoint = layer.geometryType === "Point";
   const isLine = layer.geometryType === "LineString";
   const heatNetworkLineStyles = getHeatNetworkLineStyles();
 
+  const styleControlsProps = {
+    color, setColor,
+    pointStyle, setPointStyle,
+    lineStyle, setLineStyle,
+    iconSize, setIconSize,
+    strokeWidth, setStrokeWidth,
+    fillOpacity, setFillOpacity,
+    opacity, setOpacity,
+    customIconId, setCustomIconId,
+    customIcons,
+    isPoint,
+    isLine,
+    heatNetworkLineStyles,
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-4xl max-h-[85vh] flex flex-col p-0"
+        className="max-w-3xl max-h-[85vh] flex flex-col p-0"
         data-testid="dialog-layer-style-panel"
       >
         <DialogHeader className="px-4 pt-4 pb-2">
@@ -419,477 +665,314 @@ export function LayerStylePanel({
           </Button>
         </div>
 
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <div className="w-64 border-r p-3 overflow-y-auto flex-shrink-0">
+        <ScrollArea className="flex-1 min-h-0 px-4 py-3">
+          {renderer === "single" && (
+            <StyleControls {...styleControlsProps} />
+          )}
+
+          {renderer === "categorized" && (
             <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-medium mb-2 block">Цвет</Label>
-                <div className="flex flex-wrap gap-1">
-                  {LAYER_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      className={`h-6 w-6 rounded-sm border ${
-                        color === c ? "ring-2 ring-primary ring-offset-1" : ""
-                      }`}
-                      style={{ backgroundColor: c }}
-                      onClick={() => setColor(c)}
-                      data-testid={`color-swatch-${c}`}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    className="w-8 h-8 rounded border cursor-pointer"
-                    data-testid="input-custom-color"
-                  />
-                  <span className="text-xs text-muted-foreground">Произвольный</span>
-                </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Поле:</Label>
+                <Select value={field} onValueChange={setField}>
+                  <SelectTrigger
+                    className="flex-1"
+                    data-testid="select-style-field"
+                  >
+                    <SelectValue placeholder="Выберите поле атрибута" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {fields.map((f) => (
+                      <SelectItem key={f.name} value={f.name}>
+                        {f.name} ({f.type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              {isPoint && (
-                <div>
-                  <Label className="text-xs font-medium mb-2 block">Иконка</Label>
-                  <div className="flex items-center gap-2">
-                    <IconPicker
-                      selectedPointStyle={pointStyle}
-                      selectedCustomIconId={customIconId}
-                      color={color}
-                      onSelect={(sel) => {
-                        if (sel.pointStyle !== undefined) setPointStyle(sel.pointStyle || "circle");
-                        if (sel.customIconId !== undefined) {
-                          setCustomIconId(sel.customIconId);
-                          if (sel.customIconId) setPointStyle("circle");
-                        } else {
-                          setCustomIconId(undefined);
-                        }
-                      }}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {customIconId
-                        ? customIcons.find((i) => i.id === customIconId)?.name || "Своя"
-                        : isHeatNetworkStyle(pointStyle)
-                        ? HEAT_NETWORK_LABELS[pointStyle as HeatNetworkPointStyle]
-                        : pointStyle}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {isPoint && (
-                <div>
-                  <Label className="text-xs font-medium mb-1 block">
-                    Размер: {iconSize}px
-                  </Label>
-                  <Slider
-                    value={[iconSize]}
-                    onValueChange={([v]) => setIconSize(v)}
-                    min={8}
-                    max={64}
-                    step={1}
-                    className="w-full"
-                    data-testid="slider-icon-size"
-                  />
-                </div>
-              )}
-
-              {isLine && (
-                <div>
-                  <Label className="text-xs font-medium mb-2 block">Стиль линии</Label>
-                  <div className="space-y-1">
+              {field && (
+                <>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Label className="text-xs">
+                      Классы ({categorizedClasses.length})
+                    </Label>
                     <div className="flex gap-1">
-                      {BASIC_LINE_STYLES.map(({ value, label }) => (
-                        <Tooltip key={value}>
-                          <TooltipTrigger asChild>
-                            <button
-                              className={`h-8 px-2 flex items-center justify-center rounded border text-xs ${
-                                lineStyle === value
-                                  ? "bg-primary/20 border-primary"
-                                  : "border-border"
-                              }`}
-                              onClick={() => setLineStyle(value)}
-                              data-testid={`line-style-${value}`}
-                            >
-                              {value === "solid" && (
-                                <Minus className="h-4 w-4" />
-                              )}
-                              {value === "dashed" && (
-                                <MoreHorizontal className="h-4 w-4" />
-                              )}
-                              {value === "double" && (
-                                <span className="font-bold">=</span>
-                              )}
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p className="text-xs">{label}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {heatNetworkLineStyles.map(({ value, label }) => (
-                        <Tooltip key={value}>
-                          <TooltipTrigger asChild>
-                            <button
-                              className={`h-8 px-1 flex items-center justify-center rounded border ${
-                                lineStyle === value
-                                  ? "bg-primary/20 border-primary"
-                                  : "border-border"
-                              }`}
-                              onClick={() => setLineStyle(value)}
-                              data-testid={`line-style-${value}`}
-                            >
-                              <img
-                                src={getLinePreviewDataUrl(value as any, color)}
-                                alt={label}
-                                className="h-4 w-12"
-                              />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p className="text-xs">{label}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAutoClassify}
+                        disabled={isFetchingValues}
+                        data-testid="button-auto-classify"
+                      >
+                        {isFetchingValues && (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        )}
+                        Автоклассификация
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addCategorizedClass}
+                        data-testid="button-add-class"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
                     </div>
                   </div>
-                </div>
+
+                  <div className="space-y-1.5">
+                    {categorizedClasses.map((cls, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-1.5 p-1.5 rounded border border-border"
+                        data-testid={`categorized-class-${i}`}
+                      >
+                        {getIconPreview(cls.style)}
+                        <input
+                          type="color"
+                          value={cls.style.color}
+                          onChange={(e) =>
+                            updateCategorizedClass(i, {
+                              style: { ...cls.style, color: e.target.value },
+                            })
+                          }
+                          className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
+                          data-testid={`input-class-color-${i}`}
+                        />
+                        {isPoint && (
+                          <IconPicker
+                            selectedPointStyle={cls.style.pointStyle}
+                            selectedCustomIconId={cls.style.customIconId}
+                            color={cls.style.color}
+                            onSelect={(sel) => {
+                              updateCategorizedClass(i, {
+                                style: {
+                                  ...cls.style,
+                                  pointStyle: sel.pointStyle as any,
+                                  customIconId: sel.customIconId,
+                                },
+                              });
+                            }}
+                          />
+                        )}
+                        <Input
+                          value={String(cls.value)}
+                          onChange={(e) =>
+                            updateCategorizedClass(i, {
+                              value: e.target.value,
+                              label: e.target.value,
+                            })
+                          }
+                          placeholder="Значение"
+                          className="flex-1 h-8 text-sm"
+                          data-testid={`input-class-value-${i}`}
+                        />
+                        <Input
+                          type="number"
+                          value={cls.style.iconSize || iconSize}
+                          onChange={(e) => {
+                            const size = parseInt(e.target.value) || 24;
+                            updateCategorizedClass(i, {
+                              style: {
+                                ...cls.style,
+                                iconSize: Math.min(128, Math.max(4, size)),
+                              },
+                            });
+                          }}
+                          placeholder="Px"
+                          className="w-14 h-8 text-sm"
+                          title="Размер иконки (px)"
+                          data-testid={`input-class-size-${i}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeCategorizedClass(i)}
+                          data-testid={`button-remove-class-${i}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    ))}
+                    {categorizedClasses.length === 0 && (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        Нажмите "Автоклассификация" для заполнения классов
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
 
-              <div>
-                <Label className="text-xs font-medium mb-1 block">
-                  Толщина обводки: {strokeWidth}px
-                </Label>
-                <Slider
-                  value={[strokeWidth]}
-                  onValueChange={([v]) => setStrokeWidth(v)}
-                  min={0.5}
-                  max={10}
-                  step={0.5}
-                  className="w-full"
-                  data-testid="slider-stroke-width"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs font-medium mb-1 block">
-                  Прозрачность заливки: {Math.round(fillOpacity * 100)}%
-                </Label>
-                <Slider
-                  value={[fillOpacity]}
-                  onValueChange={([v]) => setFillOpacity(v)}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  className="w-full"
-                  data-testid="slider-fill-opacity"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs font-medium mb-1 block">
-                  Непрозрачность слоя: {Math.round(opacity * 100)}%
-                </Label>
-                <Slider
-                  value={[opacity]}
-                  onValueChange={([v]) => setOpacity(v)}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  className="w-full"
-                  data-testid="slider-layer-opacity"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 p-3 overflow-hidden flex flex-col min-w-0">
-            {renderer === "single" && (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center text-muted-foreground">
-                  <Layers className="h-12 w-12 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Единый стиль</p>
-                  <p className="text-xs mt-1">
-                    Все объекты слоя отображаются одинаково.
-                    <br />
-                    Настройте параметры слева.
+              {!field && (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-sm text-muted-foreground">
+                    Выберите поле атрибута для настройки классов
                   </p>
                 </div>
+              )}
+
+              <div className="border-t pt-4 mt-4">
+                <Label className="text-xs font-medium mb-3 block text-muted-foreground">
+                  Стиль для остальных значений (по умолчанию)
+                </Label>
+                <StyleControls {...styleControlsProps} />
               </div>
-            )}
+            </div>
+          )}
 
-            {renderer !== "single" && (
-              <div className="space-y-3 flex-1 flex flex-col overflow-hidden">
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs whitespace-nowrap">Поле:</Label>
-                  <Select value={field} onValueChange={setField}>
-                    <SelectTrigger
-                      className="flex-1"
-                      data-testid="select-style-field"
-                    >
-                      <SelectValue placeholder="Выберите поле атрибута" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(renderer === "graduated" ? numericFields : fields).map(
-                        (f) => (
-                          <SelectItem key={f.name} value={f.name}>
-                            {f.name} ({f.type})
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
+          {renderer === "graduated" && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Поле:</Label>
+                <Select value={field} onValueChange={setField}>
+                  <SelectTrigger
+                    className="flex-1"
+                    data-testid="select-style-field"
+                  >
+                    <SelectValue placeholder="Выберите числовое поле" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {numericFields.map((f) => (
+                      <SelectItem key={f.name} value={f.name}>
+                        {f.name} ({f.type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                {renderer === "categorized" && field && (
-                  <>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <Label className="text-xs">
-                        Классы ({categorizedClasses.length})
-                      </Label>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleAutoClassify}
-                          disabled={isFetchingValues}
-                          data-testid="button-auto-classify"
-                        >
-                          {isFetchingValues && (
-                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          )}
-                          Автоклассификация
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={addCategorizedClass}
-                          data-testid="button-add-class"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                    <ScrollArea className="flex-1 min-h-0">
-                      <div className="space-y-1.5 pr-3">
-                        {categorizedClasses.map((cls, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-1.5 p-1.5 rounded border border-border"
-                            data-testid={`categorized-class-${i}`}
-                          >
-                            <input
-                              type="color"
-                              value={cls.style.color}
-                              onChange={(e) =>
-                                updateCategorizedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    color: e.target.value,
-                                  },
-                                })
-                              }
-                              className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
-                              data-testid={`input-class-color-${i}`}
-                            />
-                            {isPoint && (
-                              <IconPicker
-                                selectedPointStyle={cls.style.pointStyle}
-                                selectedCustomIconId={cls.style.customIconId}
-                                color={cls.style.color}
-                                onSelect={(sel) => {
-                                  updateCategorizedClass(i, {
-                                    style: {
-                                      ...cls.style,
-                                      pointStyle: sel.pointStyle as any,
-                                      customIconId: sel.customIconId,
-                                    },
-                                  });
-                                }}
-                              />
-                            )}
-                            <Input
-                              value={String(cls.value)}
-                              onChange={(e) =>
-                                updateCategorizedClass(i, {
-                                  value: e.target.value,
-                                  label: e.target.value,
-                                })
-                              }
-                              placeholder="Значение"
-                              className="flex-1 h-8 text-sm"
-                              data-testid={`input-class-value-${i}`}
-                            />
-                            <Input
-                              type="number"
-                              value={cls.style.iconSize || iconSize}
-                              onChange={(e) => {
-                                const size = parseInt(e.target.value) || 24;
-                                updateCategorizedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    iconSize: Math.min(128, Math.max(4, size)),
-                                  },
-                                });
-                              }}
-                              placeholder="Px"
-                              className="w-14 h-8 text-sm"
-                              title="Размер иконки (px)"
-                              data-testid={`input-class-size-${i}`}
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeCategorizedClass(i)}
-                              data-testid={`button-remove-class-${i}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          </div>
-                        ))}
-                        {categorizedClasses.length === 0 && (
-                          <p className="text-sm text-muted-foreground py-4 text-center">
-                            Нажмите "Автоклассификация" для заполнения классов
-                          </p>
+              {field && (
+                <>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Label className="text-xs">
+                      Диапазоны ({graduatedClasses.length})
+                    </Label>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAutoGraduate}
+                        disabled={isFetchingStats}
+                        data-testid="button-auto-graduate"
+                      >
+                        {isFetchingStats && (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                         )}
-                      </div>
-                    </ScrollArea>
-                  </>
-                )}
-
-                {renderer === "graduated" && field && (
-                  <>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <Label className="text-xs">
-                        Диапазоны ({graduatedClasses.length})
-                      </Label>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleAutoGraduate}
-                          disabled={isFetchingStats}
-                          data-testid="button-auto-graduate"
-                        >
-                          {isFetchingStats && (
-                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          )}
-                          Авторазбиение
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={addGraduatedClass}
-                          data-testid="button-add-range"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
+                        Авторазбиение
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addGraduatedClass}
+                        data-testid="button-add-range"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
                     </div>
-                    <ScrollArea className="flex-1 min-h-0">
-                      <div className="space-y-1.5 pr-3">
-                        {graduatedClasses.map((cls, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-1.5 p-1.5 rounded border border-border"
-                            data-testid={`graduated-class-${i}`}
-                          >
-                            <input
-                              type="color"
-                              value={cls.style.color}
-                              onChange={(e) =>
-                                updateGraduatedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    color: e.target.value,
-                                  },
-                                })
-                              }
-                              className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
-                              data-testid={`input-range-color-${i}`}
-                            />
-                            <Input
-                              type="number"
-                              value={cls.min}
-                              onChange={(e) => {
-                                const min = parseFloat(e.target.value) || 0;
-                                updateGraduatedClass(i, {
-                                  min,
-                                  label: `${min} - ${cls.max}`,
-                                });
-                              }}
-                              placeholder="Мин"
-                              className="w-20 h-8 text-sm"
-                              data-testid={`input-range-min-${i}`}
-                            />
-                            <span className="text-muted-foreground text-sm">
-                              -
-                            </span>
-                            <Input
-                              type="number"
-                              value={cls.max}
-                              onChange={(e) => {
-                                const max = parseFloat(e.target.value) || 0;
-                                updateGraduatedClass(i, {
-                                  max,
-                                  label: `${cls.min} - ${max}`,
-                                });
-                              }}
-                              placeholder="Макс"
-                              className="w-20 h-8 text-sm"
-                              data-testid={`input-range-max-${i}`}
-                            />
-                            <Input
-                              type="number"
-                              value={cls.style.iconSize || iconSize}
-                              onChange={(e) => {
-                                const size = parseInt(e.target.value) || 24;
-                                updateGraduatedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    iconSize: Math.min(128, Math.max(4, size)),
-                                  },
-                                });
-                              }}
-                              placeholder="Px"
-                              className="w-14 h-8 text-sm"
-                              title="Размер иконки (px)"
-                              data-testid={`input-range-size-${i}`}
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeGraduatedClass(i)}
-                              data-testid={`button-remove-range-${i}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          </div>
-                        ))}
-                        {graduatedClasses.length === 0 && (
-                          <p className="text-sm text-muted-foreground py-4 text-center">
-                            Нажмите "Авторазбиение" для заполнения диапазонов
-                          </p>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </>
-                )}
-
-                {renderer !== "single" && !field && (
-                  <div className="flex items-center justify-center flex-1">
-                    <p className="text-sm text-muted-foreground">
-                      Выберите поле атрибута для настройки классов
-                    </p>
                   </div>
-                )}
+
+                  <div className="space-y-1.5">
+                    {graduatedClasses.map((cls, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-1.5 p-1.5 rounded border border-border"
+                        data-testid={`graduated-class-${i}`}
+                      >
+                        {getIconPreview(cls.style)}
+                        <input
+                          type="color"
+                          value={cls.style.color}
+                          onChange={(e) =>
+                            updateGraduatedClass(i, {
+                              style: { ...cls.style, color: e.target.value },
+                            })
+                          }
+                          className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
+                          data-testid={`input-range-color-${i}`}
+                        />
+                        <Input
+                          type="number"
+                          value={cls.min}
+                          onChange={(e) => {
+                            const min = parseFloat(e.target.value) || 0;
+                            updateGraduatedClass(i, {
+                              min,
+                              label: `${min} - ${cls.max}`,
+                            });
+                          }}
+                          placeholder="Мин"
+                          className="w-20 h-8 text-sm"
+                          data-testid={`input-range-min-${i}`}
+                        />
+                        <span className="text-muted-foreground text-sm">-</span>
+                        <Input
+                          type="number"
+                          value={cls.max}
+                          onChange={(e) => {
+                            const max = parseFloat(e.target.value) || 0;
+                            updateGraduatedClass(i, {
+                              max,
+                              label: `${cls.min} - ${max}`,
+                            });
+                          }}
+                          placeholder="Макс"
+                          className="w-20 h-8 text-sm"
+                          data-testid={`input-range-max-${i}`}
+                        />
+                        <Input
+                          type="number"
+                          value={cls.style.iconSize || iconSize}
+                          onChange={(e) => {
+                            const size = parseInt(e.target.value) || 24;
+                            updateGraduatedClass(i, {
+                              style: {
+                                ...cls.style,
+                                iconSize: Math.min(128, Math.max(4, size)),
+                              },
+                            });
+                          }}
+                          placeholder="Px"
+                          className="w-14 h-8 text-sm"
+                          title="Размер иконки (px)"
+                          data-testid={`input-range-size-${i}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeGraduatedClass(i)}
+                          data-testid={`button-remove-range-${i}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    ))}
+                    {graduatedClasses.length === 0 && (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        Нажмите "Авторазбиение" для заполнения диапазонов
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {!field && (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-sm text-muted-foreground">
+                    Выберите числовое поле для настройки диапазонов
+                  </p>
+                </div>
+              )}
+
+              <div className="border-t pt-4 mt-4">
+                <Label className="text-xs font-medium mb-3 block text-muted-foreground">
+                  Стиль для остальных значений (по умолчанию)
+                </Label>
+                <StyleControls {...styleControlsProps} />
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </ScrollArea>
 
         <DialogFooter className="px-4 py-3 border-t gap-2">
           <Button
