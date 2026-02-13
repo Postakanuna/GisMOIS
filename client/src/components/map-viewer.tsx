@@ -35,7 +35,6 @@ import GeoJSON from "ol/format/GeoJSON";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { MapControls } from "./map-controls";
 import { CoordinateDisplay } from "./coordinate-display";
-import { MapLegend } from "./map-legend";
 import { FeatureInfoPanel } from "./feature-info";
 import { LoadingOverlay } from "./loading-overlay";
 import { getDistance, getLength } from "ol/sphere";
@@ -3088,8 +3087,6 @@ export function MapViewer({
         ticketMode={ticketMode}
         onToggleTicketMode={isConnected ? onToggleTicketMode : undefined}
       />
-
-      <MapLegend layers={allEditableLayers} />
 
       <CoordinateDisplay 
         coordinates={mouseCoordinates} 

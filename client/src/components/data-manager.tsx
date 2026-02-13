@@ -96,6 +96,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   } | null>(null);
   const [isParsingExcel, setIsParsingExcel] = useState(false);
   const [styleConfigLayerId, setStyleConfigLayerId] = useState<number | null>(null);
+  const [legendLayerId, setLegendLayerId] = useState<number | null>(null);
 
   const { data: sceneLayersRaw = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
@@ -602,7 +603,16 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                         </div>
                       ) : (
                         <>
-                          <span className="text-xs font-medium truncate">
+                          <span 
+                            className={`text-xs font-medium truncate ${layer.styleConfig && layer.styleConfig.renderer !== "single" ? "cursor-pointer hover:underline" : ""}`}
+                            onClick={() => {
+                              const sc = layer.styleConfig;
+                              if (sc && sc.renderer !== "single") {
+                                setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
+                              }
+                            }}
+                            data-testid={`label-layer-name-${layer.id}`}
+                          >
                             {layer.name}
                           </span>
                           <span className="text-[10px] text-muted-foreground shrink-0">
@@ -712,6 +722,52 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                       </div>
                     </div>
                   )}
+
+                  {legendLayerId === layer.id && layer.styleConfig && layer.styleConfig.renderer !== "single" && (() => {
+                    const sc = layer.styleConfig;
+                    return (
+                      <div className="px-3 py-2 border-t bg-muted/20 space-y-1" data-testid={`legend-layer-${layer.id}`}>
+                        <p className="text-[10px] text-muted-foreground font-medium mb-1">
+                          {sc.renderer === "categorized" ? "Категории" : "Градация"}: {sc.field}
+                        </p>
+                        {sc.renderer === "categorized" && sc.categorizedClasses && (
+                          <div className="space-y-0.5">
+                            {sc.categorizedClasses.map((cls: any, i: number) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <span
+                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                                  style={{ backgroundColor: cls.style.color }}
+                                />
+                                <span className="text-[11px] truncate">{cls.label || String(cls.value)}</span>
+                              </div>
+                            ))}
+                            {sc.defaultStyle && (
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                                  style={{ backgroundColor: sc.defaultStyle.color }}
+                                />
+                                <span className="text-[11px] truncate text-muted-foreground">Прочее</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {sc.renderer === "graduated" && sc.graduatedClasses && (
+                          <div className="space-y-0.5">
+                            {sc.graduatedClasses.map((cls: any, i: number) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <span
+                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                                  style={{ backgroundColor: cls.style.color }}
+                                />
+                                <span className="text-[11px] truncate">{cls.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
