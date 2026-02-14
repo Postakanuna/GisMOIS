@@ -22,6 +22,7 @@ import {
   Thermometer,
   X,
   GripHorizontal,
+  Download,
 } from "lucide-react";
 
 interface SimulationResult {
@@ -151,11 +152,48 @@ export function NetworkSimulationDialog({
     },
   });
 
+  const [exporting, setExporting] = useState(false);
+
   const handleClose = () => {
     setResult(null);
     simulationMutation.reset();
     onSimulationResult(null);
     onOpenChange(false);
+  };
+
+  const handleExport = async () => {
+    if (!result || !featureId || !layerId) return;
+    setExporting(true);
+    try {
+      const res = await fetch("/api/network-graph/simulate/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ featureId, layerId, sceneId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Ошибка экспорта");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = res.headers.get("Content-Disposition");
+      let filename = "simulation_report.xlsx";
+      if (disposition) {
+        const match = disposition.match(/filename\*=UTF-8''(.+)/);
+        if (match) filename = decodeURIComponent(match[1]);
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error("Export error:", err);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const featureTypeLabel = featureType === "LineString" ? "Участок сети" : "Узел/объект";
@@ -321,29 +359,48 @@ export function NetworkSimulationDialog({
           </ScrollArea>
         )}
 
-        <Button
-          onClick={() => simulationMutation.mutate()}
-          disabled={simulationMutation.isPending || !featureId}
-          className="w-full shrink-0"
-          data-testid="button-run-simulation"
-        >
-          {simulationMutation.isPending ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Анализ...
-            </>
-          ) : result ? (
-            <>
-              <Play className="h-4 w-4 mr-2" />
-              Повторить анализ
-            </>
-          ) : (
-            <>
-              <Play className="h-4 w-4 mr-2" />
-              Запуск анализа
-            </>
+        <div className="flex gap-2 shrink-0">
+          <Button
+            onClick={() => simulationMutation.mutate()}
+            disabled={simulationMutation.isPending || !featureId}
+            className="flex-1"
+            data-testid="button-run-simulation"
+          >
+            {simulationMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Анализ...
+              </>
+            ) : result ? (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                Повторить анализ
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                Запуск анализа
+              </>
+            )}
+          </Button>
+          {result && (
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              disabled={exporting}
+              data-testid="button-export-simulation"
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  XLSX
+                </>
+              )}
+            </Button>
           )}
-        </Button>
+        </div>
       </div>
     </div>
   );

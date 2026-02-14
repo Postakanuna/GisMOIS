@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, drawnFeatures } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -10,7 +10,7 @@ import { isApiAuthenticated, generateApiToken, hashApiToken, type ApiAuthenticat
 import { externalCreatePointSchema, apiKeys } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import multer from "multer";
 import fs from "fs";
 import { geocodeBatch } from "./geocoder";
@@ -4311,6 +4311,165 @@ export async function registerRoutes(
       return res.json(result);
     } catch (error: any) {
       console.error("Network graph simulation error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/network-graph/simulate/export", async (req: Request, res: Response) => {
+    try {
+      const { featureId, layerId, sceneId } = req.body;
+
+      if (!featureId || !layerId || !sceneId) {
+        return res.status(400).json({ error: "featureId, layerId, and sceneId are required" });
+      }
+
+      const { simulateDisconnection } = await import("./network-graph");
+      const result = await simulateDisconnection(
+        Number(featureId),
+        Number(layerId),
+        Number(sceneId)
+      );
+
+      const consumerIds = result.affectedConsumers.map(c => c.featureId);
+      const segmentIds = result.affectedSegments.map(s => s.featureId);
+      const ctpIds = result.affectedCTPs.map(c => c.featureId);
+      const nodeIds = result.affectedNodes.map(n => n.featureId);
+      const allIds = [...consumerIds, ...segmentIds, ...ctpIds, ...nodeIds];
+
+      let fullFeatures: Array<{ id: number; layerId: number; properties: Record<string, unknown> }> = [];
+      if (allIds.length > 0) {
+        const batchSize = 500;
+        for (let i = 0; i < allIds.length; i += batchSize) {
+          const batch = allIds.slice(i, i + batchSize);
+          const rows = await db
+            .select({ id: drawnFeatures.id, layerId: drawnFeatures.layerId, properties: drawnFeatures.properties })
+            .from(drawnFeatures)
+            .where(inArray(drawnFeatures.id, batch));
+          fullFeatures.push(...(rows as any[]));
+        }
+      }
+
+      const propsMap = new Map<number, Record<string, unknown>>();
+      for (const f of fullFeatures) {
+        propsMap.set(f.id, (f.properties as Record<string, unknown>) || {});
+      }
+
+      const workbook = new ExcelJS.Workbook();
+
+      const summarySheet = workbook.addWorksheet("Сводка");
+      summarySheet.columns = [
+        { header: "Параметр", key: "param", width: 40 },
+        { header: "Значение", key: "value", width: 50 },
+      ];
+      const headerRow = summarySheet.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+
+      summarySheet.addRow({ param: "Объект отключения", value: result.failurePoint.name });
+      summarySheet.addRow({ param: "Тип объекта", value: result.failurePoint.type === "segment" ? "Участок сети" : "Узел/объект" });
+      if (result.source) {
+        summarySheet.addRow({ param: "Источник", value: result.source.name });
+        summarySheet.addRow({ param: "Номер источника (Nist)", value: result.source.nist });
+      }
+      summarySheet.addRow({ param: "", value: "" });
+      summarySheet.addRow({ param: "Затронутые потребители", value: result.stats.totalConsumers });
+      summarySheet.addRow({ param: "Затронутые ЦТП", value: result.stats.totalCTPs });
+      summarySheet.addRow({ param: "Затронутые участки сети", value: result.stats.totalSegments });
+      summarySheet.addRow({ param: "Затронутые узлы", value: result.stats.totalNodes });
+      summarySheet.addRow({ param: "Общая длина сетей (м)", value: result.stats.totalLengthM });
+
+      const addDetailSheet = (
+        sheetName: string,
+        items: Array<{ featureId: number; name?: string; address?: string; from?: string; to?: string; length?: number }>,
+        extraBaseCols: Array<{ header: string; key: string; width: number }>,
+        getBaseRow: (item: any) => Record<string, unknown>
+      ) => {
+        if (items.length === 0) return;
+
+        const allPropKeys = new Set<string>();
+        for (const item of items) {
+          const props = propsMap.get(item.featureId);
+          if (props) {
+            Object.keys(props).forEach(k => allPropKeys.add(k));
+          }
+        }
+
+        const propKeysArr = Array.from(allPropKeys).sort();
+
+        const columns = [
+          { header: "ID", key: "featureId", width: 10 },
+          ...extraBaseCols,
+          ...propKeysArr.map(k => ({ header: k, key: `prop_${k}`, width: 18 })),
+        ];
+
+        const sheet = workbook.addWorksheet(sheetName);
+        sheet.columns = columns;
+
+        const hRow = sheet.getRow(1);
+        hRow.font = { bold: true };
+        hRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+
+        for (const item of items) {
+          const baseRow = getBaseRow(item);
+          const props = propsMap.get(item.featureId) || {};
+          const propRow: Record<string, unknown> = {};
+          for (const k of propKeysArr) {
+            const val = props[k];
+            propRow[`prop_${k}`] = val !== null && val !== undefined ? val : "";
+          }
+          sheet.addRow({ featureId: item.featureId, ...baseRow, ...propRow });
+        }
+      };
+
+      addDetailSheet(
+        "Потребители",
+        result.affectedConsumers,
+        [
+          { header: "Имя", key: "name", width: 30 },
+          { header: "Адрес", key: "address", width: 40 },
+        ],
+        (item) => ({ name: item.name, address: item.address })
+      );
+
+      addDetailSheet(
+        "Участки сети",
+        result.affectedSegments,
+        [
+          { header: "Начало", key: "from", width: 25 },
+          { header: "Конец", key: "to", width: 25 },
+          { header: "Длина (м)", key: "length", width: 12 },
+        ],
+        (item) => ({ from: item.from, to: item.to, length: item.length })
+      );
+
+      addDetailSheet(
+        "ЦТП",
+        result.affectedCTPs,
+        [
+          { header: "Имя", key: "name", width: 30 },
+          { header: "Адрес", key: "address", width: 40 },
+        ],
+        (item) => ({ name: item.name, address: item.address })
+      );
+
+      addDetailSheet(
+        "Узлы",
+        result.affectedNodes,
+        [
+          { header: "Имя", key: "name", width: 30 },
+        ],
+        (item) => ({ name: item.name })
+      );
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const failureName = result.failurePoint.name.replace(/[^\w\sа-яА-ЯёЁ]/gi, "").substring(0, 50);
+      const filename = encodeURIComponent(`Симуляция_${failureName}.xlsx`);
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${filename}`);
+      res.send(Buffer.from(buffer as ArrayBuffer));
+    } catch (error: any) {
+      console.error("Simulation export error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
     }
   });
