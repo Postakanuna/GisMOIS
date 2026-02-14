@@ -78,12 +78,12 @@ interface SimulationResult {
 
 function detectLayerType(layerName: string): string {
   const lower = layerName.toLowerCase();
-  if (lower.includes("источник") || lower.includes("source") || lower.includes("€бв®з­ЁЄ")) return "source";
-  if (lower.includes("цтп") || lower.includes("–'Џ")) return "ctp";
-  if (lower.includes("потреб") || lower.includes("потpеб") || lower.includes("Џ®вpҐЎЁвҐ«м")) return "consumer";
-  if (lower.includes("узел") || lower.includes("узл") || lower.includes(""§Ґ«")) return "node";
-  if (lower.includes("задвиж") || lower.includes("‡ ¤ўЁ¦Є")) return "valve";
-  if (lower.includes("участ") || lower.includes(""з бвЄЁ")) return "segment";
+  if (lower.includes("источник") || lower.includes("source") || lower.includes("котельн")) return "source";
+  if (lower.includes("цтп") || lower.includes("ctp")) return "ctp";
+  if (lower.includes("потреб") || lower.includes("consumer")) return "consumer";
+  if (lower.includes("узел") || lower.includes("узл") || lower.includes("node")) return "node";
+  if (lower.includes("задвиж") || lower.includes("valve")) return "valve";
+  if (lower.includes("участ") || lower.includes("segment")) return "segment";
   if (lower.includes("вспомог")) return "auxiliary_segment";
   if (lower.includes("насос")) return "pump";
   return "other";
