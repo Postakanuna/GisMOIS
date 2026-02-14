@@ -1,12 +1,6 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,6 +20,8 @@ import {
   Loader2,
   AlertTriangle,
   Thermometer,
+  X,
+  GripHorizontal,
 } from "lucide-react";
 
 interface SimulationResult {
@@ -104,6 +100,39 @@ export function NetworkSimulationDialog({
   const [ctpsOpen, setCtpsOpen] = useState(false);
   const [nodesOpen, setNodesOpen] = useState(false);
 
+  const [position, setPosition] = useState({ x: 20, y: 80 });
+  const dragRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true;
+    dragStart.current = {
+      x: e.clientX - position.x,
+      y: e.clientY - position.y,
+    };
+    e.preventDefault();
+  }, [position]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      setPosition({
+        x: e.clientX - dragStart.current.x,
+        y: e.clientY - dragStart.current.y,
+      });
+    };
+    const handleMouseUp = () => {
+      isDragging.current = false;
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
   const simulationMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/network-graph/simulate", {
@@ -122,193 +151,201 @@ export function NetworkSimulationDialog({
     },
   });
 
-  const handleClose = (isOpen: boolean) => {
-    if (!isOpen) {
-      setResult(null);
-      simulationMutation.reset();
-      onSimulationResult(null);
-    }
-    onOpenChange(isOpen);
+  const handleClose = () => {
+    setResult(null);
+    simulationMutation.reset();
+    onSimulationResult(null);
+    onOpenChange(false);
   };
 
   const featureTypeLabel = featureType === "LineString" ? "Участок сети" : "Узел/объект";
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col" data-testid="dialog-network-simulation">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-destructive" />
-            Симуляция отключения
-          </DialogTitle>
-        </DialogHeader>
+    <div
+      ref={dragRef}
+      className="fixed z-[9999] w-[420px] max-h-[80vh] flex flex-col rounded-md border bg-background shadow-lg"
+      style={{ left: position.x, top: position.y }}
+      data-testid="dialog-network-simulation"
+    >
+      <div
+        className="flex items-center gap-2 px-4 py-3 border-b cursor-grab active:cursor-grabbing select-none shrink-0"
+        onMouseDown={handleMouseDown}
+      >
+        <GripHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />
+        <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+        <span className="text-sm font-semibold flex-1">Симуляция отключения</span>
+        <Button size="icon" variant="ghost" onClick={handleClose} data-testid="button-close-simulation">
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
 
-        <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
-          <Card className="p-3 space-y-1">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">{featureTypeLabel}</Badge>
-              <span className="text-sm font-medium truncate" data-testid="text-simulation-feature-name">{featureName || "Без названия"}</span>
+      <div className="space-y-4 flex-1 overflow-hidden flex flex-col p-4">
+        <Card className="p-3 space-y-1">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">{featureTypeLabel}</Badge>
+            <span className="text-sm font-medium truncate" data-testid="text-simulation-feature-name">{featureName || "Без названия"}</span>
+          </div>
+          {result?.source && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Thermometer className="h-3 w-3" />
+              <span>Источник: {result.source.name} (Nist: {result.source.nist})</span>
             </div>
-            {result?.source && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Thermometer className="h-3 w-3" />
-                <span>Источник: {result.source.name} (Nist: {result.source.nist})</span>
-              </div>
-            )}
+          )}
+        </Card>
+
+        {!result && !simulationMutation.isPending && !simulationMutation.isError && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-muted-foreground py-8">
+            <GitBranch className="h-12 w-12 opacity-30" />
+            <p className="text-sm text-center">
+              Нажмите кнопку для анализа зоны отключения от выбранного объекта
+            </p>
+          </div>
+        )}
+
+        {simulationMutation.isError && (
+          <Card className="p-3 border-destructive">
+            <p className="text-sm text-destructive" data-testid="text-simulation-error">
+              {simulationMutation.error?.message || "Ошибка анализа"}
+            </p>
           </Card>
+        )}
 
-          {!result && !simulationMutation.isPending && !simulationMutation.isError && (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-muted-foreground py-8">
-              <GitBranch className="h-12 w-12 opacity-30" />
-              <p className="text-sm text-center">
-                Нажмите кнопку для анализа зоны отключения от выбранного объекта
-              </p>
+        {result && (
+          <ScrollArea className="flex-1">
+            <div className="space-y-3 pr-3">
+              <Card className="p-3">
+                <h4 className="text-sm font-medium mb-2">Сводка</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <StatItem
+                    icon={<Home className="h-4 w-4" />}
+                    label="Потребителей"
+                    value={result.stats.totalConsumers}
+                    testId="text-stat-consumers"
+                  />
+                  <StatItem
+                    icon={<GitBranch className="h-4 w-4" />}
+                    label="Участков"
+                    value={result.stats.totalSegments}
+                    testId="text-stat-segments"
+                  />
+                  <StatItem
+                    icon={<Thermometer className="h-4 w-4" />}
+                    label="ЦТП"
+                    value={result.stats.totalCTPs}
+                    testId="text-stat-ctps"
+                  />
+                  <StatItem
+                    icon={<MapPin className="h-4 w-4" />}
+                    label="Узлов"
+                    value={result.stats.totalNodes}
+                    testId="text-stat-nodes"
+                  />
+                </div>
+                <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
+                  Общая длина затронутых сетей: {result.stats.totalLengthM} м
+                </div>
+              </Card>
+
+              {result.affectedConsumers.length > 0 && (
+                <CollapsibleSection
+                  title="Потребители"
+                  count={result.affectedConsumers.length}
+                  open={consumersOpen}
+                  onOpenChange={setConsumersOpen}
+                  testId="section-consumers"
+                >
+                  {result.affectedConsumers.map((c, i) => (
+                    <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-consumer-${i}`}>
+                      <Home className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="truncate">{c.address || c.name}</span>
+                    </div>
+                  ))}
+                </CollapsibleSection>
+              )}
+
+              {result.affectedSegments.length > 0 && (
+                <CollapsibleSection
+                  title="Участки сети"
+                  count={result.affectedSegments.length}
+                  open={segmentsOpen}
+                  onOpenChange={setSegmentsOpen}
+                  testId="section-segments"
+                >
+                  {result.affectedSegments.map((s, i) => (
+                    <div key={s.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-segment-${i}`}>
+                      <GitBranch className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="truncate">{s.from} → {s.to}</span>
+                      <Badge variant="secondary" className="ml-auto text-[10px] shrink-0">{s.length}м</Badge>
+                    </div>
+                  ))}
+                </CollapsibleSection>
+              )}
+
+              {result.affectedCTPs.length > 0 && (
+                <CollapsibleSection
+                  title="ЦТП"
+                  count={result.affectedCTPs.length}
+                  open={ctpsOpen}
+                  onOpenChange={setCtpsOpen}
+                  testId="section-ctps"
+                >
+                  {result.affectedCTPs.map((c, i) => (
+                    <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-ctp-${i}`}>
+                      <Thermometer className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="truncate">{c.name}</span>
+                      {c.address && <span className="text-muted-foreground truncate">({c.address})</span>}
+                    </div>
+                  ))}
+                </CollapsibleSection>
+              )}
+
+              {result.affectedNodes.length > 0 && (
+                <CollapsibleSection
+                  title="Узлы"
+                  count={result.affectedNodes.length}
+                  open={nodesOpen}
+                  onOpenChange={setNodesOpen}
+                  testId="section-nodes"
+                >
+                  {result.affectedNodes.map((n, i) => (
+                    <div key={n.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-node-${i}`}>
+                      <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="truncate">{n.name}</span>
+                    </div>
+                  ))}
+                </CollapsibleSection>
+              )}
             </div>
+          </ScrollArea>
+        )}
+
+        <Button
+          onClick={() => simulationMutation.mutate()}
+          disabled={simulationMutation.isPending || !featureId}
+          className="w-full shrink-0"
+          data-testid="button-run-simulation"
+        >
+          {simulationMutation.isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Анализ...
+            </>
+          ) : result ? (
+            <>
+              <Play className="h-4 w-4 mr-2" />
+              Повторить анализ
+            </>
+          ) : (
+            <>
+              <Play className="h-4 w-4 mr-2" />
+              Запуск анализа
+            </>
           )}
-
-          {simulationMutation.isError && (
-            <Card className="p-3 border-destructive">
-              <p className="text-sm text-destructive" data-testid="text-simulation-error">
-                {simulationMutation.error?.message || "Ошибка анализа"}
-              </p>
-            </Card>
-          )}
-
-          {result && (
-            <ScrollArea className="flex-1">
-              <div className="space-y-3 pr-3">
-                <Card className="p-3">
-                  <h4 className="text-sm font-medium mb-2">Сводка</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    <StatItem
-                      icon={<Home className="h-4 w-4" />}
-                      label="Потребителей"
-                      value={result.stats.totalConsumers}
-                      testId="text-stat-consumers"
-                    />
-                    <StatItem
-                      icon={<GitBranch className="h-4 w-4" />}
-                      label="Участков"
-                      value={result.stats.totalSegments}
-                      testId="text-stat-segments"
-                    />
-                    <StatItem
-                      icon={<Thermometer className="h-4 w-4" />}
-                      label="ЦТП"
-                      value={result.stats.totalCTPs}
-                      testId="text-stat-ctps"
-                    />
-                    <StatItem
-                      icon={<MapPin className="h-4 w-4" />}
-                      label="Узлов"
-                      value={result.stats.totalNodes}
-                      testId="text-stat-nodes"
-                    />
-                  </div>
-                  <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
-                    Общая длина затронутых сетей: {result.stats.totalLengthM} м
-                  </div>
-                </Card>
-
-                {result.affectedConsumers.length > 0 && (
-                  <CollapsibleSection
-                    title="Потребители"
-                    count={result.affectedConsumers.length}
-                    open={consumersOpen}
-                    onOpenChange={setConsumersOpen}
-                    testId="section-consumers"
-                  >
-                    {result.affectedConsumers.map((c, i) => (
-                      <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-consumer-${i}`}>
-                        <Home className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="truncate">{c.address || c.name}</span>
-                      </div>
-                    ))}
-                  </CollapsibleSection>
-                )}
-
-                {result.affectedSegments.length > 0 && (
-                  <CollapsibleSection
-                    title="Участки сети"
-                    count={result.affectedSegments.length}
-                    open={segmentsOpen}
-                    onOpenChange={setSegmentsOpen}
-                    testId="section-segments"
-                  >
-                    {result.affectedSegments.map((s, i) => (
-                      <div key={s.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-segment-${i}`}>
-                        <GitBranch className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="truncate">{s.from} → {s.to}</span>
-                        <Badge variant="secondary" className="ml-auto text-[10px] shrink-0">{s.length}м</Badge>
-                      </div>
-                    ))}
-                  </CollapsibleSection>
-                )}
-
-                {result.affectedCTPs.length > 0 && (
-                  <CollapsibleSection
-                    title="ЦТП"
-                    count={result.affectedCTPs.length}
-                    open={ctpsOpen}
-                    onOpenChange={setCtpsOpen}
-                    testId="section-ctps"
-                  >
-                    {result.affectedCTPs.map((c, i) => (
-                      <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-ctp-${i}`}>
-                        <Thermometer className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="truncate">{c.name}</span>
-                        {c.address && <span className="text-muted-foreground truncate">({c.address})</span>}
-                      </div>
-                    ))}
-                  </CollapsibleSection>
-                )}
-
-                {result.affectedNodes.length > 0 && (
-                  <CollapsibleSection
-                    title="Узлы"
-                    count={result.affectedNodes.length}
-                    open={nodesOpen}
-                    onOpenChange={setNodesOpen}
-                    testId="section-nodes"
-                  >
-                    {result.affectedNodes.map((n, i) => (
-                      <div key={n.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-node-${i}`}>
-                        <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="truncate">{n.name}</span>
-                      </div>
-                    ))}
-                  </CollapsibleSection>
-                )}
-              </div>
-            </ScrollArea>
-          )}
-
-          <Button
-            onClick={() => simulationMutation.mutate()}
-            disabled={simulationMutation.isPending || !featureId}
-            className="w-full"
-            data-testid="button-run-simulation"
-          >
-            {simulationMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Анализ...
-              </>
-            ) : result ? (
-              <>
-                <Play className="h-4 w-4 mr-2" />
-                Повторить анализ
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 mr-2" />
-                Запуск анализа
-              </>
-            )}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </Button>
+      </div>
+    </div>
   );
 }
 
