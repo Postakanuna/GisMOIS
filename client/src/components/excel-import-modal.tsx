@@ -211,10 +211,12 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
     }
   };
 
-  const formatCellValue = (value: unknown): string => {
+  const formatCellValue = (value: unknown, maxLen = 50): string => {
     if (value === null || value === undefined) return "";
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
+    let str = typeof value === "object" ? JSON.stringify(value) : String(value);
+    str = str.replace(/\n/g, " ");
+    if (str.length > maxLen) str = str.slice(0, maxLen) + "...";
+    return str;
   };
 
   return (
@@ -279,22 +281,22 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
                 return (
                   <div
                     key={col.name}
-                    className="flex items-center gap-3 p-3 border rounded-md bg-card"
+                    className="flex items-center gap-2 p-2 border rounded-md bg-card overflow-hidden"
                     data-testid={`column-mapping-${col.index}`}
                   >
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0 w-[200px] shrink-0">
                       <div className="font-medium text-sm truncate">{col.name}</div>
                       <div className="text-xs text-muted-foreground truncate">
-                        Пример: {formatCellValue(parseResult.previewRows[0]?.[col.name])}
+                        {formatCellValue(parseResult.previewRows[0]?.[col.name], 30)}
                       </div>
                     </div>
                     
-                    <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
                     
                     <select
                       value={mapping?.role || "attribute"}
                       onChange={(e) => handleRoleChange(col.name, e.target.value as ColumnRole)}
-                      className="w-[170px] h-9 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="w-[160px] shrink-0 h-9 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                       data-testid={`select-role-${col.index}`}
                     >
                       <option value="latitude">Широта</option>
@@ -305,23 +307,16 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
                     </select>
 
                     {mapping?.role === "attribute" && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Input
-                            value={mapping.targetName}
-                            onChange={(e) => handleTargetNameChange(col.name, e.target.value)}
-                            placeholder="Имя в БД"
-                            className="w-[150px]"
-                            data-testid={`input-target-name-${col.index}`}
-                          />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          Название атрибута в базе данных
-                        </TooltipContent>
-                      </Tooltip>
+                      <Input
+                        value={mapping.targetName}
+                        onChange={(e) => handleTargetNameChange(col.name, e.target.value)}
+                        placeholder="Имя в БД"
+                        className="w-[140px] shrink-0"
+                        data-testid={`input-target-name-${col.index}`}
+                      />
                     )}
 
-                    <div className="w-[100px] flex justify-end">
+                    <div className="w-[90px] shrink-0 flex justify-end">
                       {getRoleBadge(mapping?.role || "attribute")}
                     </div>
                   </div>
