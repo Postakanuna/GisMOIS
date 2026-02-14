@@ -305,7 +305,7 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
                       <SelectTrigger className="w-[160px]" data-testid={`select-role-${col.index}`}>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[70]">
                         <SelectItem value="latitude">
                           <div className="flex items-center gap-2">
                             <MapPin className="h-3 w-3 text-green-600" />
