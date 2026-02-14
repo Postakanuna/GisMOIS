@@ -332,6 +332,7 @@ export function ComplaintAnalysisDialog({
                       <SelectValue placeholder="Выберите поле" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none_">Не указывать (все как одна группа)</SelectItem>
                       {layerAttributes.data.map((attr: string) => (
                         <SelectItem key={attr} value={attr}>{attr}</SelectItem>
                       ))}
@@ -386,7 +387,7 @@ export function ComplaintAnalysisDialog({
               <Button
                 className="w-full gap-2"
                 onClick={() => analysisMutation.mutate()}
-                disabled={!selectedLayerId || !dateFieldName || analysisMutation.isPending}
+                disabled={!selectedLayerId || analysisMutation.isPending}
                 data-testid="button-run-analysis"
               >
                 {analysisMutation.isPending ? (

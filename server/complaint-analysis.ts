@@ -230,20 +230,22 @@ export async function analyzeComplaints(
   const parsedComplaints: ComplaintFeature[] = [];
   for (const c of complaints) {
     const props = c.properties as Record<string, unknown>;
-    const dateVal = props[dateFieldName];
-    let dateStr = "";
-    if (dateVal) {
-      const rawDate = String(dateVal).trim();
-      if (!rawDate) continue;
-      const d = new Date(rawDate);
-      if (!isNaN(d.getTime())) {
-        dateStr = d.toISOString().split("T")[0];
-      } else {
-        dateStr = rawDate;
+    const effectiveDateField = dateFieldName && dateFieldName !== "_none_" ? dateFieldName : "";
+    let dateStr = "Без даты";
+    if (effectiveDateField) {
+      const dateVal = props[effectiveDateField];
+      if (dateVal) {
+        const rawDate = String(dateVal).trim();
+        if (rawDate) {
+          const d = new Date(rawDate);
+          if (!isNaN(d.getTime())) {
+            dateStr = d.toISOString().split("T")[0];
+          } else {
+            dateStr = rawDate;
+          }
+        }
       }
     }
-
-    if (!dateStr) continue;
 
     const effectiveAddressField = addressFieldName && addressFieldName !== "_none_" ? addressFieldName : "";
     const addrCandidates = effectiveAddressField
@@ -401,7 +403,7 @@ export async function analyzeComplaints(
 
   const resultGroups: ComplaintAnalysisResult["dateGroups"] = [];
 
-  for (const [, group] of dateNistGroups) {
+  for (const [, group] of Array.from(dateNistGroups)) {
     if (group.complaints.length < 2) {
       const c = group.complaints[0];
       resultGroups.push({
@@ -474,7 +476,7 @@ export async function analyzeComplaints(
 
     if (lcaResult) {
       const children = new Map<string, string[]>();
-      for (const [node, par] of parentMap) {
+      for (const [node, par] of Array.from(parentMap)) {
         if (par !== null) {
           if (!children.has(par)) children.set(par, []);
           children.get(par)!.push(node);
@@ -505,7 +507,7 @@ export async function analyzeComplaints(
         }
       }
 
-      for (const nodeName of downstream) {
+      for (const nodeName of Array.from(downstream)) {
         const node = graph.nodes.get(nodeName);
         if (node && (node.type === "consumer" || node.type === "ctp") && node.featureId > 0) {
           affectedConsumers.push({
@@ -580,11 +582,11 @@ function summarizeConsumers(group: DateGroup) {
 
 function findFuzzyNodeInTree(nodeName: string, parentMap: Map<string, string | null>): string | null {
   const norm = normalizeName(nodeName).toLowerCase();
-  for (const key of parentMap.keys()) {
+  for (const key of Array.from(parentMap.keys())) {
     const keyNorm = normalizeName(key).toLowerCase();
     if (keyNorm === norm) return key;
   }
-  for (const key of parentMap.keys()) {
+  for (const key of Array.from(parentMap.keys())) {
     const keyNorm = normalizeName(key).toLowerCase();
     if (keyNorm.startsWith(norm) || norm.startsWith(keyNorm)) return key;
   }
@@ -643,7 +645,7 @@ function computeLCA(
   }
 
   const children = new Map<string, string[]>();
-  for (const [node, par] of parentMap) {
+  for (const [node, par] of Array.from(parentMap)) {
     if (par !== null) {
       if (!children.has(par)) children.set(par, []);
       children.get(par)!.push(node);
@@ -663,7 +665,7 @@ function computeLCA(
   collectDown(lca);
 
   let downstreamConsumerCount = 0;
-  for (const nodeName of downstream) {
+  for (const nodeName of Array.from(downstream)) {
     const node = graph.nodes.get(nodeName);
     if (node && (node.type === "consumer" || node.type === "ctp")) {
       downstreamConsumerCount++;
