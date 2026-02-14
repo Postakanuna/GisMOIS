@@ -329,23 +329,25 @@ export default function Home() {
   }, []);
 
   const handleOpenSimulationDialog = useCallback(() => {
-    if (selectedFeatures.length !== 1 || !drawing.activeLayer) return;
+    if (selectedFeatures.length !== 1) return;
     const feature = selectedFeatures[0];
     const realFeatureId = feature.properties?.featureId as number | undefined;
-    const featureData = realFeatureId
-      ? drawing.features.find(f => f.id === realFeatureId)
-      : drawing.features.find((_, idx) => idx === feature.featureIndex);
-    if (featureData) {
-      setSimulationFeatureInfo({
-        featureId: featureData.id,
-        layerId: drawing.activeLayer.id,
-        name: (featureData.properties as Record<string, unknown>)?.["Name"] as string || 
-              (featureData.properties as Record<string, unknown>)?.["name"] as string || "",
-        featureType: featureData.geometryType,
-      });
-      setShowSimulationDialog(true);
-    }
-  }, [selectedFeatures, drawing.activeLayer, drawing.features]);
+    if (!realFeatureId) return;
+    const featureLayerId = feature.layerId;
+    const geomProp = feature.properties?.["geometry"];
+    const geometryType = (feature.properties?.geometryType as string) || 
+                         (geomProp && typeof geomProp === "object" && "getType" in geomProp ? (geomProp as any).getType() : "") || "";
+    const name = (feature.properties?.Name as string) || 
+                 (feature.properties?.name as string) || 
+                 (feature.properties?.["Naim_tepl"] as string) || "";
+    setSimulationFeatureInfo({
+      featureId: realFeatureId,
+      layerId: featureLayerId,
+      name,
+      featureType: geometryType,
+    });
+    setShowSimulationDialog(true);
+  }, [selectedFeatures]);
 
   // Handle undo - during drawing mode, remove last point; otherwise use normal undo
   const handleUndo = useCallback(() => {
