@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,6 +30,7 @@ import { LayerAttributeTableWrapper } from "@/components/layer-attribute-table-w
 import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
 import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
+import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -217,6 +218,7 @@ export default function Home() {
   } | null>(null);
   const [showComplaintDialog, setShowComplaintDialog] = useState(false);
   const [complaintResult, setComplaintResult] = useState<ComplaintAnalysisResult | null>(null);
+  const [showTopologyDialog, setShowTopologyDialog] = useState(false);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -523,6 +525,19 @@ export default function Home() {
                 </TooltipTrigger>
                 <TooltipContent>Анализ жалоб</TooltipContent>
               </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={showTopologyDialog ? "default" : "ghost"}
+                    size="icon"
+                    onClick={() => setShowTopologyDialog(prev => !prev)}
+                    data-testid="button-open-topology-check"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Проверка топологии</TooltipContent>
+              </Tooltip>
               <Button 
                 variant={editMode ? "default" : "ghost"} 
                 size="sm"
@@ -751,6 +766,12 @@ export default function Home() {
                   },
                 });
               }}
+            />
+
+            <TopologyValidationDialog
+              open={showTopologyDialog}
+              onOpenChange={setShowTopologyDialog}
+              sceneId={currentSceneId || 0}
             />
           </main>
         </div>

@@ -4292,7 +4292,34 @@ export async function registerRoutes(
     return res.json({ status: "ok", version: "1.0.0" });
   });
 
-  // Network graph simulation - analyze disconnection impact
+  app.post("/api/network-graph/validate-topology", async (req: Request, res: Response) => {
+    try {
+      const { sceneId } = req.body;
+      if (!sceneId) return res.status(400).json({ error: "sceneId is required" });
+      const { validateTopology } = await import("./network-graph");
+      const result = await validateTopology(Number(sceneId));
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Topology validation error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/network-graph/fix-topology", async (req: Request, res: Response) => {
+    try {
+      const { fixes } = req.body;
+      if (!fixes || !Array.isArray(fixes) || fixes.length === 0) {
+        return res.status(400).json({ error: "fixes array is required" });
+      }
+      const { applyTopologyFixes } = await import("./network-graph");
+      const result = await applyTopologyFixes(fixes);
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Topology fix error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
   app.post("/api/network-graph/simulate", async (req: Request, res: Response) => {
     try {
       const { featureId, layerId, sceneId } = req.body;

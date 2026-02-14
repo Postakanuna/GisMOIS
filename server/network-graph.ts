@@ -814,3 +814,351 @@ export async function simulateDisconnection(
     },
   };
 }
+
+export interface TopologyError {
+  featureId: number;
+  layerId: number;
+  segmentName: string;
+  errorType: "orphan_begin" | "orphan_end" | "orphan_both" | "duplicate" | "empty_name" | "self_loop" | "geom_mismatch_begin" | "geom_mismatch_end";
+  field: string;
+  currentValue: string;
+  suggestedValue: string | null;
+  suggestedFeatureId: number | null;
+  distance: number | null;
+  nist: string;
+}
+
+export interface TopologyValidationResult {
+  totalSegments: number;
+  totalPointNodes: number;
+  totalErrors: number;
+  errors: TopologyError[];
+  stats: {
+    orphanBegin: number;
+    orphanEnd: number;
+    orphanBoth: number;
+    duplicates: number;
+    emptyNames: number;
+    selfLoops: number;
+    geomMismatchBegin: number;
+    geomMismatchEnd: number;
+  };
+}
+
+function getLineEndpoints(coordinates: any): { start: [number, number]; end: [number, number] } | null {
+  if (!coordinates) return null;
+  let coords: number[][] = [];
+  if (Array.isArray(coordinates) && coordinates.length > 0) {
+    if (Array.isArray(coordinates[0]) && typeof coordinates[0][0] === "number") {
+      coords = coordinates;
+    } else if (Array.isArray(coordinates[0]) && Array.isArray(coordinates[0][0])) {
+      coords = coordinates[0];
+    }
+  }
+  if (coords.length < 2) return null;
+  return {
+    start: [coords[0][0], coords[0][1]],
+    end: [coords[coords.length - 1][0], coords[coords.length - 1][1]],
+  };
+}
+
+function isGeographicCRS(crs: string): boolean {
+  const geo = ["EPSG:4326", "EPSG:4269", "EPSG:4267", "CRS:84", "WGS84", "WGS 84"];
+  return geo.some(g => crs.toUpperCase().includes(g.toUpperCase()));
+}
+
+function distanceBetweenPoints(a: [number, number], b: [number, number], useHaversine = true): number {
+  if (!useHaversine) {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  const R = 6371000;
+  const lat1 = a[1] * Math.PI / 180;
+  const lat2 = b[1] * Math.PI / 180;
+  const dLat = (b[1] - a[1]) * Math.PI / 180;
+  const dLon = (b[0] - a[0]) * Math.PI / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLon = Math.sin(dLon / 2);
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function getPointCoords(coordinates: any): [number, number] | null {
+  if (!coordinates) return null;
+  if (Array.isArray(coordinates) && coordinates.length >= 2 && typeof coordinates[0] === "number") {
+    return [coordinates[0], coordinates[1]];
+  }
+  if (typeof coordinates === "object" && coordinates.coordinates) {
+    return getPointCoords(coordinates.coordinates);
+  }
+  return null;
+}
+
+function findFuzzyMatchTopo(name: string, pointMap: Map<string, any>): string | null {
+  const norm = name.toLowerCase();
+  for (const key of Array.from(pointMap.keys())) {
+    if (key.toLowerCase() === norm) return key;
+  }
+  for (const key of Array.from(pointMap.keys())) {
+    const keyNorm = key.toLowerCase();
+    if (keyNorm.startsWith(norm) || norm.startsWith(keyNorm)) return key;
+  }
+  return null;
+}
+
+function findNearestPoint(
+  coord: [number, number],
+  points: Array<{ id: number; name: string; normName: string; coords: [number, number] }>,
+  maxDistM: number,
+  useHaversine = true,
+): { name: string; id: number; dist: number } | null {
+  let best: { name: string; id: number; dist: number } | null = null;
+  for (const p of points) {
+    const d = distanceBetweenPoints(coord, p.coords, useHaversine);
+    if (d <= maxDistM && (!best || d < best.dist)) {
+      best = { name: p.name, id: p.id, dist: d };
+    }
+  }
+  return best;
+}
+
+export async function validateTopology(sceneId: number): Promise<TopologyValidationResult> {
+  const layerConfig = await getSceneNetworkLayers(sceneId);
+
+  if (layerConfig.segmentLayerIds.length === 0) {
+    return {
+      totalSegments: 0, totalPointNodes: 0, totalErrors: 0, errors: [],
+      stats: { orphanBegin: 0, orphanEnd: 0, orphanBoth: 0, duplicates: 0, emptyNames: 0, selfLoops: 0, geomMismatchBegin: 0, geomMismatchEnd: 0 },
+    };
+  }
+
+  const segments = await db
+    .select({ id: drawnFeatures.id, layerId: drawnFeatures.layerId, coordinates: drawnFeatures.coordinates, properties: drawnFeatures.properties })
+    .from(drawnFeatures)
+    .where(inArray(drawnFeatures.layerId, layerConfig.segmentLayerIds));
+
+  const allPointLayerIds = [
+    ...layerConfig.nodeLayerIds, ...layerConfig.consumerLayerIds,
+    ...layerConfig.ctpLayerIds, ...layerConfig.sourceLayerIds,
+    ...layerConfig.valveLayerIds, ...layerConfig.pumpLayerIds,
+  ];
+
+  const allLayerIds = [...layerConfig.segmentLayerIds, ...allPointLayerIds];
+  let useHaversine = true;
+  if (allLayerIds.length > 0) {
+    const layerCrsRows = await db
+      .select({ crs: editableLayers.crs })
+      .from(editableLayers)
+      .where(inArray(editableLayers.id, allLayerIds));
+    const hasProjected = layerCrsRows.some(r => !isGeographicCRS(r.crs));
+    if (hasProjected) useHaversine = false;
+  }
+
+  let pointFeatures: Array<{ id: number; layerId: number; coordinates: any; properties: Record<string, unknown> }> = [];
+  if (allPointLayerIds.length > 0) {
+    pointFeatures = (await db
+      .select({ id: drawnFeatures.id, layerId: drawnFeatures.layerId, coordinates: drawnFeatures.coordinates, properties: drawnFeatures.properties })
+      .from(drawnFeatures)
+      .where(inArray(drawnFeatures.layerId, allPointLayerIds))) as any;
+  }
+
+  const pointNodeMap = new Map<string, { id: number; coords: [number, number] | null; name: string }>();
+  const pointsByCoords: Array<{ id: number; name: string; normName: string; coords: [number, number] }> = [];
+
+  for (const pf of pointFeatures) {
+    const props = pf.properties as Record<string, unknown>;
+    const nameRaw = (props.Name as string) || "";
+    if (!nameRaw) continue;
+    const name = normalizeName(nameRaw);
+    const coords = getPointCoords(pf.coordinates);
+    pointNodeMap.set(name, { id: pf.id, coords, name });
+    if (coords) {
+      pointsByCoords.push({ id: pf.id, name, normName: name.toLowerCase(), coords });
+    }
+  }
+
+  const errors: TopologyError[] = [];
+  const segmentKeys = new Map<string, number>();
+
+  for (const seg of segments) {
+    const props = seg.properties as Record<string, unknown>;
+    const beginRaw = (props.Begin_uch as string) || "";
+    const endRaw = (props.End_uch as string) || "";
+    const nist = (props.Nist as string) || "";
+    const beginNorm = normalizeName(beginRaw);
+    const endNorm = normalizeName(endRaw);
+    const segLabel = `${beginRaw} → ${endRaw}`;
+
+    if (!beginRaw && !endRaw) {
+      errors.push({
+        featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+        errorType: "empty_name", field: "Begin_uch, End_uch",
+        currentValue: "", suggestedValue: null, suggestedFeatureId: null, distance: null, nist,
+      });
+      continue;
+    }
+
+    if (beginNorm === endNorm && beginNorm) {
+      errors.push({
+        featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+        errorType: "self_loop", field: "Begin_uch = End_uch",
+        currentValue: beginRaw, suggestedValue: null, suggestedFeatureId: null, distance: null, nist,
+      });
+    }
+
+    const dupKey = `${beginNorm}||${endNorm}||${nist}`;
+    if (segmentKeys.has(dupKey)) {
+      errors.push({
+        featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+        errorType: "duplicate", field: "Begin_uch, End_uch",
+        currentValue: segLabel, suggestedValue: null,
+        suggestedFeatureId: segmentKeys.get(dupKey) || null,
+        distance: null, nist,
+      });
+    }
+    segmentKeys.set(dupKey, seg.id);
+
+    const beginFound = beginNorm ? (pointNodeMap.has(beginNorm) || findFuzzyMatchTopo(beginNorm, pointNodeMap) !== null) : true;
+    const endFound = endNorm ? (pointNodeMap.has(endNorm) || findFuzzyMatchTopo(endNorm, pointNodeMap) !== null) : true;
+
+    const endpoints = getLineEndpoints(seg.coordinates);
+
+    if (!beginFound && !endFound && beginNorm && endNorm) {
+      let sugBegin: { name: string; id: number; dist: number } | null = null;
+      let sugEnd: { name: string; id: number; dist: number } | null = null;
+      if (endpoints) {
+        sugBegin = findNearestPoint(endpoints.start, pointsByCoords, 200, useHaversine);
+        sugEnd = findNearestPoint(endpoints.end, pointsByCoords, 200, useHaversine);
+      }
+      errors.push({
+        featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+        errorType: "orphan_both", field: "Begin_uch",
+        currentValue: beginRaw,
+        suggestedValue: sugBegin?.name || null,
+        suggestedFeatureId: sugBegin?.id || null,
+        distance: sugBegin ? Math.round(sugBegin.dist) : null, nist,
+      });
+      errors.push({
+        featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+        errorType: "orphan_both", field: "End_uch",
+        currentValue: endRaw,
+        suggestedValue: sugEnd?.name || null,
+        suggestedFeatureId: sugEnd?.id || null,
+        distance: sugEnd ? Math.round(sugEnd.dist) : null, nist,
+      });
+    } else {
+      if (!beginFound && beginNorm) {
+        let suggestion: { name: string; id: number; dist: number } | null = null;
+        if (endpoints) suggestion = findNearestPoint(endpoints.start, pointsByCoords, 200, useHaversine);
+        errors.push({
+          featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+          errorType: "orphan_begin", field: "Begin_uch",
+          currentValue: beginRaw,
+          suggestedValue: suggestion?.name || null,
+          suggestedFeatureId: suggestion?.id || null,
+          distance: suggestion ? Math.round(suggestion.dist) : null, nist,
+        });
+      }
+      if (!endFound && endNorm) {
+        let suggestion: { name: string; id: number; dist: number } | null = null;
+        if (endpoints) suggestion = findNearestPoint(endpoints.end, pointsByCoords, 200, useHaversine);
+        errors.push({
+          featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+          errorType: "orphan_end", field: "End_uch",
+          currentValue: endRaw,
+          suggestedValue: suggestion?.name || null,
+          suggestedFeatureId: suggestion?.id || null,
+          distance: suggestion ? Math.round(suggestion.dist) : null, nist,
+        });
+      }
+    }
+
+    if (beginFound && endFound && endpoints) {
+      if (beginNorm) {
+        const matchKey = findFuzzyMatchTopo(beginNorm, pointNodeMap) || beginNorm;
+        const pn = pointNodeMap.get(matchKey);
+        if (pn && pn.coords) {
+          const dist = distanceBetweenPoints(endpoints.start, pn.coords, useHaversine);
+          if (dist > 50) {
+            const nearest = findNearestPoint(endpoints.start, pointsByCoords, 200, useHaversine);
+            if (nearest && nearest.name !== beginNorm && nearest.name !== matchKey) {
+              errors.push({
+                featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+                errorType: "geom_mismatch_begin", field: "Begin_uch",
+                currentValue: beginRaw,
+                suggestedValue: nearest.name,
+                suggestedFeatureId: nearest.id,
+                distance: Math.round(nearest.dist), nist,
+              });
+            }
+          }
+        }
+      }
+      if (endNorm) {
+        const matchKey = findFuzzyMatchTopo(endNorm, pointNodeMap) || endNorm;
+        const pn = pointNodeMap.get(matchKey);
+        if (pn && pn.coords) {
+          const dist = distanceBetweenPoints(endpoints.end, pn.coords, useHaversine);
+          if (dist > 50) {
+            const nearest = findNearestPoint(endpoints.end, pointsByCoords, 200, useHaversine);
+            if (nearest && nearest.name !== endNorm && nearest.name !== matchKey) {
+              errors.push({
+                featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+                errorType: "geom_mismatch_end", field: "End_uch",
+                currentValue: endRaw,
+                suggestedValue: nearest.name,
+                suggestedFeatureId: nearest.id,
+                distance: Math.round(nearest.dist), nist,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const stats = {
+    orphanBegin: errors.filter(e => e.errorType === "orphan_begin").length,
+    orphanEnd: errors.filter(e => e.errorType === "orphan_end").length,
+    orphanBoth: errors.filter(e => e.errorType === "orphan_both" && e.field === "Begin_uch").length,
+    duplicates: errors.filter(e => e.errorType === "duplicate").length,
+    emptyNames: errors.filter(e => e.errorType === "empty_name").length,
+    selfLoops: errors.filter(e => e.errorType === "self_loop").length,
+    geomMismatchBegin: errors.filter(e => e.errorType === "geom_mismatch_begin").length,
+    geomMismatchEnd: errors.filter(e => e.errorType === "geom_mismatch_end").length,
+  };
+
+  return { totalSegments: segments.length, totalPointNodes: pointFeatures.length, totalErrors: errors.length, errors, stats };
+}
+
+export async function applyTopologyFixes(
+  fixes: Array<{ featureId: number; field: string; newValue: string }>
+): Promise<{ applied: number; failed: number; details: Array<{ featureId: number; success: boolean; error?: string }> }> {
+  let applied = 0;
+  let failed = 0;
+  const details: Array<{ featureId: number; success: boolean; error?: string }> = [];
+
+  for (const fix of fixes) {
+    try {
+      if (fix.field !== "Begin_uch" && fix.field !== "End_uch") {
+        details.push({ featureId: fix.featureId, success: false, error: `Unknown field: ${fix.field}` });
+        failed++;
+        continue;
+      }
+      await db
+        .update(drawnFeatures)
+        .set({
+          properties: sql`jsonb_set(${drawnFeatures.properties}, ${`{${fix.field}}`}, ${JSON.stringify(fix.newValue)}::jsonb)`,
+        })
+        .where(eq(drawnFeatures.id, fix.featureId));
+      applied++;
+      details.push({ featureId: fix.featureId, success: true });
+    } catch (err: any) {
+      failed++;
+      details.push({ featureId: fix.featureId, success: false, error: err.message });
+    }
+  }
+
+  return { applied, failed, details };
+}
