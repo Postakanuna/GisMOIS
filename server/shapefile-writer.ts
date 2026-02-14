@@ -1,5 +1,7 @@
 // @ts-ignore
 import archiver from "archiver";
+// @ts-ignore
+import iconv from "iconv-lite";
 import { PassThrough } from "stream";
 
 interface Feature {
@@ -157,7 +159,7 @@ function collectFieldInfo(features: Feature[]): { name: string; type: "C" | "N" 
       }
 
       const strVal = String(val);
-      const len = Buffer.byteLength(strVal, "utf-8");
+      const len = iconv.encode(strVal, "cp1251").length;
 
       if (typeof val === "boolean") {
         if (!existing) fieldMap.set(key, { type: "L", maxLen: 1, hasDecimal: false });
@@ -337,6 +339,7 @@ function buildDbf(features: Feature[], fields: { name: string; type: "C" | "N" |
 
   const header = Buffer.alloc(headerSize);
   header[0] = 0x03;
+  header[29] = 0xC9;
   const now = new Date();
   header[1] = now.getFullYear() - 1900;
   header[2] = now.getMonth() + 1;
@@ -348,7 +351,7 @@ function buildDbf(features: Feature[], fields: { name: string; type: "C" | "N" |
   for (let i = 0; i < fields.length; i++) {
     const field = fields[i];
     const fieldOffset = DBF_HEADER_SIZE + i * DBF_FIELD_SIZE;
-    const nameBytes = Buffer.from(field.name, "ascii");
+    const nameBytes = iconv.encode(field.name, "cp1251");
     nameBytes.copy(header, fieldOffset, 0, Math.min(nameBytes.length, 11));
     header[fieldOffset + 11] = field.type.charCodeAt(0);
     header[fieldOffset + 16] = field.size;
@@ -379,7 +382,7 @@ function buildDbf(features: Feature[], fields: { name: string; type: "C" | "N" |
         strVal = String(val);
       }
 
-      const valBuf = Buffer.from(strVal, "utf-8");
+      const valBuf = iconv.encode(strVal, "cp1251");
       const copyLen = Math.min(valBuf.length, field.size);
       if (field.type === "N" || field.type === "F") {
         const padded = Buffer.alloc(field.size, 0x20);
@@ -409,7 +412,7 @@ export async function exportShapefile(
   const { shp, shx } = buildShp(features, shapeType);
   const dbf = buildDbf(features, fields);
   const prj = WGS84_PRJ;
-  const cpg = "UTF-8";
+  const cpg = "CP1251";
 
   const safeName = layerName.replace(/[^a-zA-Zа-яА-ЯёЁ0-9_\- ]/g, "_");
 
