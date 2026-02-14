@@ -1000,10 +1000,85 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
     }
 
     if (beginNorm === endNorm && beginNorm) {
+      const loopEndpoints = getLineEndpoints(seg.coordinates);
+      let loopField: string = "Begin_uch = End_uch";
+      let loopSuggested: string | null = null;
+      let loopSuggestedId: number | null = null;
+      let loopDist: number | null = null;
+
+      if (loopEndpoints) {
+        const matchKey = findFuzzyMatchTopo(beginNorm, pointNodeMap) || beginNorm;
+        const currentNode = pointNodeMap.get(matchKey);
+
+        const nearestToStart = findNearestPoint(loopEndpoints.start, pointsByCoords, 200, useHaversine);
+        const nearestToEnd = findNearestPoint(loopEndpoints.end, pointsByCoords, 200, useHaversine);
+
+        if (currentNode && currentNode.coords) {
+          const distStartToNode = distanceBetweenPoints(loopEndpoints.start, currentNode.coords, useHaversine);
+          const distEndToNode = distanceBetweenPoints(loopEndpoints.end, currentNode.coords, useHaversine);
+
+          if (distStartToNode < distEndToNode) {
+            if (nearestToEnd && nearestToEnd.name !== matchKey && nearestToEnd.name !== beginNorm) {
+              loopField = "End_uch";
+              loopSuggested = nearestToEnd.name;
+              loopSuggestedId = nearestToEnd.id;
+              loopDist = Math.round(nearestToEnd.dist);
+            }
+          } else {
+            if (nearestToStart && nearestToStart.name !== matchKey && nearestToStart.name !== beginNorm) {
+              loopField = "Begin_uch";
+              loopSuggested = nearestToStart.name;
+              loopSuggestedId = nearestToStart.id;
+              loopDist = Math.round(nearestToStart.dist);
+            }
+          }
+        } else {
+          if (nearestToStart && nearestToEnd) {
+            if (nearestToStart.name === beginNorm || nearestToStart.name === matchKey) {
+              if (nearestToEnd.name !== beginNorm && nearestToEnd.name !== matchKey) {
+                loopField = "End_uch";
+                loopSuggested = nearestToEnd.name;
+                loopSuggestedId = nearestToEnd.id;
+                loopDist = Math.round(nearestToEnd.dist);
+              }
+            } else if (nearestToEnd.name === beginNorm || nearestToEnd.name === matchKey) {
+              if (nearestToStart.name !== beginNorm && nearestToStart.name !== matchKey) {
+                loopField = "Begin_uch";
+                loopSuggested = nearestToStart.name;
+                loopSuggestedId = nearestToStart.id;
+                loopDist = Math.round(nearestToStart.dist);
+              }
+            } else {
+              if (nearestToStart.dist < nearestToEnd.dist) {
+                loopField = "End_uch";
+                loopSuggested = nearestToEnd.name;
+                loopSuggestedId = nearestToEnd.id;
+                loopDist = Math.round(nearestToEnd.dist);
+              } else {
+                loopField = "Begin_uch";
+                loopSuggested = nearestToStart.name;
+                loopSuggestedId = nearestToStart.id;
+                loopDist = Math.round(nearestToStart.dist);
+              }
+            }
+          } else if (nearestToEnd && !nearestToStart) {
+            loopField = "End_uch";
+            loopSuggested = nearestToEnd.name;
+            loopSuggestedId = nearestToEnd.id;
+            loopDist = Math.round(nearestToEnd.dist);
+          } else if (nearestToStart && !nearestToEnd) {
+            loopField = "Begin_uch";
+            loopSuggested = nearestToStart.name;
+            loopSuggestedId = nearestToStart.id;
+            loopDist = Math.round(nearestToStart.dist);
+          }
+        }
+      }
+
       errors.push({
         featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
-        errorType: "self_loop", field: "Begin_uch = End_uch",
-        currentValue: beginRaw, suggestedValue: null, suggestedFeatureId: null, distance: null, nist,
+        errorType: "self_loop", field: loopField,
+        currentValue: beginRaw, suggestedValue: loopSuggested, suggestedFeatureId: loopSuggestedId, distance: loopDist, nist,
       });
     }
 

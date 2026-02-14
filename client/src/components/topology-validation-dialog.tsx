@@ -329,7 +329,12 @@ export function TopologyValidationDialog({
                                   <span className="text-destructive">{error.currentValue || "(пусто)"}</span>
                                   {error.nist && <Badge variant="outline" className="text-[10px]">Nist {error.nist}</Badge>}
                                 </div>
-                                <div className="text-muted-foreground">ID: {error.featureId}</div>
+                                <div className="text-muted-foreground">
+                                  ID: {error.featureId}
+                                  {error.segmentName && error.segmentName !== " → " && (
+                                    <span className="ml-1">| {error.segmentName}</span>
+                                  )}
+                                </div>
                                 {error.suggestedValue && (
                                   <div className="flex items-center gap-1 flex-wrap">
                                     <ArrowRight className="h-3 w-3 text-green-500" />
