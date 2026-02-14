@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Card } from "@/components/ui/card";
 import {
   Select,
@@ -306,7 +306,7 @@ export function ComplaintAnalysisDialog({
         </div>
       </div>
 
-      <ScrollArea className="max-h-[calc(100vh-200px)]">
+      <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
         <div className="p-3 space-y-3">
           {!result && (
             <>
@@ -543,7 +543,7 @@ export function ComplaintAnalysisDialog({
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

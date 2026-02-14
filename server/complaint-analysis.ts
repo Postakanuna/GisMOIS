@@ -397,19 +397,13 @@ export async function analyzeComplaints(
   for (const [, group] of Array.from(dateNistGroups)) {
     const consumerSummary = summarizeConsumers(group);
 
-    if (group.complaints.length < 2) {
-      const c = group.complaints[0];
+    if (group.complaints.length < 3) {
       resultGroups.push({
         date: group.date,
         nist: group.nist,
         sourceName: "",
-        complaintCount: 1,
-        consumers: [{
-          name: c.consumerName,
-          address: c.consumerAddress,
-          complaintCount: 1,
-          distance: c.distance,
-        }],
+        complaintCount: group.complaints.length,
+        consumers: consumerSummary,
         failureZones: [],
       });
       continue;
@@ -470,8 +464,6 @@ export async function analyzeComplaints(
   }
 
   resultGroups.sort((a, b) => {
-    const dc = b.complaintCount - a.complaintCount;
-    if (dc !== 0) return dc;
     return a.date.localeCompare(b.date);
   });
 
@@ -554,7 +546,7 @@ function findFailureZones(
   function findZonesRecursive(node: string, nodeComplaints: Set<string>) {
     if (nodeComplaints.size === 0) return;
 
-    if (nodeComplaints.size < 2) {
+    if (nodeComplaints.size < 3) {
       return;
     }
 
@@ -583,7 +575,7 @@ function findFailureZones(
       return;
     }
 
-    const multiComplaintBranches = branchesWithComplaints.filter(b => b.complaints.size >= 2);
+    const multiComplaintBranches = branchesWithComplaints.filter(b => b.complaints.size >= 3);
 
     if (multiComplaintBranches.length === 0) {
       buildZone(node, nodeComplaints);
@@ -687,13 +679,13 @@ function findFailureZones(
     const complaintConsumers = Array.from(zoneComplaintNodes);
 
     let confidence: FailureZone["confidence"] = "low";
-    if (complaintConsumers.length >= 2 && targetNode !== sourceNodeName) {
+    if (complaintConsumers.length >= 3 && targetNode !== sourceNodeName) {
       if (downstreamConsumerCount <= complaintConsumers.length * 3) {
         confidence = "high";
       } else {
         confidence = "medium";
       }
-    } else if (complaintConsumers.length >= 2) {
+    } else if (complaintConsumers.length >= 3) {
       confidence = "medium";
     }
 
