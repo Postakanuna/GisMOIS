@@ -554,8 +554,7 @@ function findFailureZones(
   function findZonesRecursive(node: string, nodeComplaints: Set<string>) {
     if (nodeComplaints.size === 0) return;
 
-    if (nodeComplaints.size === 1) {
-      buildZone(node, nodeComplaints);
+    if (nodeComplaints.size < 2) {
       return;
     }
 
@@ -584,12 +583,15 @@ function findFailureZones(
       return;
     }
 
-    for (const branch of branchesWithComplaints) {
-      if (branch.complaints.size >= 2) {
-        findZonesRecursive(branch.child, branch.complaints);
-      } else {
-        buildZone(branch.child, branch.complaints);
-      }
+    const multiComplaintBranches = branchesWithComplaints.filter(b => b.complaints.size >= 2);
+
+    if (multiComplaintBranches.length === 0) {
+      buildZone(node, nodeComplaints);
+      return;
+    }
+
+    for (const branch of multiComplaintBranches) {
+      findZonesRecursive(branch.child, branch.complaints);
     }
   }
 
