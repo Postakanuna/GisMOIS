@@ -674,11 +674,12 @@ export async function simulateDisconnection(
     throw new Error(`Объект "${featName}" (id=${featureId}) не найден в графе теплосети для Nist=${nist}. Граф содержит ${graph.nodes.size} узлов и ${graph.edges.length} рёбер.`);
   }
 
+  let downstreamNodes: Set<string>;
   if (failureNodeName === sourceNodeName) {
-    throw new Error(`Невозможно смоделировать отключение самого источника "${sourceNodeName}"`);
+    downstreamNodes = new Set(graph.nodes.keys());
+  } else {
+    downstreamNodes = getDownstreamNodes(graph, failureNodeName, parentMap, sourceNodeName);
   }
-
-  const downstreamNodes = getDownstreamNodes(graph, failureNodeName, parentMap, sourceNodeName);
   console.log(`[NetworkGraph] Downstream nodes: ${downstreamNodes.size}`);
 
   const affectedConsumers: SimulationResult["affectedConsumers"] = [];
