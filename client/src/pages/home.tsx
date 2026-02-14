@@ -283,7 +283,10 @@ export default function Home() {
     if (selectedFeatures.length !== 1 || !drawing.activeLayer) return;
     
     const feature = selectedFeatures[0];
-    const featureData = drawing.features.find((_, idx) => idx === feature.featureIndex);
+    const realFeatureId = feature.properties?.featureId as number | undefined;
+    const featureData = realFeatureId
+      ? drawing.features.find(f => f.id === realFeatureId)
+      : drawing.features.find((_, idx) => idx === feature.featureIndex);
     
     if (featureData) {
       let coords: [number, number] | null = null;
@@ -328,7 +331,12 @@ export default function Home() {
   const handleOpenSimulationDialog = useCallback(() => {
     if (selectedFeatures.length !== 1 || !drawing.activeLayer) return;
     const feature = selectedFeatures[0];
-    const featureData = drawing.features.find((_, idx) => idx === feature.featureIndex);
+    const realFeatureId = feature.properties?.featureId as number | undefined;
+    console.log("[Simulation] Selected feature:", { featureIndex: feature.featureIndex, realFeatureId, layerId: feature.layerId, props: feature.properties });
+    const featureData = realFeatureId
+      ? drawing.features.find(f => f.id === realFeatureId)
+      : drawing.features.find((_, idx) => idx === feature.featureIndex);
+    console.log("[Simulation] Resolved featureData:", featureData ? { id: featureData.id, name: (featureData.properties as Record<string, unknown>)?.["Name"], layerId: drawing.activeLayer.id } : "NOT FOUND");
     if (featureData) {
       setSimulationFeatureInfo({
         featureId: featureData.id,
