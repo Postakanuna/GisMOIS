@@ -13,6 +13,7 @@ import { users } from "@shared/models/auth";
 import { eq, and, sql } from "drizzle-orm";
 import multer from "multer";
 import fs from "fs";
+import { geocodeBatch } from "./geocoder";
 import path from "path";
 import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
@@ -1100,13 +1101,13 @@ export async function registerRoutes(
     }
   });
 
-  // Zod schema for Excel import validation
   const excelImportSchema = z.object({
     name: z.string().min(1, "Layer name is required"),
     rows: z.array(z.record(z.string(), z.unknown())).min(1, "At least one row is required"),
     columnMapping: z.object({
-      latitudeColumn: z.string().min(1, "Latitude column is required"),
-      longitudeColumn: z.string().min(1, "Longitude column is required"),
+      latitudeColumn: z.string().optional().default(""),
+      longitudeColumn: z.string().optional().default(""),
+      addressColumn: z.string().optional().default(""),
       attributes: z.array(z.object({
         sourceColumn: z.string(),
         targetName: z.string(),
@@ -1117,10 +1118,8 @@ export async function registerRoutes(
     pointStyle: z.string().optional(),
   });
 
-  // Import Excel data as point layer
   app.post("/api/editable-layers/import-excel", async (req: Request, res: Response) => {
     try {
-      // Validate request body
       const parseResult = excelImportSchema.safeParse(req.body);
       if (!parseResult.success) {
         return res.status(400).json({ 
@@ -1130,14 +1129,22 @@ export async function registerRoutes(
       }
 
       const { name, rows, columnMapping, sceneId, color, pointStyle } = parseResult.data;
-      const { latitudeColumn, longitudeColumn, attributes } = columnMapping;
+      const { latitudeColumn, longitudeColumn, addressColumn, attributes } = columnMapping;
 
-      // Filter out lat/lon columns from attributes to prevent duplicates
+      const useGeocoding = !!addressColumn && addressColumn.length > 0;
+      const useCoordinates = !!latitudeColumn && latitudeColumn.length > 0 && !!longitudeColumn && longitudeColumn.length > 0;
+
+      if (!useGeocoding && !useCoordinates) {
+        return res.status(400).json({
+          message: "Укажите колонки координат (широта/долгота) или колонку адреса для геокодирования",
+        });
+      }
+
+      const excludeColumns = [latitudeColumn, longitudeColumn, addressColumn].filter(Boolean);
       const filteredAttributes = (attributes || []).filter(
-        attr => attr.sourceColumn !== latitudeColumn && attr.sourceColumn !== longitudeColumn
+        attr => !excludeColumns.includes(attr.sourceColumn)
       );
 
-      // Create the editable layer
       const layer = await storage.createEditableLayer({
         sceneId: sceneId || null,
         name,
@@ -1152,75 +1159,136 @@ export async function registerRoutes(
         crs: "EPSG:4326",
       });
 
-      // Create layer schema from attributes (excluding lat/lon)
-      const fields = filteredAttributes.map((attr) => ({
+      const schemaFields = filteredAttributes.map((attr) => ({
         name: attr.targetName,
         type: "text" as const,
         required: false,
       }));
 
-      if (fields.length > 0) {
-        await storage.createLayerSchema({
-          layerId: layer.id,
-          fields,
+      if (useGeocoding) {
+        schemaFields.push({
+          name: "geocoded_address",
+          type: "text" as const,
+          required: false,
+        });
+        schemaFields.push({
+          name: "geocode_precision",
+          type: "text" as const,
+          required: false,
         });
       }
 
-      // Process rows and create features
+      if (schemaFields.length > 0) {
+        await storage.createLayerSchema({
+          layerId: layer.id,
+          fields: schemaFields,
+        });
+      }
+
       const validFeatures: any[] = [];
       const invalidRows: { row: number; reason: string }[] = [];
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const latValue = row[latitudeColumn];
-        const lonValue = row[longitudeColumn];
-
-        // Parse coordinates
-        const lat = typeof latValue === "string" ? parseFloat(latValue.replace(",", ".")) : Number(latValue);
-        const lon = typeof lonValue === "string" ? parseFloat(lonValue.replace(",", ".")) : Number(lonValue);
-
-        if (isNaN(lat) || isNaN(lon)) {
-          invalidRows.push({ row: i + 2, reason: "Невалидные координаты" });
-          continue;
+      if (useGeocoding) {
+        const apiKey = process.env.YANDEX_GEOCODER_API_KEY;
+        if (!apiKey) {
+          await storage.deleteEditableLayer(layer.id);
+          return res.status(400).json({
+            message: "API-ключ Яндекс Геокодера не настроен. Добавьте YANDEX_GEOCODER_API_KEY в секреты проекта.",
+          });
         }
 
-        if (lat < -90 || lat > 90) {
-          invalidRows.push({ row: i + 2, reason: `Широта вне диапазона: ${lat}` });
-          continue;
+        const addressEntries = rows.map((row, i) => ({
+          index: i,
+          address: String(row[addressColumn!] || ""),
+        }));
+
+        console.log(`Starting geocoding of ${addressEntries.length} addresses...`);
+
+        let geocodeResults;
+        try {
+          geocodeResults = await geocodeBatch(addressEntries, apiKey);
+        } catch (error: any) {
+          await storage.deleteEditableLayer(layer.id);
+          return res.status(400).json({
+            message: error.message || "Ошибка геокодирования",
+          });
         }
 
-        if (lon < -180 || lon > 180) {
-          invalidRows.push({ row: i + 2, reason: `Долгота вне диапазона: ${lon}` });
-          continue;
-        }
+        console.log(`Geocoding complete. Processing results...`);
 
-        // Build properties from selected attributes (excluding lat/lon)
-        const properties: Record<string, unknown> = {};
-        for (const attr of filteredAttributes) {
-          properties[attr.targetName] = row[attr.sourceColumn];
-        }
+        for (const gr of geocodeResults) {
+          if (!gr.result) {
+            invalidRows.push({
+              row: gr.index + 2,
+              reason: gr.error || "Адрес не найден",
+            });
+            continue;
+          }
 
-        validFeatures.push({
-          layerId: layer.id,
-          geometryType: "Point",
-          coordinates: [lon, lat], // GeoJSON format: [longitude, latitude]
-          properties,
-        });
+          const properties: Record<string, unknown> = {};
+          for (const attr of filteredAttributes) {
+            properties[attr.targetName] = rows[gr.index][attr.sourceColumn];
+          }
+          properties["geocoded_address"] = gr.result.formattedAddress;
+          properties["geocode_precision"] = gr.result.precision;
+
+          validFeatures.push({
+            layerId: layer.id,
+            geometryType: "Point",
+            coordinates: [gr.result.lon, gr.result.lat],
+            properties,
+          });
+        }
+      } else {
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const latValue = row[latitudeColumn!];
+          const lonValue = row[longitudeColumn!];
+
+          const lat = typeof latValue === "string" ? parseFloat(latValue.replace(",", ".")) : Number(latValue);
+          const lon = typeof lonValue === "string" ? parseFloat(lonValue.replace(",", ".")) : Number(lonValue);
+
+          if (isNaN(lat) || isNaN(lon)) {
+            invalidRows.push({ row: i + 2, reason: "Невалидные координаты" });
+            continue;
+          }
+
+          if (lat < -90 || lat > 90) {
+            invalidRows.push({ row: i + 2, reason: `Широта вне диапазона: ${lat}` });
+            continue;
+          }
+
+          if (lon < -180 || lon > 180) {
+            invalidRows.push({ row: i + 2, reason: `Долгота вне диапазона: ${lon}` });
+            continue;
+          }
+
+          const properties: Record<string, unknown> = {};
+          for (const attr of filteredAttributes) {
+            properties[attr.targetName] = row[attr.sourceColumn];
+          }
+
+          validFeatures.push({
+            layerId: layer.id,
+            geometryType: "Point",
+            coordinates: [lon, lat],
+            properties,
+          });
+        }
       }
 
-      // Batch create features
       if (validFeatures.length > 0) {
         await storage.createDrawnFeaturesBatch(validFeatures);
       }
 
-      // Fetch updated layer with feature count
       const updatedLayer = await storage.getEditableLayer(layer.id);
 
       return res.status(201).json({
         layer: updatedLayer,
         importedCount: validFeatures.length,
         skippedCount: invalidRows.length,
-        invalidRows: invalidRows.slice(0, 10), // Return first 10 invalid rows
+        invalidRows: invalidRows.slice(0, 20),
+        geocoded: useGeocoding,
       });
     } catch (error) {
       console.error("Import Excel error:", error);

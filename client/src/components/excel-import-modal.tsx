@@ -30,6 +30,7 @@ import {
   AlertCircle,
   FileSpreadsheet,
   ArrowRight,
+  Search,
 } from "lucide-react";
 
 interface ExcelColumn {
@@ -46,7 +47,7 @@ interface ExcelParseResult {
   totalRows: number;
 }
 
-type ColumnRole = "latitude" | "longitude" | "attribute" | "skip";
+type ColumnRole = "latitude" | "longitude" | "address" | "attribute" | "skip";
 
 interface ColumnMapping {
   role: ColumnRole;
@@ -95,6 +96,13 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
     return null;
   }, [columnMappings]);
 
+  const addressColumn = useMemo(() => {
+    for (const [colName, mapping] of Object.entries(columnMappings)) {
+      if (mapping.role === "address") return colName;
+    }
+    return null;
+  }, [columnMappings]);
+
   const attributeColumns = useMemo(() => {
     return Object.entries(columnMappings)
       .filter(([_, mapping]) => mapping.role === "attribute")
@@ -104,15 +112,33 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
       }));
   }, [columnMappings]);
 
-  const isValid = latitudeColumn && longitudeColumn && layerName.trim();
+  const hasCoordinates = !!latitudeColumn && !!longitudeColumn;
+  const hasAddress = !!addressColumn;
+  const isValid = (hasCoordinates || hasAddress) && layerName.trim();
 
   const handleRoleChange = useCallback((columnName: string, role: ColumnRole) => {
     setColumnMappings(prev => {
       const newMappings = { ...prev };
       
-      if (role === "latitude" || role === "longitude") {
+      if (role === "latitude" || role === "longitude" || role === "address") {
         for (const [key, mapping] of Object.entries(newMappings)) {
           if (mapping.role === role && key !== columnName) {
+            newMappings[key] = { ...mapping, role: "attribute" };
+          }
+        }
+      }
+
+      if (role === "address") {
+        for (const [key, mapping] of Object.entries(newMappings)) {
+          if ((mapping.role === "latitude" || mapping.role === "longitude") && key !== columnName) {
+            newMappings[key] = { ...mapping, role: "attribute" };
+          }
+        }
+      }
+
+      if (role === "latitude" || role === "longitude") {
+        for (const [key, mapping] of Object.entries(newMappings)) {
+          if (mapping.role === "address" && key !== columnName) {
             newMappings[key] = { ...mapping, role: "attribute" };
           }
         }
@@ -141,10 +167,11 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/editable-layers/import-excel", {
         name: layerName.trim(),
-        rows: parseResult.allRows, // Use ALL rows, not just preview
+        rows: parseResult.allRows,
         columnMapping: {
-          latitudeColumn,
-          longitudeColumn,
+          latitudeColumn: latitudeColumn || "",
+          longitudeColumn: longitudeColumn || "",
+          addressColumn: addressColumn || "",
           attributes: attributeColumns,
         },
         sceneId: currentSceneId,
@@ -159,9 +186,10 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      const geocodeInfo = data.geocoded ? " (через геокодирование)" : "";
       toast({
         title: "Импорт завершён",
-        description: `Создано ${data.importedCount} точек${data.skippedCount > 0 ? `, пропущено ${data.skippedCount} строк` : ""}`,
+        description: `Создано ${data.importedCount} точек${geocodeInfo}${data.skippedCount > 0 ? `, пропущено ${data.skippedCount} строк` : ""}`,
       });
       onSuccess();
       onClose();
@@ -181,6 +209,8 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
         return <Badge variant="default" className="bg-green-600"><MapPin className="h-3 w-3 mr-1" />Широта</Badge>;
       case "longitude":
         return <Badge variant="default" className="bg-blue-600"><Navigation className="h-3 w-3 mr-1" />Долгота</Badge>;
+      case "address":
+        return <Badge variant="default" className="bg-purple-600"><Search className="h-3 w-3 mr-1" />Адрес</Badge>;
       case "attribute":
         return <Badge variant="secondary"><Check className="h-3 w-3 mr-1" />Атрибут</Badge>;
       case "skip":
@@ -226,11 +256,20 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
           </div>
         </div>
 
-        {!latitudeColumn || !longitudeColumn ? (
+        {!hasCoordinates && !hasAddress ? (
           <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
             <AlertCircle className="h-4 w-4 text-amber-500" />
             <span className="text-sm">
-              Укажите колонки с широтой и долготой для импорта точек
+              Укажите колонки с координатами (широта/долгота) или колонку с адресом для геокодирования
+            </span>
+          </div>
+        ) : null}
+
+        {hasAddress ? (
+          <div className="flex items-center gap-2 p-3 bg-purple-500/10 border border-purple-500/30 rounded-md">
+            <Search className="h-4 w-4 text-purple-500" />
+            <span className="text-sm">
+              Адреса будут геокодированы через Яндекс Геокодер. Для {parseResult.totalRows} строк это может занять до {Math.ceil(parseResult.totalRows / 40)} сек.
             </span>
           </div>
         ) : null}
@@ -263,7 +302,7 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
                       value={mapping?.role || "attribute"}
                       onValueChange={(value) => handleRoleChange(col.name, value as ColumnRole)}
                     >
-                      <SelectTrigger className="w-[140px]" data-testid={`select-role-${col.index}`}>
+                      <SelectTrigger className="w-[160px]" data-testid={`select-role-${col.index}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -277,6 +316,12 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
                           <div className="flex items-center gap-2">
                             <Navigation className="h-3 w-3 text-blue-600" />
                             Долгота
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="address">
+                          <div className="flex items-center gap-2">
+                            <Search className="h-3 w-3 text-purple-600" />
+                            Адрес (геокодер)
                           </div>
                         </SelectItem>
                         <SelectItem value="attribute">
@@ -365,15 +410,20 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
 
         <div className="flex items-center justify-between pt-2 border-t">
           <div className="text-sm text-muted-foreground">
-            {latitudeColumn && longitudeColumn ? (
+            {hasCoordinates ? (
               <span className="text-green-600">
                 <Check className="h-4 w-4 inline mr-1" />
                 Координаты настроены
               </span>
+            ) : hasAddress ? (
+              <span className="text-purple-600">
+                <Search className="h-4 w-4 inline mr-1" />
+                Геокодирование по адресу
+              </span>
             ) : (
               <span className="text-amber-500">
                 <AlertCircle className="h-4 w-4 inline mr-1" />
-                Укажите координаты
+                Укажите координаты или адрес
               </span>
             )}
           </div>
@@ -390,7 +440,7 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
               {importMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Импорт...
+                  {hasAddress ? "Геокодирование..." : "Импорт..."}
                 </>
               ) : (
                 <>
