@@ -704,22 +704,19 @@ export default function Home() {
                   setSimulationHighlightData(null);
                 }
               }}
-              onHighlightGroup={(groupIndex) => {
-                if (groupIndex === null || !complaintResult) {
+              onHighlightZone={(zone) => {
+                if (!zone) {
                   setSimulationHighlightData(null);
                   return;
                 }
-                const group = complaintResult.dateGroups[groupIndex];
-                if (!group) return;
-                const segments = group.affectedSegments.map(s => ({ coordinates: s.coordinates }));
-                const points = group.affectedConsumers.map(c => ({ coordinates: c.coordinates, type: "consumer" }));
-                const pf = group.probableFailure;
+                const segments = zone.affectedSegments.map((s: any) => ({ coordinates: s.coordinates }));
+                const points = zone.affectedConsumers.map((c: any) => ({ coordinates: c.coordinates, type: "consumer" }));
                 setSimulationHighlightData({
                   segments,
                   points,
-                  failurePoint: pf ? {
-                    coordinates: pf.nodeCoordinates || group.affectedSegments.find(s => s.featureId === pf.segmentFeatureId)?.coordinates,
-                    type: pf.nodeType === "node" || pf.nodeType === "ctp" || pf.nodeType === "consumer" ? "node" : "segment",
+                  failurePoint: zone.zoneCoordinates ? {
+                    coordinates: zone.zoneCoordinates,
+                    type: zone.zoneType === "node" || zone.zoneType === "ctp" || zone.zoneType === "consumer" ? "node" : "segment",
                   } : undefined,
                 });
               }}

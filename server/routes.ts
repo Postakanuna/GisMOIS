@@ -4591,22 +4591,25 @@ export async function registerRoutes(
           detailSheet.addRow({ name: c.name, address: c.address, count: c.complaintCount, distance: c.distance });
         }
 
-        if (group.probableFailure) {
-          detailSheet.addRow({});
-          detailSheet.addRow({ name: "--- Вероятная авария ---" });
-          detailSheet.addRow({ name: "Узел", address: group.probableFailure.nodeName });
-          detailSheet.addRow({ name: "Тип", address: translateNodeType(group.probableFailure.nodeType) });
-          detailSheet.addRow({ name: "Участок", address: group.probableFailure.segmentFrom ? `${group.probableFailure.segmentFrom} → ${group.probableFailure.segmentTo}` : "—" });
-          detailSheet.addRow({ name: "Уверенность", address: translateConfidence(group.probableFailure.confidence) });
-          detailSheet.addRow({ name: "Покрытие жалоб", address: `${group.probableFailure.complaintCoverage}%` });
-          detailSheet.addRow({ name: "Потребителей ниже аварии", address: String(group.probableFailure.downstreamConsumerCount) });
-        }
+        if (group.failureZones && group.failureZones.length > 0) {
+          for (let zi = 0; zi < group.failureZones.length; zi++) {
+            const zone = group.failureZones[zi];
+            detailSheet.addRow({});
+            detailSheet.addRow({ name: `--- Зона аварии ${zi + 1}: ${zone.zoneName} ---` });
+            detailSheet.addRow({ name: "Тип узла", address: translateNodeType(zone.zoneType) });
+            if (zone.incomingSegment) {
+              detailSheet.addRow({ name: "Участок", address: `${zone.incomingSegment.from} → ${zone.incomingSegment.to} (${zone.incomingSegment.length}м)` });
+            }
+            detailSheet.addRow({ name: "Уверенность", address: translateConfidence(zone.confidence) });
+            detailSheet.addRow({ name: "Жалоб в зоне", address: String(zone.complaintCount) });
+            detailSheet.addRow({ name: "Потребителей ниже", address: String(zone.downstreamConsumerCount) });
 
-        if (group.affectedConsumers.length > 0) {
-          detailSheet.addRow({});
-          detailSheet.addRow({ name: "--- Затронутые потребители (ниже аварии) ---" });
-          for (const ac of group.affectedConsumers) {
-            detailSheet.addRow({ name: ac.name, address: ac.address });
+            if (zone.affectedConsumers.length > 0) {
+              detailSheet.addRow({ name: "Затронутые потребители:" });
+              for (const ac of zone.affectedConsumers) {
+                detailSheet.addRow({ name: `  ${ac.name}`, address: ac.address });
+              }
+            }
           }
         }
       }

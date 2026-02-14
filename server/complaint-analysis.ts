@@ -148,13 +148,28 @@ interface DateGroup {
   consumerNodeNames: string[];
 }
 
-interface LCAResult {
-  lcaNodeName: string;
-  lcaNode: GraphNode | null;
+interface FailureZone {
+  zoneName: string;
+  zoneType: string;
+  zoneCoordinates: any;
   incomingSegment: { featureId: number; from: string; to: string; length: number } | null;
+  complaintConsumers: string[];
+  complaintCount: number;
   downstreamConsumerCount: number;
-  complaintCoverage: number;
   confidence: "high" | "medium" | "low";
+  affectedSegments: Array<{
+    featureId: number;
+    from: string;
+    to: string;
+    length: number;
+    coordinates: any;
+  }>;
+  affectedConsumers: Array<{
+    featureId: number;
+    name: string;
+    address: string;
+    coordinates: any;
+  }>;
 }
 
 export interface ComplaintAnalysisResult {
@@ -172,31 +187,7 @@ export interface ComplaintAnalysisResult {
       complaintCount: number;
       distance: number;
     }>;
-    probableFailure: {
-      nodeName: string;
-      nodeType: string;
-      nodeCoordinates: any;
-      segmentFrom: string;
-      segmentTo: string;
-      segmentLength: number;
-      segmentFeatureId: number;
-      confidence: string;
-      downstreamConsumerCount: number;
-      complaintCoverage: number;
-    } | null;
-    affectedSegments: Array<{
-      featureId: number;
-      from: string;
-      to: string;
-      length: number;
-      coordinates: any;
-    }>;
-    affectedConsumers: Array<{
-      featureId: number;
-      name: string;
-      address: string;
-      coordinates: any;
-    }>;
+    failureZones: FailureZone[];
   }>;
   unmatchedComplaints: Array<{
     complaintId: number;
@@ -404,6 +395,8 @@ export async function analyzeComplaints(
   const resultGroups: ComplaintAnalysisResult["dateGroups"] = [];
 
   for (const [, group] of Array.from(dateNistGroups)) {
+    const consumerSummary = summarizeConsumers(group);
+
     if (group.complaints.length < 2) {
       const c = group.complaints[0];
       resultGroups.push({
@@ -417,9 +410,7 @@ export async function analyzeComplaints(
           complaintCount: 1,
           distance: c.distance,
         }],
-        probableFailure: null,
-        affectedSegments: [],
-        affectedConsumers: [],
+        failureZones: [],
       });
       continue;
     }
@@ -437,17 +428,14 @@ export async function analyzeComplaints(
 
     const sourceNodeName = findSourceNode(graph);
     if (!sourceNodeName) {
-      console.log(`[ComplaintAnalysis] No source found for Nist=${group.nist}, skipping LCA`);
-      const consumerSummary = summarizeConsumers(group);
+      console.log(`[ComplaintAnalysis] No source found for Nist=${group.nist}, skipping analysis`);
       resultGroups.push({
         date: group.date,
         nist: group.nist,
         sourceName: "",
         complaintCount: group.complaints.length,
         consumers: consumerSummary,
-        probableFailure: null,
-        affectedSegments: [],
-        affectedConsumers: [],
+        failureZones: [],
       });
       continue;
     }
@@ -466,62 +454,10 @@ export async function analyzeComplaints(
       }
     }
 
-    let lcaResult: LCAResult | null = null;
-    if (complaintNodeNames.length >= 2) {
-      lcaResult = computeLCA(graph, parentMap, sourceNodeName, complaintNodeNames);
-    }
-
-    let affectedSegments: ComplaintAnalysisResult["dateGroups"][0]["affectedSegments"] = [];
-    let affectedConsumers: ComplaintAnalysisResult["dateGroups"][0]["affectedConsumers"] = [];
-
-    if (lcaResult) {
-      const children = new Map<string, string[]>();
-      for (const [node, par] of Array.from(parentMap)) {
-        if (par !== null) {
-          if (!children.has(par)) children.set(par, []);
-          children.get(par)!.push(node);
-        }
-      }
-
-      const downstream = new Set<string>();
-      downstream.add(lcaResult.lcaNodeName);
-      const collectDown = (n: string) => {
-        for (const child of children.get(n) || []) {
-          if (!downstream.has(child)) {
-            downstream.add(child);
-            collectDown(child);
-          }
-        }
-      };
-      collectDown(lcaResult.lcaNodeName);
-
-      for (const edge of graph.edges) {
-        if (downstream.has(edge.from) && downstream.has(edge.to)) {
-          affectedSegments.push({
-            featureId: edge.featureId,
-            from: edge.from,
-            to: edge.to,
-            length: edge.length,
-            coordinates: edge.coordinates,
-          });
-        }
-      }
-
-      for (const nodeName of Array.from(downstream)) {
-        const node = graph.nodes.get(nodeName);
-        if (node && (node.type === "consumer" || node.type === "ctp") && node.featureId > 0) {
-          affectedConsumers.push({
-            featureId: node.featureId,
-            name: node.name,
-            address: (node.properties.Adres as string) || "",
-            coordinates: node.coordinates,
-          });
-        }
-      }
-    }
+    const uniqueComplaintNodes = Array.from(new Set(complaintNodeNames));
+    const failureZones = findFailureZones(graph, parentMap, sourceNodeName, uniqueComplaintNodes);
 
     const sourceNode = graph.nodes.get(sourceNodeName);
-    const consumerSummary = summarizeConsumers(group);
 
     resultGroups.push({
       date: group.date,
@@ -529,20 +465,7 @@ export async function analyzeComplaints(
       sourceName: sourceNode?.name || sourceNodeName,
       complaintCount: group.complaints.length,
       consumers: consumerSummary,
-      probableFailure: lcaResult ? {
-        nodeName: lcaResult.lcaNodeName,
-        nodeType: lcaResult.lcaNode?.type || "unknown",
-        nodeCoordinates: lcaResult.lcaNode?.coordinates || null,
-        segmentFrom: lcaResult.incomingSegment?.from || "",
-        segmentTo: lcaResult.incomingSegment?.to || "",
-        segmentLength: lcaResult.incomingSegment?.length || 0,
-        segmentFeatureId: lcaResult.incomingSegment?.featureId || 0,
-        confidence: lcaResult.confidence,
-        downstreamConsumerCount: lcaResult.downstreamConsumerCount,
-        complaintCoverage: lcaResult.complaintCoverage,
-      } : null,
-      affectedSegments,
-      affectedConsumers,
+      failureZones,
     });
   }
 
@@ -593,109 +516,210 @@ function findFuzzyNodeInTree(nodeName: string, parentMap: Map<string, string | n
   return null;
 }
 
-function getAncestorPath(parentMap: Map<string, string | null>, nodeName: string): string[] {
-  const path: string[] = [];
-  let current: string | null = nodeName;
-  const visited = new Set<string>();
-  while (current !== null) {
-    if (visited.has(current)) break;
-    visited.add(current);
-    path.push(current);
-    current = parentMap.get(current) ?? null;
-  }
-  return path.reverse();
-}
-
-function computeLCA(
+function findFailureZones(
   graph: NetworkGraph,
   parentMap: Map<string, string | null>,
   sourceNodeName: string,
   complaintNodeNames: string[]
-): LCAResult {
-  const paths = complaintNodeNames.map(n => getAncestorPath(parentMap, n));
+): FailureZone[] {
+  if (complaintNodeNames.length === 0) return [];
 
-  let lca = sourceNodeName;
-  const minLen = Math.min(...paths.map(p => p.length));
-  for (let i = 0; i < minLen; i++) {
-    const node = paths[0][i];
-    if (paths.every(p => p[i] === node)) {
-      lca = node;
-    } else {
-      break;
+  const childrenMap = new Map<string, string[]>();
+  for (const [node, par] of Array.from(parentMap)) {
+    if (par !== null) {
+      if (!childrenMap.has(par)) childrenMap.set(par, []);
+      childrenMap.get(par)!.push(node);
     }
   }
 
-  const lcaNode = graph.nodes.get(lca) || null;
+  const complaintSet = new Set(complaintNodeNames);
 
-  let incomingSegment: LCAResult["incomingSegment"] = null;
-  const lcaParent = parentMap.get(lca);
-  if (lcaParent) {
+  const subtreeComplaints = new Map<string, Set<string>>();
+  function computeSubtreeComplaints(node: string): Set<string> {
+    if (subtreeComplaints.has(node)) return subtreeComplaints.get(node)!;
+    const result = new Set<string>();
+    if (complaintSet.has(node)) result.add(node);
+    for (const child of childrenMap.get(node) || []) {
+      for (const c of Array.from(computeSubtreeComplaints(child))) {
+        result.add(c);
+      }
+    }
+    subtreeComplaints.set(node, result);
+    return result;
+  }
+  computeSubtreeComplaints(sourceNodeName);
+
+  const zones: FailureZone[] = [];
+
+  function findZonesRecursive(node: string, nodeComplaints: Set<string>) {
+    if (nodeComplaints.size === 0) return;
+
+    if (nodeComplaints.size === 1) {
+      buildZone(node, nodeComplaints);
+      return;
+    }
+
+    const children = childrenMap.get(node) || [];
+    const branchesWithComplaints: Array<{ child: string; complaints: Set<string> }> = [];
+    for (const child of children) {
+      const childComplaints = subtreeComplaints.get(child);
+      if (childComplaints && childComplaints.size > 0) {
+        const relevant = new Set<string>();
+        for (const c of Array.from(nodeComplaints)) {
+          if (childComplaints.has(c)) relevant.add(c);
+        }
+        if (relevant.size > 0) {
+          branchesWithComplaints.push({ child, complaints: relevant });
+        }
+      }
+    }
+
+    if (branchesWithComplaints.length === 0) {
+      buildZone(node, nodeComplaints);
+      return;
+    }
+
+    if (branchesWithComplaints.length === 1) {
+      findZonesRecursive(branchesWithComplaints[0].child, branchesWithComplaints[0].complaints);
+      return;
+    }
+
+    for (const branch of branchesWithComplaints) {
+      if (branch.complaints.size >= 2) {
+        findZonesRecursive(branch.child, branch.complaints);
+      } else {
+        buildZone(branch.child, branch.complaints);
+      }
+    }
+  }
+
+  function buildZone(convergenceNode: string, zoneComplaintNodes: Set<string>) {
+    let targetNode = convergenceNode;
+    const nodeData = graph.nodes.get(convergenceNode);
+    const isSignificantNode = nodeData && (
+      nodeData.type === "ctp" || nodeData.type === "consumer" ||
+      nodeData.type === "node" || nodeData.type === "valve"
+    );
+
+    if (!isSignificantNode) {
+      let current = convergenceNode;
+      while (current) {
+        const children = childrenMap.get(current) || [];
+        const withComplaints = children.filter(c => {
+          const sc = subtreeComplaints.get(c);
+          return sc && Array.from(zoneComplaintNodes).some(cn => sc.has(cn));
+        });
+        if (withComplaints.length === 1) {
+          const childNode = graph.nodes.get(withComplaints[0]);
+          if (childNode && (childNode.type === "ctp" || childNode.type === "node" || childNode.type === "valve")) {
+            targetNode = withComplaints[0];
+            break;
+          }
+          current = withComplaints[0];
+        } else {
+          break;
+        }
+      }
+    }
+
+    const downstream = new Set<string>();
+    downstream.add(targetNode);
+    const collectDown = (n: string) => {
+      for (const child of childrenMap.get(n) || []) {
+        if (!downstream.has(child)) {
+          downstream.add(child);
+          collectDown(child);
+        }
+      }
+    };
+    collectDown(targetNode);
+
+    const affectedSegments: FailureZone["affectedSegments"] = [];
     for (const edge of graph.edges) {
-      if ((edge.from === lcaParent && edge.to === lca) ||
-          (edge.from === lca && edge.to === lcaParent)) {
-        incomingSegment = {
+      if (downstream.has(edge.from) && downstream.has(edge.to)) {
+        affectedSegments.push({
           featureId: edge.featureId,
           from: edge.from,
           to: edge.to,
           length: edge.length,
-        };
-        break;
+          coordinates: edge.coordinates,
+        });
       }
     }
-  }
 
-  const children = new Map<string, string[]>();
-  for (const [node, par] of Array.from(parentMap)) {
-    if (par !== null) {
-      if (!children.has(par)) children.set(par, []);
-      children.get(par)!.push(node);
-    }
-  }
-
-  const downstream = new Set<string>();
-  downstream.add(lca);
-  const collectDown = (n: string) => {
-    for (const child of children.get(n) || []) {
-      if (!downstream.has(child)) {
-        downstream.add(child);
-        collectDown(child);
+    const affectedConsumers: FailureZone["affectedConsumers"] = [];
+    let downstreamConsumerCount = 0;
+    for (const nodeName of Array.from(downstream)) {
+      const nd = graph.nodes.get(nodeName);
+      if (nd && (nd.type === "consumer" || nd.type === "ctp")) {
+        downstreamConsumerCount++;
+        if (nd.featureId > 0) {
+          affectedConsumers.push({
+            featureId: nd.featureId,
+            name: nd.name,
+            address: (nd.properties.Adres as string) || "",
+            coordinates: nd.coordinates,
+          });
+        }
       }
     }
-  };
-  collectDown(lca);
 
-  let downstreamConsumerCount = 0;
-  for (const nodeName of Array.from(downstream)) {
-    const node = graph.nodes.get(nodeName);
-    if (node && (node.type === "consumer" || node.type === "ctp")) {
-      downstreamConsumerCount++;
+    let incomingSegment: FailureZone["incomingSegment"] = null;
+    const parent = parentMap.get(targetNode);
+    if (parent) {
+      for (const edge of graph.edges) {
+        if ((edge.from === parent && edge.to === targetNode) ||
+            (edge.from === targetNode && edge.to === parent)) {
+          incomingSegment = {
+            featureId: edge.featureId,
+            from: edge.from,
+            to: edge.to,
+            length: edge.length,
+          };
+          break;
+        }
+      }
     }
-  }
 
-  const coveredComplaints = complaintNodeNames.filter(n => downstream.has(n)).length;
-  const complaintCoverage = complaintNodeNames.length > 0
-    ? Math.round((coveredComplaints / complaintNodeNames.length) * 100)
-    : 0;
+    const targetNodeData = graph.nodes.get(targetNode);
+    const complaintConsumers = Array.from(zoneComplaintNodes);
 
-  let confidence: LCAResult["confidence"] = "low";
-  if (complaintCoverage === 100 && complaintNodeNames.length >= 2) {
-    if (lca !== sourceNodeName && downstreamConsumerCount <= complaintNodeNames.length * 3) {
-      confidence = "high";
-    } else {
+    let confidence: FailureZone["confidence"] = "low";
+    if (complaintConsumers.length >= 2 && targetNode !== sourceNodeName) {
+      if (downstreamConsumerCount <= complaintConsumers.length * 3) {
+        confidence = "high";
+      } else {
+        confidence = "medium";
+      }
+    } else if (complaintConsumers.length >= 2) {
       confidence = "medium";
     }
-  } else if (complaintCoverage >= 80) {
-    confidence = "medium";
+
+    console.log(`[ComplaintAnalysis] Zone: "${targetNode}" (type=${targetNodeData?.type}), complaints=${complaintConsumers.length}, downstream=${downstreamConsumerCount}, confidence=${confidence}`);
+
+    zones.push({
+      zoneName: targetNodeData?.name || targetNode,
+      zoneType: targetNodeData?.type || "unknown",
+      zoneCoordinates: targetNodeData?.coordinates || null,
+      incomingSegment,
+      complaintConsumers,
+      complaintCount: complaintConsumers.length,
+      downstreamConsumerCount,
+      confidence,
+      affectedSegments,
+      affectedConsumers,
+    });
   }
 
-  console.log(`[ComplaintAnalysis] LCA: "${lca}" (type=${lcaNode?.type}), downstream=${downstreamConsumerCount} consumers, coverage=${complaintCoverage}%, confidence=${confidence}`);
+  const rootComplaints = subtreeComplaints.get(sourceNodeName) || new Set<string>();
+  const relevant = new Set<string>();
+  for (const c of complaintNodeNames) {
+    if (rootComplaints.has(c)) relevant.add(c);
+  }
 
-  return {
-    lcaNodeName: lca,
-    lcaNode,
-    incomingSegment,
-    downstreamConsumerCount,
-    complaintCoverage,
-    confidence,
-  };
+  findZonesRecursive(sourceNodeName, relevant);
+
+  zones.sort((a, b) => b.complaintCount - a.complaintCount);
+
+  return zones;
 }

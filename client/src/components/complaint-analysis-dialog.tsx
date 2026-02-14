@@ -43,6 +43,30 @@ interface EditableLayer {
   visible?: boolean;
 }
 
+interface FailureZone {
+  zoneName: string;
+  zoneType: string;
+  zoneCoordinates: any;
+  incomingSegment: { featureId: number; from: string; to: string; length: number } | null;
+  complaintConsumers: string[];
+  complaintCount: number;
+  downstreamConsumerCount: number;
+  confidence: string;
+  affectedSegments: Array<{
+    featureId: number;
+    from: string;
+    to: string;
+    length: number;
+    coordinates: any;
+  }>;
+  affectedConsumers: Array<{
+    featureId: number;
+    name: string;
+    address: string;
+    coordinates: any;
+  }>;
+}
+
 interface ComplaintAnalysisResult {
   totalComplaints: number;
   totalMatched: number;
@@ -58,31 +82,7 @@ interface ComplaintAnalysisResult {
       complaintCount: number;
       distance: number;
     }>;
-    probableFailure: {
-      nodeName: string;
-      nodeType: string;
-      nodeCoordinates: any;
-      segmentFrom: string;
-      segmentTo: string;
-      segmentLength: number;
-      segmentFeatureId: number;
-      confidence: string;
-      downstreamConsumerCount: number;
-      complaintCoverage: number;
-    } | null;
-    affectedSegments: Array<{
-      featureId: number;
-      from: string;
-      to: string;
-      length: number;
-      coordinates: any;
-    }>;
-    affectedConsumers: Array<{
-      featureId: number;
-      name: string;
-      address: string;
-      coordinates: any;
-    }>;
+    failureZones: FailureZone[];
   }>;
   unmatchedComplaints: Array<{
     complaintId: number;
@@ -98,7 +98,7 @@ interface ComplaintAnalysisDialogProps {
   editableLayers: EditableLayer[];
   sceneId: number;
   onAnalysisResult: (result: ComplaintAnalysisResult | null) => void;
-  onHighlightGroup: (groupIndex: number | null) => void;
+  onHighlightZone: (zone: FailureZone | null) => void;
 }
 
 export function ComplaintAnalysisDialog({
@@ -107,7 +107,7 @@ export function ComplaintAnalysisDialog({
   editableLayers,
   sceneId,
   onAnalysisResult,
-  onHighlightGroup,
+  onHighlightZone,
 }: ComplaintAnalysisDialogProps) {
   const [selectedLayerId, setSelectedLayerId] = useState<string>("");
   const [dateFieldName, setDateFieldName] = useState<string>("");
@@ -115,7 +115,7 @@ export function ComplaintAnalysisDialog({
   const [matchRadius, setMatchRadius] = useState<number>(100);
   const [result, setResult] = useState<ComplaintAnalysisResult | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
-  const [highlightedGroup, setHighlightedGroup] = useState<number | null>(null);
+  const [highlightedZoneKey, setHighlightedZoneKey] = useState<string | null>(null);
 
   const [position, setPosition] = useState({ x: 20, y: 80 });
   const isDragging = useRef(false);
@@ -173,10 +173,10 @@ export function ComplaintAnalysisDialog({
 
   const handleClose = () => {
     setResult(null);
-    setHighlightedGroup(null);
+    setHighlightedZoneKey(null);
     analysisMutation.reset();
     onAnalysisResult(null);
-    onHighlightGroup(null);
+    onHighlightZone(null);
     onOpenChange(false);
   };
 
@@ -221,13 +221,13 @@ export function ComplaintAnalysisDialog({
     }
   };
 
-  const handleHighlightGroup = (index: number) => {
-    if (highlightedGroup === index) {
-      setHighlightedGroup(null);
-      onHighlightGroup(null);
+  const handleHighlightZone = (zone: FailureZone, key: string) => {
+    if (highlightedZoneKey === key) {
+      setHighlightedZoneKey(null);
+      onHighlightZone(null);
     } else {
-      setHighlightedGroup(index);
-      onHighlightGroup(index);
+      setHighlightedZoneKey(key);
+      onHighlightZone(zone);
     }
   };
 
@@ -440,7 +440,9 @@ export function ComplaintAnalysisDialog({
                           <Badge variant="outline" className="shrink-0">Nist {group.nist}</Badge>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          {group.probableFailure && confidenceIcon(group.probableFailure.confidence)}
+                          {group.failureZones.length > 0 && (
+                            <Badge variant="destructive" className="shrink-0">{group.failureZones.length} зон</Badge>
+                          )}
                           <Badge variant="secondary">{group.complaintCount}</Badge>
                         </div>
                       </div>
@@ -453,50 +455,54 @@ export function ComplaintAnalysisDialog({
                           </div>
                         )}
 
-                        {group.probableFailure && (
-                          <div className="border rounded-md p-2 space-y-1 bg-destructive/5">
-                            <div className="flex items-center gap-1 text-sm font-medium">
-                              <AlertTriangle className="h-4 w-4 text-orange-500" />
-                              Вероятная авария
+                        {group.failureZones.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-xs font-medium flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3 text-orange-500" />
+                              Вероятные зоны аварий ({group.failureZones.length})
                             </div>
-                            <div className="text-xs space-y-0.5">
-                              <div>
-                                <span className="text-muted-foreground">Узел: </span>
-                                {group.probableFailure.nodeName}
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Тип: </span>
-                                {nodeTypeLabel(group.probableFailure.nodeType)}
-                              </div>
-                              {group.probableFailure.segmentFrom && (
-                                <div>
-                                  <span className="text-muted-foreground">Участок: </span>
-                                  {group.probableFailure.segmentFrom} → {group.probableFailure.segmentTo}
+                            {group.failureZones.map((zone, zi) => {
+                              const zoneKey = `${index}-${zi}`;
+                              return (
+                                <div key={zi} className="border rounded-md p-2 space-y-1 bg-destructive/5">
+                                  <div className="flex items-center gap-1 text-xs font-medium">
+                                    {confidenceIcon(zone.confidence)}
+                                    <span className="truncate">{zone.zoneName}</span>
+                                    <Badge variant="outline" className="shrink-0 ml-auto">{nodeTypeLabel(zone.zoneType)}</Badge>
+                                  </div>
+                                  <div className="text-xs space-y-0.5">
+                                    {zone.incomingSegment && (
+                                      <div>
+                                        <span className="text-muted-foreground">Участок: </span>
+                                        {zone.incomingSegment.from} &rarr; {zone.incomingSegment.to}
+                                        {zone.incomingSegment.length > 0 && ` (${zone.incomingSegment.length}м)`}
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="flex items-center gap-1">
+                                        {confidenceLabel(zone.confidence)}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        Жалоб: {zone.complaintCount}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        Потребителей ниже: {zone.downstreamConsumerCount}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant={highlightedZoneKey === zoneKey ? "default" : "outline"}
+                                    className="w-full mt-1 gap-1"
+                                    onClick={() => handleHighlightZone(zone, zoneKey)}
+                                    data-testid={`button-highlight-zone-${zoneKey}`}
+                                  >
+                                    <GitBranch className="h-3 w-3" />
+                                    {highlightedZoneKey === zoneKey ? "Убрать подсветку" : "Показать на карте"}
+                                  </Button>
                                 </div>
-                              )}
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="flex items-center gap-1">
-                                  {confidenceIcon(group.probableFailure.confidence)}
-                                  {confidenceLabel(group.probableFailure.confidence)}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  Покрытие: {group.probableFailure.complaintCoverage}%
-                                </span>
-                                <span className="text-muted-foreground">
-                                  Потребителей ниже: {group.probableFailure.downstreamConsumerCount}
-                                </span>
-                              </div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant={highlightedGroup === index ? "default" : "outline"}
-                              className="w-full mt-1 gap-1"
-                              onClick={() => handleHighlightGroup(index)}
-                              data-testid={`button-highlight-group-${index}`}
-                            >
-                              <GitBranch className="h-3 w-3" />
-                              {highlightedGroup === index ? "Убрать подсветку" : "Показать на карте"}
-                            </Button>
+                              );
+                            })}
                           </div>
                         )}
 
@@ -525,10 +531,10 @@ export function ComplaintAnalysisDialog({
                 className="w-full"
                 onClick={() => {
                   setResult(null);
-                  setHighlightedGroup(null);
+                  setHighlightedZoneKey(null);
                   analysisMutation.reset();
                   onAnalysisResult(null);
-                  onHighlightGroup(null);
+                  onHighlightZone(null);
                 }}
                 data-testid="button-reset-analysis"
               >
