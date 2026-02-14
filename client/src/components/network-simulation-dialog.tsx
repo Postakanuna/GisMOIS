@@ -1,0 +1,358 @@
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Play,
+  ChevronDown,
+  ChevronRight,
+  Home,
+  GitBranch,
+  MapPin,
+  Loader2,
+  AlertTriangle,
+  Thermometer,
+} from "lucide-react";
+
+interface SimulationResult {
+  failurePoint: {
+    featureId: number;
+    layerId: number;
+    name: string;
+    type: string;
+    coordinates: any;
+  };
+  source: {
+    name: string;
+    nist: string;
+  } | null;
+  affectedConsumers: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    address: string;
+    coordinates: any;
+  }>;
+  affectedSegments: Array<{
+    featureId: number;
+    layerId: number;
+    from: string;
+    to: string;
+    length: number;
+    coordinates: any;
+  }>;
+  affectedCTPs: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    address: string;
+    coordinates: any;
+  }>;
+  affectedNodes: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    coordinates: any;
+  }>;
+  stats: {
+    totalConsumers: number;
+    totalSegments: number;
+    totalCTPs: number;
+    totalNodes: number;
+    totalLengthM: number;
+  };
+}
+
+interface NetworkSimulationDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  featureId: number | null;
+  layerId: number | null;
+  featureName: string;
+  featureType: string;
+  sceneId: number;
+  onSimulationResult: (result: SimulationResult | null) => void;
+}
+
+export function NetworkSimulationDialog({
+  open,
+  onOpenChange,
+  featureId,
+  layerId,
+  featureName,
+  featureType,
+  sceneId,
+  onSimulationResult,
+}: NetworkSimulationDialogProps) {
+  const [result, setResult] = useState<SimulationResult | null>(null);
+  const [consumersOpen, setConsumersOpen] = useState(true);
+  const [segmentsOpen, setSegmentsOpen] = useState(false);
+  const [ctpsOpen, setCtpsOpen] = useState(false);
+  const [nodesOpen, setNodesOpen] = useState(false);
+
+  const simulationMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/network-graph/simulate", {
+        featureId,
+        layerId,
+        sceneId,
+      });
+      return res.json() as Promise<SimulationResult>;
+    },
+    onSuccess: (data) => {
+      setResult(data);
+      onSimulationResult(data);
+    },
+    onError: (error: Error) => {
+      console.error("Simulation error:", error);
+    },
+  });
+
+  const handleClose = (isOpen: boolean) => {
+    if (!isOpen) {
+      setResult(null);
+      simulationMutation.reset();
+      onSimulationResult(null);
+    }
+    onOpenChange(isOpen);
+  };
+
+  const featureTypeLabel = featureType === "LineString" ? "Участок сети" : "Узел/объект";
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col" data-testid="dialog-network-simulation">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+            Симуляция отключения
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+          <Card className="p-3 space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">{featureTypeLabel}</Badge>
+              <span className="text-sm font-medium truncate" data-testid="text-simulation-feature-name">{featureName || "Без названия"}</span>
+            </div>
+            {result?.source && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Thermometer className="h-3 w-3" />
+                <span>Источник: {result.source.name} (Nist: {result.source.nist})</span>
+              </div>
+            )}
+          </Card>
+
+          {!result && !simulationMutation.isPending && !simulationMutation.isError && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-muted-foreground py-8">
+              <GitBranch className="h-12 w-12 opacity-30" />
+              <p className="text-sm text-center">
+                Нажмите кнопку для анализа зоны отключения от выбранного объекта
+              </p>
+            </div>
+          )}
+
+          {simulationMutation.isError && (
+            <Card className="p-3 border-destructive">
+              <p className="text-sm text-destructive" data-testid="text-simulation-error">
+                {simulationMutation.error?.message || "Ошибка анализа"}
+              </p>
+            </Card>
+          )}
+
+          {result && (
+            <ScrollArea className="flex-1">
+              <div className="space-y-3 pr-3">
+                <Card className="p-3">
+                  <h4 className="text-sm font-medium mb-2">Сводка</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <StatItem
+                      icon={<Home className="h-4 w-4" />}
+                      label="Потребителей"
+                      value={result.stats.totalConsumers}
+                      testId="text-stat-consumers"
+                    />
+                    <StatItem
+                      icon={<GitBranch className="h-4 w-4" />}
+                      label="Участков"
+                      value={result.stats.totalSegments}
+                      testId="text-stat-segments"
+                    />
+                    <StatItem
+                      icon={<Thermometer className="h-4 w-4" />}
+                      label="ЦТП"
+                      value={result.stats.totalCTPs}
+                      testId="text-stat-ctps"
+                    />
+                    <StatItem
+                      icon={<MapPin className="h-4 w-4" />}
+                      label="Узлов"
+                      value={result.stats.totalNodes}
+                      testId="text-stat-nodes"
+                    />
+                  </div>
+                  <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
+                    Общая длина затронутых сетей: {result.stats.totalLengthM} м
+                  </div>
+                </Card>
+
+                {result.affectedConsumers.length > 0 && (
+                  <CollapsibleSection
+                    title="Потребители"
+                    count={result.affectedConsumers.length}
+                    open={consumersOpen}
+                    onOpenChange={setConsumersOpen}
+                    testId="section-consumers"
+                  >
+                    {result.affectedConsumers.map((c, i) => (
+                      <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-consumer-${i}`}>
+                        <Home className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="truncate">{c.address || c.name}</span>
+                      </div>
+                    ))}
+                  </CollapsibleSection>
+                )}
+
+                {result.affectedSegments.length > 0 && (
+                  <CollapsibleSection
+                    title="Участки сети"
+                    count={result.affectedSegments.length}
+                    open={segmentsOpen}
+                    onOpenChange={setSegmentsOpen}
+                    testId="section-segments"
+                  >
+                    {result.affectedSegments.map((s, i) => (
+                      <div key={s.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-segment-${i}`}>
+                        <GitBranch className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="truncate">{s.from} → {s.to}</span>
+                        <Badge variant="secondary" className="ml-auto text-[10px] shrink-0">{s.length}м</Badge>
+                      </div>
+                    ))}
+                  </CollapsibleSection>
+                )}
+
+                {result.affectedCTPs.length > 0 && (
+                  <CollapsibleSection
+                    title="ЦТП"
+                    count={result.affectedCTPs.length}
+                    open={ctpsOpen}
+                    onOpenChange={setCtpsOpen}
+                    testId="section-ctps"
+                  >
+                    {result.affectedCTPs.map((c, i) => (
+                      <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-ctp-${i}`}>
+                        <Thermometer className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="truncate">{c.name}</span>
+                        {c.address && <span className="text-muted-foreground truncate">({c.address})</span>}
+                      </div>
+                    ))}
+                  </CollapsibleSection>
+                )}
+
+                {result.affectedNodes.length > 0 && (
+                  <CollapsibleSection
+                    title="Узлы"
+                    count={result.affectedNodes.length}
+                    open={nodesOpen}
+                    onOpenChange={setNodesOpen}
+                    testId="section-nodes"
+                  >
+                    {result.affectedNodes.map((n, i) => (
+                      <div key={n.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-node-${i}`}>
+                        <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="truncate">{n.name}</span>
+                      </div>
+                    ))}
+                  </CollapsibleSection>
+                )}
+              </div>
+            </ScrollArea>
+          )}
+
+          <Button
+            onClick={() => simulationMutation.mutate()}
+            disabled={simulationMutation.isPending || !featureId}
+            className="w-full"
+            data-testid="button-run-simulation"
+          >
+            {simulationMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Анализ...
+              </>
+            ) : result ? (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                Повторить анализ
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                Запуск анализа
+              </>
+            )}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StatItem({ icon, label, value, testId }: { icon: React.ReactNode; label: string; value: number; testId: string }) {
+  return (
+    <div className="flex items-center gap-2" data-testid={testId}>
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="text-xs text-muted-foreground">{label}:</span>
+      <span className="text-sm font-semibold">{value}</span>
+    </div>
+  );
+}
+
+function CollapsibleSection({
+  title,
+  count,
+  open,
+  onOpenChange,
+  children,
+  testId,
+}: {
+  title: string;
+  count: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: React.ReactNode;
+  testId: string;
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <Card className="overflow-visible">
+        <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover-elevate" data-testid={`button-toggle-${testId}`}>
+          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          <span className="text-sm font-medium">{title}</span>
+          <Badge variant="secondary" className="ml-auto">{count}</Badge>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="px-3 pb-3 pt-0">
+            {children}
+          </div>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+export type { SimulationResult };

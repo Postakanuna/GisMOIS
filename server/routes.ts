@@ -4292,5 +4292,28 @@ export async function registerRoutes(
     return res.json({ status: "ok", version: "1.0.0" });
   });
 
+  // Network graph simulation - analyze disconnection impact
+  app.post("/api/network-graph/simulate", async (req: Request, res: Response) => {
+    try {
+      const { featureId, layerId, sceneId } = req.body;
+
+      if (!featureId || !layerId || !sceneId) {
+        return res.status(400).json({ error: "featureId, layerId, and sceneId are required" });
+      }
+
+      const { simulateDisconnection } = await import("./network-graph");
+      const result = await simulateDisconnection(
+        Number(featureId),
+        Number(layerId),
+        Number(sceneId)
+      );
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Network graph simulation error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

@@ -18,6 +18,7 @@ import {
   X,
   Table2,
   Route,
+  Zap,
 } from "lucide-react";
 import type { EditableLayer } from "@shared/schema";
 import type { SnapSettings } from "@/hooks/use-drawing";
@@ -44,6 +45,7 @@ interface DrawingToolbarProps {
   onToggleAttributeTable?: () => void;
   featureCount?: number;
   onTraceRoute?: () => void;
+  onSimulation?: () => void;
   // Snap props
   snapSettings?: SnapSettings;
   onUpdateSnapSettings?: (updates: Partial<SnapSettings>) => void;
@@ -79,6 +81,7 @@ export function DrawingToolbar({
   onToggleAttributeTable,
   featureCount = 0,
   onTraceRoute,
+  onSimulation,
   snapSettings,
   onUpdateSnapSettings,
   onToggleSnap,
@@ -199,6 +202,24 @@ export function DrawingToolbar({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Трассировка к слою</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Network Simulation - only when exactly 1 feature selected */}
+          {onSimulation && selectedCount === 1 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={onSimulation}
+                  data-testid="button-simulation"
+                >
+                  <Zap className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Симуляция отключения</TooltipContent>
             </Tooltip>
           )}
 

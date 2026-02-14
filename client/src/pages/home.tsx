@@ -28,6 +28,7 @@ import { DraggableModal } from "@/components/ui/draggable-modal";
 import { DataManager } from "@/components/data-manager";
 import { LayerAttributeTableWrapper } from "@/components/layer-attribute-table-wrapper";
 import { TraceRouteDialog } from "@/components/trace-route-dialog";
+import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -201,6 +202,13 @@ export default function Home() {
     layerId: number;
   } | null>(null);
   const [traceRouteCoords, setTraceRouteCoords] = useState<[number, number][] | null>(null);
+  const [showSimulationDialog, setShowSimulationDialog] = useState(false);
+  const [simulationFeatureInfo, setSimulationFeatureInfo] = useState<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    featureType: string;
+  } | null>(null);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -311,6 +319,22 @@ export default function Home() {
   const handleTraceRouteResult = useCallback((result: { coordinates: [number, number][] }) => {
     setTraceRouteCoords(result.coordinates);
   }, []);
+
+  const handleOpenSimulationDialog = useCallback(() => {
+    if (selectedFeatures.length !== 1 || !drawing.activeLayer) return;
+    const feature = selectedFeatures[0];
+    const featureData = drawing.features.find((_, idx) => idx === feature.featureIndex);
+    if (featureData) {
+      setSimulationFeatureInfo({
+        featureId: featureData.id,
+        layerId: drawing.activeLayer.id,
+        name: (featureData.properties as Record<string, unknown>)?.["Name"] as string || 
+              (featureData.properties as Record<string, unknown>)?.["name"] as string || "",
+        featureType: featureData.geometryType,
+      });
+      setShowSimulationDialog(true);
+    }
+  }, [selectedFeatures, drawing.activeLayer, drawing.features]);
 
   // Handle undo - during drawing mode, remove last point; otherwise use normal undo
   const handleUndo = useCallback(() => {
@@ -516,6 +540,7 @@ export default function Home() {
                 onToggleAttributeTable={() => setShowAttributeTable(prev => !prev)}
                 featureCount={drawing.features.length}
                 onTraceRoute={handleOpenTraceDialog}
+                onSimulation={handleOpenSimulationDialog}
                 snapSettings={drawing.snapSettings}
                 onUpdateSnapSettings={drawing.updateSnapSettings}
                 onToggleSnap={drawing.toggleSnap}
@@ -635,6 +660,18 @@ export default function Home() {
               availableLayers={drawing.editableLayers}
               currentLayerId={traceSourceInfo?.layerId || null}
               onRouteResult={handleTraceRouteResult}
+            />
+
+            {/* Network Simulation Dialog */}
+            <NetworkSimulationDialog
+              open={showSimulationDialog}
+              onOpenChange={setShowSimulationDialog}
+              featureId={simulationFeatureInfo?.featureId || null}
+              layerId={simulationFeatureInfo?.layerId || null}
+              featureName={simulationFeatureInfo?.name || ""}
+              featureType={simulationFeatureInfo?.featureType || ""}
+              sceneId={currentSceneId || 0}
+              onSimulationResult={() => {}}
             />
           </main>
         </div>
