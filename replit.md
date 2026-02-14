@@ -50,6 +50,7 @@ Preferred communication style: Simple, everyday language.
 - Лёгкий эндпоинт атрибутов слоя (`/api/editable-layers/:id/attributes`) для быстрого получения списка атрибутов.
 - Эндпоинт значений атрибутов (`/api/editable-layers/:id/attribute-values`) для lazy-загрузки уникальных значений (≤200 на атрибут) с подсказками в фильтре.
 - Эндпоинт подсчёта отфильтрованных объектов (`/api/editable-layers/:id/count-filtered`) для валидации фильтра в реальном времени (использует общую функцию applyFilters).
+- Экспорт слоёв (`/api/editable-layers/:id/export/:format`): поддержка GeoJSON и Shapefile (ZIP-архив с .shp, .shx, .dbf, .prj, .cpg). Бинарный Shapefile-генератор в `server/shapefile-writer.ts`.
 
 **Storage**: PostgreSQL с Drizzle ORM
 - Схемы для пользователей, сцен, участников сцен, наборов данных, API ключей.

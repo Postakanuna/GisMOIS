@@ -2788,7 +2788,22 @@ export async function registerRoutes(
         return res.json(geojson);
       }
       
-      return res.status(400).json({ message: `Unsupported format: ${format}. Supported: geojson` });
+      if (format === "shapefile" || format === "shp") {
+        const { exportShapefile } = await import("./shapefile-writer");
+        const exportFeatures = features.map(f => ({
+          geometryType: f.geometryType,
+          coordinates: f.coordinates,
+          properties: f.properties as Record<string, unknown>,
+        }));
+        const zipBuffer = await exportShapefile(exportFeatures, layer.name, layer.geometryType);
+        
+        const encodedName = encodeURIComponent(layer.name);
+        res.setHeader("Content-Type", "application/zip");
+        res.setHeader("Content-Disposition", `attachment; filename="${encodedName}.zip"; filename*=UTF-8''${encodedName}.zip`);
+        return res.send(zipBuffer);
+      }
+
+      return res.status(400).json({ message: `Unsupported format: ${format}. Supported: geojson, shapefile` });
     } catch (error) {
       console.error("Error exporting layer:", error);
       return res.status(500).json({ message: "Internal server error" });

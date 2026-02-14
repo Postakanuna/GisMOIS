@@ -32,6 +32,7 @@ import {
   Globe,
   Settings,
   Table2,
+  Download,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
@@ -690,6 +691,31 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                     <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
                   </Tooltip>
                   
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const url = `/api/editable-layers/${layer.id}/export/shapefile`;
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${layer.name}.zip`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          toast({ title: "Экспорт", description: `Слой "${layer.name}" экспортируется в Shapefile...` });
+                        }}
+                        data-testid={`button-export-layer-${layer.id}`}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Экспорт в Shapefile</TooltipContent>
+                  </Tooltip>
+
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
