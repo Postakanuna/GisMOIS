@@ -125,6 +125,12 @@ interface MapViewerProps {
   onDatasetFeatureUpdated?: (datasetId: number, featureId: number, geometry: { type: string; coordinates: unknown }) => void;
   // Trace route visualization
   traceRouteCoordinates?: [number, number][] | null;
+  // Simulation highlight data
+  simulationHighlightData?: {
+    segments: Array<{ coordinates: any }>;
+    points: Array<{ coordinates: any; type: string }>;
+    failurePoint?: { coordinates: any; type: string };
+  } | null;
   // Snap settings
   snapSettings?: {
     enabled: boolean;
@@ -818,6 +824,7 @@ export function MapViewer({
   onDatasetFeatureCreated,
   onDatasetFeatureUpdated,
   traceRouteCoordinates,
+  simulationHighlightData,
   snapSettings,
   mapActionsRef,
 }: MapViewerProps) {
@@ -828,6 +835,7 @@ export function MapViewer({
   const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const allEditableLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const traceRouteLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const simulationHighlightLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const { toast } = useToast();
   const { activeBaseLayer } = useBaseLayers();
   const { currentProjection } = useProjection();
@@ -3105,6 +3113,101 @@ export function MapViewer({
       map.getView().fit(extent, { padding: [50, 50, 50, 50], duration: 500 });
     }
   }, [traceRouteCoordinates]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (simulationHighlightLayerRef.current) {
+      map.removeLayer(simulationHighlightLayerRef.current);
+      simulationHighlightLayerRef.current = null;
+    }
+
+    if (simulationHighlightData) {
+      const highlightSource = new VectorSource();
+
+      for (const seg of simulationHighlightData.segments) {
+        const coords = seg.coordinates;
+        if (Array.isArray(coords) && coords.length >= 2) {
+          const lineCoords = coords.map((c: [number, number]) => fromLonLat(c, currentProjectionRef.current));
+          const lineFeature = new Feature({
+            geometry: new LineString(lineCoords),
+          });
+          lineFeature.setStyle(new Style({
+            stroke: new Stroke({
+              color: "rgba(239, 68, 68, 0.8)",
+              width: 5,
+            }),
+          }));
+          highlightSource.addFeature(lineFeature);
+        }
+      }
+
+      for (const pt of simulationHighlightData.points) {
+        const coords = pt.coordinates;
+        if (coords) {
+          const pointCoords = Array.isArray(coords[0])
+            ? fromLonLat(coords[0], currentProjectionRef.current)
+            : fromLonLat(coords as [number, number], currentProjectionRef.current);
+          const pointFeature = new Feature({
+            geometry: new OlPoint(pointCoords),
+          });
+          const color = pt.type === "consumer" ? "rgba(239, 68, 68, 0.9)" :
+                        pt.type === "ctp" ? "rgba(249, 115, 22, 0.9)" :
+                        "rgba(234, 179, 8, 0.9)";
+          pointFeature.setStyle(new Style({
+            image: new Circle({
+              radius: 7,
+              fill: new Fill({ color }),
+              stroke: new Stroke({ color: "#fff", width: 2 }),
+            }),
+          }));
+          highlightSource.addFeature(pointFeature);
+        }
+      }
+
+      if (simulationHighlightData.failurePoint) {
+        const fp = simulationHighlightData.failurePoint;
+        const coords = fp.coordinates;
+        if (coords) {
+          let pointCoords;
+          if (fp.type === "segment" && Array.isArray(coords) && Array.isArray(coords[0])) {
+            const midIdx = Math.floor(coords.length / 2);
+            pointCoords = fromLonLat(coords[midIdx], currentProjectionRef.current);
+          } else if (Array.isArray(coords) && !Array.isArray(coords[0])) {
+            pointCoords = fromLonLat(coords as [number, number], currentProjectionRef.current);
+          } else if (Array.isArray(coords) && Array.isArray(coords[0])) {
+            pointCoords = fromLonLat(coords[0] as [number, number], currentProjectionRef.current);
+          }
+          if (pointCoords) {
+            const failFeature = new Feature({
+              geometry: new OlPoint(pointCoords),
+            });
+            failFeature.setStyle(new Style({
+              image: new Circle({
+                radius: 12,
+                fill: new Fill({ color: "rgba(220, 38, 38, 0.9)" }),
+                stroke: new Stroke({ color: "#fff", width: 3 }),
+              }),
+            }));
+            highlightSource.addFeature(failFeature);
+          }
+        }
+      }
+
+      if (highlightSource.getFeatures().length > 0) {
+        const highlightLayer = new VectorLayer({
+          source: highlightSource,
+          zIndex: 9998,
+        });
+        map.addLayer(highlightLayer);
+        simulationHighlightLayerRef.current = highlightLayer;
+
+        const extent = highlightSource.getExtent();
+        map.getView().fit(extent, { padding: [80, 80, 80, 80], duration: 500 });
+      }
+    }
+  }, [simulationHighlightData]);
 
   return (
     <div className="relative flex-1 h-full" data-testid="map-container">

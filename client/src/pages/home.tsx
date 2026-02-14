@@ -209,6 +209,11 @@ export default function Home() {
     name: string;
     featureType: string;
   } | null>(null);
+  const [simulationHighlightData, setSimulationHighlightData] = useState<{
+    segments: Array<{ coordinates: any }>;
+    points: Array<{ coordinates: any; type: string }>;
+    failurePoint?: { coordinates: any; type: string };
+  } | null>(null);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -589,6 +594,7 @@ export default function Home() {
               activeSceneDataset={activeSceneDataset}
               onDatasetFeatureUpdated={handleDatasetFeatureUpdated}
               traceRouteCoordinates={traceRouteCoords}
+              simulationHighlightData={simulationHighlightData}
               snapSettings={drawing.snapSettings}
               mapActionsRef={mapActionsRef}
             />
@@ -671,7 +677,26 @@ export default function Home() {
               featureName={simulationFeatureInfo?.name || ""}
               featureType={simulationFeatureInfo?.featureType || ""}
               sceneId={currentSceneId || 0}
-              onSimulationResult={() => {}}
+              onSimulationResult={(result: SimulationResult | null) => {
+                if (!result) {
+                  setSimulationHighlightData(null);
+                  return;
+                }
+                const segments = result.affectedSegments.map(s => ({ coordinates: s.coordinates }));
+                const points = [
+                  ...result.affectedConsumers.map(c => ({ coordinates: c.coordinates, type: "consumer" })),
+                  ...result.affectedCTPs.map(c => ({ coordinates: c.coordinates, type: "ctp" })),
+                  ...result.affectedNodes.map(n => ({ coordinates: n.coordinates, type: "node" })),
+                ];
+                setSimulationHighlightData({
+                  segments,
+                  points,
+                  failurePoint: {
+                    coordinates: result.failurePoint.coordinates,
+                    type: result.failurePoint.type,
+                  },
+                });
+              }}
             />
           </main>
         </div>

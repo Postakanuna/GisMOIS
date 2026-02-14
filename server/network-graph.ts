@@ -78,14 +78,86 @@ interface SimulationResult {
 
 function detectLayerType(layerName: string): string {
   const lower = layerName.toLowerCase();
+
   if (lower.includes("источник") || lower.includes("source") || lower.includes("котельн")) return "source";
   if (lower.includes("цтп") || lower.includes("ctp")) return "ctp";
-  if (lower.includes("потреб") || lower.includes("consumer")) return "consumer";
-  if (lower.includes("узел") || lower.includes("узл") || lower.includes("node")) return "node";
+  if (lower.includes("потреб") || lower.includes("consumer") || lower.includes("обобщенный потребитель")) return "consumer";
+  if (lower.includes("узел") || lower.includes("узл") || lower.includes("node") || lower.includes("дроссел")) return "node";
   if (lower.includes("задвиж") || lower.includes("valve")) return "valve";
   if (lower.includes("участ") || lower.includes("segment")) return "segment";
   if (lower.includes("вспомог")) return "auxiliary_segment";
   if (lower.includes("насос")) return "pump";
+
+  return "other";
+}
+
+async function classifyLayerByContent(layerId: number, geometryType: string): Promise<string> {
+  const sampleFeatures = await db
+    .select({ properties: drawnFeatures.properties })
+    .from(drawnFeatures)
+    .where(eq(drawnFeatures.layerId, layerId))
+    .limit(10);
+
+  if (sampleFeatures.length === 0) return "other";
+
+  const props = sampleFeatures[0].properties as Record<string, unknown>;
+  const propKeys = Object.keys(props);
+
+  if (geometryType === "LineString") {
+    if (propKeys.includes("Begin_uch") && propKeys.includes("End_uch") && propKeys.includes("L")) {
+      return "segment";
+    }
+    return "other";
+  }
+
+  if (geometryType === "Point") {
+    if (propKeys.includes("Ust_moshn") || propKeys.includes("Naim_tepl") || propKeys.includes("Nomer_tep") || propKeys.includes("Otpusk_TE") || propKeys.includes("Qist") || propKeys.includes("Gist")) {
+      return "source";
+    }
+
+    for (const feat of sampleFeatures) {
+      const fp = feat.properties as Record<string, unknown>;
+      const fn = ((fp.Name as string) || "").toLowerCase();
+      if (fn.includes("кот.") || fn.includes("котельн") || fn.includes("грэс") || fn.includes("тэц")) return "source";
+    }
+
+    if (propKeys.includes("Tip_zad") || propKeys.includes("Tip_arm")) {
+      return "valve";
+    }
+
+    for (const feat of sampleFeatures) {
+      const fp = feat.properties as Record<string, unknown>;
+      const fn = ((fp.Name as string) || "").toLowerCase();
+      if (fn.includes("зу-") || fn.includes("задвиж")) return "valve";
+    }
+
+    if (propKeys.includes("Q_ot") || propKeys.includes("Nagr_otop") || propKeys.includes("Rashod_go")) {
+      if (propKeys.includes("Dom") || propKeys.includes("Adres") || propKeys.includes("Ylitsa")) {
+        return "consumer";
+      }
+    }
+
+    for (const feat of sampleFeatures) {
+      const fp = feat.properties as Record<string, unknown>;
+      const fn = ((fp.Name as string) || "").toLowerCase();
+      if (fn.includes("цтп") || fn.includes("итп") || fn.includes("бойлер")) return "ctp";
+    }
+
+    if (propKeys.includes("Adres") || propKeys.includes("Dom") || propKeys.includes("Ylitsa")) {
+      return "consumer";
+    }
+
+    for (const feat of sampleFeatures) {
+      const fp = feat.properties as Record<string, unknown>;
+      const fn = ((fp.Name as string) || "").toLowerCase();
+      if (fn.includes("тк-") || fn.includes("уз-") || fn.includes("ут-") || fn.includes("узел")) return "node";
+    }
+
+    if (propKeys.includes("H_obr") || propKeys.includes("H_pod") || propKeys.includes("Tb")) {
+      return "node";
+    }
+  }
+
   return "other";
 }
 
@@ -117,7 +189,14 @@ async function getSceneNetworkLayers(sceneId: number) {
   };
 
   for (const layer of layers) {
-    const layerType = detectLayerType(layer.name);
+    let layerType = detectLayerType(layer.name);
+
+    if (layerType === "other") {
+      layerType = await classifyLayerByContent(layer.id, layer.geometryType);
+    }
+
+    console.log(`[NetworkGraph] Layer "${layer.name}" (id=${layer.id}, geom=${layer.geometryType}) => type: ${layerType}`);
+
     switch (layerType) {
       case "segment":
         result.segmentLayerIds.push(layer.id);
@@ -139,6 +218,15 @@ async function getSceneNetworkLayers(sceneId: number) {
         break;
     }
   }
+
+  console.log(`[NetworkGraph] Classification result:`, JSON.stringify({
+    segments: result.segmentLayerIds,
+    nodes: result.nodeLayerIds,
+    consumers: result.consumerLayerIds,
+    ctps: result.ctpLayerIds,
+    sources: result.sourceLayerIds,
+    valves: result.valveLayerIds,
+  }));
 
   return result;
 }
@@ -249,13 +337,44 @@ function findSourceNode(graph: NetworkGraph): string | null {
   for (const [name, node] of graph.nodes) {
     if (node.type === "source") return name;
   }
+
+  const sourcePatterns = ["котельная", "грэс", "кот.", "тэц", "бойлерн"];
+  const allNodeNames = new Set<string>();
   for (const edge of graph.edges) {
-    const fromLower = edge.from.toLowerCase();
-    if (fromLower.includes("котельная") || fromLower.includes("грэс") || fromLower.includes("кот.")) {
-      return edge.from;
+    allNodeNames.add(edge.from);
+    allNodeNames.add(edge.to);
+  }
+
+  for (const nodeName of allNodeNames) {
+    const lower = nodeName.toLowerCase();
+    for (const pattern of sourcePatterns) {
+      if (lower.includes(pattern)) return nodeName;
     }
   }
-  return null;
+
+  const referencedFrom = new Map<string, number>();
+  const referencedTo = new Map<string, number>();
+  for (const edge of graph.edges) {
+    referencedFrom.set(edge.from, (referencedFrom.get(edge.from) || 0) + 1);
+    referencedTo.set(edge.to, (referencedTo.get(edge.to) || 0) + 1);
+  }
+
+  for (const [nodeName, count] of referencedFrom) {
+    if (count >= 2 && !referencedTo.has(nodeName)) {
+      return nodeName;
+    }
+  }
+
+  let maxOutDegree = 0;
+  let maxOutNode: string | null = null;
+  for (const [nodeName, neighbors] of graph.adjacency) {
+    if (neighbors.length > maxOutDegree) {
+      maxOutDegree = neighbors.length;
+      maxOutNode = nodeName;
+    }
+  }
+
+  return maxOutNode;
 }
 
 function buildTreeFromSource(graph: NetworkGraph, sourceNodeName: string): Map<string, string | null> {
@@ -365,12 +484,14 @@ export async function simulateDisconnection(
 
   const feat = feature[0];
   const props = feat.properties as Record<string, unknown>;
-  const nist = (props.Nist as string) || "";
+  const nist = props.Nist !== undefined && props.Nist !== null ? String(props.Nist) : "";
   const featName = (props.Name as string) || (props.Begin_uch as string) || "";
 
   if (!nist) {
     throw new Error("Объект не имеет привязки к источнику (поле Nist отсутствует)");
   }
+
+  console.log(`[NetworkGraph] Building graph for featureId=${featureId}, layerId=${layerId}, sceneId=${sceneId}, nist=${nist}`);
 
   const graph = await buildNetworkGraph(
     layerConfig.segmentLayerIds,
@@ -382,7 +503,15 @@ export async function simulateDisconnection(
     nist
   );
 
+  console.log(`[NetworkGraph] Graph built: ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
+  const nodeTypes = new Map<string, number>();
+  for (const [, node] of graph.nodes) {
+    nodeTypes.set(node.type, (nodeTypes.get(node.type) || 0) + 1);
+  }
+  console.log(`[NetworkGraph] Node types:`, Object.fromEntries(nodeTypes));
+
   const sourceNodeName = findSourceNode(graph);
+  console.log(`[NetworkGraph] Source node found: ${sourceNodeName}`);
   if (!sourceNodeName) {
     throw new Error(`Источник не найден для Nist=${nist}`);
   }
