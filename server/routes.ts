@@ -4474,5 +4474,192 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/complaint-analysis", async (req: Request, res: Response) => {
+    try {
+      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius } = req.body;
+
+      if (!complaintLayerId || !sceneId || !dateFieldName) {
+        return res.status(400).json({ error: "complaintLayerId, sceneId, and dateFieldName are required" });
+      }
+
+      const { analyzeComplaints } = await import("./complaint-analysis");
+      const result = await analyzeComplaints(
+        Number(complaintLayerId),
+        Number(sceneId),
+        String(dateFieldName),
+        String(addressFieldName || ""),
+        Number(matchRadius) || 100
+      );
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Complaint analysis error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/complaint-analysis/export", async (req: Request, res: Response) => {
+    try {
+      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius } = req.body;
+
+      if (!complaintLayerId || !sceneId || !dateFieldName) {
+        return res.status(400).json({ error: "complaintLayerId, sceneId, and dateFieldName are required" });
+      }
+
+      const { analyzeComplaints } = await import("./complaint-analysis");
+      const result = await analyzeComplaints(
+        Number(complaintLayerId),
+        Number(sceneId),
+        String(dateFieldName),
+        String(addressFieldName || ""),
+        Number(matchRadius) || 100
+      );
+
+      const workbook = new ExcelJS.Workbook();
+
+      const summarySheet = workbook.addWorksheet("Сводка");
+      summarySheet.columns = [
+        { header: "Дата", key: "date", width: 15 },
+        { header: "Источник (Nist)", key: "nist", width: 15 },
+        { header: "Источник", key: "sourceName", width: 30 },
+        { header: "Кол-во жалоб", key: "complaintCount", width: 15 },
+        { header: "Кол-во потребителей", key: "consumerCount", width: 20 },
+        { header: "Вероятный узел аварии", key: "failureNode", width: 35 },
+        { header: "Тип узла", key: "nodeType", width: 15 },
+        { header: "Участок (от-до)", key: "segment", width: 40 },
+        { header: "Уверенность", key: "confidence", width: 15 },
+        { header: "Зона покрытия (%)", key: "coverage", width: 18 },
+        { header: "Потребителей ниже аварии", key: "downstream", width: 25 },
+      ];
+      const hRow = summarySheet.getRow(1);
+      hRow.font = { bold: true };
+      hRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+
+      for (const group of result.dateGroups) {
+        const pf = group.probableFailure;
+        summarySheet.addRow({
+          date: group.date,
+          nist: group.nist,
+          sourceName: group.sourceName,
+          complaintCount: group.complaintCount,
+          consumerCount: group.consumers.length,
+          failureNode: pf?.nodeName || "—",
+          nodeType: pf ? translateNodeType(pf.nodeType) : "—",
+          segment: pf && pf.segmentFrom ? `${pf.segmentFrom} → ${pf.segmentTo}` : "—",
+          confidence: pf ? translateConfidence(pf.confidence) : "—",
+          coverage: pf?.complaintCoverage ?? "—",
+          downstream: pf?.downstreamConsumerCount ?? "—",
+        });
+      }
+
+      const statsSheet = workbook.addWorksheet("Статистика");
+      statsSheet.columns = [
+        { header: "Параметр", key: "param", width: 40 },
+        { header: "Значение", key: "value", width: 20 },
+      ];
+      const hRow2 = statsSheet.getRow(1);
+      hRow2.font = { bold: true };
+      hRow2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+      statsSheet.addRow({ param: "Всего жалоб", value: result.totalComplaints });
+      statsSheet.addRow({ param: "Привязано к потребителям", value: result.totalMatched });
+      statsSheet.addRow({ param: "Не привязано", value: result.totalUnmatched });
+      statsSheet.addRow({ param: "Групп дата+источник", value: result.dateGroups.length });
+
+      const usedSheetNames = new Set<string>();
+      for (const group of result.dateGroups) {
+        if (group.consumers.length === 0) continue;
+        let sheetName = `${group.date}_Nist${group.nist}`.substring(0, 31);
+        let counter = 1;
+        while (usedSheetNames.has(sheetName)) {
+          const suffix = `_${counter}`;
+          sheetName = `${group.date}_Nist${group.nist}`.substring(0, 31 - suffix.length) + suffix;
+          counter++;
+        }
+        usedSheetNames.add(sheetName);
+        const detailSheet = workbook.addWorksheet(sheetName);
+        detailSheet.columns = [
+          { header: "Потребитель", key: "name", width: 35 },
+          { header: "Адрес", key: "address", width: 40 },
+          { header: "Жалоб", key: "count", width: 10 },
+          { header: "Расстояние (м)", key: "distance", width: 15 },
+        ];
+        const dh = detailSheet.getRow(1);
+        dh.font = { bold: true };
+        dh.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+
+        for (const c of group.consumers) {
+          detailSheet.addRow({ name: c.name, address: c.address, count: c.complaintCount, distance: c.distance });
+        }
+
+        if (group.probableFailure) {
+          detailSheet.addRow({});
+          detailSheet.addRow({ name: "--- Вероятная авария ---" });
+          detailSheet.addRow({ name: "Узел", address: group.probableFailure.nodeName });
+          detailSheet.addRow({ name: "Тип", address: translateNodeType(group.probableFailure.nodeType) });
+          detailSheet.addRow({ name: "Участок", address: group.probableFailure.segmentFrom ? `${group.probableFailure.segmentFrom} → ${group.probableFailure.segmentTo}` : "—" });
+          detailSheet.addRow({ name: "Уверенность", address: translateConfidence(group.probableFailure.confidence) });
+          detailSheet.addRow({ name: "Покрытие жалоб", address: `${group.probableFailure.complaintCoverage}%` });
+          detailSheet.addRow({ name: "Потребителей ниже аварии", address: String(group.probableFailure.downstreamConsumerCount) });
+        }
+
+        if (group.affectedConsumers.length > 0) {
+          detailSheet.addRow({});
+          detailSheet.addRow({ name: "--- Затронутые потребители (ниже аварии) ---" });
+          for (const ac of group.affectedConsumers) {
+            detailSheet.addRow({ name: ac.name, address: ac.address });
+          }
+        }
+      }
+
+      if (result.unmatchedComplaints.length > 0) {
+        const unmatchedSheet = workbook.addWorksheet("Без привязки");
+        unmatchedSheet.columns = [
+          { header: "ID жалобы", key: "id", width: 15 },
+          { header: "Адрес", key: "address", width: 40 },
+          { header: "Дата", key: "date", width: 15 },
+          { header: "Причина", key: "reason", width: 40 },
+        ];
+        const uh = unmatchedSheet.getRow(1);
+        uh.font = { bold: true };
+        uh.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+        for (const u of result.unmatchedComplaints) {
+          unmatchedSheet.addRow({ id: u.complaintId, address: u.address, date: u.date, reason: u.reason });
+        }
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const filename = encodeURIComponent("Анализ_жалоб.xlsx");
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${filename}`);
+      res.send(Buffer.from(buffer as ArrayBuffer));
+    } catch (error: any) {
+      console.error("Complaint analysis export error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
   return httpServer;
+}
+
+function translateNodeType(type: string): string {
+  const map: Record<string, string> = {
+    source: "Источник",
+    ctp: "ЦТП",
+    consumer: "Потребитель",
+    node: "Узел",
+    valve: "Задвижка",
+    pump: "Насос",
+    other: "Другое",
+  };
+  return map[type] || type;
+}
+
+function translateConfidence(conf: string): string {
+  const map: Record<string, string> = {
+    high: "Высокая",
+    medium: "Средняя",
+    low: "Низкая",
+  };
+  return map[conf] || conf;
 }

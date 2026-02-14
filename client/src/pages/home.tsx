@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,6 +29,7 @@ import { DataManager } from "@/components/data-manager";
 import { LayerAttributeTableWrapper } from "@/components/layer-attribute-table-wrapper";
 import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
+import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -214,6 +215,8 @@ export default function Home() {
     points: Array<{ coordinates: any; type: string }>;
     failurePoint?: { coordinates: any; type: string };
   } | null>(null);
+  const [showComplaintDialog, setShowComplaintDialog] = useState(false);
+  const [complaintResult, setComplaintResult] = useState<ComplaintAnalysisResult | null>(null);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -507,6 +510,19 @@ export default function Home() {
                 </TooltipTrigger>
                 <TooltipContent>Менеджер данных</TooltipContent>
               </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={showComplaintDialog ? "default" : "ghost"}
+                    size="icon"
+                    onClick={() => setShowComplaintDialog(prev => !prev)}
+                    data-testid="button-open-complaint-analysis"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Анализ жалоб</TooltipContent>
+              </Tooltip>
               <Button 
                 variant={editMode ? "default" : "ghost"} 
                 size="sm"
@@ -674,6 +690,39 @@ export default function Home() {
               availableLayers={drawing.editableLayers}
               currentLayerId={traceSourceInfo?.layerId || null}
               onRouteResult={handleTraceRouteResult}
+            />
+
+            {/* Complaint Analysis Dialog */}
+            <ComplaintAnalysisDialog
+              open={showComplaintDialog}
+              onOpenChange={setShowComplaintDialog}
+              editableLayers={drawing.editableLayers}
+              sceneId={currentSceneId || 0}
+              onAnalysisResult={(result) => {
+                setComplaintResult(result);
+                if (!result) {
+                  setSimulationHighlightData(null);
+                }
+              }}
+              onHighlightGroup={(groupIndex) => {
+                if (groupIndex === null || !complaintResult) {
+                  setSimulationHighlightData(null);
+                  return;
+                }
+                const group = complaintResult.dateGroups[groupIndex];
+                if (!group) return;
+                const segments = group.affectedSegments.map(s => ({ coordinates: s.coordinates }));
+                const points = group.affectedConsumers.map(c => ({ coordinates: c.coordinates, type: "consumer" }));
+                const pf = group.probableFailure;
+                setSimulationHighlightData({
+                  segments,
+                  points,
+                  failurePoint: pf ? {
+                    coordinates: pf.nodeCoordinates || group.affectedSegments.find(s => s.featureId === pf.segmentFeatureId)?.coordinates,
+                    type: pf.nodeType === "node" || pf.nodeType === "ctp" || pf.nodeType === "consumer" ? "node" : "segment",
+                  } : undefined,
+                });
+              }}
             />
 
             {/* Network Simulation Dialog */}

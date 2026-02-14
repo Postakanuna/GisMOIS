@@ -2,7 +2,7 @@ import { db } from "./db";
 import { drawnFeatures, editableLayers } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 
-function normalizeName(name: string): string {
+export function normalizeName(name: string): string {
   return name
     .replace(/\s+/g, " ")
     .replace(/\s*\.\s*/g, ".")
@@ -12,7 +12,7 @@ function normalizeName(name: string): string {
     .trim();
 }
 
-interface GraphNode {
+export interface GraphNode {
   name: string;
   type: "source" | "ctp" | "consumer" | "node" | "valve" | "pump" | "other";
   featureId: number;
@@ -21,7 +21,7 @@ interface GraphNode {
   properties: Record<string, unknown>;
 }
 
-interface GraphEdge {
+export interface GraphEdge {
   from: string;
   to: string;
   length: number;
@@ -31,7 +31,7 @@ interface GraphEdge {
   properties: Record<string, unknown>;
 }
 
-interface NetworkGraph {
+export interface NetworkGraph {
   nodes: Map<string, GraphNode>;
   edges: GraphEdge[];
   adjacency: Map<string, string[]>;
@@ -163,7 +163,7 @@ function classifyLayerByContentSync(propKeys: string[], geometryType: string, sa
   return "other";
 }
 
-async function getSceneNetworkLayers(sceneId: number) {
+export async function getSceneNetworkLayers(sceneId: number) {
   const layers = await db
     .select({
       id: editableLayers.id,
@@ -250,7 +250,7 @@ async function getSceneNetworkLayers(sceneId: number) {
   return result;
 }
 
-async function buildNetworkGraph(
+export async function buildNetworkGraph(
   segmentLayerIds: number[],
   nodeLayerIds: number[],
   consumerLayerIds: number[],
@@ -433,7 +433,7 @@ function findMatchingSegmentName(pointName: string, segmentNames: Set<string>): 
   return null;
 }
 
-function findSourceNode(graph: NetworkGraph): string | null {
+export function findSourceNode(graph: NetworkGraph): string | null {
   for (const [name, node] of graph.nodes) {
     if (node.type === "source" && graph.adjacency.has(name)) {
       return name;
@@ -508,7 +508,7 @@ function findSourceNode(graph: NetworkGraph): string | null {
   return maxNode;
 }
 
-function buildTreeFromSource(graph: NetworkGraph, sourceNodeName: string): Map<string, string | null> {
+export function buildTreeFromSource(graph: NetworkGraph, sourceNodeName: string): Map<string, string | null> {
   const parent = new Map<string, string | null>();
   parent.set(sourceNodeName, null);
 
