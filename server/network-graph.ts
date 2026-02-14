@@ -912,9 +912,11 @@ function findNearestPoint(
   points: Array<{ id: number; name: string; normName: string; coords: [number, number] }>,
   maxDistM: number,
   useHaversine = true,
+  excludeNames?: Set<string>,
 ): { name: string; id: number; dist: number } | null {
   let best: { name: string; id: number; dist: number } | null = null;
   for (const p of points) {
+    if (excludeNames && excludeNames.has(p.normName)) continue;
     const d = distanceBetweenPoints(coord, p.coords, useHaversine);
     if (d <= maxDistM && (!best || d < best.dist)) {
       best = { name: p.name, id: p.id, dist: d };
@@ -1009,68 +1011,63 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
       if (loopEndpoints) {
         const matchKey = findFuzzyMatchTopo(beginNorm, pointNodeMap) || beginNorm;
         const currentNode = pointNodeMap.get(matchKey);
+        const excludeCurrentName = new Set([beginNorm.toLowerCase(), matchKey.toLowerCase()]);
 
-        const nearestToStart = findNearestPoint(loopEndpoints.start, pointsByCoords, 200, useHaversine);
-        const nearestToEnd = findNearestPoint(loopEndpoints.end, pointsByCoords, 200, useHaversine);
+        const altNearStart = findNearestPoint(loopEndpoints.start, pointsByCoords, 500, useHaversine, excludeCurrentName);
+        const altNearEnd = findNearestPoint(loopEndpoints.end, pointsByCoords, 500, useHaversine, excludeCurrentName);
 
         if (currentNode && currentNode.coords) {
           const distStartToNode = distanceBetweenPoints(loopEndpoints.start, currentNode.coords, useHaversine);
           const distEndToNode = distanceBetweenPoints(loopEndpoints.end, currentNode.coords, useHaversine);
 
-          if (distStartToNode < distEndToNode) {
-            if (nearestToEnd && nearestToEnd.name !== matchKey && nearestToEnd.name !== beginNorm) {
+          if (distStartToNode <= distEndToNode) {
+            if (altNearEnd) {
               loopField = "End_uch";
-              loopSuggested = nearestToEnd.name;
-              loopSuggestedId = nearestToEnd.id;
-              loopDist = Math.round(nearestToEnd.dist);
+              loopSuggested = altNearEnd.name;
+              loopSuggestedId = altNearEnd.id;
+              loopDist = Math.round(altNearEnd.dist);
+            } else if (altNearStart) {
+              loopField = "Begin_uch";
+              loopSuggested = altNearStart.name;
+              loopSuggestedId = altNearStart.id;
+              loopDist = Math.round(altNearStart.dist);
             }
           } else {
-            if (nearestToStart && nearestToStart.name !== matchKey && nearestToStart.name !== beginNorm) {
+            if (altNearStart) {
               loopField = "Begin_uch";
-              loopSuggested = nearestToStart.name;
-              loopSuggestedId = nearestToStart.id;
-              loopDist = Math.round(nearestToStart.dist);
+              loopSuggested = altNearStart.name;
+              loopSuggestedId = altNearStart.id;
+              loopDist = Math.round(altNearStart.dist);
+            } else if (altNearEnd) {
+              loopField = "End_uch";
+              loopSuggested = altNearEnd.name;
+              loopSuggestedId = altNearEnd.id;
+              loopDist = Math.round(altNearEnd.dist);
             }
           }
         } else {
-          if (nearestToStart && nearestToEnd) {
-            if (nearestToStart.name === beginNorm || nearestToStart.name === matchKey) {
-              if (nearestToEnd.name !== beginNorm && nearestToEnd.name !== matchKey) {
-                loopField = "End_uch";
-                loopSuggested = nearestToEnd.name;
-                loopSuggestedId = nearestToEnd.id;
-                loopDist = Math.round(nearestToEnd.dist);
-              }
-            } else if (nearestToEnd.name === beginNorm || nearestToEnd.name === matchKey) {
-              if (nearestToStart.name !== beginNorm && nearestToStart.name !== matchKey) {
-                loopField = "Begin_uch";
-                loopSuggested = nearestToStart.name;
-                loopSuggestedId = nearestToStart.id;
-                loopDist = Math.round(nearestToStart.dist);
-              }
+          if (altNearStart && altNearEnd) {
+            if (altNearStart.dist <= altNearEnd.dist) {
+              loopField = "Begin_uch";
+              loopSuggested = altNearStart.name;
+              loopSuggestedId = altNearStart.id;
+              loopDist = Math.round(altNearStart.dist);
             } else {
-              if (nearestToStart.dist < nearestToEnd.dist) {
-                loopField = "End_uch";
-                loopSuggested = nearestToEnd.name;
-                loopSuggestedId = nearestToEnd.id;
-                loopDist = Math.round(nearestToEnd.dist);
-              } else {
-                loopField = "Begin_uch";
-                loopSuggested = nearestToStart.name;
-                loopSuggestedId = nearestToStart.id;
-                loopDist = Math.round(nearestToStart.dist);
-              }
+              loopField = "End_uch";
+              loopSuggested = altNearEnd.name;
+              loopSuggestedId = altNearEnd.id;
+              loopDist = Math.round(altNearEnd.dist);
             }
-          } else if (nearestToEnd && !nearestToStart) {
+          } else if (altNearEnd) {
             loopField = "End_uch";
-            loopSuggested = nearestToEnd.name;
-            loopSuggestedId = nearestToEnd.id;
-            loopDist = Math.round(nearestToEnd.dist);
-          } else if (nearestToStart && !nearestToEnd) {
+            loopSuggested = altNearEnd.name;
+            loopSuggestedId = altNearEnd.id;
+            loopDist = Math.round(altNearEnd.dist);
+          } else if (altNearStart) {
             loopField = "Begin_uch";
-            loopSuggested = nearestToStart.name;
-            loopSuggestedId = nearestToStart.id;
-            loopDist = Math.round(nearestToStart.dist);
+            loopSuggested = altNearStart.name;
+            loopSuggestedId = altNearStart.id;
+            loopDist = Math.round(altNearStart.dist);
           }
         }
       }
