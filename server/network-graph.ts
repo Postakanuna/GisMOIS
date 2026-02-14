@@ -2,6 +2,16 @@ import { db } from "./db";
 import { drawnFeatures, editableLayers } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 
+function normalizeName(name: string): string {
+  return name
+    .replace(/\s+/g, " ")
+    .replace(/\s*\.\s*/g, ".")
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/[«»""'']/g, "")
+    .trim();
+}
+
 interface GraphNode {
   name: string;
   type: "source" | "ctp" | "consumer" | "node" | "valve" | "pump" | "other";
@@ -171,6 +181,7 @@ async function getSceneNetworkLayers(sceneId: number) {
     ctpLayerIds: number[];
     sourceLayerIds: number[];
     valveLayerIds: number[];
+    pumpLayerIds: number[];
   } = {
     segmentLayerIds: [],
     nodeLayerIds: [],
@@ -178,6 +189,7 @@ async function getSceneNetworkLayers(sceneId: number) {
     ctpLayerIds: [],
     sourceLayerIds: [],
     valveLayerIds: [],
+    pumpLayerIds: [],
   };
 
   for (const layer of layers) {
@@ -219,6 +231,9 @@ async function getSceneNetworkLayers(sceneId: number) {
       case "valve":
         result.valveLayerIds.push(layer.id);
         break;
+      case "pump":
+        result.pumpLayerIds.push(layer.id);
+        break;
     }
   }
 
@@ -229,6 +244,7 @@ async function getSceneNetworkLayers(sceneId: number) {
     ctps: result.ctpLayerIds,
     sources: result.sourceLayerIds,
     valves: result.valveLayerIds,
+    pumps: result.pumpLayerIds,
   }));
 
   return result;
@@ -241,6 +257,7 @@ async function buildNetworkGraph(
   ctpLayerIds: number[],
   sourceLayerIds: number[],
   valveLayerIds: number[],
+  pumpLayerIds: number[],
   nist: string
 ): Promise<NetworkGraph> {
   const graph: NetworkGraph = {
@@ -272,8 +289,10 @@ async function buildNetworkGraph(
 
   for (const seg of segments) {
     const props = seg.properties as Record<string, unknown>;
-    const from = (props.Begin_uch as string) || "";
-    const to = (props.End_uch as string) || "";
+    const fromRaw = (props.Begin_uch as string) || "";
+    const toRaw = (props.End_uch as string) || "";
+    const from = normalizeName(fromRaw);
+    const to = normalizeName(toRaw);
     const length = parseFloat((props.L as string) || "0") || 0;
 
     if (!from || !to || from === to) continue;
@@ -316,7 +335,7 @@ async function buildNetworkGraph(
     }
   }
 
-  const allPointLayerIds = [...nodeLayerIds, ...consumerLayerIds, ...ctpLayerIds, ...sourceLayerIds, ...valveLayerIds];
+  const allPointLayerIds = [...nodeLayerIds, ...consumerLayerIds, ...ctpLayerIds, ...sourceLayerIds, ...valveLayerIds, ...pumpLayerIds];
 
   if (allPointLayerIds.length > 0) {
     const pointFeatures = await db
@@ -338,14 +357,16 @@ async function buildNetworkGraph(
 
     for (const feat of pointFeatures) {
       const props = feat.properties as Record<string, unknown>;
-      const name = (props.Name as string) || "";
-      if (!name) continue;
+      const nameRaw = (props.Name as string) || "";
+      if (!nameRaw) continue;
+      const name = normalizeName(nameRaw);
 
       if (sourceLayerIds.includes(feat.layerId)) nodeType = "source";
       else if (ctpLayerIds.includes(feat.layerId)) nodeType = "ctp";
       else if (consumerLayerIds.includes(feat.layerId)) nodeType = "consumer";
       else if (nodeLayerIds.includes(feat.layerId)) nodeType = "node";
       else if (valveLayerIds.includes(feat.layerId)) nodeType = "valve";
+      else if (pumpLayerIds.includes(feat.layerId)) nodeType = "pump";
       else nodeType = "other";
 
       if (graph.nodes.has(name)) {
@@ -386,16 +407,25 @@ async function buildNetworkGraph(
 }
 
 function findMatchingSegmentName(pointName: string, segmentNames: Set<string>): string | null {
+  const pointNorm = normalizeName(pointName);
   for (const segName of segmentNames) {
-    if (pointName.startsWith(segName) || segName.startsWith(pointName)) {
+    const segNorm = normalizeName(segName);
+    if (pointNorm === segNorm) {
       return segName;
     }
   }
 
-  const pointNorm = pointName.toLowerCase().replace(/[«»""'']/g, "").trim();
   for (const segName of segmentNames) {
-    const segNorm = segName.toLowerCase().replace(/[«»""'']/g, "").trim();
+    const segNorm = normalizeName(segName);
     if (pointNorm.startsWith(segNorm) || segNorm.startsWith(pointNorm)) {
+      return segName;
+    }
+  }
+
+  const pointLower = pointNorm.toLowerCase();
+  for (const segName of segmentNames) {
+    const segLower = normalizeName(segName).toLowerCase();
+    if (pointLower.startsWith(segLower) || segLower.startsWith(pointLower)) {
       return segName;
     }
   }
@@ -605,7 +635,8 @@ export async function simulateDisconnection(
   const feat = feature[0];
   const props = feat.properties as Record<string, unknown>;
   const nist = props.Nist !== undefined && props.Nist !== null ? String(props.Nist) : "";
-  const featName = (props.Name as string) || (props.Begin_uch as string) || "";
+  const featNameRaw = (props.Name as string) || (props.Begin_uch as string) || "";
+  const featName = normalizeName(featNameRaw);
 
   if (!nist) {
     throw new Error("Объект не имеет привязки к источнику (поле Nist отсутствует)");
@@ -621,6 +652,7 @@ export async function simulateDisconnection(
     layerConfig.ctpLayerIds,
     layerConfig.sourceLayerIds,
     layerConfig.valveLayerIds,
+    layerConfig.pumpLayerIds,
     nist
   );
 
