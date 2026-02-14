@@ -8,13 +8,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { DraggableModal } from "@/components/ui/draggable-modal";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -298,46 +291,18 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
                     
                     <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     
-                    <Select
+                    <select
                       value={mapping?.role || "attribute"}
-                      onValueChange={(value) => handleRoleChange(col.name, value as ColumnRole)}
+                      onChange={(e) => handleRoleChange(col.name, e.target.value as ColumnRole)}
+                      className="w-[170px] h-9 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      data-testid={`select-role-${col.index}`}
                     >
-                      <SelectTrigger className="w-[160px]" data-testid={`select-role-${col.index}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="z-[70]">
-                        <SelectItem value="latitude">
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-3 w-3 text-green-600" />
-                            Широта
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="longitude">
-                          <div className="flex items-center gap-2">
-                            <Navigation className="h-3 w-3 text-blue-600" />
-                            Долгота
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="address">
-                          <div className="flex items-center gap-2">
-                            <Search className="h-3 w-3 text-purple-600" />
-                            Адрес (геокодер)
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="attribute">
-                          <div className="flex items-center gap-2">
-                            <Check className="h-3 w-3" />
-                            Атрибут
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="skip">
-                          <div className="flex items-center gap-2">
-                            <X className="h-3 w-3 text-muted-foreground" />
-                            Пропустить
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                      <option value="latitude">Широта</option>
+                      <option value="longitude">Долгота</option>
+                      <option value="address">Адрес (геокодер)</option>
+                      <option value="attribute">Атрибут</option>
+                      <option value="skip">Пропустить</option>
+                    </select>
 
                     {mapping?.role === "attribute" && (
                       <Tooltip>
