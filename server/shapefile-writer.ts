@@ -145,7 +145,7 @@ function writeDoubleLE(buf: Buffer, val: number, offset: number) {
   buf.writeDoubleLE(val, offset);
 }
 
-function collectFieldInfo(features: Feature[]): { name: string; originalKey: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[] {
+function collectFieldInfo(features: Feature[]): { name: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[] {
   const fieldMap = new Map<string, { type: "C" | "N" | "F" | "L"; maxLen: number; hasDecimal: boolean }>();
 
   for (const f of features) {
@@ -185,27 +185,9 @@ function collectFieldInfo(features: Feature[]): { name: string; originalKey: str
     }
   }
 
-  const fields: { name: string; originalKey: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[] = [];
-  const usedNames = new Set<string>();
-
-  for (const [originalKey, info] of Array.from(fieldMap.entries())) {
-    const nameBytes = iconv.encode(originalKey, "cp1251");
-    let fieldName = iconv.decode(nameBytes.subarray(0, Math.min(nameBytes.length, 10)), "cp1251");
-
-    if (usedNames.has(fieldName)) {
-      for (let suffix = 1; suffix <= 99; suffix++) {
-        const suffixStr = String(suffix);
-        const maxBase = 10 - suffixStr.length;
-        const baseBytes = nameBytes.subarray(0, Math.min(nameBytes.length, maxBase));
-        const candidate = iconv.decode(baseBytes, "cp1251") + suffixStr;
-        if (!usedNames.has(candidate)) {
-          fieldName = candidate;
-          break;
-        }
-      }
-    }
-    usedNames.add(fieldName);
-
+  const fields: { name: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[] = [];
+  for (const [name, info] of Array.from(fieldMap.entries())) {
+    let fieldName = name.substring(0, 10);
     let size: number;
     let decimal = 0;
 
@@ -227,7 +209,7 @@ function collectFieldInfo(features: Feature[]): { name: string; originalKey: str
         size = Math.min(info.maxLen, 254);
     }
 
-    fields.push({ name: fieldName, originalKey, type: info.type, size, decimal });
+    fields.push({ name: fieldName, type: info.type, size, decimal });
   }
 
   return fields;
@@ -350,7 +332,7 @@ function buildShp(features: Feature[], shapeType: number): { shp: Buffer; shx: B
   return { shp, shx };
 }
 
-function buildDbf(features: Feature[], fields: { name: string; originalKey: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[]): Buffer {
+function buildDbf(features: Feature[], fields: { name: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[]): Buffer {
   const numRecords = features.length;
   const recordSize = 1 + fields.reduce((sum, f) => sum + f.size, 0);
   const headerSize = DBF_HEADER_SIZE + fields.length * DBF_FIELD_SIZE + 1;
@@ -383,7 +365,7 @@ function buildDbf(features: Feature[], fields: { name: string; originalKey: stri
     rec[0] = 0x20;
     let pos = 1;
     for (const field of fields) {
-      const val = f.properties?.[field.originalKey];
+      const val = f.properties?.[field.name];
       let strVal: string;
 
       if (val === null || val === undefined) {
