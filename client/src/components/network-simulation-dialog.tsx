@@ -23,9 +23,14 @@ import {
   X,
   GripHorizontal,
   Download,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 
+type SimulationMode = "shutdown" | "upstream" | "downstream";
+
 interface SimulationResult {
+  mode: SimulationMode;
   failurePoint: {
     featureId: number;
     layerId: number;
@@ -96,6 +101,7 @@ export function NetworkSimulationDialog({
   onSimulationResult,
 }: NetworkSimulationDialogProps) {
   const [result, setResult] = useState<SimulationResult | null>(null);
+  const [mode, setMode] = useState<SimulationMode>("shutdown");
   const [consumersOpen, setConsumersOpen] = useState(true);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
   const [ctpsOpen, setCtpsOpen] = useState(false);
@@ -135,11 +141,12 @@ export function NetworkSimulationDialog({
   }, []);
 
   const simulationMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (selectedMode: SimulationMode) => {
       const res = await apiRequest("POST", "/api/network-graph/simulate", {
         featureId,
         layerId,
         sceneId,
+        mode: selectedMode,
       });
       return res.json() as Promise<SimulationResult>;
     },
@@ -156,6 +163,7 @@ export function NetworkSimulationDialog({
 
   const handleClose = () => {
     setResult(null);
+    setMode("shutdown");
     simulationMutation.reset();
     onSimulationResult(null);
     onOpenChange(false);
@@ -168,7 +176,7 @@ export function NetworkSimulationDialog({
       const res = await fetch("/api/network-graph/simulate/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ featureId, layerId, sceneId }),
+        body: JSON.stringify({ featureId, layerId, sceneId, mode: result.mode }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -198,6 +206,18 @@ export function NetworkSimulationDialog({
 
   const featureTypeLabel = featureType === "LineString" ? "Участок сети" : "Узел/объект";
 
+  const modeLabels: Record<SimulationMode, string> = {
+    shutdown: "Отключение",
+    upstream: "Восходящий граф",
+    downstream: "Нисходящий граф",
+  };
+
+  const modeDescriptions: Record<SimulationMode, string> = {
+    shutdown: "Зона отключения ниже выбранного объекта",
+    upstream: "Путь от объекта к источнику (Begin_uch)",
+    downstream: "Все объекты ниже по направлению (End_uch)",
+  };
+
   if (!open) return null;
 
   return (
@@ -213,14 +233,14 @@ export function NetworkSimulationDialog({
       >
         <GripHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />
         <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-        <span className="text-sm font-semibold flex-1">Симуляция отключения</span>
+        <span className="text-sm font-semibold flex-1">Анализ сети</span>
         <Button size="icon" variant="ghost" onClick={handleClose} data-testid="button-close-simulation">
           <X className="h-4 w-4" />
         </Button>
       </div>
 
-      <div className="space-y-4 flex-1 overflow-hidden flex flex-col p-4">
-        <Card className="p-3 space-y-1">
+      <div className="space-y-3 flex-1 overflow-hidden flex flex-col p-4">
+        <Card className="p-3 space-y-2">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs">{featureTypeLabel}</Badge>
             <span className="text-sm font-medium truncate" data-testid="text-simulation-feature-name">{featureName || "Без названия"}</span>
@@ -233,11 +253,46 @@ export function NetworkSimulationDialog({
           )}
         </Card>
 
+        <div className="flex gap-1" data-testid="mode-selector">
+          <Button
+            size="sm"
+            variant={mode === "shutdown" ? "default" : "outline"}
+            className="flex-1 text-xs toggle-elevate"
+            onClick={() => setMode("shutdown")}
+            data-testid="button-mode-shutdown"
+          >
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            {modeLabels.shutdown}
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "upstream" ? "default" : "outline"}
+            className="flex-1 text-xs toggle-elevate"
+            onClick={() => setMode("upstream")}
+            data-testid="button-mode-upstream"
+          >
+            <ArrowUp className="h-3 w-3 mr-1" />
+            {modeLabels.upstream}
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "downstream" ? "default" : "outline"}
+            className="flex-1 text-xs toggle-elevate"
+            onClick={() => setMode("downstream")}
+            data-testid="button-mode-downstream"
+          >
+            <ArrowDown className="h-3 w-3 mr-1" />
+            {modeLabels.downstream}
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground">{modeDescriptions[mode]}</p>
+
         {!result && !simulationMutation.isPending && !simulationMutation.isError && (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 text-muted-foreground py-8">
             <GitBranch className="h-12 w-12 opacity-30" />
             <p className="text-sm text-center">
-              Нажмите кнопку для анализа зоны отключения от выбранного объекта
+              Нажмите кнопку для запуска анализа
             </p>
           </div>
         )}
@@ -361,7 +416,7 @@ export function NetworkSimulationDialog({
 
         <div className="flex gap-2 shrink-0">
           <Button
-            onClick={() => simulationMutation.mutate()}
+            onClick={() => simulationMutation.mutate(mode)}
             disabled={simulationMutation.isPending || !featureId}
             className="flex-1"
             data-testid="button-run-simulation"

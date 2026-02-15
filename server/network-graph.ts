@@ -39,7 +39,10 @@ export interface NetworkGraph {
   reverseAdj: Map<string, string[]>;
 }
 
+export type SimulationMode = "shutdown" | "upstream" | "downstream";
+
 interface SimulationResult {
+  mode: SimulationMode;
   failurePoint: {
     featureId: number;
     layerId: number;
@@ -600,6 +603,49 @@ function getDownstreamNodes(
   return downstream;
 }
 
+function getUpstreamNodes(
+  graph: NetworkGraph,
+  startNodeName: string,
+  parentMap: Map<string, string | null>,
+  sourceNodeName: string
+): Set<string> {
+  const upstream = new Set<string>();
+  upstream.add(startNodeName);
+
+  let current: string | null = startNodeName;
+  while (current !== null) {
+    const parent = parentMap.get(current);
+    if (parent === undefined || parent === null) break;
+    if (upstream.has(parent)) break;
+    upstream.add(parent);
+    current = parent;
+  }
+
+  return upstream;
+}
+
+function getDirectDownstreamNodes(
+  graph: NetworkGraph,
+  startNodeName: string
+): Set<string> {
+  const downstream = new Set<string>();
+  downstream.add(startNodeName);
+
+  const queue: string[] = [startNodeName];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const forward = graph.forwardAdj.get(current) || [];
+    for (const neighbor of forward) {
+      if (!downstream.has(neighbor)) {
+        downstream.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  return downstream;
+}
+
 function findFeatureInGraph(
   graph: NetworkGraph,
   featureId: number,
@@ -623,7 +669,8 @@ function findFeatureInGraph(
 export async function simulateDisconnection(
   featureId: number,
   layerId: number,
-  sceneId: number
+  sceneId: number,
+  mode: SimulationMode = "shutdown"
 ): Promise<SimulationResult> {
   const layerConfig = await getSceneNetworkLayers(sceneId);
 
@@ -717,19 +764,39 @@ export async function simulateDisconnection(
     throw new Error(`Объект "${featName}" (id=${featureId}) не найден в графе теплосети для Nist=${nist}. Граф содержит ${graph.nodes.size} узлов и ${graph.edges.length} рёбер.`);
   }
 
-  let downstreamNodes: Set<string>;
-  if (failureNodeName === sourceNodeName) {
-    downstreamNodes = new Set(graph.nodes.keys());
-  } else {
-    downstreamNodes = getDownstreamNodes(graph, failureNodeName, parentMap, sourceNodeName);
+  console.log(`[NetworkGraph] Mode: ${mode}`);
+
+  let targetNodes: Set<string>;
+
+  switch (mode) {
+    case "upstream":
+      targetNodes = getUpstreamNodes(graph, failureNodeName, parentMap, sourceNodeName);
+      console.log(`[NetworkGraph] Upstream nodes: ${targetNodes.size}`);
+      break;
+    case "downstream":
+      if (failureNodeName === sourceNodeName) {
+        targetNodes = new Set(graph.nodes.keys());
+      } else {
+        targetNodes = getDirectDownstreamNodes(graph, failureNodeName);
+      }
+      console.log(`[NetworkGraph] Direct downstream nodes: ${targetNodes.size}`);
+      break;
+    case "shutdown":
+    default:
+      if (failureNodeName === sourceNodeName) {
+        targetNodes = new Set(graph.nodes.keys());
+      } else {
+        targetNodes = getDownstreamNodes(graph, failureNodeName, parentMap, sourceNodeName);
+      }
+      console.log(`[NetworkGraph] Shutdown downstream nodes: ${targetNodes.size}`);
+      break;
   }
-  console.log(`[NetworkGraph] Downstream nodes: ${downstreamNodes.size}`);
 
   const affectedConsumers: SimulationResult["affectedConsumers"] = [];
   const affectedCTPs: SimulationResult["affectedCTPs"] = [];
   const affectedNodes: SimulationResult["affectedNodes"] = [];
 
-  for (const nodeName of downstreamNodes) {
+  for (const nodeName of targetNodes) {
     const node = graph.nodes.get(nodeName);
     if (!node || node.featureId === 0) continue;
 
@@ -753,6 +820,14 @@ export async function simulateDisconnection(
         });
         break;
       case "source":
+        if (mode === "upstream") {
+          affectedNodes.push({
+            featureId: node.featureId,
+            layerId: node.layerId,
+            name: node.name,
+            coordinates: node.coordinates,
+          });
+        }
         break;
       default:
         affectedNodes.push({
@@ -769,10 +844,10 @@ export async function simulateDisconnection(
   let totalLengthM = 0;
 
   for (const edge of graph.edges) {
-    const fromDownstream = downstreamNodes.has(edge.from);
-    const toDownstream = downstreamNodes.has(edge.to);
+    const fromInSet = targetNodes.has(edge.from);
+    const toInSet = targetNodes.has(edge.to);
 
-    if (fromDownstream && toDownstream) {
+    if (fromInSet && toInSet) {
       affectedSegments.push({
         featureId: edge.featureId,
         layerId: edge.layerId,
@@ -782,7 +857,7 @@ export async function simulateDisconnection(
         coordinates: edge.coordinates,
       });
       totalLengthM += edge.length;
-    } else if (toDownstream && edge.to === failureNodeName) {
+    } else if (mode === "shutdown" && toInSet && edge.to === failureNodeName) {
       affectedSegments.push({
         featureId: edge.featureId,
         layerId: edge.layerId,
@@ -801,6 +876,7 @@ export async function simulateDisconnection(
   console.log(`[NetworkGraph] === Simulation End ===`);
 
   return {
+    mode,
     failurePoint: {
       featureId,
       layerId,

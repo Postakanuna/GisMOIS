@@ -4322,17 +4322,21 @@ export async function registerRoutes(
 
   app.post("/api/network-graph/simulate", async (req: Request, res: Response) => {
     try {
-      const { featureId, layerId, sceneId } = req.body;
+      const { featureId, layerId, sceneId, mode } = req.body;
 
       if (!featureId || !layerId || !sceneId) {
         return res.status(400).json({ error: "featureId, layerId, and sceneId are required" });
       }
 
+      const validModes = ["shutdown", "upstream", "downstream"];
+      const simMode = validModes.includes(mode) ? mode : "shutdown";
+
       const { simulateDisconnection } = await import("./network-graph");
       const result = await simulateDisconnection(
         Number(featureId),
         Number(layerId),
-        Number(sceneId)
+        Number(sceneId),
+        simMode
       );
 
       return res.json(result);
@@ -4344,17 +4348,21 @@ export async function registerRoutes(
 
   app.post("/api/network-graph/simulate/export", async (req: Request, res: Response) => {
     try {
-      const { featureId, layerId, sceneId } = req.body;
+      const { featureId, layerId, sceneId, mode } = req.body;
 
       if (!featureId || !layerId || !sceneId) {
         return res.status(400).json({ error: "featureId, layerId, and sceneId are required" });
       }
 
+      const validModes = ["shutdown", "upstream", "downstream"];
+      const simMode = validModes.includes(mode) ? mode : "shutdown";
+
       const { simulateDisconnection } = await import("./network-graph");
       const result = await simulateDisconnection(
         Number(featureId),
         Number(layerId),
-        Number(sceneId)
+        Number(sceneId),
+        simMode
       );
 
       const consumerIds = result.affectedConsumers.map(c => c.featureId);
@@ -4392,7 +4400,9 @@ export async function registerRoutes(
       headerRow.font = { bold: true };
       headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
 
-      summarySheet.addRow({ param: "Объект отключения", value: result.failurePoint.name });
+      const modeLabels: Record<string, string> = { shutdown: "Симуляция отключения", upstream: "Восходящий граф", downstream: "Нисходящий граф" };
+      summarySheet.addRow({ param: "Режим анализа", value: modeLabels[result.mode] || modeLabels.shutdown });
+      summarySheet.addRow({ param: "Объект анализа", value: result.failurePoint.name });
       summarySheet.addRow({ param: "Тип объекта", value: result.failurePoint.type === "segment" ? "Участок сети" : "Узел/объект" });
       if (result.source) {
         summarySheet.addRow({ param: "Источник", value: result.source.name });
