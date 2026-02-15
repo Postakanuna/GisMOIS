@@ -19,6 +19,9 @@ export interface GraphNode {
   layerId: number;
   coordinates: any;
   properties: Record<string, unknown>;
+  valveClosed?: boolean;
+  valvePerPod?: number;
+  valvePerObr?: number;
 }
 
 export interface GraphEdge {
@@ -79,12 +82,21 @@ interface SimulationResult {
     name: string;
     coordinates: any;
   }>;
+  closedValves: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    perPod: number | null;
+    perObr: number | null;
+    coordinates: any;
+  }>;
   stats: {
     totalConsumers: number;
     totalSegments: number;
     totalCTPs: number;
     totalNodes: number;
     totalLengthM: number;
+    totalClosedValves: number;
   };
 }
 
@@ -369,38 +381,65 @@ export async function buildNetworkGraph(
       else if (pumpLayerIds.includes(feat.layerId)) nodeType = "pump";
       else nodeType = "other";
 
+      let valveClosed = false;
+      let valvePerPod: number | undefined;
+      let valvePerObr: number | undefined;
+      if (nodeType === "valve") {
+        const parseValvePercent = (raw: unknown): number | undefined => {
+          if (raw === undefined || raw === null || raw === "") return undefined;
+          const str = String(raw).replace(",", ".");
+          const val = parseFloat(str);
+          if (isNaN(val)) return undefined;
+          return val;
+        };
+        valvePerPod = parseValvePercent(props.Per_pod);
+        valvePerObr = parseValvePercent(props.Per_obr);
+        if ((valvePerPod !== undefined && valvePerPod === 0) || (valvePerObr !== undefined && valvePerObr === 0)) {
+          valveClosed = true;
+        }
+      }
+
+      const nodeData: Partial<GraphNode> = {
+        type: nodeType,
+        featureId: feat.id,
+        layerId: feat.layerId,
+        coordinates: feat.coordinates,
+        properties: props,
+        ...(nodeType === "valve" ? { valveClosed, valvePerPod, valvePerObr } : {}),
+      };
+
       if (graph.nodes.has(name)) {
         const existing = graph.nodes.get(name)!;
         if (existing.featureId === 0) {
-          existing.type = nodeType;
-          existing.featureId = feat.id;
-          existing.layerId = feat.layerId;
-          existing.coordinates = feat.coordinates;
-          existing.properties = props;
+          Object.assign(existing, nodeData);
         }
       } else {
         const matchedSegName = findMatchingSegmentName(name, allSegmentNodeNames);
         if (matchedSegName) {
           const existing = graph.nodes.get(matchedSegName)!;
           if (existing.featureId === 0) {
-            existing.type = nodeType;
-            existing.featureId = feat.id;
-            existing.layerId = feat.layerId;
-            existing.coordinates = feat.coordinates;
-            existing.properties = props;
+            Object.assign(existing, nodeData);
           }
         } else {
           graph.nodes.set(name, {
             name,
-            type: nodeType,
-            featureId: feat.id,
-            layerId: feat.layerId,
-            coordinates: feat.coordinates,
-            properties: props,
+            ...nodeData as Omit<GraphNode, "name">,
           });
         }
       }
     }
+  }
+
+  let closedCount = 0;
+  let openCount = 0;
+  for (const [, node] of graph.nodes) {
+    if (node.type === "valve") {
+      if (node.valveClosed) closedCount++;
+      else openCount++;
+    }
+  }
+  if (closedCount > 0 || openCount > 0) {
+    console.log(`[NetworkGraph] Valves: ${openCount} open, ${closedCount} closed`);
   }
 
   return graph;
@@ -508,16 +547,30 @@ export function findSourceNode(graph: NetworkGraph): string | null {
   return maxNode;
 }
 
-export function buildTreeFromSource(graph: NetworkGraph, sourceNodeName: string): Map<string, string | null> {
+export function buildTreeFromSource(
+  graph: NetworkGraph,
+  sourceNodeName: string,
+  respectClosedValves: boolean = false
+): { parentMap: Map<string, string | null>; closedValveBarriers: string[] } {
   const parent = new Map<string, string | null>();
   parent.set(sourceNodeName, null);
+  const closedValveBarriers: string[] = [];
+
+  const isBlocked = (nodeName: string): boolean => {
+    if (!respectClosedValves) return false;
+    const node = graph.nodes.get(nodeName);
+    return !!(node && node.type === "valve" && node.valveClosed);
+  };
 
   const queue: string[] = [sourceNodeName];
   const forwardAdj = graph.forwardAdj;
-  const reverseAdj = graph.reverseAdj;
 
   while (queue.length > 0) {
     const current = queue.shift()!;
+    if (current !== sourceNodeName && isBlocked(current)) {
+      if (!closedValveBarriers.includes(current)) closedValveBarriers.push(current);
+      continue;
+    }
     const forward = forwardAdj.get(current) || [];
     for (const neighbor of forward) {
       if (!parent.has(neighbor)) {
@@ -528,11 +581,11 @@ export function buildTreeFromSource(graph: NetworkGraph, sourceNodeName: string)
   }
 
   if (parent.size < graph.adjacency.size) {
-    const queue2: string[] = [sourceNodeName];
+    const queue2: string[] = [];
     const visited = new Set<string>(parent.keys());
-    const fullQueue = [...parent.keys()];
 
-    for (const node of fullQueue) {
+    for (const node of visited) {
+      if (node !== sourceNodeName && isBlocked(node)) continue;
       const neighbors = graph.adjacency.get(node) || [];
       for (const neighbor of neighbors) {
         if (!parent.has(neighbor)) {
@@ -544,6 +597,10 @@ export function buildTreeFromSource(graph: NetworkGraph, sourceNodeName: string)
 
     while (queue2.length > 0) {
       const current = queue2.shift()!;
+      if (current !== sourceNodeName && isBlocked(current)) {
+        if (!closedValveBarriers.includes(current)) closedValveBarriers.push(current);
+        continue;
+      }
       const neighbors = graph.adjacency.get(current) || [];
       for (const neighbor of neighbors) {
         if (!parent.has(neighbor)) {
@@ -554,7 +611,7 @@ export function buildTreeFromSource(graph: NetworkGraph, sourceNodeName: string)
     }
   }
 
-  return parent;
+  return { parentMap: parent, closedValveBarriers };
 }
 
 function getDownstreamNodes(
@@ -587,6 +644,19 @@ function getDownstreamNodes(
   collectDownstream(failureNodeName);
 
   return downstream;
+}
+
+function isAncestorOf(
+  ancestor: string,
+  descendant: string,
+  parentMap: Map<string, string | null>
+): boolean {
+  let current: string | null = descendant;
+  while (current !== null) {
+    if (current === ancestor) return true;
+    current = parentMap.get(current) ?? null;
+  }
+  return false;
 }
 
 function findFeatureInGraph(
@@ -669,8 +739,11 @@ export async function simulateDisconnection(
     throw new Error(`Источник не найден для Nist=${nist}`);
   }
 
-  const parentMap = buildTreeFromSource(graph, sourceNodeName);
+  const { parentMap, closedValveBarriers } = buildTreeFromSource(graph, sourceNodeName, true);
   console.log(`[NetworkGraph] Tree built: ${parentMap.size} nodes reachable from source`);
+  if (closedValveBarriers.length > 0) {
+    console.log(`[NetworkGraph] Closed valve barriers: ${closedValveBarriers.join(", ")}`);
+  }
 
   const isSegment = feat.geometryType === "LineString";
   let failureNodeName: string | null = null;
@@ -708,11 +781,56 @@ export async function simulateDisconnection(
 
   let downstreamNodes: Set<string>;
   if (failureNodeName === sourceNodeName) {
-    downstreamNodes = new Set(graph.nodes.keys());
+    downstreamNodes = new Set(parentMap.keys());
   } else {
     downstreamNodes = getDownstreamNodes(graph, failureNodeName, parentMap, sourceNodeName);
   }
-  console.log(`[NetworkGraph] Downstream nodes: ${downstreamNodes.size}`);
+
+  console.log(`[NetworkGraph] Downstream nodes (initial): ${downstreamNodes.size}`);
+
+  const relevantClosedValves = new Set<string>();
+
+  for (const valveName of closedValveBarriers) {
+    if (isAncestorOf(valveName, failureNodeName, parentMap)) {
+      relevantClosedValves.add(valveName);
+    }
+  }
+
+  const closedValvesInDownstream: string[] = [];
+  for (const nodeName of downstreamNodes) {
+    const node = graph.nodes.get(nodeName);
+    if (node && node.type === "valve" && node.valveClosed && nodeName !== failureNodeName) {
+      closedValvesInDownstream.push(nodeName);
+      relevantClosedValves.add(nodeName);
+    }
+  }
+
+  if (closedValvesInDownstream.length > 0) {
+    for (const valveName of closedValvesInDownstream) {
+      const valveDescendants = getDownstreamNodes(graph, valveName, parentMap, sourceNodeName);
+      for (const desc of valveDescendants) {
+        if (desc !== valveName) {
+          downstreamNodes.delete(desc);
+        }
+      }
+    }
+    console.log(`[NetworkGraph] Downstream nodes (after valve pruning): ${downstreamNodes.size}`);
+  }
+
+  const closedValves: SimulationResult["closedValves"] = [];
+  for (const valveName of relevantClosedValves) {
+    const node = graph.nodes.get(valveName);
+    if (node) {
+      closedValves.push({
+        featureId: node.featureId,
+        layerId: node.layerId,
+        name: node.name,
+        perPod: node.valvePerPod ?? null,
+        perObr: node.valvePerObr ?? null,
+        coordinates: node.coordinates,
+      });
+    }
+  }
 
   const affectedConsumers: SimulationResult["affectedConsumers"] = [];
   const affectedCTPs: SimulationResult["affectedCTPs"] = [];
@@ -786,7 +904,7 @@ export async function simulateDisconnection(
 
   const sourceNode = graph.nodes.get(sourceNodeName);
 
-  console.log(`[NetworkGraph] Results: ${affectedConsumers.length} consumers, ${affectedSegments.length} segments, ${affectedCTPs.length} CTPs, ${affectedNodes.length} nodes`);
+  console.log(`[NetworkGraph] Results: ${affectedConsumers.length} consumers, ${affectedSegments.length} segments, ${affectedCTPs.length} CTPs, ${affectedNodes.length} nodes, ${closedValves.length} closed valves`);
   console.log(`[NetworkGraph] === Simulation End ===`);
 
   return {
@@ -805,12 +923,14 @@ export async function simulateDisconnection(
     affectedSegments,
     affectedCTPs,
     affectedNodes,
+    closedValves,
     stats: {
       totalConsumers: affectedConsumers.length,
       totalSegments: affectedSegments.length,
       totalCTPs: affectedCTPs.length,
       totalNodes: affectedNodes.length,
       totalLengthM: Math.round(totalLengthM),
+      totalClosedValves: closedValves.length,
     },
   };
 }

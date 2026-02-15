@@ -23,6 +23,7 @@ import {
   X,
   GripHorizontal,
   Download,
+  Lock,
 } from "lucide-react";
 
 interface SimulationResult {
@@ -65,12 +66,21 @@ interface SimulationResult {
     name: string;
     coordinates: any;
   }>;
+  closedValves: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    perPod: number | null;
+    perObr: number | null;
+    coordinates: any;
+  }>;
   stats: {
     totalConsumers: number;
     totalSegments: number;
     totalCTPs: number;
     totalNodes: number;
     totalLengthM: number;
+    totalClosedValves: number;
   };
 }
 
@@ -100,6 +110,7 @@ export function NetworkSimulationDialog({
   const [segmentsOpen, setSegmentsOpen] = useState(false);
   const [ctpsOpen, setCtpsOpen] = useState(false);
   const [nodesOpen, setNodesOpen] = useState(false);
+  const [valvesOpen, setValvesOpen] = useState(false);
 
   const [position, setPosition] = useState({ x: 20, y: 80 });
   const dragRef = useRef<HTMLDivElement>(null);
@@ -280,6 +291,14 @@ export function NetworkSimulationDialog({
                     value={result.stats.totalNodes}
                     testId="text-stat-nodes"
                   />
+                  {result.stats.totalClosedValves > 0 && (
+                    <StatItem
+                      icon={<Lock className="h-4 w-4" />}
+                      label="Закр. задвижек"
+                      value={result.stats.totalClosedValves}
+                      testId="text-stat-closed-valves"
+                    />
+                  )}
                 </div>
                 <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
                   Общая длина затронутых сетей: {result.stats.totalLengthM} м
@@ -351,6 +370,34 @@ export function NetworkSimulationDialog({
                     <div key={n.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-node-${i}`}>
                       <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="truncate">{n.name}</span>
+                    </div>
+                  ))}
+                </CollapsibleSection>
+              )}
+
+              {result.closedValves && result.closedValves.length > 0 && (
+                <CollapsibleSection
+                  title="Закрытые задвижки"
+                  count={result.closedValves.length}
+                  open={valvesOpen}
+                  onOpenChange={setValvesOpen}
+                  testId="section-closed-valves"
+                >
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Эти задвижки ограничили зону распространения отключения
+                  </div>
+                  {result.closedValves.map((v, i) => (
+                    <div key={v.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-closed-valve-${i}`}>
+                      <Lock className="h-3 w-3 text-orange-500 shrink-0" />
+                      <span className="truncate">{v.name}</span>
+                      <div className="ml-auto flex gap-1 shrink-0">
+                        {v.perPod !== null && (
+                          <Badge variant="secondary" className="text-[10px]">Под: {v.perPod}</Badge>
+                        )}
+                        {v.perObr !== null && (
+                          <Badge variant="secondary" className="text-[10px]">Обр: {v.perObr}</Badge>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </CollapsibleSection>

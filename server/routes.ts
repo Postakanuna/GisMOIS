@@ -4404,6 +4404,10 @@ export async function registerRoutes(
       summarySheet.addRow({ param: "Затронутые участки сети", value: result.stats.totalSegments });
       summarySheet.addRow({ param: "Затронутые узлы", value: result.stats.totalNodes });
       summarySheet.addRow({ param: "Общая длина сетей (м)", value: result.stats.totalLengthM });
+      if (result.stats.totalClosedValves > 0) {
+        summarySheet.addRow({ param: "", value: "" });
+        summarySheet.addRow({ param: "Закрытые задвижки (ограничивают зону)", value: result.stats.totalClosedValves });
+      }
 
       const addDetailSheet = (
         sheetName: string,
@@ -4487,6 +4491,27 @@ export async function registerRoutes(
         ],
         (item) => ({ name: item.name })
       );
+
+      if (result.closedValves && result.closedValves.length > 0) {
+        const valveSheet = workbook.addWorksheet("Закрытые задвижки");
+        valveSheet.columns = [
+          { header: "ID", key: "featureId", width: 10 },
+          { header: "Имя", key: "name", width: 30 },
+          { header: "Степень открытия (под.)", key: "perPod", width: 22 },
+          { header: "Степень открытия (обр.)", key: "perObr", width: 22 },
+        ];
+        const vhRow = valveSheet.getRow(1);
+        vhRow.font = { bold: true };
+        vhRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+        for (const v of result.closedValves) {
+          valveSheet.addRow({
+            featureId: v.featureId,
+            name: v.name,
+            perPod: v.perPod !== null ? v.perPod : "",
+            perObr: v.perObr !== null ? v.perObr : "",
+          });
+        }
+      }
 
       const buffer = await workbook.xlsx.writeBuffer();
       const failureName = result.failurePoint.name.replace(/[^\w\sа-яА-ЯёЁ]/gi, "").substring(0, 50);
