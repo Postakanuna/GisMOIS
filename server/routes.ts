@@ -4761,18 +4761,53 @@ export async function registerRoutes(
         for (const cluster of noTopologyResult.clusters) {
           if (!cluster.polygon || cluster.polygon.length < 3) continue;
           const ring = [...cluster.polygon, cluster.polygon[0]];
+          const complaintDetails = cluster.complaints.map((c: any, idx: number) => {
+            const parts = [`Жалоба ${idx + 1}`];
+            if (c.address) parts.push(`адрес: ${c.address}`);
+            if (c.featureId) parts.push(`ID: ${c.featureId}`);
+            const propEntries = Object.entries(c.properties || {});
+            for (const [key, val] of propEntries) {
+              if (val !== null && val !== undefined && val !== "" && key !== "id") {
+                parts.push(`${key}: ${String(val)}`);
+              }
+            }
+            return parts.join(", ");
+          });
+          const addresses = cluster.complaints
+            .map((c: any) => c.address)
+            .filter(Boolean);
+          const uniqueAddresses = [...new Set(addresses)];
+
+          const props: Record<string, unknown> = {
+            cluster_id: cluster.id,
+            date: cluster.date || "Все даты",
+            complaint_count: cluster.complaintCount,
+            radius_m: Math.round(cluster.radiusM),
+            centroid_lon: cluster.centroid[0],
+            centroid_lat: cluster.centroid[1],
+            addresses: uniqueAddresses.join("; "),
+            address_count: uniqueAddresses.length,
+          };
+
+          cluster.complaints.forEach((c: any, idx: number) => {
+            const num = idx + 1;
+            props[`complaint_${num}_address`] = c.address || "";
+            props[`complaint_${num}_lon`] = c.lon;
+            props[`complaint_${num}_lat`] = c.lat;
+            if (c.featureId) props[`complaint_${num}_id`] = c.featureId;
+            if (c.properties) {
+              for (const [key, val] of Object.entries(c.properties)) {
+                if (val !== null && val !== undefined && val !== "" && key !== "id") {
+                  props[`complaint_${num}_${key}`] = val;
+                }
+              }
+            }
+          });
+
           features.push({
             geometryType: "Polygon",
             coordinates: [ring],
-            properties: {
-              cluster_id: cluster.id,
-              date: cluster.date,
-              complaint_count: cluster.complaintCount,
-              radius_m: cluster.radiusM,
-              centroid_lon: cluster.centroid[0],
-              centroid_lat: cluster.centroid[1],
-              addresses: cluster.complaints.map((c: any) => c.address).filter(Boolean).join("; "),
-            },
+            properties: props,
           });
         }
       } else if (mode === "topology" && topologyResult) {
@@ -4800,32 +4835,71 @@ export async function registerRoutes(
               }
             }
 
+            const confidenceMap: Record<string, string> = { high: "Высокая", medium: "Средняя", low: "Низкая" };
+            const nodeTypeMap: Record<string, string> = { source: "Источник", ctp: "ЦТП", consumer: "Потребитель", node: "Узел", valve: "Задвижка", pump: "Насос" };
+
+            const zoneProps: Record<string, unknown> = {
+              zone_name: zone.zoneName || "",
+              zone_type: nodeTypeMap[zone.zoneType] || zone.zoneType || "",
+              date: group.date || "",
+              nist: group.nist || "",
+              source_name: group.sourceName || "",
+              confidence: confidenceMap[zone.confidence] || zone.confidence || "",
+              complaint_count: zone.complaintCount || 0,
+              downstream_consumer_count: zone.downstreamConsumerCount || 0,
+              complaint_consumers: zone.complaintConsumers?.join("; ") || "",
+              segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "",
+              segment_length_m: zone.incomingSegment?.length || 0,
+              affected_segments_count: zone.affectedSegments?.length || 0,
+              affected_consumers_count: zone.affectedConsumers?.length || 0,
+            };
+
+            if (zone.affectedConsumers) {
+              const consumerNames = zone.affectedConsumers.map((ac: any) => ac.name).filter(Boolean);
+              const consumerAddresses = zone.affectedConsumers.map((ac: any) => ac.address).filter(Boolean);
+              zoneProps.consumer_names = consumerNames.join("; ");
+              zoneProps.consumer_addresses = [...new Set(consumerAddresses)].join("; ");
+              zone.affectedConsumers.forEach((ac: any, idx: number) => {
+                const num = idx + 1;
+                zoneProps[`consumer_${num}_name`] = ac.name || "";
+                zoneProps[`consumer_${num}_address`] = ac.address || "";
+              });
+            }
+
+            if (zone.affectedSegments) {
+              const segDetails = zone.affectedSegments.map((seg: any) => `${seg.from} → ${seg.to} (${seg.length}м)`);
+              zoneProps.segments_detail = segDetails.join("; ");
+            }
+
+            if (group.consumers) {
+              const groupConsumers = group.consumers.map((c: any) => {
+                const parts = [c.name || ""];
+                if (c.address) parts.push(c.address);
+                parts.push(`жалоб: ${c.complaintCount}`);
+                parts.push(`${c.distance}м`);
+                return parts.join(", ");
+              });
+              zoneProps.group_complaint_count = group.complaintCount || 0;
+              zoneProps.group_consumers = groupConsumers.join("; ");
+            }
+
+            const addFeature = (ring: number[][]) => {
+              features.push({
+                geometryType: "Polygon",
+                coordinates: [ring],
+                properties: zoneProps,
+              });
+            };
+
             if (allCoords.length < 3) {
               if (allCoords.length === 1) {
                 const [lon, lat] = allCoords[0];
                 const d = 0.002;
-                const ring = [
+                addFeature([
                   [lon - d, lat - d], [lon + d, lat - d],
                   [lon + d, lat + d], [lon - d, lat + d],
                   [lon - d, lat - d],
-                ];
-                features.push({
-                  geometryType: "Polygon",
-                  coordinates: [ring],
-                  properties: {
-                    zone_name: zone.zoneName,
-                    zone_type: zone.zoneType,
-                    date: group.date,
-                    nist: group.nist,
-                    source_name: group.sourceName || "",
-                    confidence: zone.confidence,
-                    complaint_count: zone.complaintCount,
-                    downstream_consumers: zone.downstreamConsumerCount,
-                    complaint_consumers: zone.complaintConsumers?.join("; ") || "",
-                    segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "",
-                    segment_length_m: zone.incomingSegment?.length || 0,
-                  },
-                });
+                ]);
               } else if (allCoords.length === 2) {
                 const [p1, p2] = allCoords;
                 const dx = (p2[0] - p1[0]);
@@ -4833,30 +4907,13 @@ export async function registerRoutes(
                 const nx = -dy * 0.3;
                 const ny = dx * 0.3;
                 const d = 0.001;
-                const ring = [
+                addFeature([
                   [p1[0] + nx * d / Math.max(Math.abs(nx), 0.0001), p1[1] + ny * d / Math.max(Math.abs(ny), 0.0001)],
                   [p2[0] + nx * d / Math.max(Math.abs(nx), 0.0001), p2[1] + ny * d / Math.max(Math.abs(ny), 0.0001)],
                   [p2[0] - nx * d / Math.max(Math.abs(nx), 0.0001), p2[1] - ny * d / Math.max(Math.abs(ny), 0.0001)],
                   [p1[0] - nx * d / Math.max(Math.abs(nx), 0.0001), p1[1] - ny * d / Math.max(Math.abs(ny), 0.0001)],
                   [p1[0] + nx * d / Math.max(Math.abs(nx), 0.0001), p1[1] + ny * d / Math.max(Math.abs(ny), 0.0001)],
-                ];
-                features.push({
-                  geometryType: "Polygon",
-                  coordinates: [ring],
-                  properties: {
-                    zone_name: zone.zoneName,
-                    zone_type: zone.zoneType,
-                    date: group.date,
-                    nist: group.nist,
-                    source_name: group.sourceName || "",
-                    confidence: zone.confidence,
-                    complaint_count: zone.complaintCount,
-                    downstream_consumers: zone.downstreamConsumerCount,
-                    complaint_consumers: zone.complaintConsumers?.join("; ") || "",
-                    segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "",
-                    segment_length_m: zone.incomingSegment?.length || 0,
-                  },
-                });
+                ]);
               }
               continue;
             }
@@ -4864,25 +4921,7 @@ export async function registerRoutes(
             const sorted = [...allCoords];
             const center = sorted.reduce((acc, p) => [acc[0] + p[0] / sorted.length, acc[1] + p[1] / sorted.length], [0, 0]);
             sorted.sort((a, b) => Math.atan2(a[1] - center[1], a[0] - center[0]) - Math.atan2(b[1] - center[1], b[0] - center[0]));
-            const ring = [...sorted, sorted[0]];
-
-            features.push({
-              geometryType: "Polygon",
-              coordinates: [ring],
-              properties: {
-                zone_name: zone.zoneName,
-                zone_type: zone.zoneType,
-                date: group.date,
-                nist: group.nist,
-                source_name: group.sourceName || "",
-                confidence: zone.confidence,
-                complaint_count: zone.complaintCount,
-                downstream_consumers: zone.downstreamConsumerCount,
-                complaint_consumers: zone.complaintConsumers?.join("; ") || "",
-                segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "",
-                segment_length_m: zone.incomingSegment?.length || 0,
-              },
-            });
+            addFeature([...sorted, sorted[0]]);
           }
         }
       }
