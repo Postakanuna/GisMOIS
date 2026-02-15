@@ -4896,14 +4896,14 @@ export async function registerRoutes(
         name: layerName,
         geometryType: "Polygon",
         color: mode === "topology" ? "#E65100" : "#AD1457",
-        source: "analysis",
-        visible: 1,
+        source: "import" as const,
+        visible: true as any,
         opacity: 0.6,
       });
 
       const insertFeatures = features.map(f => ({
         layerId: layer.id,
-        geometryType: f.geometryType,
+        geometryType: f.geometryType as "Point" | "LineString" | "Polygon",
         coordinates: f.coordinates,
         properties: f.properties,
       }));
