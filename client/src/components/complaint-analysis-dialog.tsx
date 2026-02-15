@@ -34,7 +34,10 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
+  Unlink,
 } from "lucide-react";
+
+type AnalysisMode = "topology" | "no_topology";
 
 interface EditableLayer {
   id: number;
@@ -94,6 +97,36 @@ interface ComplaintAnalysisResult {
   }>;
 }
 
+interface NoTopologyCluster {
+  id: number;
+  date: string;
+  complaintCount: number;
+  complaints: Array<{
+    featureId: number;
+    address: string;
+    lon: number;
+    lat: number;
+    properties: Record<string, unknown>;
+  }>;
+  centroid: [number, number];
+  polygon: number[][] | null;
+  radiusM: number;
+}
+
+interface NoTopologyResult {
+  mode: "no_topology";
+  totalComplaints: number;
+  totalClustered: number;
+  totalUnclustered: number;
+  clusters: NoTopologyCluster[];
+  unclustered: Array<{
+    featureId: number;
+    address: string;
+    date: string;
+    reason: string;
+  }>;
+}
+
 interface ComplaintAnalysisDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -101,6 +134,7 @@ interface ComplaintAnalysisDialogProps {
   sceneId: number;
   onAnalysisResult: (result: ComplaintAnalysisResult | null) => void;
   onHighlightZone: (zone: FailureZone | null) => void;
+  onHighlightPolygons: (data: { polygons: Array<{ coordinates: number[][] }>; points: Array<{ coordinates: [number, number]; type: string }> } | null) => void;
 }
 
 export function ComplaintAnalysisDialog({
@@ -110,12 +144,15 @@ export function ComplaintAnalysisDialog({
   sceneId,
   onAnalysisResult,
   onHighlightZone,
+  onHighlightPolygons,
 }: ComplaintAnalysisDialogProps) {
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("topology");
   const [selectedLayerId, setSelectedLayerId] = useState<string>("");
   const [dateFieldName, setDateFieldName] = useState<string>("");
   const [addressFieldName, setAddressFieldName] = useState<string>("");
   const [matchRadius, setMatchRadius] = useState<number>(100);
   const [result, setResult] = useState<ComplaintAnalysisResult | null>(null);
+  const [noTopoResult, setNoTopoResult] = useState<NoTopologyResult | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [highlightedZoneKey, setHighlightedZoneKey] = useState<string | null>(null);
 
@@ -156,29 +193,44 @@ export function ComplaintAnalysisDialog({
 
   const analysisMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/complaint-analysis", {
+      const body: Record<string, unknown> = {
         complaintLayerId: Number(selectedLayerId),
-        sceneId,
         dateFieldName,
         addressFieldName,
-        matchRadius,
-      });
-      return res.json() as Promise<ComplaintAnalysisResult>;
+        mode: analysisMode,
+      };
+      if (analysisMode === "topology") {
+        body.sceneId = sceneId;
+        body.matchRadius = matchRadius;
+      }
+      const res = await apiRequest("POST", "/api/complaint-analysis", body);
+      return res.json();
     },
-    onSuccess: (data) => {
-      setResult(data);
-      onAnalysisResult(data);
+    onSuccess: (data: any) => {
+      if (data.mode === "no_topology") {
+        setNoTopoResult(data as NoTopologyResult);
+        setResult(null);
+        onAnalysisResult(null);
+      } else {
+        setResult(data as ComplaintAnalysisResult);
+        setNoTopoResult(null);
+        onAnalysisResult(data as ComplaintAnalysisResult);
+      }
     },
   });
 
   const [exporting, setExporting] = useState(false);
 
+  const hasAnyResult = result || noTopoResult;
+
   const handleClose = () => {
     setResult(null);
+    setNoTopoResult(null);
     setHighlightedZoneKey(null);
     analysisMutation.reset();
     onAnalysisResult(null);
     onHighlightZone(null);
+    onHighlightPolygons(null);
     onOpenChange(false);
   };
 
@@ -224,12 +276,29 @@ export function ComplaintAnalysisDialog({
   };
 
   const handleHighlightZone = (zone: FailureZone, key: string) => {
+    onHighlightPolygons(null);
     if (highlightedZoneKey === key) {
       setHighlightedZoneKey(null);
       onHighlightZone(null);
     } else {
       setHighlightedZoneKey(key);
       onHighlightZone(zone);
+    }
+  };
+
+  const handleHighlightCluster = (cluster: NoTopologyCluster, key: string) => {
+    onHighlightZone(null);
+    if (highlightedZoneKey === key) {
+      setHighlightedZoneKey(null);
+      onHighlightPolygons(null);
+    } else {
+      setHighlightedZoneKey(key);
+      const polygons = cluster.polygon ? [{ coordinates: cluster.polygon }] : [];
+      const points = cluster.complaints.map(c => ({
+        coordinates: [c.lon, c.lat] as [number, number],
+        type: "complaint",
+      }));
+      onHighlightPolygons({ polygons, points });
     }
   };
 
@@ -240,6 +309,16 @@ export function ComplaintAnalysisDialog({
       else next.add(index);
       return next;
     });
+  };
+
+  const handleReset = () => {
+    setResult(null);
+    setNoTopoResult(null);
+    setHighlightedZoneKey(null);
+    analysisMutation.reset();
+    onAnalysisResult(null);
+    onHighlightZone(null);
+    onHighlightPolygons(null);
   };
 
   const pointLayers = editableLayers.filter(l => l.geometryType === "Point");
@@ -310,8 +389,37 @@ export function ComplaintAnalysisDialog({
 
       <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
         <div className="p-3 space-y-3">
-          {!result && (
+          {!hasAnyResult && (
             <>
+              <div className="flex gap-1" data-testid="mode-selector-complaints">
+                <Button
+                  size="sm"
+                  variant={analysisMode === "topology" ? "default" : "outline"}
+                  className="flex-1 text-xs toggle-elevate"
+                  onClick={() => setAnalysisMode("topology")}
+                  data-testid="button-mode-topology"
+                >
+                  <GitBranch className="h-3 w-3 mr-1" />
+                  С топологией
+                </Button>
+                <Button
+                  size="sm"
+                  variant={analysisMode === "no_topology" ? "default" : "outline"}
+                  className="flex-1 text-xs toggle-elevate"
+                  onClick={() => setAnalysisMode("no_topology")}
+                  data-testid="button-mode-no-topology"
+                >
+                  <Unlink className="h-3 w-3 mr-1" />
+                  Без топологии
+                </Button>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                {analysisMode === "topology"
+                  ? "Привязка жалоб к потребителям, группировка по дате/источнику, поиск зон аварий через топологию сети"
+                  : "Пространственная кластеризация жалоб: одна дата + радиус 350м. Предпросмотр полигонов кластеров на карте"}
+              </p>
+
               <div className="space-y-2">
                 <Label className="text-xs">Слой жалоб (точечный)</Label>
                 <Select value={selectedLayerId} onValueChange={setSelectedLayerId}>
@@ -374,17 +482,26 @@ export function ComplaintAnalysisDialog({
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-xs">Радиус привязки (м)</Label>
-                <Input
-                  type="number"
-                  value={matchRadius}
-                  onChange={e => setMatchRadius(Number(e.target.value) || 100)}
-                  min={10}
-                  max={500}
-                  data-testid="input-match-radius"
-                />
-              </div>
+              {analysisMode === "topology" && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Радиус привязки (м)</Label>
+                  <Input
+                    type="number"
+                    value={matchRadius}
+                    onChange={e => setMatchRadius(Number(e.target.value) || 100)}
+                    min={10}
+                    max={500}
+                    data-testid="input-match-radius"
+                  />
+                </div>
+              )}
+
+              {analysisMode === "no_topology" && (
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3 w-3 shrink-0" />
+                  Радиус кластеризации: 350м (фиксированный)
+                </div>
+              )}
 
               <Button
                 className="w-full gap-2"
@@ -549,13 +666,110 @@ export function ComplaintAnalysisDialog({
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() => {
-                  setResult(null);
-                  setHighlightedZoneKey(null);
-                  analysisMutation.reset();
-                  onAnalysisResult(null);
-                  onHighlightZone(null);
-                }}
+                onClick={handleReset}
+                data-testid="button-reset-analysis"
+              >
+                Новый анализ
+              </Button>
+            </div>
+          )}
+
+          {noTopoResult && (
+            <div className="space-y-3">
+              <Badge variant="outline" className="shrink-0">
+                <Unlink className="h-3 w-3 mr-1" />
+                Без топологии
+              </Badge>
+
+              <div className="flex items-center flex-wrap gap-2">
+                <Badge variant="outline">Жалоб: {noTopoResult.totalComplaints}</Badge>
+                <Badge variant="secondary">В кластерах: {noTopoResult.totalClustered}</Badge>
+                {noTopoResult.totalUnclustered > 0 && (
+                  <Badge variant="destructive">Без кластера: {noTopoResult.totalUnclustered}</Badge>
+                )}
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                Найдено {noTopoResult.clusters.length} кластер{noTopoResult.clusters.length === 1 ? "" : noTopoResult.clusters.length < 5 ? "а" : "ов"} (дата + радиус 350м)
+              </div>
+
+              {noTopoResult.clusters.map((cluster, index) => {
+                const clusterKey = `cluster-${cluster.id}`;
+                return (
+                  <Card key={cluster.id} className="overflow-visible">
+                    <Collapsible open={expandedGroups.has(index)} onOpenChange={() => toggleGroup(index)}>
+                      <CollapsibleTrigger className="w-full" data-testid={`trigger-cluster-${index}`}>
+                        <div className="flex items-center justify-between p-2 gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {expandedGroups.has(index) ? (
+                              <ChevronDown className="h-4 w-4 shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 shrink-0" />
+                            )}
+                            <span className="text-sm font-medium truncate">{cluster.date}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Badge variant="secondary">{cluster.complaintCount} жалоб</Badge>
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="px-2 pb-2 space-y-2">
+                          <div className="text-xs font-medium flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            Жалобы в кластере ({cluster.complaintCount})
+                          </div>
+                          {cluster.complaints.map((c, ci) => (
+                            <div key={ci} className="text-xs pl-4 border-l-2 border-muted py-0.5">
+                              <div className="text-muted-foreground">{c.address || "Без адреса"}</div>
+                            </div>
+                          ))}
+
+                          {cluster.polygon && (
+                            <Button
+                              size="sm"
+                              variant={highlightedZoneKey === clusterKey ? "default" : "outline"}
+                              className="w-full mt-1 gap-1"
+                              onClick={() => handleHighlightCluster(cluster, clusterKey)}
+                              data-testid={`button-highlight-cluster-${cluster.id}`}
+                            >
+                              <MapPin className="h-3 w-3" />
+                              {highlightedZoneKey === clusterKey ? "Убрать подсветку" : "Показать на карте"}
+                            </Button>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </Card>
+                );
+              })}
+
+              {noTopoResult.unclustered.length > 0 && (
+                <Collapsible>
+                  <CollapsibleTrigger className="w-full" data-testid="trigger-unclustered">
+                    <div className="flex items-center gap-2 p-2 text-sm">
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                      <span className="text-muted-foreground">Не вошли в кластеры ({noTopoResult.unclustered.length})</span>
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-2 pb-2 space-y-1">
+                      {noTopoResult.unclustered.map((u, i) => (
+                        <div key={i} className="text-xs pl-4 border-l-2 border-muted py-0.5">
+                          <div className="text-muted-foreground">{u.date} - {u.address || "Без адреса"}</div>
+                          <div className="text-muted-foreground/60">{u.reason}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={handleReset}
                 data-testid="button-reset-analysis"
               >
                 Новый анализ
@@ -568,4 +782,4 @@ export function ComplaintAnalysisDialog({
   );
 }
 
-export type { ComplaintAnalysisResult };
+export type { ComplaintAnalysisResult, NoTopologyResult };

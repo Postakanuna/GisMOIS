@@ -760,3 +760,281 @@ function findFailureZones(
 
   return zones;
 }
+
+export interface NoTopologyCluster {
+  id: number;
+  date: string;
+  complaintCount: number;
+  complaints: Array<{
+    featureId: number;
+    address: string;
+    lon: number;
+    lat: number;
+    properties: Record<string, unknown>;
+  }>;
+  centroid: [number, number];
+  polygon: number[][] | null;
+  radiusM: number;
+}
+
+export interface NoTopologyAnalysisResult {
+  mode: "no_topology";
+  totalComplaints: number;
+  totalClustered: number;
+  totalUnclustered: number;
+  clusters: NoTopologyCluster[];
+  unclustered: Array<{
+    featureId: number;
+    address: string;
+    date: string;
+    reason: string;
+  }>;
+}
+
+function convexHull(points: [number, number][]): number[][] {
+  if (points.length < 3) {
+    if (points.length === 0) return [];
+    if (points.length === 1) return [points[0]];
+    return [points[0], points[1]];
+  }
+
+  const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+  const cross = (o: number[], a: number[], b: number[]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+
+  const lower: number[][] = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+
+  const upper: number[][] = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+
+  lower.pop();
+  upper.pop();
+  const hull = lower.concat(upper);
+  hull.push(hull[0]);
+  return hull;
+}
+
+function bufferPoint(lon: number, lat: number, radiusM: number, sides: number = 32): number[][] {
+  const coords: number[][] = [];
+  const latRad = lat * Math.PI / 180;
+  const dLon = radiusM / (111320 * Math.cos(latRad));
+  const dLat = radiusM / 110540;
+  for (let i = 0; i <= sides; i++) {
+    const angle = (2 * Math.PI * i) / sides;
+    coords.push([
+      lon + dLon * Math.cos(angle),
+      lat + dLat * Math.sin(angle),
+    ]);
+  }
+  return coords;
+}
+
+function bufferPolygon(hullPoints: number[][], radiusM: number): number[][] {
+  if (hullPoints.length <= 1) {
+    const pt = hullPoints[0] || [0, 0];
+    return bufferPoint(pt[0], pt[1], radiusM);
+  }
+  if (hullPoints.length === 2) {
+    const [a, b] = hullPoints;
+    const midLon = (a[0] + b[0]) / 2;
+    const midLat = (a[1] + b[1]) / 2;
+    const dist = haversineDistance(a[1], a[0], b[1], b[0]);
+    return bufferPoint(midLon, midLat, dist / 2 + radiusM);
+  }
+
+  const allBuffered: [number, number][] = [];
+  for (const pt of hullPoints) {
+    const circle = bufferPoint(pt[0], pt[1], radiusM, 16);
+    for (const c of circle) {
+      allBuffered.push([c[0], c[1]]);
+    }
+  }
+  return convexHull(allBuffered);
+}
+
+export async function analyzeComplaintsNoTopology(
+  complaintLayerId: number,
+  dateFieldName: string,
+  addressFieldName: string,
+  clusterRadiusM: number = 350
+): Promise<NoTopologyAnalysisResult> {
+  console.log(`[ComplaintAnalysis:NoTopology] === Start ===`);
+  console.log(`[ComplaintAnalysis:NoTopology] complaintLayer=${complaintLayerId}, dateField="${dateFieldName}", addressField="${addressFieldName}", radius=${clusterRadiusM}m`);
+
+  const complaints = await db
+    .select({
+      id: drawnFeatures.id,
+      coordinates: drawnFeatures.coordinates,
+      properties: drawnFeatures.properties,
+    })
+    .from(drawnFeatures)
+    .where(eq(drawnFeatures.layerId, complaintLayerId));
+
+  console.log(`[ComplaintAnalysis:NoTopology] Loaded ${complaints.length} complaints`);
+
+  interface ParsedComplaint {
+    featureId: number;
+    date: string;
+    address: string;
+    lon: number;
+    lat: number;
+    properties: Record<string, unknown>;
+  }
+
+  const parsed: ParsedComplaint[] = [];
+  const noPosComplaints: NoTopologyAnalysisResult["unclustered"] = [];
+
+  for (const c of complaints) {
+    const props = c.properties as Record<string, unknown>;
+
+    const effectiveDateField = dateFieldName && dateFieldName !== "_none_" ? dateFieldName : "";
+    let dateStr = "Без даты";
+    if (effectiveDateField) {
+      const dateVal = props[effectiveDateField];
+      if (dateVal) {
+        const rawDate = String(dateVal).trim();
+        if (rawDate) {
+          const d = new Date(rawDate);
+          if (!isNaN(d.getTime())) {
+            dateStr = d.toISOString().split("T")[0];
+          } else {
+            dateStr = rawDate;
+          }
+        }
+      }
+    }
+
+    const effectiveAddressField = addressFieldName && addressFieldName !== "_none_" ? addressFieldName : "";
+    const addrCandidates = effectiveAddressField
+      ? [effectiveAddressField, "Adres", "adres", "Address", "address", "Адрес", "адрес"]
+      : ["Adres", "adres", "Address", "address", "Адрес", "адрес"];
+    let address = "";
+    for (const field of addrCandidates) {
+      if (props[field] && String(props[field]).trim()) {
+        address = String(props[field]).trim();
+        break;
+      }
+    }
+
+    const coords = getPointCoords(c.coordinates);
+    if (!coords) {
+      noPosComplaints.push({
+        featureId: c.id,
+        address,
+        date: dateStr,
+        reason: "Нет координат",
+      });
+      continue;
+    }
+
+    parsed.push({
+      featureId: c.id,
+      date: dateStr,
+      address,
+      lon: coords[0],
+      lat: coords[1],
+      properties: props,
+    });
+  }
+
+  const byDate = new Map<string, ParsedComplaint[]>();
+  for (const p of parsed) {
+    if (!byDate.has(p.date)) byDate.set(p.date, []);
+    byDate.get(p.date)!.push(p);
+  }
+
+  const clusters: NoTopologyCluster[] = [];
+  let clusterId = 0;
+
+  for (const [date, dateComplaints] of Array.from(byDate)) {
+    const visited = new Set<number>();
+
+    for (let i = 0; i < dateComplaints.length; i++) {
+      if (visited.has(i)) continue;
+
+      const queue = [i];
+      visited.add(i);
+      const clusterMembers: ParsedComplaint[] = [dateComplaints[i]];
+
+      let head = 0;
+      while (head < queue.length) {
+        const current = dateComplaints[queue[head]];
+        head++;
+
+        for (let j = 0; j < dateComplaints.length; j++) {
+          if (visited.has(j)) continue;
+          const candidate = dateComplaints[j];
+          const dist = haversineDistance(current.lat, current.lon, candidate.lat, candidate.lon);
+          if (dist <= clusterRadiusM) {
+            visited.add(j);
+            queue.push(j);
+            clusterMembers.push(candidate);
+          }
+        }
+      }
+
+      if (clusterMembers.length < 2) {
+        noPosComplaints.push({
+          featureId: clusterMembers[0].featureId,
+          address: clusterMembers[0].address,
+          date: clusterMembers[0].date,
+          reason: "Нет соседних жалоб в радиусе",
+        });
+        continue;
+      }
+
+      clusterId++;
+
+      const centroidLon = clusterMembers.reduce((s, m) => s + m.lon, 0) / clusterMembers.length;
+      const centroidLat = clusterMembers.reduce((s, m) => s + m.lat, 0) / clusterMembers.length;
+
+      const points: [number, number][] = clusterMembers.map(m => [m.lon, m.lat]);
+      const hull = convexHull(points);
+      const buffered = bufferPolygon(hull, 50);
+
+      clusters.push({
+        id: clusterId,
+        date,
+        complaintCount: clusterMembers.length,
+        complaints: clusterMembers.map(m => ({
+          featureId: m.featureId,
+          address: m.address,
+          lon: m.lon,
+          lat: m.lat,
+          properties: m.properties,
+        })),
+        centroid: [centroidLon, centroidLat],
+        polygon: buffered.length >= 3 ? buffered : null,
+        radiusM: clusterRadiusM,
+      });
+    }
+  }
+
+  clusters.sort((a, b) => b.complaintCount - a.complaintCount);
+
+  const totalClustered = clusters.reduce((s, c) => s + c.complaintCount, 0);
+
+  console.log(`[ComplaintAnalysis:NoTopology] === End === Clusters: ${clusters.length}, Clustered: ${totalClustered}, Unclustered: ${noPosComplaints.length}`);
+
+  return {
+    mode: "no_topology",
+    totalComplaints: parsed.length + noPosComplaints.length,
+    totalClustered,
+    totalUnclustered: noPosComplaints.length,
+    clusters,
+    unclustered: noPosComplaints,
+  };
+}

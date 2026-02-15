@@ -4513,10 +4513,25 @@ export async function registerRoutes(
 
   app.post("/api/complaint-analysis", async (req: Request, res: Response) => {
     try {
-      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius } = req.body;
+      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, mode } = req.body;
 
-      if (!complaintLayerId || !sceneId || !dateFieldName) {
-        return res.status(400).json({ error: "complaintLayerId, sceneId, and dateFieldName are required" });
+      if (!complaintLayerId || !dateFieldName) {
+        return res.status(400).json({ error: "complaintLayerId and dateFieldName are required" });
+      }
+
+      if (mode === "no_topology") {
+        const { analyzeComplaintsNoTopology } = await import("./complaint-analysis");
+        const result = await analyzeComplaintsNoTopology(
+          Number(complaintLayerId),
+          String(dateFieldName),
+          String(addressFieldName || ""),
+          350
+        );
+        return res.json(result);
+      }
+
+      if (!sceneId) {
+        return res.status(400).json({ error: "sceneId is required for topology mode" });
       }
 
       const { analyzeComplaints } = await import("./complaint-analysis");

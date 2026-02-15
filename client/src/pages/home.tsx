@@ -214,6 +214,7 @@ export default function Home() {
   const [simulationHighlightData, setSimulationHighlightData] = useState<{
     segments: Array<{ coordinates: any }>;
     points: Array<{ coordinates: any; type: string }>;
+    polygons?: Array<{ coordinates: number[][] }>;
     failurePoint?: { coordinates: any; type: string };
   } | null>(null);
   const [showComplaintDialog, setShowComplaintDialog] = useState(false);
@@ -733,6 +734,17 @@ export default function Home() {
                     coordinates: zone.zoneCoordinates,
                     type: zone.zoneType === "node" || zone.zoneType === "ctp" || zone.zoneType === "consumer" ? "node" : "segment",
                   } : undefined,
+                });
+              }}
+              onHighlightPolygons={(data) => {
+                if (!data) {
+                  setSimulationHighlightData(null);
+                  return;
+                }
+                setSimulationHighlightData({
+                  segments: [],
+                  points: data.points.map(p => ({ coordinates: p.coordinates, type: p.type })),
+                  polygons: data.polygons,
                 });
               }}
             />

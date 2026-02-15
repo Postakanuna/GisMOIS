@@ -129,6 +129,7 @@ interface MapViewerProps {
   simulationHighlightData?: {
     segments: Array<{ coordinates: any }>;
     points: Array<{ coordinates: any; type: string }>;
+    polygons?: Array<{ coordinates: number[][] }>;
     failurePoint?: { coordinates: any; type: string };
   } | null;
   // Snap settings
@@ -3163,6 +3164,26 @@ export function MapViewer({
             }),
           }));
           highlightSource.addFeature(pointFeature);
+        }
+      }
+
+      if (simulationHighlightData.polygons) {
+        for (const poly of simulationHighlightData.polygons) {
+          if (Array.isArray(poly.coordinates) && poly.coordinates.length >= 3) {
+            const ring = poly.coordinates.map((c: number[]) => fromLonLat([c[0], c[1]], currentProjectionRef.current));
+            const polyFeature = new Feature({
+              geometry: new OlPolygon([ring]),
+            });
+            polyFeature.setStyle(new Style({
+              fill: new Fill({ color: "rgba(249, 115, 22, 0.2)" }),
+              stroke: new Stroke({
+                color: "rgba(249, 115, 22, 0.8)",
+                width: 2,
+                lineDash: [6, 4],
+              }),
+            }));
+            highlightSource.addFeature(polyFeature);
+          }
         }
       }
 
