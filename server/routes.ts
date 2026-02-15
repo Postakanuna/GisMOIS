@@ -4563,20 +4563,37 @@ export async function registerRoutes(
       hRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
 
       for (const group of result.dateGroups) {
-        const pf = group.probableFailure;
-        summarySheet.addRow({
-          date: group.date,
-          nist: group.nist,
-          sourceName: group.sourceName,
-          complaintCount: group.complaintCount,
-          consumerCount: group.consumers.length,
-          failureNode: pf?.nodeName || "—",
-          nodeType: pf ? translateNodeType(pf.nodeType) : "—",
-          segment: pf && pf.segmentFrom ? `${pf.segmentFrom} → ${pf.segmentTo}` : "—",
-          confidence: pf ? translateConfidence(pf.confidence) : "—",
-          coverage: pf?.complaintCoverage ?? "—",
-          downstream: pf?.downstreamConsumerCount ?? "—",
-        });
+        if (group.failureZones && group.failureZones.length > 0) {
+          for (const zone of group.failureZones) {
+            summarySheet.addRow({
+              date: group.date,
+              nist: group.nist,
+              sourceName: group.sourceName,
+              complaintCount: group.complaintCount,
+              consumerCount: group.consumers.length,
+              failureNode: zone.zoneName || "—",
+              nodeType: translateNodeType(zone.zoneType),
+              segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "—",
+              confidence: translateConfidence(zone.confidence),
+              coverage: group.complaintCount > 0 ? Math.round((zone.complaintCount / group.complaintCount) * 100) : "—",
+              downstream: zone.downstreamConsumerCount,
+            });
+          }
+        } else {
+          summarySheet.addRow({
+            date: group.date,
+            nist: group.nist,
+            sourceName: group.sourceName,
+            complaintCount: group.complaintCount,
+            consumerCount: group.consumers.length,
+            failureNode: "—",
+            nodeType: "—",
+            segment: "—",
+            confidence: "—",
+            coverage: "—",
+            downstream: "—",
+          });
+        }
       }
 
       const statsSheet = workbook.addWorksheet("Статистика");
@@ -4590,6 +4607,7 @@ export async function registerRoutes(
       statsSheet.addRow({ param: "Всего жалоб", value: result.totalComplaints });
       statsSheet.addRow({ param: "Привязано к потребителям", value: result.totalMatched });
       statsSheet.addRow({ param: "Не привязано", value: result.totalUnmatched });
+      statsSheet.addRow({ param: "Потребителей без Nist (не группируются)", value: result.emptyNistCount });
       statsSheet.addRow({ param: "Групп дата+источник", value: result.dateGroups.length });
 
       const usedSheetNames = new Set<string>();
@@ -4609,13 +4627,20 @@ export async function registerRoutes(
           { header: "Адрес", key: "address", width: 40 },
           { header: "Жалоб", key: "count", width: 10 },
           { header: "Расстояние (м)", key: "distance", width: 15 },
+          { header: "Тип привязки", key: "matchType", width: 20 },
         ];
         const dh = detailSheet.getRow(1);
         dh.font = { bold: true };
         dh.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
 
         for (const c of group.consumers) {
-          detailSheet.addRow({ name: c.name, address: c.address, count: c.complaintCount, distance: c.distance });
+          detailSheet.addRow({
+            name: c.name,
+            address: c.address,
+            count: c.complaintCount,
+            distance: c.distance,
+            matchType: c.matchType === "address+proximity" ? "Адрес + близость" : "Только близость",
+          });
         }
 
         if (group.failureZones && group.failureZones.length > 0) {

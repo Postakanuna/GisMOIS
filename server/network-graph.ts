@@ -406,6 +406,17 @@ export async function buildNetworkGraph(
   return graph;
 }
 
+function isPrefixMatchSafe(a: string, b: string): boolean {
+  if (a === b) return true;
+  const longer = a.length >= b.length ? a : b;
+  const shorter = a.length >= b.length ? b : a;
+  if (!longer.startsWith(shorter)) return false;
+  const remainder = longer.slice(shorter.length);
+  if (/^\d/.test(remainder)) return false;
+  if (/^[а-яёa-z]/i.test(remainder)) return false;
+  return true;
+}
+
 function findMatchingSegmentName(pointName: string, segmentNames: Set<string>): string | null {
   const pointNorm = normalizeName(pointName);
   for (const segName of segmentNames) {
@@ -417,7 +428,7 @@ function findMatchingSegmentName(pointName: string, segmentNames: Set<string>): 
 
   for (const segName of segmentNames) {
     const segNorm = normalizeName(segName);
-    if (pointNorm.startsWith(segNorm) || segNorm.startsWith(pointNorm)) {
+    if (isPrefixMatchSafe(pointNorm, segNorm)) {
       return segName;
     }
   }
@@ -425,7 +436,7 @@ function findMatchingSegmentName(pointName: string, segmentNames: Set<string>): 
   const pointLower = pointNorm.toLowerCase();
   for (const segName of segmentNames) {
     const segLower = normalizeName(segName).toLowerCase();
-    if (pointLower.startsWith(segLower) || segLower.startsWith(pointLower)) {
+    if (isPrefixMatchSafe(pointLower, segLower)) {
       return segName;
     }
   }
@@ -902,7 +913,7 @@ function findFuzzyMatchTopo(name: string, pointMap: Map<string, any>): string | 
   }
   for (const key of Array.from(pointMap.keys())) {
     const keyNorm = key.toLowerCase();
-    if (keyNorm.startsWith(norm) || norm.startsWith(keyNorm)) return key;
+    if (isPrefixMatchSafe(norm, keyNorm)) return key;
   }
   return null;
 }

@@ -71,6 +71,7 @@ interface ComplaintAnalysisResult {
   totalComplaints: number;
   totalMatched: number;
   totalUnmatched: number;
+  emptyNistCount: number;
   dateGroups: Array<{
     date: string;
     nist: string;
@@ -81,6 +82,7 @@ interface ComplaintAnalysisResult {
       address: string;
       complaintCount: number;
       distance: number;
+      matchType: "address+proximity" | "proximity_only";
     }>;
     failureZones: FailureZone[];
   }>;
@@ -421,6 +423,13 @@ export function ComplaintAnalysisDialog({
                 )}
               </div>
 
+              {result.emptyNistCount > 0 && (
+                <div className="text-xs text-orange-600 dark:text-orange-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  {result.emptyNistCount} потребител{result.emptyNistCount === 1 ? "ь" : result.emptyNistCount < 5 ? "я" : "ей"} без привязки к источнику (Nist) — не группируются
+                </div>
+              )}
+
               <div className="text-xs text-muted-foreground">
                 Найдено {result.dateGroups.length} групп (дата + источник)
               </div>
@@ -437,7 +446,11 @@ export function ComplaintAnalysisDialog({
                             <ChevronRight className="h-4 w-4 shrink-0" />
                           )}
                           <span className="text-sm font-medium truncate">{group.date}</span>
-                          <Badge variant="outline" className="shrink-0">Nist {group.nist}</Badge>
+                          {group.nist ? (
+                            <Badge variant="outline" className="shrink-0">Nist {group.nist}</Badge>
+                          ) : (
+                            <Badge variant="outline" className="shrink-0 text-orange-600 dark:text-orange-400 border-orange-300 dark:border-orange-600">Nist нет</Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           {group.failureZones.length > 0 && (
@@ -512,7 +525,14 @@ export function ComplaintAnalysisDialog({
                         </div>
                         {group.consumers.map((c, ci) => (
                           <div key={ci} className="text-xs pl-4 border-l-2 border-muted py-0.5">
-                            <div className="font-medium">{c.name}</div>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="font-medium">{c.name}</span>
+                              {c.matchType === "proximity_only" && (
+                                <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-300 dark:border-orange-600 shrink-0">
+                                  только близость
+                                </Badge>
+                              )}
+                            </div>
                             {c.address && <div className="text-muted-foreground">{c.address}</div>}
                             <div className="text-muted-foreground">
                               Жалоб: {c.complaintCount}, расстояние: {c.distance}м

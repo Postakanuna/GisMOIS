@@ -59,6 +59,19 @@ function extractAddressTokens(addr: string): string[] {
     .sort();
 }
 
+function tokenMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length < 2 || b.length < 2) return false;
+  const longer = a.length >= b.length ? a : b;
+  const shorter = a.length >= b.length ? b : a;
+  if (!longer.startsWith(shorter)) return false;
+  const remainder = longer.slice(shorter.length);
+  if (remainder === ".") return true;
+  if (/^\d/.test(remainder)) return false;
+  if (/^[а-яёa-z]/i.test(remainder)) return false;
+  return true;
+}
+
 function addressMatch(addr1: string, addr2: string): boolean {
   if (!addr1 || !addr2) return false;
 
@@ -76,7 +89,7 @@ function addressMatch(addr1: string, addr2: string): boolean {
 
   let matchCount = 0;
   for (const token of shorter) {
-    if (longer.some(t => t === token || t.includes(token) || token.includes(t))) {
+    if (longer.some(t => tokenMatch(token, t))) {
       matchCount++;
     }
   }
@@ -176,6 +189,7 @@ export interface ComplaintAnalysisResult {
   totalComplaints: number;
   totalMatched: number;
   totalUnmatched: number;
+  emptyNistCount: number;
   dateGroups: Array<{
     date: string;
     nist: string;
@@ -186,6 +200,7 @@ export interface ComplaintAnalysisResult {
       address: string;
       complaintCount: number;
       distance: number;
+      matchType: "address+proximity" | "proximity_only";
     }>;
     failureZones: FailureZone[];
   }>;
@@ -373,8 +388,14 @@ export async function analyzeComplaints(
   console.log(`[ComplaintAnalysis] Proximity-only matches: ${matches.filter(m => m.matchType === "proximity_only").length}`);
 
   const dateNistGroups = new Map<string, DateGroup>();
+  let emptyNistCounter = 0;
   for (const match of matches) {
-    const key = `${match.complaintDate}|${match.consumerNist}`;
+    let key: string;
+    if (!match.consumerNist || match.consumerNist.trim() === "") {
+      key = `${match.complaintDate}|__empty_nist_${emptyNistCounter++}`;
+    } else {
+      key = `${match.complaintDate}|${match.consumerNist}`;
+    }
     if (!dateNistGroups.has(key)) {
       dateNistGroups.set(key, {
         date: match.complaintDate,
@@ -469,29 +490,40 @@ export async function analyzeComplaints(
 
   console.log(`[ComplaintAnalysis] === End === Groups: ${resultGroups.length}`);
 
+  const emptyNistCount = matches.filter(m => !m.consumerNist || m.consumerNist.trim() === "").length;
+  if (emptyNistCount > 0) {
+    console.log(`[ComplaintAnalysis] WARNING: ${emptyNistCount} matches have empty Nist — treated as individual groups`);
+  }
+
   return {
     totalComplaints: parsedComplaints.length,
     totalMatched: matches.length,
     totalUnmatched: unmatched.length,
+    emptyNistCount,
     dateGroups: resultGroups,
     unmatchedComplaints: unmatched,
   };
 }
 
 function summarizeConsumers(group: DateGroup) {
-  const consumerMap = new Map<string, { name: string; address: string; count: number; distance: number }>();
+  const consumerMap = new Map<string, { name: string; address: string; count: number; distance: number; matchType: ComplaintMatch["matchType"] }>();
   for (const c of group.complaints) {
     const key = c.consumerName;
     if (!consumerMap.has(key)) {
-      consumerMap.set(key, { name: c.consumerName, address: c.consumerAddress, count: 0, distance: c.distance });
+      consumerMap.set(key, { name: c.consumerName, address: c.consumerAddress, count: 0, distance: c.distance, matchType: c.matchType });
     }
-    consumerMap.get(key)!.count++;
+    const entry = consumerMap.get(key)!;
+    entry.count++;
+    if (c.matchType === "address+proximity" && entry.matchType !== "address+proximity") {
+      entry.matchType = "address+proximity";
+    }
   }
   return Array.from(consumerMap.values()).map(v => ({
     name: v.name,
     address: v.address,
     complaintCount: v.count,
     distance: v.distance,
+    matchType: v.matchType,
   }));
 }
 
@@ -503,9 +535,20 @@ function findFuzzyNodeInTree(nodeName: string, parentMap: Map<string, string | n
   }
   for (const key of Array.from(parentMap.keys())) {
     const keyNorm = normalizeName(key).toLowerCase();
-    if (keyNorm.startsWith(norm) || norm.startsWith(keyNorm)) return key;
+    if (isPrefixMatchSafe(norm, keyNorm)) return key;
   }
   return null;
+}
+
+function isPrefixMatchSafe(a: string, b: string): boolean {
+  if (a === b) return true;
+  const longer = a.length >= b.length ? a : b;
+  const shorter = a.length >= b.length ? b : a;
+  if (!longer.startsWith(shorter)) return false;
+  const remainder = longer.slice(shorter.length);
+  if (/^\d/.test(remainder)) return false;
+  if (/^[а-яёa-z]/i.test(remainder)) return false;
+  return true;
 }
 
 function findFailureZones(
