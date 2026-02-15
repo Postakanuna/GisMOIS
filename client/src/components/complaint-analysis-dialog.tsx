@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 import { Card } from "@/components/ui/card";
 import {
@@ -35,6 +36,7 @@ import {
   XCircle,
   HelpCircle,
   Unlink,
+  Save,
 } from "lucide-react";
 
 type AnalysisMode = "topology" | "no_topology";
@@ -220,6 +222,45 @@ export function ComplaintAnalysisDialog({
   });
 
   const [exporting, setExporting] = useState(false);
+  const { toast } = useToast();
+
+  const saveAsLayerMutation = useMutation({
+    mutationFn: async () => {
+      const now = new Date();
+      const dateStr = `${now.getDate().toString().padStart(2, "0")}.${(now.getMonth() + 1).toString().padStart(2, "0")}.${now.getFullYear()}`;
+      const modeSuffix = analysisMode === "topology" ? "топология" : "кластеры";
+      const defaultName = `Анализ жалоб (${modeSuffix}) ${dateStr}`;
+
+      const body: Record<string, unknown> = {
+        mode: analysisMode,
+        sceneId: sceneId || null,
+        layerName: defaultName,
+      };
+
+      if (analysisMode === "topology" && result) {
+        body.topologyResult = result;
+      } else if (analysisMode === "no_topology" && noTopoResult) {
+        body.noTopologyResult = noTopoResult;
+      }
+
+      const res = await apiRequest("POST", "/api/complaint-analysis/save-as-layer", body);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Слой сохранён",
+        description: `Создан слой "${data.layerName}" с ${data.featureCount} объектами`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", sceneId, "editable-layers"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Ошибка сохранения",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const hasAnyResult = result || noTopoResult;
 
@@ -663,6 +704,20 @@ export function ComplaintAnalysisDialog({
               ))}
 
               <Button
+                size="sm"
+                className="w-full gap-1"
+                onClick={() => saveAsLayerMutation.mutate()}
+                disabled={saveAsLayerMutation.isPending}
+                data-testid="button-save-as-layer"
+              >
+                {saveAsLayerMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                Сохранить как слой
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 className="w-full"
@@ -765,6 +820,20 @@ export function ComplaintAnalysisDialog({
                 </Collapsible>
               )}
 
+              <Button
+                size="sm"
+                className="w-full gap-1"
+                onClick={() => saveAsLayerMutation.mutate()}
+                disabled={saveAsLayerMutation.isPending}
+                data-testid="button-save-as-layer-notopo"
+              >
+                {saveAsLayerMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                Сохранить как слой
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

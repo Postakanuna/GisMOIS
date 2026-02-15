@@ -4747,6 +4747,180 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/complaint-analysis/save-as-layer", async (req: Request, res: Response) => {
+    try {
+      const { mode, sceneId, layerName, topologyResult, noTopologyResult } = req.body;
+
+      if (!mode || !layerName) {
+        return res.status(400).json({ error: "mode and layerName are required" });
+      }
+
+      const features: Array<{ geometryType: string; coordinates: any; properties: Record<string, unknown> }> = [];
+
+      if (mode === "no_topology" && noTopologyResult) {
+        for (const cluster of noTopologyResult.clusters) {
+          if (!cluster.polygon || cluster.polygon.length < 3) continue;
+          const ring = [...cluster.polygon, cluster.polygon[0]];
+          features.push({
+            geometryType: "Polygon",
+            coordinates: [ring],
+            properties: {
+              cluster_id: cluster.id,
+              date: cluster.date,
+              complaint_count: cluster.complaintCount,
+              radius_m: cluster.radiusM,
+              centroid_lon: cluster.centroid[0],
+              centroid_lat: cluster.centroid[1],
+              addresses: cluster.complaints.map((c: any) => c.address).filter(Boolean).join("; "),
+            },
+          });
+        }
+      } else if (mode === "topology" && topologyResult) {
+        for (const group of topologyResult.dateGroups) {
+          if (!group.failureZones) continue;
+          for (const zone of group.failureZones) {
+            const allCoords: number[][] = [];
+            if (zone.zoneCoordinates) {
+              allCoords.push(zone.zoneCoordinates);
+            }
+            if (zone.affectedConsumers) {
+              for (const ac of zone.affectedConsumers) {
+                if (ac.coordinates) allCoords.push(ac.coordinates);
+              }
+            }
+            if (zone.affectedSegments) {
+              for (const seg of zone.affectedSegments) {
+                if (seg.coordinates && Array.isArray(seg.coordinates)) {
+                  if (Array.isArray(seg.coordinates[0])) {
+                    for (const pt of seg.coordinates) allCoords.push(pt);
+                  } else {
+                    allCoords.push(seg.coordinates);
+                  }
+                }
+              }
+            }
+
+            if (allCoords.length < 3) {
+              if (allCoords.length === 1) {
+                const [lon, lat] = allCoords[0];
+                const d = 0.002;
+                const ring = [
+                  [lon - d, lat - d], [lon + d, lat - d],
+                  [lon + d, lat + d], [lon - d, lat + d],
+                  [lon - d, lat - d],
+                ];
+                features.push({
+                  geometryType: "Polygon",
+                  coordinates: [ring],
+                  properties: {
+                    zone_name: zone.zoneName,
+                    zone_type: zone.zoneType,
+                    date: group.date,
+                    nist: group.nist,
+                    source_name: group.sourceName || "",
+                    confidence: zone.confidence,
+                    complaint_count: zone.complaintCount,
+                    downstream_consumers: zone.downstreamConsumerCount,
+                    complaint_consumers: zone.complaintConsumers?.join("; ") || "",
+                    segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "",
+                    segment_length_m: zone.incomingSegment?.length || 0,
+                  },
+                });
+              } else if (allCoords.length === 2) {
+                const [p1, p2] = allCoords;
+                const dx = (p2[0] - p1[0]);
+                const dy = (p2[1] - p1[1]);
+                const nx = -dy * 0.3;
+                const ny = dx * 0.3;
+                const d = 0.001;
+                const ring = [
+                  [p1[0] + nx * d / Math.max(Math.abs(nx), 0.0001), p1[1] + ny * d / Math.max(Math.abs(ny), 0.0001)],
+                  [p2[0] + nx * d / Math.max(Math.abs(nx), 0.0001), p2[1] + ny * d / Math.max(Math.abs(ny), 0.0001)],
+                  [p2[0] - nx * d / Math.max(Math.abs(nx), 0.0001), p2[1] - ny * d / Math.max(Math.abs(ny), 0.0001)],
+                  [p1[0] - nx * d / Math.max(Math.abs(nx), 0.0001), p1[1] - ny * d / Math.max(Math.abs(ny), 0.0001)],
+                  [p1[0] + nx * d / Math.max(Math.abs(nx), 0.0001), p1[1] + ny * d / Math.max(Math.abs(ny), 0.0001)],
+                ];
+                features.push({
+                  geometryType: "Polygon",
+                  coordinates: [ring],
+                  properties: {
+                    zone_name: zone.zoneName,
+                    zone_type: zone.zoneType,
+                    date: group.date,
+                    nist: group.nist,
+                    source_name: group.sourceName || "",
+                    confidence: zone.confidence,
+                    complaint_count: zone.complaintCount,
+                    downstream_consumers: zone.downstreamConsumerCount,
+                    complaint_consumers: zone.complaintConsumers?.join("; ") || "",
+                    segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "",
+                    segment_length_m: zone.incomingSegment?.length || 0,
+                  },
+                });
+              }
+              continue;
+            }
+
+            const sorted = [...allCoords];
+            const center = sorted.reduce((acc, p) => [acc[0] + p[0] / sorted.length, acc[1] + p[1] / sorted.length], [0, 0]);
+            sorted.sort((a, b) => Math.atan2(a[1] - center[1], a[0] - center[0]) - Math.atan2(b[1] - center[1], b[0] - center[0]));
+            const ring = [...sorted, sorted[0]];
+
+            features.push({
+              geometryType: "Polygon",
+              coordinates: [ring],
+              properties: {
+                zone_name: zone.zoneName,
+                zone_type: zone.zoneType,
+                date: group.date,
+                nist: group.nist,
+                source_name: group.sourceName || "",
+                confidence: zone.confidence,
+                complaint_count: zone.complaintCount,
+                downstream_consumers: zone.downstreamConsumerCount,
+                complaint_consumers: zone.complaintConsumers?.join("; ") || "",
+                segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "",
+                segment_length_m: zone.incomingSegment?.length || 0,
+              },
+            });
+          }
+        }
+      }
+
+      if (features.length === 0) {
+        return res.status(422).json({ error: "No features with valid geometry to save" });
+      }
+
+      const layer = await storage.createEditableLayer({
+        sceneId: sceneId ? Number(sceneId) : null,
+        name: layerName,
+        geometryType: "Polygon",
+        color: mode === "topology" ? "#E65100" : "#AD1457",
+        source: "analysis",
+        visible: 1,
+        opacity: 0.6,
+      });
+
+      const insertFeatures = features.map(f => ({
+        layerId: layer.id,
+        geometryType: f.geometryType,
+        coordinates: f.coordinates,
+        properties: f.properties,
+      }));
+
+      await storage.createDrawnFeaturesBatch(insertFeatures);
+
+      return res.status(201).json({
+        layerId: layer.id,
+        layerName: layer.name,
+        featureCount: features.length,
+      });
+    } catch (error: any) {
+      console.error("Save complaint analysis as layer error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
 
