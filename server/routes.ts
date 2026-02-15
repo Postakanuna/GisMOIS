@@ -4553,7 +4553,7 @@ export async function registerRoutes(
           Number(complaintLayerId),
           String(dateFieldName),
           String(addressFieldName || ""),
-          350
+          Number(matchRadius) || 350
         );
         return res.json(result);
       }

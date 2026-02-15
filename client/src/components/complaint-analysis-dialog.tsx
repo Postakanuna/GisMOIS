@@ -201,9 +201,9 @@ export function ComplaintAnalysisDialog({
         addressFieldName,
         mode: analysisMode,
       };
+      body.matchRadius = matchRadius;
       if (analysisMode === "topology") {
         body.sceneId = sceneId;
-        body.matchRadius = matchRadius;
       }
       const res = await apiRequest("POST", "/api/complaint-analysis", body);
       return res.json();
@@ -437,7 +437,7 @@ export function ComplaintAnalysisDialog({
                   size="sm"
                   variant={analysisMode === "topology" ? "default" : "outline"}
                   className="flex-1 text-xs toggle-elevate"
-                  onClick={() => setAnalysisMode("topology")}
+                  onClick={() => { setAnalysisMode("topology"); setMatchRadius(100); }}
                   data-testid="button-mode-topology"
                 >
                   <GitBranch className="h-3 w-3 mr-1" />
@@ -447,7 +447,7 @@ export function ComplaintAnalysisDialog({
                   size="sm"
                   variant={analysisMode === "no_topology" ? "default" : "outline"}
                   className="flex-1 text-xs toggle-elevate"
-                  onClick={() => setAnalysisMode("no_topology")}
+                  onClick={() => { setAnalysisMode("no_topology"); setMatchRadius(350); }}
                   data-testid="button-mode-no-topology"
                 >
                   <Unlink className="h-3 w-3 mr-1" />
@@ -458,7 +458,7 @@ export function ComplaintAnalysisDialog({
               <p className="text-xs text-muted-foreground">
                 {analysisMode === "topology"
                   ? "Привязка жалоб к потребителям, группировка по дате/источнику, поиск зон аварий через топологию сети"
-                  : "Пространственная кластеризация жалоб: одна дата + радиус 350м. Предпросмотр полигонов кластеров на карте"}
+                  : "Пространственная кластеризация жалоб: одна дата + заданный радиус. Предпросмотр полигонов кластеров на карте"}
               </p>
 
               <div className="space-y-2">
@@ -523,26 +523,19 @@ export function ComplaintAnalysisDialog({
                 )}
               </div>
 
-              {analysisMode === "topology" && (
-                <div className="space-y-2">
-                  <Label className="text-xs">Радиус привязки (м)</Label>
-                  <Input
-                    type="number"
-                    value={matchRadius}
-                    onChange={e => setMatchRadius(Number(e.target.value) || 100)}
-                    min={10}
-                    max={500}
-                    data-testid="input-match-radius"
-                  />
-                </div>
-              )}
-
-              {analysisMode === "no_topology" && (
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  <MapPin className="h-3 w-3 shrink-0" />
-                  Радиус кластеризации: 350м (фиксированный)
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label className="text-xs">
+                  {analysisMode === "topology" ? "Радиус привязки (м)" : "Радиус кластеризации (м)"}
+                </Label>
+                <Input
+                  type="number"
+                  value={matchRadius}
+                  onChange={e => setMatchRadius(Number(e.target.value) || 100)}
+                  min={10}
+                  max={5000}
+                  data-testid="input-match-radius"
+                />
+              </div>
 
               <Button
                 className="w-full gap-2"
@@ -745,7 +738,7 @@ export function ComplaintAnalysisDialog({
               </div>
 
               <div className="text-xs text-muted-foreground">
-                Найдено {noTopoResult.clusters.length} кластер{noTopoResult.clusters.length === 1 ? "" : noTopoResult.clusters.length < 5 ? "а" : "ов"} (дата + радиус 350м)
+                Найдено {noTopoResult.clusters.length} кластер{noTopoResult.clusters.length === 1 ? "" : noTopoResult.clusters.length < 5 ? "а" : "ов"} (дата + радиус {noTopoResult.clusters[0]?.radiusM || matchRadius}м)
               </div>
 
               {noTopoResult.clusters.map((cluster, index) => {
