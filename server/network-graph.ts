@@ -131,6 +131,19 @@ function classifyLayerByContentSync(propKeys: string[], geometryType: string, sa
       return "source";
     }
 
+    const hasCTPName = sampleNames.some(n => {
+      const lower = (n || "").toLowerCase();
+      return lower.includes("цтп") || lower.includes("итп") || lower.includes("бойлер");
+    });
+
+    if (hasCTPName) {
+      return "ctp";
+    }
+
+    if (propKeys.includes("Hnz_obr") && !propKeys.includes("Hzdan") && !propKeys.includes("Njil")) {
+      return "ctp";
+    }
+
     for (const n of sampleNames) {
       const lower = (n || "").toLowerCase();
       if (lower.includes("кот.") || lower.includes("котельн") || lower.includes("грэс") || lower.includes("тэц") || lower.includes("бмк")) return "source";
@@ -143,15 +156,6 @@ function classifyLayerByContentSync(propKeys: string[], geometryType: string, sa
     for (const n of sampleNames) {
       const lower = (n || "").toLowerCase();
       if (lower.includes("зу-") || lower.includes("задвиж")) return "valve";
-    }
-
-    for (const n of sampleNames) {
-      const lower = (n || "").toLowerCase();
-      if (lower.includes("цтп") || lower.includes("итп") || lower.includes("бойлер")) return "ctp";
-    }
-
-    if (propKeys.includes("Hnz_obr") && !propKeys.includes("Hzdan") && !propKeys.includes("Njil")) {
-      return "ctp";
     }
 
     if (propKeys.includes("Qo_r") || propKeys.includes("Nagr_otop") || propKeys.includes("Rashod_go") || propKeys.includes("Qgv_sred")) {
