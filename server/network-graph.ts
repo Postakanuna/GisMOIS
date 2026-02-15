@@ -1004,19 +1004,12 @@ export async function simulateDisconnection(
   const nistPrefix = nist ? `${nist}::` : "";
   const fullGraphSourceName = nistPrefix + sourceNodeName;
 
-  const resilientNodes = new Set<string>();
-
   for (const nodeName of downstreamNodes) {
     const node = graph.nodes.get(nodeName);
     if (!node || node.featureId === 0) continue;
 
     const fullGraphNodeName = nistPrefix + nodeName;
     const reachedFrom = reachabilityMap?.get(fullGraphNodeName);
-
-    if (reachedFrom && reachedFrom === fullGraphSourceName) {
-      resilientNodes.add(nodeName);
-      continue;
-    }
 
     const hasAlternativeSource = !!reachedFrom && reachedFrom !== fullGraphSourceName;
     const altSourceNode = hasAlternativeSource ? fullGraph?.nodes.get(reachedFrom!) : null;
@@ -1076,16 +1069,12 @@ export async function simulateDisconnection(
     }
   }
 
-  if (resilientNodes.size > 0) {
-    console.log(`[NetworkGraph] Ring-resilient nodes (still reachable from primary source): ${resilientNodes.size}`);
-  }
-
   const affectedSegments: SimulationResult["affectedSegments"] = [];
   let totalLengthM = 0;
 
   for (const edge of graph.edges) {
-    const fromDownstream = downstreamNodes.has(edge.from) && !resilientNodes.has(edge.from);
-    const toDownstream = downstreamNodes.has(edge.to) && !resilientNodes.has(edge.to);
+    const fromDownstream = downstreamNodes.has(edge.from);
+    const toDownstream = downstreamNodes.has(edge.to);
 
     if (fromDownstream && toDownstream) {
       affectedSegments.push({
