@@ -626,19 +626,28 @@ function getUpstreamNodes(
 
 function getDirectDownstreamNodes(
   graph: NetworkGraph,
-  startNodeName: string
+  startNodeName: string,
+  parentMap: Map<string, string | null>
 ): Set<string> {
+  const children = new Map<string, string[]>();
+  for (const [node, par] of parentMap) {
+    if (par !== null) {
+      if (!children.has(par)) children.set(par, []);
+      children.get(par)!.push(node);
+    }
+  }
+
   const downstream = new Set<string>();
   downstream.add(startNodeName);
 
   const queue: string[] = [startNodeName];
   while (queue.length > 0) {
     const current = queue.shift()!;
-    const forward = graph.forwardAdj.get(current) || [];
-    for (const neighbor of forward) {
-      if (!downstream.has(neighbor)) {
-        downstream.add(neighbor);
-        queue.push(neighbor);
+    const childNodes = children.get(current) || [];
+    for (const child of childNodes) {
+      if (!downstream.has(child)) {
+        downstream.add(child);
+        queue.push(child);
       }
     }
   }
@@ -777,7 +786,7 @@ export async function simulateDisconnection(
       if (failureNodeName === sourceNodeName) {
         targetNodes = new Set(graph.nodes.keys());
       } else {
-        targetNodes = getDirectDownstreamNodes(graph, failureNodeName);
+        targetNodes = getDirectDownstreamNodes(graph, failureNodeName, parentMap);
       }
       console.log(`[NetworkGraph] Direct downstream nodes: ${targetNodes.size}`);
       break;
