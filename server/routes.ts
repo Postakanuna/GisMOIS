@@ -4400,7 +4400,13 @@ export async function registerRoutes(
       }
       summarySheet.addRow({ param: "", value: "" });
       summarySheet.addRow({ param: "Затронутые потребители", value: result.stats.totalConsumers });
+      if (result.stats.totalSwitchableConsumers > 0) {
+        summarySheet.addRow({ param: "Переключаемые потребители (альт. источник)", value: result.stats.totalSwitchableConsumers });
+      }
       summarySheet.addRow({ param: "Затронутые ЦТП", value: result.stats.totalCTPs });
+      if (result.stats.totalSwitchableCTPs > 0) {
+        summarySheet.addRow({ param: "Переключаемые ЦТП (альт. источник)", value: result.stats.totalSwitchableCTPs });
+      }
       summarySheet.addRow({ param: "Затронутые участки сети", value: result.stats.totalSegments });
       summarySheet.addRow({ param: "Затронутые узлы", value: result.stats.totalNodes });
       summarySheet.addRow({ param: "Общая длина сетей (м)", value: result.stats.totalLengthM });
@@ -4462,6 +4468,27 @@ export async function registerRoutes(
         (item) => ({ name: item.name, address: item.address })
       );
 
+      if (result.switchableConsumers && result.switchableConsumers.length > 0) {
+        const swSheet = workbook.addWorksheet("Переключаемые потр.");
+        swSheet.columns = [
+          { header: "ID", key: "featureId", width: 10 },
+          { header: "Имя", key: "name", width: 30 },
+          { header: "Адрес", key: "address", width: 40 },
+          { header: "Альт. источник", key: "alternativeSource", width: 30 },
+        ];
+        const swHRow = swSheet.getRow(1);
+        swHRow.font = { bold: true };
+        swHRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9F2D9" } };
+        for (const c of result.switchableConsumers) {
+          swSheet.addRow({
+            featureId: c.featureId,
+            name: c.name,
+            address: c.address,
+            alternativeSource: c.alternativeSource,
+          });
+        }
+      }
+
       addDetailSheet(
         "Участки сети",
         result.affectedSegments,
@@ -4482,6 +4509,27 @@ export async function registerRoutes(
         ],
         (item) => ({ name: item.name, address: item.address })
       );
+
+      if (result.switchableCTPs && result.switchableCTPs.length > 0) {
+        const swCtpSheet = workbook.addWorksheet("Переключаемые ЦТП");
+        swCtpSheet.columns = [
+          { header: "ID", key: "featureId", width: 10 },
+          { header: "Имя", key: "name", width: 30 },
+          { header: "Адрес", key: "address", width: 40 },
+          { header: "Альт. источник", key: "alternativeSource", width: 30 },
+        ];
+        const swCtpHRow = swCtpSheet.getRow(1);
+        swCtpHRow.font = { bold: true };
+        swCtpHRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9F2D9" } };
+        for (const c of result.switchableCTPs) {
+          swCtpSheet.addRow({
+            featureId: c.featureId,
+            name: c.name,
+            address: c.address,
+            alternativeSource: c.alternativeSource,
+          });
+        }
+      }
 
       addDetailSheet(
         "Узлы",

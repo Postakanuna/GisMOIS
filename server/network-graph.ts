@@ -61,6 +61,14 @@ interface SimulationResult {
     address: string;
     coordinates: any;
   }>;
+  switchableConsumers: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    address: string;
+    coordinates: any;
+    alternativeSource: string;
+  }>;
   affectedSegments: Array<{
     featureId: number;
     layerId: number;
@@ -75,6 +83,14 @@ interface SimulationResult {
     name: string;
     address: string;
     coordinates: any;
+  }>;
+  switchableCTPs: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    address: string;
+    coordinates: any;
+    alternativeSource: string;
   }>;
   affectedNodes: Array<{
     featureId: number;
@@ -92,8 +108,10 @@ interface SimulationResult {
   }>;
   stats: {
     totalConsumers: number;
+    totalSwitchableConsumers: number;
     totalSegments: number;
     totalCTPs: number;
+    totalSwitchableCTPs: number;
     totalNodes: number;
     totalLengthM: number;
     totalClosedValves: number;
@@ -270,7 +288,7 @@ export async function buildNetworkGraph(
   sourceLayerIds: number[],
   valveLayerIds: number[],
   pumpLayerIds: number[],
-  nist: string
+  nist: string | null
 ): Promise<NetworkGraph> {
   const graph: NetworkGraph = {
     nodes: new Map(),
@@ -282,6 +300,13 @@ export async function buildNetworkGraph(
 
   if (segmentLayerIds.length === 0) return graph;
 
+  const segmentWhereConditions = nist
+    ? and(
+        inArray(drawnFeatures.layerId, segmentLayerIds),
+        sql`${drawnFeatures.properties}->>'Nist' = ${nist}`
+      )
+    : inArray(drawnFeatures.layerId, segmentLayerIds);
+
   const segments = await db
     .select({
       id: drawnFeatures.id,
@@ -290,24 +315,26 @@ export async function buildNetworkGraph(
       properties: drawnFeatures.properties,
     })
     .from(drawnFeatures)
-    .where(
-      and(
-        inArray(drawnFeatures.layerId, segmentLayerIds),
-        sql`${drawnFeatures.properties}->>'Nist' = ${nist}`
-      )
-    );
+    .where(segmentWhereConditions);
 
   const allSegmentNodeNames = new Set<string>();
+  const isMultiNist = nist === null;
 
   for (const seg of segments) {
     const props = seg.properties as Record<string, unknown>;
     const fromRaw = (props.Begin_uch as string) || "";
     const toRaw = (props.End_uch as string) || "";
-    const from = normalizeName(fromRaw);
-    const to = normalizeName(toRaw);
+    const segNist = isMultiNist ? String(props.Nist || "0") : "";
+    let from = normalizeName(fromRaw);
+    let to = normalizeName(toRaw);
     const length = parseFloat((props.L as string) || "0") || 0;
 
     if (!from || !to || from === to) continue;
+
+    if (isMultiNist && segNist) {
+      from = `${segNist}::${from}`;
+      to = `${segNist}::${to}`;
+    }
 
     allSegmentNodeNames.add(from);
     allSegmentNodeNames.add(to);
@@ -350,6 +377,13 @@ export async function buildNetworkGraph(
   const allPointLayerIds = [...nodeLayerIds, ...consumerLayerIds, ...ctpLayerIds, ...sourceLayerIds, ...valveLayerIds, ...pumpLayerIds];
 
   if (allPointLayerIds.length > 0) {
+    const pointWhereConditions = nist
+      ? and(
+          inArray(drawnFeatures.layerId, allPointLayerIds),
+          sql`${drawnFeatures.properties}->>'Nist' = ${nist}`
+        )
+      : inArray(drawnFeatures.layerId, allPointLayerIds);
+
     const pointFeatures = await db
       .select({
         id: drawnFeatures.id,
@@ -358,12 +392,7 @@ export async function buildNetworkGraph(
         properties: drawnFeatures.properties,
       })
       .from(drawnFeatures)
-      .where(
-        and(
-          inArray(drawnFeatures.layerId, allPointLayerIds),
-          sql`${drawnFeatures.properties}->>'Nist' = ${nist}`
-        )
-      );
+      .where(pointWhereConditions);
 
     let nodeType: GraphNode["type"];
 
@@ -371,7 +400,11 @@ export async function buildNetworkGraph(
       const props = feat.properties as Record<string, unknown>;
       const nameRaw = (props.Name as string) || "";
       if (!nameRaw) continue;
-      const name = normalizeName(nameRaw);
+      let name = normalizeName(nameRaw);
+      if (isMultiNist) {
+        const featNist = String(props.Nist || "0");
+        name = `${featNist}::${name}`;
+      }
 
       if (sourceLayerIds.includes(feat.layerId)) nodeType = "source";
       else if (ctpLayerIds.includes(feat.layerId)) nodeType = "ctp";
@@ -545,6 +578,92 @@ export function findSourceNode(graph: NetworkGraph): string | null {
     }
   }
   return maxNode;
+}
+
+export function findAllSources(graph: NetworkGraph): string[] {
+  const sources: string[] = [];
+
+  for (const [name, node] of graph.nodes) {
+    if (node.type === "source" && graph.adjacency.has(name)) {
+      sources.push(name);
+    }
+  }
+
+  if (sources.length === 0) {
+    for (const [name, node] of graph.nodes) {
+      if (node.type === "source") {
+        const matched = findMatchingSegmentName(name, new Set(graph.adjacency.keys()));
+        if (matched && !sources.includes(matched)) {
+          sources.push(matched);
+        }
+      }
+    }
+  }
+
+  if (sources.length === 0) {
+    const sourcePatterns = ["кот.", "котельн", "грэс", "тэц", "бмк", "бойлерн", "мини-тэц"];
+    for (const name of graph.adjacency.keys()) {
+      const lower = name.toLowerCase();
+      for (const pattern of sourcePatterns) {
+        if (lower.includes(pattern) && !sources.includes(name)) {
+          sources.push(name);
+          break;
+        }
+      }
+    }
+  }
+
+  return sources;
+}
+
+export function multiSourceBFS(
+  graph: NetworkGraph,
+  sourceNodes: string[],
+  failedNodeName: string | null,
+  failedEdge: { from: string; to: string; featureId: number } | null,
+  respectClosedValves: boolean
+): Map<string, string> {
+  const reachedBy = new Map<string, string>();
+
+  const isBlocked = (nodeName: string): boolean => {
+    if (!respectClosedValves) return false;
+    const node = graph.nodes.get(nodeName);
+    return !!(node && node.type === "valve" && node.valveClosed);
+  };
+
+  const isFailedEdge = (from: string, to: string): boolean => {
+    if (!failedEdge) return false;
+    return (failedEdge.from === from && failedEdge.to === to) ||
+           (failedEdge.from === to && failedEdge.to === from);
+  };
+
+  const queue: Array<{ node: string; source: string }> = [];
+
+  for (const src of sourceNodes) {
+    if (src === failedNodeName) continue;
+    reachedBy.set(src, src);
+    queue.push({ node: src, source: src });
+  }
+
+  while (queue.length > 0) {
+    const { node: current, source } = queue.shift()!;
+
+    if (current !== failedNodeName && isBlocked(current) && !sourceNodes.includes(current)) {
+      continue;
+    }
+
+    const neighbors = graph.adjacency.get(current) || [];
+    for (const neighbor of neighbors) {
+      if (reachedBy.has(neighbor)) continue;
+      if (neighbor === failedNodeName) continue;
+      if (isFailedEdge(current, neighbor)) continue;
+
+      reachedBy.set(neighbor, source);
+      queue.push({ node: neighbor, source });
+    }
+  }
+
+  return reachedBy;
 }
 
 export function buildTreeFromSource(
@@ -786,7 +905,7 @@ export async function simulateDisconnection(
     downstreamNodes = getDownstreamNodes(graph, failureNodeName, parentMap, sourceNodeName);
   }
 
-  console.log(`[NetworkGraph] Downstream nodes (initial): ${downstreamNodes.size}`);
+  console.log(`[NetworkGraph] Downstream nodes from primary source: ${downstreamNodes.size}`);
 
   const relevantClosedValves = new Set<string>();
 
@@ -832,32 +951,113 @@ export async function simulateDisconnection(
     }
   }
 
+  let fullGraph: NetworkGraph | null = null;
+  let reachabilityMap: Map<string, string> | null = null;
+
+  const hasMultipleSources = layerConfig.sourceLayerIds.length > 0;
+  if (hasMultipleSources && downstreamNodes.size > 0) {
+    console.log(`[NetworkGraph] Building full multi-source graph for alternative source check...`);
+    fullGraph = await buildNetworkGraph(
+      layerConfig.segmentLayerIds,
+      layerConfig.nodeLayerIds,
+      layerConfig.consumerLayerIds,
+      layerConfig.ctpLayerIds,
+      layerConfig.sourceLayerIds,
+      layerConfig.valveLayerIds,
+      layerConfig.pumpLayerIds,
+      null
+    );
+    console.log(`[NetworkGraph] Full graph: ${fullGraph.nodes.size} nodes, ${fullGraph.edges.length} edges`);
+
+    const allSources = findAllSources(fullGraph);
+    console.log(`[NetworkGraph] All sources in full graph: ${allSources.join(", ")}`);
+
+    let failedEdgeForBFS: { from: string; to: string; featureId: number } | null = null;
+    let failedNodeForBFS: string | null = null;
+
+    if (isSegment && found.edgeFrom && found.edgeTo) {
+      failedEdgeForBFS = { from: `${nist}::${found.edgeFrom}`, to: `${nist}::${found.edgeTo}`, featureId };
+    } else {
+      failedNodeForBFS = `${nist}::${failureNodeName}`;
+    }
+
+    reachabilityMap = multiSourceBFS(
+      fullGraph,
+      allSources,
+      failedNodeForBFS,
+      failedEdgeForBFS,
+      true
+    );
+    console.log(`[NetworkGraph] Multi-source BFS: ${reachabilityMap.size} nodes reachable from any source`);
+  }
+
   const affectedConsumers: SimulationResult["affectedConsumers"] = [];
+  const switchableConsumers: SimulationResult["switchableConsumers"] = [];
   const affectedCTPs: SimulationResult["affectedCTPs"] = [];
+  const switchableCTPs: SimulationResult["switchableCTPs"] = [];
   const affectedNodes: SimulationResult["affectedNodes"] = [];
+
+  const nistPrefix = nist ? `${nist}::` : "";
+  const fullGraphSourceName = nistPrefix + sourceNodeName;
+
+  const resilientNodes = new Set<string>();
 
   for (const nodeName of downstreamNodes) {
     const node = graph.nodes.get(nodeName);
     if (!node || node.featureId === 0) continue;
 
+    const fullGraphNodeName = nistPrefix + nodeName;
+    const reachedFrom = reachabilityMap?.get(fullGraphNodeName);
+
+    if (reachedFrom && reachedFrom === fullGraphSourceName) {
+      resilientNodes.add(nodeName);
+      continue;
+    }
+
+    const hasAlternativeSource = !!reachedFrom && reachedFrom !== fullGraphSourceName;
+    const altSourceNode = hasAlternativeSource ? fullGraph?.nodes.get(reachedFrom!) : null;
+    const altSourceName = altSourceNode ? altSourceNode.name : (hasAlternativeSource ? reachedFrom!.replace(/^\d+::/, "") : "");
+
     switch (node.type) {
       case "consumer":
-        affectedConsumers.push({
-          featureId: node.featureId,
-          layerId: node.layerId,
-          name: node.name,
-          address: (node.properties.Adres as string) || node.name,
-          coordinates: node.coordinates,
-        });
+        if (hasAlternativeSource) {
+          switchableConsumers.push({
+            featureId: node.featureId,
+            layerId: node.layerId,
+            name: node.name,
+            address: (node.properties.Adres as string) || node.name,
+            coordinates: node.coordinates,
+            alternativeSource: altSourceName,
+          });
+        } else {
+          affectedConsumers.push({
+            featureId: node.featureId,
+            layerId: node.layerId,
+            name: node.name,
+            address: (node.properties.Adres as string) || node.name,
+            coordinates: node.coordinates,
+          });
+        }
         break;
       case "ctp":
-        affectedCTPs.push({
-          featureId: node.featureId,
-          layerId: node.layerId,
-          name: node.name,
-          address: (node.properties.Adres as string) || "",
-          coordinates: node.coordinates,
-        });
+        if (hasAlternativeSource) {
+          switchableCTPs.push({
+            featureId: node.featureId,
+            layerId: node.layerId,
+            name: node.name,
+            address: (node.properties.Adres as string) || "",
+            coordinates: node.coordinates,
+            alternativeSource: altSourceName,
+          });
+        } else {
+          affectedCTPs.push({
+            featureId: node.featureId,
+            layerId: node.layerId,
+            name: node.name,
+            address: (node.properties.Adres as string) || "",
+            coordinates: node.coordinates,
+          });
+        }
         break;
       case "source":
         break;
@@ -872,12 +1072,16 @@ export async function simulateDisconnection(
     }
   }
 
+  if (resilientNodes.size > 0) {
+    console.log(`[NetworkGraph] Ring-resilient nodes (still reachable from primary source): ${resilientNodes.size}`);
+  }
+
   const affectedSegments: SimulationResult["affectedSegments"] = [];
   let totalLengthM = 0;
 
   for (const edge of graph.edges) {
-    const fromDownstream = downstreamNodes.has(edge.from);
-    const toDownstream = downstreamNodes.has(edge.to);
+    const fromDownstream = downstreamNodes.has(edge.from) && !resilientNodes.has(edge.from);
+    const toDownstream = downstreamNodes.has(edge.to) && !resilientNodes.has(edge.to);
 
     if (fromDownstream && toDownstream) {
       affectedSegments.push({
@@ -904,7 +1108,7 @@ export async function simulateDisconnection(
 
   const sourceNode = graph.nodes.get(sourceNodeName);
 
-  console.log(`[NetworkGraph] Results: ${affectedConsumers.length} consumers, ${affectedSegments.length} segments, ${affectedCTPs.length} CTPs, ${affectedNodes.length} nodes, ${closedValves.length} closed valves`);
+  console.log(`[NetworkGraph] Results: ${affectedConsumers.length} consumers (${switchableConsumers.length} switchable), ${affectedSegments.length} segments, ${affectedCTPs.length} CTPs (${switchableCTPs.length} switchable), ${affectedNodes.length} nodes, ${closedValves.length} closed valves`);
   console.log(`[NetworkGraph] === Simulation End ===`);
 
   return {
@@ -920,14 +1124,18 @@ export async function simulateDisconnection(
       nist,
     },
     affectedConsumers,
+    switchableConsumers,
     affectedSegments,
     affectedCTPs,
+    switchableCTPs,
     affectedNodes,
     closedValves,
     stats: {
       totalConsumers: affectedConsumers.length,
+      totalSwitchableConsumers: switchableConsumers.length,
       totalSegments: affectedSegments.length,
       totalCTPs: affectedCTPs.length,
+      totalSwitchableCTPs: switchableCTPs.length,
       totalNodes: affectedNodes.length,
       totalLengthM: Math.round(totalLengthM),
       totalClosedValves: closedValves.length,

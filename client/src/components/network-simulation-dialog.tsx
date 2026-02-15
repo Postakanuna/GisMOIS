@@ -24,6 +24,7 @@ import {
   GripHorizontal,
   Download,
   Lock,
+  ArrowRightLeft,
 } from "lucide-react";
 
 interface SimulationResult {
@@ -45,6 +46,14 @@ interface SimulationResult {
     address: string;
     coordinates: any;
   }>;
+  switchableConsumers: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    address: string;
+    coordinates: any;
+    alternativeSource: string;
+  }>;
   affectedSegments: Array<{
     featureId: number;
     layerId: number;
@@ -59,6 +68,14 @@ interface SimulationResult {
     name: string;
     address: string;
     coordinates: any;
+  }>;
+  switchableCTPs: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    address: string;
+    coordinates: any;
+    alternativeSource: string;
   }>;
   affectedNodes: Array<{
     featureId: number;
@@ -76,8 +93,10 @@ interface SimulationResult {
   }>;
   stats: {
     totalConsumers: number;
+    totalSwitchableConsumers: number;
     totalSegments: number;
     totalCTPs: number;
+    totalSwitchableCTPs: number;
     totalNodes: number;
     totalLengthM: number;
     totalClosedValves: number;
@@ -107,8 +126,10 @@ export function NetworkSimulationDialog({
 }: NetworkSimulationDialogProps) {
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [consumersOpen, setConsumersOpen] = useState(true);
+  const [switchableOpen, setSwitchableOpen] = useState(false);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
   const [ctpsOpen, setCtpsOpen] = useState(false);
+  const [switchableCtpsOpen, setSwitchableCtpsOpen] = useState(false);
   const [nodesOpen, setNodesOpen] = useState(false);
   const [valvesOpen, setValvesOpen] = useState(false);
 
@@ -291,6 +312,14 @@ export function NetworkSimulationDialog({
                     value={result.stats.totalNodes}
                     testId="text-stat-nodes"
                   />
+                  {result.stats.totalSwitchableConsumers > 0 && (
+                    <StatItem
+                      icon={<ArrowRightLeft className="h-4 w-4" />}
+                      label="Переключаемых"
+                      value={result.stats.totalSwitchableConsumers}
+                      testId="text-stat-switchable"
+                    />
+                  )}
                   {result.stats.totalClosedValves > 0 && (
                     <StatItem
                       icon={<Lock className="h-4 w-4" />}
@@ -317,6 +346,27 @@ export function NetworkSimulationDialog({
                     <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-consumer-${i}`}>
                       <Home className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="truncate">{c.address || c.name}</span>
+                    </div>
+                  ))}
+                </CollapsibleSection>
+              )}
+
+              {result.switchableConsumers && result.switchableConsumers.length > 0 && (
+                <CollapsibleSection
+                  title="Переключаемые потребители"
+                  count={result.switchableConsumers.length}
+                  open={switchableOpen}
+                  onOpenChange={setSwitchableOpen}
+                  testId="section-switchable-consumers"
+                >
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Получают тепло от альтернативного источника
+                  </div>
+                  {result.switchableConsumers.map((c, i) => (
+                    <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-switchable-consumer-${i}`}>
+                      <ArrowRightLeft className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                      <span className="truncate">{c.address || c.name}</span>
+                      <Badge variant="secondary" className="ml-auto text-[10px] shrink-0">{c.alternativeSource}</Badge>
                     </div>
                   ))}
                 </CollapsibleSection>
@@ -353,6 +403,27 @@ export function NetworkSimulationDialog({
                       <Thermometer className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="truncate">{c.name}</span>
                       {c.address && <span className="text-muted-foreground truncate">({c.address})</span>}
+                    </div>
+                  ))}
+                </CollapsibleSection>
+              )}
+
+              {result.switchableCTPs && result.switchableCTPs.length > 0 && (
+                <CollapsibleSection
+                  title="Переключаемые ЦТП"
+                  count={result.switchableCTPs.length}
+                  open={switchableCtpsOpen}
+                  onOpenChange={setSwitchableCtpsOpen}
+                  testId="section-switchable-ctps"
+                >
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Получают тепло от альтернативного источника
+                  </div>
+                  {result.switchableCTPs.map((c, i) => (
+                    <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-switchable-ctp-${i}`}>
+                      <ArrowRightLeft className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                      <span className="truncate">{c.name}</span>
+                      <Badge variant="secondary" className="ml-auto text-[10px] shrink-0">{c.alternativeSource}</Badge>
                     </div>
                   ))}
                 </CollapsibleSection>
