@@ -906,12 +906,13 @@ export interface TopologyError {
   featureId: number;
   layerId: number;
   segmentName: string;
-  errorType: "orphan_begin" | "orphan_end" | "orphan_both" | "duplicate" | "empty_name" | "self_loop" | "geom_mismatch_begin" | "geom_mismatch_end";
+  errorType: "orphan_begin" | "orphan_end" | "orphan_both" | "duplicate" | "empty_name" | "self_loop" | "geom_mismatch_begin" | "geom_mismatch_end" | "spatial_mismatch_begin" | "spatial_mismatch_end";
   field: string;
   currentValue: string;
   suggestedValue: string | null;
   suggestedFeatureId: number | null;
   distance: number | null;
+  currentDistance: number | null;
   nist: string;
 }
 
@@ -929,6 +930,8 @@ export interface TopologyValidationResult {
     selfLoops: number;
     geomMismatchBegin: number;
     geomMismatchEnd: number;
+    spatialMismatchBegin: number;
+    spatialMismatchEnd: number;
   };
 }
 
@@ -1070,6 +1073,8 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
   const errors: TopologyError[] = [];
   const segmentKeys = new Map<string, number>();
 
+  const SPATIAL_SNAP_RADIUS = 5;
+
   for (const seg of segments) {
     const props = seg.properties as Record<string, unknown>;
     const beginRaw = (props.Begin_uch as string) || "";
@@ -1083,7 +1088,7 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
       errors.push({
         featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
         errorType: "empty_name", field: "Begin_uch, End_uch",
-        currentValue: "", suggestedValue: null, suggestedFeatureId: null, distance: null, nist,
+        currentValue: "", suggestedValue: null, suggestedFeatureId: null, distance: null, currentDistance: null, nist,
       });
       continue;
     }
@@ -1162,7 +1167,7 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
       errors.push({
         featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
         errorType: "self_loop", field: loopField,
-        currentValue: beginRaw, suggestedValue: loopSuggested, suggestedFeatureId: loopSuggestedId, distance: loopDist, nist,
+        currentValue: beginRaw, suggestedValue: loopSuggested, suggestedFeatureId: loopSuggestedId, distance: loopDist, currentDistance: null, nist,
       });
     }
 
@@ -1173,7 +1178,7 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
         errorType: "duplicate", field: "Begin_uch, End_uch",
         currentValue: segLabel, suggestedValue: null,
         suggestedFeatureId: segmentKeys.get(dupKey) || null,
-        distance: null, nist,
+        distance: null, currentDistance: null, nist,
       });
     }
     segmentKeys.set(dupKey, seg.id);
@@ -1196,7 +1201,7 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
         currentValue: beginRaw,
         suggestedValue: sugBegin?.name || null,
         suggestedFeatureId: sugBegin?.id || null,
-        distance: sugBegin ? Math.round(sugBegin.dist) : null, nist,
+        distance: sugBegin ? Math.round(sugBegin.dist) : null, currentDistance: null, nist,
       });
       errors.push({
         featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
@@ -1204,7 +1209,7 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
         currentValue: endRaw,
         suggestedValue: sugEnd?.name || null,
         suggestedFeatureId: sugEnd?.id || null,
-        distance: sugEnd ? Math.round(sugEnd.dist) : null, nist,
+        distance: sugEnd ? Math.round(sugEnd.dist) : null, currentDistance: null, nist,
       });
     } else {
       if (!beginFound && beginNorm) {
@@ -1216,7 +1221,7 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
           currentValue: beginRaw,
           suggestedValue: suggestion?.name || null,
           suggestedFeatureId: suggestion?.id || null,
-          distance: suggestion ? Math.round(suggestion.dist) : null, nist,
+          distance: suggestion ? Math.round(suggestion.dist) : null, currentDistance: null, nist,
         });
       }
       if (!endFound && endNorm) {
@@ -1228,47 +1233,79 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
           currentValue: endRaw,
           suggestedValue: suggestion?.name || null,
           suggestedFeatureId: suggestion?.id || null,
-          distance: suggestion ? Math.round(suggestion.dist) : null, nist,
+          distance: suggestion ? Math.round(suggestion.dist) : null, currentDistance: null, nist,
         });
       }
     }
 
-    if (beginFound && endFound && endpoints) {
-      if (beginNorm) {
+    if (endpoints) {
+      if (beginNorm && beginFound) {
         const matchKey = findFuzzyMatchTopo(beginNorm, pointNodeMap) || beginNorm;
         const pn = pointNodeMap.get(matchKey);
         if (pn && pn.coords) {
-          const dist = distanceBetweenPoints(endpoints.start, pn.coords, useHaversine);
-          if (dist > 50) {
+          const distToCurrentNode = distanceBetweenPoints(endpoints.start, pn.coords, useHaversine);
+
+          const nearestSnap = findNearestPoint(endpoints.start, pointsByCoords, SPATIAL_SNAP_RADIUS, useHaversine);
+
+          if (nearestSnap && normalizeName(nearestSnap.name) !== beginNorm && normalizeName(nearestSnap.name) !== matchKey) {
+            errors.push({
+              featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+              errorType: "spatial_mismatch_begin", field: "Begin_uch",
+              currentValue: beginRaw,
+              suggestedValue: nearestSnap.name,
+              suggestedFeatureId: nearestSnap.id,
+              distance: Math.round(nearestSnap.dist * 100) / 100,
+              currentDistance: Math.round(distToCurrentNode * 100) / 100,
+              nist,
+            });
+          } else if (distToCurrentNode > 50) {
             const nearest = findNearestPoint(endpoints.start, pointsByCoords, 200, useHaversine);
-            if (nearest && nearest.name !== beginNorm && nearest.name !== matchKey) {
+            if (nearest && normalizeName(nearest.name) !== beginNorm && normalizeName(nearest.name) !== matchKey) {
               errors.push({
                 featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
                 errorType: "geom_mismatch_begin", field: "Begin_uch",
                 currentValue: beginRaw,
                 suggestedValue: nearest.name,
                 suggestedFeatureId: nearest.id,
-                distance: Math.round(nearest.dist), nist,
+                distance: Math.round(nearest.dist),
+                currentDistance: Math.round(distToCurrentNode),
+                nist,
               });
             }
           }
         }
       }
-      if (endNorm) {
+      if (endNorm && endFound) {
         const matchKey = findFuzzyMatchTopo(endNorm, pointNodeMap) || endNorm;
         const pn = pointNodeMap.get(matchKey);
         if (pn && pn.coords) {
-          const dist = distanceBetweenPoints(endpoints.end, pn.coords, useHaversine);
-          if (dist > 50) {
+          const distToCurrentNode = distanceBetweenPoints(endpoints.end, pn.coords, useHaversine);
+
+          const nearestSnap = findNearestPoint(endpoints.end, pointsByCoords, SPATIAL_SNAP_RADIUS, useHaversine);
+
+          if (nearestSnap && normalizeName(nearestSnap.name) !== endNorm && normalizeName(nearestSnap.name) !== matchKey) {
+            errors.push({
+              featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+              errorType: "spatial_mismatch_end", field: "End_uch",
+              currentValue: endRaw,
+              suggestedValue: nearestSnap.name,
+              suggestedFeatureId: nearestSnap.id,
+              distance: Math.round(nearestSnap.dist * 100) / 100,
+              currentDistance: Math.round(distToCurrentNode * 100) / 100,
+              nist,
+            });
+          } else if (distToCurrentNode > 50) {
             const nearest = findNearestPoint(endpoints.end, pointsByCoords, 200, useHaversine);
-            if (nearest && nearest.name !== endNorm && nearest.name !== matchKey) {
+            if (nearest && normalizeName(nearest.name) !== endNorm && normalizeName(nearest.name) !== matchKey) {
               errors.push({
                 featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
                 errorType: "geom_mismatch_end", field: "End_uch",
                 currentValue: endRaw,
                 suggestedValue: nearest.name,
                 suggestedFeatureId: nearest.id,
-                distance: Math.round(nearest.dist), nist,
+                distance: Math.round(nearest.dist),
+                currentDistance: Math.round(distToCurrentNode),
+                nist,
               });
             }
           }
@@ -1286,6 +1323,8 @@ export async function validateTopology(sceneId: number): Promise<TopologyValidat
     selfLoops: errors.filter(e => e.errorType === "self_loop").length,
     geomMismatchBegin: errors.filter(e => e.errorType === "geom_mismatch_begin").length,
     geomMismatchEnd: errors.filter(e => e.errorType === "geom_mismatch_end").length,
+    spatialMismatchBegin: errors.filter(e => e.errorType === "spatial_mismatch_begin").length,
+    spatialMismatchEnd: errors.filter(e => e.errorType === "spatial_mismatch_end").length,
   };
 
   return { totalSegments: segments.length, totalPointNodes: pointFeatures.length, totalErrors: errors.length, errors, stats };
@@ -1320,4 +1359,123 @@ export async function applyTopologyFixes(
   }
 
   return { applied, failed, details };
+}
+
+export interface RecalcBindingResult {
+  featureId: number;
+  layerId: number;
+  segmentName: string;
+  field: "Begin_uch" | "End_uch";
+  currentValue: string;
+  newValue: string;
+  distance: number;
+  nist: string;
+}
+
+export async function recalculateBindings(sceneId: number): Promise<{
+  totalSegments: number;
+  changes: RecalcBindingResult[];
+  unchanged: number;
+  noMatch: number;
+}> {
+  const layerConfig = await getSceneNetworkLayers(sceneId);
+
+  if (layerConfig.segmentLayerIds.length === 0) {
+    return { totalSegments: 0, changes: [], unchanged: 0, noMatch: 0 };
+  }
+
+  const segments = await db
+    .select({ id: drawnFeatures.id, layerId: drawnFeatures.layerId, coordinates: drawnFeatures.coordinates, properties: drawnFeatures.properties })
+    .from(drawnFeatures)
+    .where(inArray(drawnFeatures.layerId, layerConfig.segmentLayerIds));
+
+  const allPointLayerIds = [
+    ...layerConfig.nodeLayerIds, ...layerConfig.consumerLayerIds,
+    ...layerConfig.ctpLayerIds, ...layerConfig.sourceLayerIds,
+    ...layerConfig.valveLayerIds, ...layerConfig.pumpLayerIds,
+  ];
+
+  const allLayerIds = [...layerConfig.segmentLayerIds, ...allPointLayerIds];
+  let useHaversine = true;
+  if (allLayerIds.length > 0) {
+    const layerCrsRows = await db
+      .select({ crs: editableLayers.crs })
+      .from(editableLayers)
+      .where(inArray(editableLayers.id, allLayerIds));
+    const hasProjected = layerCrsRows.some(r => !isGeographicCRS(r.crs));
+    if (hasProjected) useHaversine = false;
+  }
+
+  let pointFeatures: Array<{ id: number; layerId: number; coordinates: any; properties: Record<string, unknown> }> = [];
+  if (allPointLayerIds.length > 0) {
+    pointFeatures = (await db
+      .select({ id: drawnFeatures.id, layerId: drawnFeatures.layerId, coordinates: drawnFeatures.coordinates, properties: drawnFeatures.properties })
+      .from(drawnFeatures)
+      .where(inArray(drawnFeatures.layerId, allPointLayerIds))) as any;
+  }
+
+  const pointsByCoords: Array<{ id: number; name: string; normName: string; coords: [number, number] }> = [];
+  for (const pf of pointFeatures) {
+    const props = pf.properties as Record<string, unknown>;
+    const nameRaw = (props.Name as string) || "";
+    if (!nameRaw) continue;
+    const name = normalizeName(nameRaw);
+    const coords = getPointCoords(pf.coordinates);
+    if (coords) {
+      pointsByCoords.push({ id: pf.id, name, normName: name.toLowerCase(), coords });
+    }
+  }
+
+  const SNAP_RADIUS = 5;
+  const changes: RecalcBindingResult[] = [];
+  let unchanged = 0;
+  let noMatch = 0;
+
+  for (const seg of segments) {
+    const props = seg.properties as Record<string, unknown>;
+    const beginRaw = (props.Begin_uch as string) || "";
+    const endRaw = (props.End_uch as string) || "";
+    const nist = (props.Nist as string) || "";
+    const beginNorm = normalizeName(beginRaw);
+    const endNorm = normalizeName(endRaw);
+    const segLabel = `${beginRaw} → ${endRaw}`;
+
+    const endpoints = getLineEndpoints(seg.coordinates);
+    if (!endpoints) {
+      noMatch += 2;
+      continue;
+    }
+
+    const nearestBegin = findNearestPoint(endpoints.start, pointsByCoords, SNAP_RADIUS, useHaversine);
+    if (nearestBegin) {
+      if (normalizeName(nearestBegin.name) !== beginNorm) {
+        changes.push({
+          featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+          field: "Begin_uch", currentValue: beginRaw, newValue: nearestBegin.name,
+          distance: Math.round(nearestBegin.dist * 100) / 100, nist,
+        });
+      } else {
+        unchanged++;
+      }
+    } else {
+      noMatch++;
+    }
+
+    const nearestEnd = findNearestPoint(endpoints.end, pointsByCoords, SNAP_RADIUS, useHaversine);
+    if (nearestEnd) {
+      if (normalizeName(nearestEnd.name) !== endNorm) {
+        changes.push({
+          featureId: seg.id, layerId: seg.layerId, segmentName: segLabel,
+          field: "End_uch", currentValue: endRaw, newValue: nearestEnd.name,
+          distance: Math.round(nearestEnd.dist * 100) / 100, nist,
+        });
+      } else {
+        unchanged++;
+      }
+    } else {
+      noMatch++;
+    }
+  }
+
+  return { totalSegments: segments.length, changes, unchanged, noMatch };
 }

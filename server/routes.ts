@@ -4320,6 +4320,34 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/network-graph/recalculate-bindings", async (req: Request, res: Response) => {
+    try {
+      const { sceneId } = req.body;
+      if (!sceneId) return res.status(400).json({ error: "sceneId is required" });
+      const { recalculateBindings } = await import("./network-graph");
+      const result = await recalculateBindings(Number(sceneId));
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Recalculate bindings error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/network-graph/apply-recalculated-bindings", async (req: Request, res: Response) => {
+    try {
+      const { fixes } = req.body;
+      if (!fixes || !Array.isArray(fixes) || fixes.length === 0) {
+        return res.status(400).json({ error: "fixes array is required" });
+      }
+      const { applyTopologyFixes } = await import("./network-graph");
+      const result = await applyTopologyFixes(fixes);
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Apply recalculated bindings error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
   app.post("/api/network-graph/simulate", async (req: Request, res: Response) => {
     try {
       const { featureId, layerId, sceneId, mode } = req.body;
