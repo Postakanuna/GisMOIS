@@ -621,6 +621,33 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                           <span className="text-[10px] text-muted-foreground shrink-0">
                             ({layer.featureCount})
                           </span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className="text-[10px] text-muted-foreground/60 shrink-0 cursor-pointer"
+                                data-no-drag
+                                data-testid={`label-layer-id-${layer.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const idStr = String(layer.id);
+                                  if (navigator.clipboard?.writeText) {
+                                    navigator.clipboard.writeText(idStr).then(() => {
+                                      toast({ title: "ID скопирован", description: `ID слоя: ${idStr}` });
+                                    }).catch(() => {
+                                      toast({ title: "ID слоя", description: idStr });
+                                    });
+                                  } else {
+                                    toast({ title: "ID слоя", description: idStr });
+                                  }
+                                }}
+                              >
+                                ID:{layer.id}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <p className="text-xs">Нажмите, чтобы скопировать ID слоя</p>
+                            </TooltipContent>
+                          </Tooltip>
                           {canEdit && (
                             <Button
                               variant="ghost"
