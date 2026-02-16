@@ -1,5 +1,6 @@
 import { X, Copy, Check, MapPin, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { getFieldLabel } from "@shared/field-labels";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -105,7 +106,7 @@ export function FeatureInfoPanel({
                   data-testid={`row-property-${key}`}
                 >
                   <span className="text-xs text-muted-foreground shrink-0 max-w-[40%]">
-                    {key}
+                    {getFieldLabel(key)}
                   </span>
                   <span className="text-xs text-right break-all font-mono">
                     {formatValue(value)}

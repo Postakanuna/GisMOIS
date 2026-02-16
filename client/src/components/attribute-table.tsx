@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { getFieldLabel } from "@shared/field-labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -891,7 +892,7 @@ export function AttributeTable({
               {renderColumnHeader("_type", "Тип", columnWidths._type)}
               {fields.map((field) => (
                 <div key={field.name}>
-                  {renderColumnHeader(field.name, field.name + (field.required ? " *" : ""), columnWidths[field.name] || 120)}
+                  {renderColumnHeader(field.name, getFieldLabel(field.name) + (field.required ? " *" : ""), columnWidths[field.name] || 120)}
                 </div>
               ))}
             </div>

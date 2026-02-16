@@ -17,6 +17,7 @@ import { geocodeBatch } from "./geocoder";
 import path from "path";
 import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
+import { transformPropertyKeys } from "@shared/field-labels";
 
 const uploadDir = path.join(os.tmpdir(), "gis-uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -3956,7 +3957,7 @@ export async function registerRoutes(
           id: feature.id,
           layerId: feature.layerId,
           coordinates: feature.coordinates,
-          properties: feature.properties,
+          properties: transformPropertyKeys((feature.properties || {}) as Record<string, unknown>),
           createdAt: feature.createdAt,
         },
       });
@@ -4092,7 +4093,7 @@ export async function registerRoutes(
             }
             props = filtered;
           }
-          return { id: f.id, properties: props, geometry: f.geometry };
+          return { id: f.id, properties: transformPropertyKeys(props as Record<string, unknown>), geometry: f.geometry };
         });
 
         if (totalFeaturesMatched + featureResults.length > MAX_FEATURES) {
@@ -4121,7 +4122,7 @@ export async function registerRoutes(
         },
         boundaryFeature: {
           id: String(boundaryFeatureRaw.id),
-          properties: boundaryFeature.properties,
+          properties: transformPropertyKeys(boundaryFeature.properties as Record<string, unknown>),
           geometry: boundaryFeature.geometry,
         },
         results,
@@ -4247,7 +4248,7 @@ export async function registerRoutes(
             }
             props = filtered;
           }
-          return { id: f.id, properties: props, geometry: f.geometry };
+          return { id: f.id, properties: transformPropertyKeys(props as Record<string, unknown>), geometry: f.geometry };
         });
 
         if (totalFeaturesMatched + featureResults.length > MAX_FEATURES) {
