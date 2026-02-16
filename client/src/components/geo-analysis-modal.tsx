@@ -53,7 +53,6 @@ import {
   Settings,
   Search,
   Filter,
-  Pencil,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { EditableLayer, DrawnFeature } from "@shared/schema";
@@ -160,16 +159,22 @@ function buildSqlPreview(conditions: FilterCondition[]): string {
 
 function InlineLayerList({
   editableLayers,
-  excludeLayerIds,
   filterGeometryTypes,
-  onSelect,
+  selectedEntries,
+  multiSelect,
+  onToggle,
+  onFilterClick,
 }: {
   editableLayers: EditableLayer[];
-  excludeLayerIds: Set<number>;
   filterGeometryTypes?: string[];
-  onSelect: (layer: EditableLayer) => void;
+  selectedEntries: SelectedLayerEntry[];
+  multiSelect?: boolean;
+  onToggle: (layer: EditableLayer) => void;
+  onFilterClick?: (layerId: number) => void;
 }) {
   const [search, setSearch] = useState("");
+
+  const selectedIds = useMemo(() => new Set(selectedEntries.map(e => e.layerId)), [selectedEntries]);
 
   const filteredLayers = useMemo(() => {
     let layers = editableLayers;
@@ -213,30 +218,56 @@ function InlineLayerList({
             <p className="text-[11px] text-muted-foreground italic p-2 text-center">Нет подходящих слоёв</p>
           )}
           {filteredLayers.map(layer => {
-            const isExcluded = excludeLayerIds.has(layer.id);
+            const isSelected = selectedIds.has(layer.id);
+            const entry = isSelected ? selectedEntries.find(e => e.layerId === layer.id) : null;
+            const hasFilter = entry ? entry.filters.length > 0 && entry.filters.some(c => c.attribute && c.value) : false;
             const GeomIcon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin;
             return (
-              <button
+              <div
                 key={layer.id}
-                disabled={isExcluded}
-                className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-left transition-colors ${
-                  isExcluded
-                    ? "opacity-40 cursor-not-allowed"
-                    : "hover-elevate cursor-pointer"
+                className={`rounded-md transition-colors ${
+                  isSelected
+                    ? "bg-primary/10 ring-1 ring-primary/30"
+                    : ""
                 }`}
-                onClick={() => !isExcluded && onSelect(layer)}
-                data-testid={`picker-layer-${layer.id}`}
               >
-                <GeomIcon className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-xs flex-1 truncate">{layer.name}</span>
-                <Badge variant="secondary" className="text-[10px] shrink-0">
-                  {GEOM_TYPE_LABELS[layer.geometryType] || layer.geometryType}
-                </Badge>
-                <span className="text-[10px] text-muted-foreground shrink-0">{layer.featureCount}</span>
-                {isExcluded && (
-                  <Badge variant="outline" className="text-[10px] shrink-0">добавлен</Badge>
+                <button
+                  className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-left transition-colors ${
+                    isSelected
+                      ? "cursor-pointer"
+                      : "hover-elevate cursor-pointer"
+                  }`}
+                  onClick={() => onToggle(layer)}
+                  data-testid={`picker-layer-${layer.id}`}
+                >
+                  <GeomIcon className={`h-3 w-3 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                  <span className={`text-xs flex-1 truncate ${isSelected ? "font-medium" : ""}`}>{layer.name}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">{layer.featureCount}</span>
+                </button>
+                {isSelected && (
+                  <div className="flex items-center gap-1 px-2 pb-1.5">
+                    {hasFilter && entry ? (
+                      <p className="text-[10px] font-mono text-muted-foreground flex-1 truncate" title={entry.filterSqlPreview}>
+                        {entry.filterSqlPreview}
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground italic flex-1">Все объекты</p>
+                    )}
+                    {onFilterClick && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); onFilterClick(layer.id); }}
+                        className="h-5 text-[10px] shrink-0 px-1.5"
+                        data-testid={`button-edit-filter-${layer.id}`}
+                      >
+                        <Filter className="h-2.5 w-2.5 mr-0.5" />
+                        Фильтр
+                      </Button>
+                    )}
+                  </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
@@ -501,57 +532,6 @@ function LayerFilterDialog({
   );
 }
 
-function LayerCard({
-  entry,
-  layer,
-  onEditFilter,
-  onRemove,
-}: {
-  entry: SelectedLayerEntry;
-  layer: EditableLayer | undefined;
-  onEditFilter: () => void;
-  onRemove: () => void;
-}) {
-  if (!layer) return null;
-  const GeomIcon = GEOM_TYPE_ICONS[layer.geometryType] || MapPin;
-  const hasFilter = entry.filters.length > 0 && entry.filters.some(c => c.attribute && c.value);
-  const sqlPreview = entry.filterSqlPreview;
-
-  return (
-    <div className="border rounded-md p-2.5 space-y-1.5 bg-card" data-testid={`layer-card-${entry.layerId}`}>
-      <div className="flex items-center gap-2">
-        <GeomIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs font-medium flex-1 truncate">{layer.name}</span>
-        <Badge variant="secondary" className="text-[10px] shrink-0">
-          {layer.featureCount}
-        </Badge>
-        <Button size="icon" variant="ghost" onClick={onRemove} data-testid={`button-remove-layer-${entry.layerId}`}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-      <div className="flex items-center gap-1.5">
-        {hasFilter ? (
-          <p className="text-[11px] font-mono text-muted-foreground flex-1 truncate" title={sqlPreview}>
-            {sqlPreview}
-          </p>
-        ) : (
-          <p className="text-[11px] text-muted-foreground italic flex-1">Все объекты</p>
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={onEditFilter}
-          className="h-6 text-[11px] shrink-0"
-          data-testid={`button-edit-filter-${entry.layerId}`}
-        >
-          <Pencil className="h-3 w-3 mr-1" />
-          Фильтр
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export function GeoAnalysisModal({
   isOpen,
   onClose,
@@ -598,17 +578,6 @@ export function GeoAnalysisModal({
     [editableLayers]
   );
 
-  const sourceExcludeIds = useMemo(() => new Set(sourceLayers.map(s => s.layerId)), [sourceLayers]);
-  const targetExcludeIds = useMemo(() => {
-    const ids = new Set<number>();
-    if (targetLayer) ids.add(targetLayer.layerId);
-    return ids;
-  }, [targetLayer]);
-  const boundaryExcludeIds = useMemo(() => {
-    const ids = new Set<number>();
-    if (boundaryLayer) ids.add(boundaryLayer.layerId);
-    return ids;
-  }, [boundaryLayer]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -652,34 +621,45 @@ export function GeoAnalysisModal({
     }
   }, [step, loadSourceLayerAttributes]);
 
-  const addSourceLayer = (layer: EditableLayer) => {
-    const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
-    setSourceLayers(prev => [...prev, entry]);
-    setFilterDialogLayer(layer);
-    setFilterDialogConditions([]);
-    setFilterDialogTarget("source");
-    setFilterDialogSourceIndex(sourceLayers.length);
-    setFilterDialogOpen(true);
+  const toggleSourceLayer = (layer: EditableLayer) => {
+    const existingIndex = sourceLayers.findIndex(e => e.layerId === layer.id);
+    if (existingIndex >= 0) {
+      setSourceLayers(prev => prev.filter((_, i) => i !== existingIndex));
+    } else {
+      const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
+      setSourceLayers(prev => [...prev, entry]);
+    }
   };
 
-  const selectTargetLayer = (layer: EditableLayer) => {
-    const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
-    setTargetLayer(entry);
-    setFilterDialogLayer(layer);
-    setFilterDialogConditions([]);
-    setFilterDialogTarget("target");
-    setFilterDialogSourceIndex(-1);
-    setFilterDialogOpen(true);
+  const toggleTargetLayer = (layer: EditableLayer) => {
+    if (targetLayer && targetLayer.layerId === layer.id) {
+      setTargetLayer(null);
+    } else {
+      const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
+      setTargetLayer(entry);
+    }
   };
 
-  const selectBoundaryLayer = (layer: EditableLayer) => {
-    const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
-    setBoundaryLayer(entry);
-    setFilterDialogLayer(layer);
-    setFilterDialogConditions([]);
-    setFilterDialogTarget("boundary");
-    setFilterDialogSourceIndex(-1);
-    setFilterDialogOpen(true);
+  const toggleBoundaryLayer = (layer: EditableLayer) => {
+    if (boundaryLayer && boundaryLayer.layerId === layer.id) {
+      setBoundaryLayer(null);
+    } else {
+      const entry: SelectedLayerEntry = { layerId: layer.id, filters: [], filterSqlPreview: "" };
+      setBoundaryLayer(entry);
+    }
+  };
+
+  const openFilterForSourceByLayerId = (layerId: number) => {
+    const index = sourceLayers.findIndex(e => e.layerId === layerId);
+    if (index >= 0) openFilterForSource(index);
+  };
+
+  const openFilterForTargetByLayerId = (_layerId: number) => {
+    openFilterForTarget();
+  };
+
+  const openFilterForBoundaryByLayerId = (_layerId: number) => {
+    openFilterForBoundary();
   };
 
   const openFilterForSource = (index: number) => {
@@ -734,9 +714,6 @@ export function GeoAnalysisModal({
     setFilterDialogOpen(false);
   };
 
-  const removeSourceLayer = (index: number) => {
-    setSourceLayers(prev => prev.filter((_, i) => i !== index));
-  };
 
   const toggleAttributeSelection = (layerId: string, attr: string) => {
     setSelectedAttributes(prev => {
@@ -1032,33 +1009,12 @@ export function GeoAnalysisModal({
             <Badge variant="secondary" className="text-[10px]">{sourceLayers.length}</Badge>
           )}
         </div>
-        {sourceLayers.length > 0 && (
-          <div className="border-b shrink-0">
-            <ScrollArea className="max-h-[140px]">
-              <div className="p-1.5 space-y-1">
-                {sourceLayers.map((entry, index) => {
-                  const layer = editableLayers.find(l => l.id === entry.layerId);
-                  return (
-                    <LayerCard
-                      key={`${entry.layerId}-${index}`}
-                      entry={entry}
-                      layer={layer}
-                      onEditFilter={() => openFilterForSource(index)}
-                      onRemove={() => removeSourceLayer(index)}
-                    />
-                  );
-                })}
-              </div>
-            </ScrollArea>
-          </div>
-        )}
-        <div className="px-2 pt-1.5 shrink-0">
-          <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Доступные слои</Label>
-        </div>
         <InlineLayerList
           editableLayers={editableLayers}
-          excludeLayerIds={sourceExcludeIds}
-          onSelect={addSourceLayer}
+          selectedEntries={sourceLayers}
+          multiSelect
+          onToggle={toggleSourceLayer}
+          onFilterClick={openFilterForSourceByLayerId}
         />
       </div>
 
@@ -1068,32 +1024,18 @@ export function GeoAnalysisModal({
           <span className="text-xs font-medium">Целевой слой</span>
           <Badge variant="outline" className="text-[10px]">привязка</Badge>
         </div>
-        {targetLayer && (
-          <div className="border-b shrink-0 p-1.5">
-            <LayerCard
-              entry={targetLayer}
-              layer={editableLayers.find(l => l.id === targetLayer.layerId)}
-              onEditFilter={openFilterForTarget}
-              onRemove={() => setTargetLayer(null)}
-            />
-          </div>
-        )}
         {!targetLayer && (
-          <div className="px-2 py-1.5 border-b shrink-0">
-            <p className="text-[11px] text-muted-foreground italic">
+          <div className="px-2 py-1 shrink-0">
+            <p className="text-[10px] text-muted-foreground italic">
               Если не выбран — только пространственный анализ
             </p>
           </div>
         )}
-        <div className="px-2 pt-1.5 shrink-0">
-          <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            {targetLayer ? "Заменить на" : "Выберите слой"}
-          </Label>
-        </div>
         <InlineLayerList
           editableLayers={editableLayers}
-          excludeLayerIds={targetExcludeIds}
-          onSelect={selectTargetLayer}
+          selectedEntries={targetLayer ? [targetLayer] : []}
+          onToggle={toggleTargetLayer}
+          onFilterClick={openFilterForTargetByLayerId}
         />
       </div>
 
@@ -1164,27 +1106,12 @@ export function GeoAnalysisModal({
           )}
         </div>
 
-        {boundaryLayer && (
-          <div className="border-b shrink-0 p-1.5">
-            <LayerCard
-              entry={boundaryLayer}
-              layer={editableLayers.find(l => l.id === boundaryLayer.layerId)}
-              onEditFilter={openFilterForBoundary}
-              onRemove={() => setBoundaryLayer(null)}
-            />
-          </div>
-        )}
-
-        <div className="px-2 pt-1.5 shrink-0">
-          <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            {boundaryLayer ? "Заменить на" : "Выберите слой"}
-          </Label>
-        </div>
         <InlineLayerList
           editableLayers={editableLayers}
-          excludeLayerIds={boundaryExcludeIds}
+          selectedEntries={boundaryLayer ? [boundaryLayer] : []}
           filterGeometryTypes={boundaryType === "polygon" ? ["Polygon"] : ["LineString"]}
-          onSelect={selectBoundaryLayer}
+          onToggle={toggleBoundaryLayer}
+          onFilterClick={openFilterForBoundaryByLayerId}
         />
       </div>
     </div>
