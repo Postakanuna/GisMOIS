@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card } from "@/components/ui/card";
@@ -675,8 +674,8 @@ export function LayerStylePanel({
           </div>
 
           {renderer !== "single" && field && (
-            <ScrollArea className="flex-1 min-h-0 px-4 py-2">
-              <div className="space-y-1.5 pr-3">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2">
+              <div className="space-y-1.5">
                 {renderer === "categorized" && categorizedClasses.map((cls, i) => (
                   <div
                     key={i}
@@ -884,7 +883,7 @@ export function LayerStylePanel({
                   </p>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           )}
 
           {renderer !== "single" && !field && (
