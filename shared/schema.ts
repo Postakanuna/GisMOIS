@@ -115,7 +115,7 @@ export type InsertTicket = z.infer<typeof insertTicketSchema>;
 // Basic shapes + ГОСТ heat network symbols
 export const pointStyleSchema = z.enum([
   // Basic geometric shapes
-  "circle", "square", "triangle", "cloud",
+  "circle", "square", "triangle", "cloud", "diamond", "star", "cross", "hexagon", "pentagon",
   // ГОСТ heat network symbols
   "heat-source",    // Теплоисточник
   "ctp",            // ЦТП (Центральный тепловой пункт)
@@ -132,7 +132,7 @@ export type PointStyle = z.infer<typeof pointStyleSchema>;
 // Basic styles + ГОСТ heat network line styles
 export const lineStyleSchema = z.enum([
   // Basic line styles
-  "solid", "dashed", "double",
+  "solid", "dashed", "double", "dash-dot", "dotted", "long-dash", "dash-dot-dot",
   // ГОСТ heat network line styles
   "relaying",              // Под перекладку
   "bypass",                // Байпас (временная схема)

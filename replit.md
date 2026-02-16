@@ -100,6 +100,21 @@ Preferred communication style: Simple, everyday language.
 - **Drizzle ORM**: Типобезопасные запросы к базе данных и управление схемой.
 - **shpjs**: Парсинг Shapefile с поддержкой кодировок.
 
+### Расширенная библиотека стилей
+
+**Точечные стили** (pointStyle):
+- Базовые: circle, square, triangle, cloud, diamond, star, cross, hexagon, pentagon
+- ГОСТ теплосети: heat-source, ctp, itp, valve, heat-chamber, pump-station, compensator, support
+- Пользовательские SVG-иконки (custom icons)
+
+**Линейные стили** (lineStyle):
+- Базовые: solid, dashed, double, dash-dot, dotted, long-dash, dash-dot-dot
+- ГОСТ теплосети: relaying, bypass, demolition, above-ground, underground-channel, underground-channelless, state-program
+
+**Per-class стилизация**: В категоризированном и градуированном рендерерах можно назначить отдельный pointStyle и lineStyle для каждого класса (например, ZMode=1 → круг, ZMode=2 → треугольник).
+- Компоненты: IconPicker (точки), LinePicker (линии)
+- Легенда карты (MapLegend) отображает правильные символы per-class.
+
 ### Геокодирование (Yandex Geocoder API)
 
 Импорт Excel поддерживает два режима получения координат:

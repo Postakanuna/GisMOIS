@@ -273,6 +273,48 @@ function createPointImageStyle(
         radius2: scaledRadius * 0.6,
         angle: 0,
       });
+    case "diamond":
+      return new RegularShape({
+        fill,
+        stroke,
+        points: 4,
+        radius: scaledRadius,
+        angle: 0,
+      });
+    case "star":
+      return new RegularShape({
+        fill,
+        stroke,
+        points: 5,
+        radius: scaledRadius,
+        radius2: scaledRadius * 0.4,
+        angle: 0,
+      });
+    case "cross":
+      return new RegularShape({
+        fill,
+        stroke,
+        points: 4,
+        radius: scaledRadius,
+        radius2: 0,
+        angle: 0,
+      });
+    case "hexagon":
+      return new RegularShape({
+        fill,
+        stroke,
+        points: 6,
+        radius: scaledRadius,
+        angle: 0,
+      });
+    case "pentagon":
+      return new RegularShape({
+        fill,
+        stroke,
+        points: 5,
+        radius: scaledRadius,
+        angle: 0,
+      });
     case "circle":
     default:
       return new Circle({
@@ -300,6 +342,14 @@ function createLineStroke(color: string, lineStyle: LineStyle = "solid"): Stroke
       return new Stroke({ color, width: 2, lineDash: [8, 4] });
     case "double":
       return new Stroke({ color, width: 4 });
+    case "dash-dot":
+      return new Stroke({ color, width: 2, lineDash: [10, 4, 2, 4] });
+    case "dotted":
+      return new Stroke({ color, width: 2, lineDash: [2, 4] });
+    case "long-dash":
+      return new Stroke({ color, width: 2, lineDash: [16, 6] });
+    case "dash-dot-dot":
+      return new Stroke({ color, width: 2, lineDash: [10, 4, 2, 4, 2, 4] });
     case "solid":
     default:
       return new Stroke({ color, width: 2 });

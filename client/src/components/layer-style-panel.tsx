@@ -33,6 +33,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { IconPicker, getCustomIconPreview } from "@/components/icon-picker";
+import { LinePicker } from "@/components/line-picker";
 import {
   getHeatNetworkPreviewIcon,
   isHeatNetworkStyle,
@@ -70,6 +71,10 @@ const BASIC_LINE_STYLES = [
   { value: "solid", label: "Сплошная" },
   { value: "dashed", label: "Пунктирная" },
   { value: "double", label: "Двойная" },
+  { value: "dash-dot", label: "Штрих-пунктир" },
+  { value: "dotted", label: "Точечная" },
+  { value: "long-dash", label: "Длинный пунктир" },
+  { value: "dash-dot-dot", label: "Штрих-точка-точка" },
 ];
 
 function generateColor(index: number): string {
@@ -373,8 +378,8 @@ export function LayerStylePanel({
     );
   };
 
-  const isPoint = layer.geometryType === "Point";
-  const isLine = layer.geometryType === "LineString";
+  const isPoint = layer.geometryType === "Point" || layer.geometryType === "MultiPoint";
+  const isLine = layer.geometryType === "LineString" || layer.geometryType === "MultiLineString";
   const heatNetworkLineStyles = getHeatNetworkLineStyles();
 
   return (
@@ -711,6 +716,20 @@ export function LayerStylePanel({
                                 }}
                               />
                             )}
+                            {isLine && (
+                              <LinePicker
+                                selectedLineStyle={cls.style.lineStyle || lineStyle}
+                                color={cls.style.color}
+                                onSelect={(ls) => {
+                                  updateCategorizedClass(i, {
+                                    style: {
+                                      ...cls.style,
+                                      lineStyle: ls as any,
+                                    },
+                                  });
+                                }}
+                              />
+                            )}
                             <Input
                               value={String(cls.value)}
                               onChange={(e) =>
@@ -811,6 +830,36 @@ export function LayerStylePanel({
                               className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
                               data-testid={`input-range-color-${i}`}
                             />
+                            {isPoint && (
+                              <IconPicker
+                                selectedPointStyle={cls.style.pointStyle}
+                                selectedCustomIconId={cls.style.customIconId}
+                                color={cls.style.color}
+                                onSelect={(sel) => {
+                                  updateGraduatedClass(i, {
+                                    style: {
+                                      ...cls.style,
+                                      pointStyle: sel.pointStyle as any,
+                                      customIconId: sel.customIconId,
+                                    },
+                                  });
+                                }}
+                              />
+                            )}
+                            {isLine && (
+                              <LinePicker
+                                selectedLineStyle={cls.style.lineStyle || lineStyle}
+                                color={cls.style.color}
+                                onSelect={(ls) => {
+                                  updateGraduatedClass(i, {
+                                    style: {
+                                      ...cls.style,
+                                      lineStyle: ls as any,
+                                    },
+                                  });
+                                }}
+                              />
+                            )}
                             <Input
                               type="number"
                               value={cls.min}

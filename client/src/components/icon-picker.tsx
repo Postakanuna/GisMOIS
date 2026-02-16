@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, Trash2, Loader2, Circle, Square, Triangle, Cloud } from "lucide-react";
+import { Upload, Trash2, Loader2, Circle, Square, Triangle, Cloud, Diamond, Star, Plus as CrossIcon, Hexagon, Pentagon } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
   getHeatNetworkPreviewIcon,
@@ -20,6 +20,11 @@ const BASIC_SHAPES: { value: PointStyle; label: string; icon: typeof Circle }[] 
   { value: "square", label: "Квадрат", icon: Square },
   { value: "triangle", label: "Треугольник", icon: Triangle },
   { value: "cloud", label: "Облако", icon: Cloud },
+  { value: "diamond", label: "Ромб", icon: Diamond },
+  { value: "star", label: "Звезда", icon: Star },
+  { value: "cross", label: "Крест", icon: CrossIcon },
+  { value: "hexagon", label: "Шестиугольник", icon: Hexagon },
+  { value: "pentagon", label: "Пятиугольник", icon: Pentagon },
 ];
 
 const HEAT_NETWORK_STYLES: { value: HeatNetworkPointStyle; label: string }[] = Object.entries(
