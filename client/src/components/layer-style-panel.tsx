@@ -385,7 +385,7 @@ export function LayerStylePanel({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-4xl max-h-[85vh] flex flex-col p-0"
+        className="max-w-2xl max-h-[85vh] flex flex-col p-0"
         data-testid="dialog-layer-style-panel"
       >
         <DialogHeader className="px-4 pt-4 pb-2">
@@ -424,210 +424,104 @@ export function LayerStylePanel({
           </Button>
         </div>
 
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <div className="w-64 border-r p-3 overflow-y-auto flex-shrink-0">
-            <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-medium mb-2 block">Цвет</Label>
-                <div className="flex flex-wrap gap-1">
-                  {LAYER_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      className={`h-6 w-6 rounded-sm border ${
-                        color === c ? "ring-2 ring-primary ring-offset-1" : ""
-                      }`}
-                      style={{ backgroundColor: c }}
-                      onClick={() => setColor(c)}
-                      data-testid={`color-swatch-${c}`}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    className="w-8 h-8 rounded border cursor-pointer"
-                    data-testid="input-custom-color"
-                  />
-                  <span className="text-xs text-muted-foreground">Произвольный</span>
-                </div>
-              </div>
-
-              {isPoint && (
-                <div>
-                  <Label className="text-xs font-medium mb-2 block">Иконка</Label>
-                  <div className="flex items-center gap-2">
-                    <IconPicker
-                      selectedPointStyle={pointStyle}
-                      selectedCustomIconId={customIconId}
-                      color={color}
-                      onSelect={(sel) => {
-                        if (sel.pointStyle !== undefined) setPointStyle(sel.pointStyle || "circle");
-                        if (sel.customIconId !== undefined) {
-                          setCustomIconId(sel.customIconId);
-                          if (sel.customIconId) setPointStyle("circle");
-                        } else {
-                          setCustomIconId(undefined);
-                        }
-                      }}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {customIconId
-                        ? customIcons.find((i) => i.id === customIconId)?.name || "Своя"
-                        : isHeatNetworkStyle(pointStyle)
-                        ? HEAT_NETWORK_LABELS[pointStyle as HeatNetworkPointStyle]
-                        : pointStyle}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {isPoint && (
-                <div>
-                  <Label className="text-xs font-medium mb-1 block">
-                    Размер: {iconSize}px
-                  </Label>
-                  <Slider
-                    value={[iconSize]}
-                    onValueChange={([v]) => setIconSize(v)}
-                    min={8}
-                    max={64}
-                    step={1}
-                    className="w-full"
-                    data-testid="slider-icon-size"
-                  />
-                </div>
-              )}
-
-              {isLine && (
-                <div>
-                  <Label className="text-xs font-medium mb-2 block">Стиль линии</Label>
-                  <div className="space-y-1">
-                    <div className="flex gap-1">
-                      {BASIC_LINE_STYLES.map(({ value, label }) => (
-                        <Tooltip key={value}>
-                          <TooltipTrigger asChild>
-                            <button
-                              className={`h-8 px-2 flex items-center justify-center rounded border text-xs ${
-                                lineStyle === value
-                                  ? "bg-primary/20 border-primary"
-                                  : "border-border"
-                              }`}
-                              onClick={() => setLineStyle(value)}
-                              data-testid={`line-style-${value}`}
-                            >
-                              {value === "solid" && (
-                                <Minus className="h-4 w-4" />
-                              )}
-                              {value === "dashed" && (
-                                <MoreHorizontal className="h-4 w-4" />
-                              )}
-                              {value === "double" && (
-                                <span className="font-bold">=</span>
-                              )}
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p className="text-xs">{label}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {heatNetworkLineStyles.map(({ value, label }) => (
-                        <Tooltip key={value}>
-                          <TooltipTrigger asChild>
-                            <button
-                              className={`h-8 px-1 flex items-center justify-center rounded border ${
-                                lineStyle === value
-                                  ? "bg-primary/20 border-primary"
-                                  : "border-border"
-                              }`}
-                              onClick={() => setLineStyle(value)}
-                              data-testid={`line-style-${value}`}
-                            >
-                              <img
-                                src={getLinePreviewDataUrl(value as any, color)}
-                                alt={label}
-                                className="h-4 w-12"
-                              />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p className="text-xs">{label}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <Label className="text-xs font-medium mb-1 block">
-                  Толщина обводки: {strokeWidth}px
-                </Label>
-                <Slider
-                  value={[strokeWidth]}
-                  onValueChange={([v]) => setStrokeWidth(v)}
-                  min={0.5}
-                  max={10}
-                  step={0.5}
-                  className="w-full"
-                  data-testid="slider-stroke-width"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs font-medium mb-1 block">
-                  Прозрачность заливки: {Math.round(fillOpacity * 100)}%
-                </Label>
-                <Slider
-                  value={[fillOpacity]}
-                  onValueChange={([v]) => setFillOpacity(v)}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  className="w-full"
-                  data-testid="slider-fill-opacity"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs font-medium mb-1 block">
-                  Непрозрачность слоя: {Math.round(opacity * 100)}%
-                </Label>
-                <Slider
-                  value={[opacity]}
-                  onValueChange={([v]) => setOpacity(v)}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  className="w-full"
-                  data-testid="slider-layer-opacity"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 p-3 overflow-hidden flex flex-col min-w-0">
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="p-4 space-y-4">
             {renderer === "single" && (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center text-muted-foreground">
-                  <Layers className="h-12 w-12 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Единый стиль</p>
-                  <p className="text-xs mt-1">
-                    Все объекты слоя отображаются одинаково.
-                    <br />
-                    Настройте параметры слева.
-                  </p>
+              <>
+                <div>
+                  <Label className="text-xs font-medium mb-2 block">Цвет</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {LAYER_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        className={`h-6 w-6 rounded-sm border ${
+                          color === c ? "ring-2 ring-primary ring-offset-1" : ""
+                        }`}
+                        style={{ backgroundColor: c }}
+                        onClick={() => setColor(c)}
+                        data-testid={`color-swatch-${c}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                      className="w-8 h-8 rounded border cursor-pointer"
+                      data-testid="input-custom-color"
+                    />
+                    <span className="text-xs text-muted-foreground">Произвольный</span>
+                  </div>
                 </div>
-              </div>
+
+                {isPoint && (
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <Label className="text-xs font-medium mb-2 block">Иконка</Label>
+                      <div className="flex items-center gap-2">
+                        <IconPicker
+                          selectedPointStyle={pointStyle}
+                          selectedCustomIconId={customIconId}
+                          color={color}
+                          onSelect={(sel) => {
+                            if (sel.pointStyle !== undefined) setPointStyle(sel.pointStyle || "circle");
+                            if (sel.customIconId !== undefined) {
+                              setCustomIconId(sel.customIconId);
+                              if (sel.customIconId) setPointStyle("circle");
+                            } else {
+                              setCustomIconId(undefined);
+                            }
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {customIconId
+                            ? customIcons.find((i) => i.id === customIconId)?.name || "Своя"
+                            : isHeatNetworkStyle(pointStyle)
+                            ? HEAT_NETWORK_LABELS[pointStyle as HeatNetworkPointStyle]
+                            : pointStyle}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs font-medium mb-1 block">
+                        Размер: {iconSize}px
+                      </Label>
+                      <Slider
+                        value={[iconSize]}
+                        onValueChange={([v]) => setIconSize(v)}
+                        min={8}
+                        max={64}
+                        step={1}
+                        className="w-full"
+                        data-testid="slider-icon-size"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {isLine && (
+                  <div>
+                    <Label className="text-xs font-medium mb-2 block">Стиль линии</Label>
+                    <div className="flex items-center gap-2">
+                      <LinePicker
+                        selectedLineStyle={lineStyle}
+                        color={color}
+                        onSelect={(ls) => setLineStyle(ls)}
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {BASIC_LINE_STYLES.find(s => s.value === lineStyle)?.label
+                          || heatNetworkLineStyles.find(s => s.value === lineStyle)?.label
+                          || lineStyle}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {renderer !== "single" && (
-              <div className="space-y-3 flex-1 flex flex-col overflow-hidden">
+              <>
                 <div className="flex items-center gap-2">
                   <Label className="text-xs whitespace-nowrap">Поле:</Label>
                   <Select value={field} onValueChange={setField}>
@@ -647,6 +541,74 @@ export function LayerStylePanel({
                       )}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div>
+                  <Label className="text-xs font-medium mb-2 block">Стиль по умолчанию</Label>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {LAYER_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        className={`h-5 w-5 rounded-sm border ${
+                          color === c ? "ring-2 ring-primary ring-offset-1" : ""
+                        }`}
+                        style={{ backgroundColor: c }}
+                        onClick={() => setColor(c)}
+                        data-testid={`color-swatch-${c}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="color"
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                      className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
+                      data-testid="input-custom-color"
+                    />
+                    {isPoint && (
+                      <IconPicker
+                        selectedPointStyle={pointStyle}
+                        selectedCustomIconId={customIconId}
+                        color={color}
+                        onSelect={(sel) => {
+                          if (sel.pointStyle !== undefined) setPointStyle(sel.pointStyle || "circle");
+                          if (sel.customIconId !== undefined) {
+                            setCustomIconId(sel.customIconId);
+                            if (sel.customIconId) setPointStyle("circle");
+                          } else {
+                            setCustomIconId(undefined);
+                          }
+                        }}
+                      />
+                    )}
+                    {isLine && (
+                      <LinePicker
+                        selectedLineStyle={lineStyle}
+                        color={color}
+                        onSelect={(ls) => setLineStyle(ls)}
+                      />
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      для объектов без класса
+                    </span>
+                  </div>
+                  {isPoint && (
+                    <div className="mt-2">
+                      <Label className="text-xs font-medium mb-1 block">
+                        Размер иконки по умолчанию: {iconSize}px
+                      </Label>
+                      <Slider
+                        value={[iconSize]}
+                        onValueChange={([v]) => setIconSize(v)}
+                        min={8}
+                        max={64}
+                        step={1}
+                        className="w-full"
+                        data-testid="slider-icon-size"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {renderer === "categorized" && field && (
@@ -678,104 +640,102 @@ export function LayerStylePanel({
                         </Button>
                       </div>
                     </div>
-                    <ScrollArea className="flex-1 min-h-0">
-                      <div className="space-y-1.5 pr-3">
-                        {categorizedClasses.map((cls, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-1.5 p-1.5 rounded border border-border"
-                            data-testid={`categorized-class-${i}`}
-                          >
-                            <input
-                              type="color"
-                              value={cls.style.color}
-                              onChange={(e) =>
+                    <div className="space-y-1.5">
+                      {categorizedClasses.map((cls, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-1.5 p-1.5 rounded border border-border"
+                          data-testid={`categorized-class-${i}`}
+                        >
+                          <input
+                            type="color"
+                            value={cls.style.color}
+                            onChange={(e) =>
+                              updateCategorizedClass(i, {
+                                style: {
+                                  ...cls.style,
+                                  color: e.target.value,
+                                },
+                              })
+                            }
+                            className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
+                            data-testid={`input-class-color-${i}`}
+                          />
+                          {isPoint && (
+                            <IconPicker
+                              selectedPointStyle={cls.style.pointStyle}
+                              selectedCustomIconId={cls.style.customIconId}
+                              color={cls.style.color}
+                              onSelect={(sel) => {
                                 updateCategorizedClass(i, {
                                   style: {
                                     ...cls.style,
-                                    color: e.target.value,
-                                  },
-                                })
-                              }
-                              className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
-                              data-testid={`input-class-color-${i}`}
-                            />
-                            {isPoint && (
-                              <IconPicker
-                                selectedPointStyle={cls.style.pointStyle}
-                                selectedCustomIconId={cls.style.customIconId}
-                                color={cls.style.color}
-                                onSelect={(sel) => {
-                                  updateCategorizedClass(i, {
-                                    style: {
-                                      ...cls.style,
-                                      pointStyle: sel.pointStyle as any,
-                                      customIconId: sel.customIconId,
-                                    },
-                                  });
-                                }}
-                              />
-                            )}
-                            {isLine && (
-                              <LinePicker
-                                selectedLineStyle={cls.style.lineStyle || lineStyle}
-                                color={cls.style.color}
-                                onSelect={(ls) => {
-                                  updateCategorizedClass(i, {
-                                    style: {
-                                      ...cls.style,
-                                      lineStyle: ls as any,
-                                    },
-                                  });
-                                }}
-                              />
-                            )}
-                            <Input
-                              value={String(cls.value)}
-                              onChange={(e) =>
-                                updateCategorizedClass(i, {
-                                  value: e.target.value,
-                                  label: e.target.value,
-                                })
-                              }
-                              placeholder="Значение"
-                              className="flex-1 h-8 text-sm"
-                              data-testid={`input-class-value-${i}`}
-                            />
-                            <Input
-                              type="number"
-                              value={cls.style.iconSize || iconSize}
-                              onChange={(e) => {
-                                const size = parseInt(e.target.value) || 24;
-                                updateCategorizedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    iconSize: Math.min(128, Math.max(4, size)),
+                                    pointStyle: sel.pointStyle as any,
+                                    customIconId: sel.customIconId,
                                   },
                                 });
                               }}
-                              placeholder="Px"
-                              className="w-14 h-8 text-sm"
-                              title="Размер иконки (px)"
-                              data-testid={`input-class-size-${i}`}
                             />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeCategorizedClass(i)}
-                              data-testid={`button-remove-class-${i}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          </div>
-                        ))}
-                        {categorizedClasses.length === 0 && (
-                          <p className="text-sm text-muted-foreground py-4 text-center">
-                            Нажмите "Автоклассификация" для заполнения классов
-                          </p>
-                        )}
-                      </div>
-                    </ScrollArea>
+                          )}
+                          {isLine && (
+                            <LinePicker
+                              selectedLineStyle={cls.style.lineStyle || lineStyle}
+                              color={cls.style.color}
+                              onSelect={(ls) => {
+                                updateCategorizedClass(i, {
+                                  style: {
+                                    ...cls.style,
+                                    lineStyle: ls as any,
+                                  },
+                                });
+                              }}
+                            />
+                          )}
+                          <Input
+                            value={String(cls.value)}
+                            onChange={(e) =>
+                              updateCategorizedClass(i, {
+                                value: e.target.value,
+                                label: e.target.value,
+                              })
+                            }
+                            placeholder="Значение"
+                            className="flex-1 h-8 text-sm"
+                            data-testid={`input-class-value-${i}`}
+                          />
+                          <Input
+                            type="number"
+                            value={cls.style.iconSize || iconSize}
+                            onChange={(e) => {
+                              const size = parseInt(e.target.value) || 24;
+                              updateCategorizedClass(i, {
+                                style: {
+                                  ...cls.style,
+                                  iconSize: Math.min(128, Math.max(4, size)),
+                                },
+                              });
+                            }}
+                            placeholder="Px"
+                            className="w-14 h-8 text-sm"
+                            title="Размер иконки (px)"
+                            data-testid={`input-class-size-${i}`}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeCategorizedClass(i)}
+                            data-testid={`button-remove-class-${i}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      ))}
+                      {categorizedClasses.length === 0 && (
+                        <p className="text-sm text-muted-foreground py-4 text-center">
+                          Нажмите "Автоклассификация" для заполнения классов
+                        </p>
+                      )}
+                    </div>
                   </>
                 )}
 
@@ -808,137 +768,183 @@ export function LayerStylePanel({
                         </Button>
                       </div>
                     </div>
-                    <ScrollArea className="flex-1 min-h-0">
-                      <div className="space-y-1.5 pr-3">
-                        {graduatedClasses.map((cls, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-1.5 p-1.5 rounded border border-border"
-                            data-testid={`graduated-class-${i}`}
+                    <div className="space-y-1.5">
+                      {graduatedClasses.map((cls, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-1.5 p-1.5 rounded border border-border"
+                          data-testid={`graduated-class-${i}`}
+                        >
+                          <input
+                            type="color"
+                            value={cls.style.color}
+                            onChange={(e) =>
+                              updateGraduatedClass(i, {
+                                style: {
+                                  ...cls.style,
+                                  color: e.target.value,
+                                },
+                              })
+                            }
+                            className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
+                            data-testid={`input-range-color-${i}`}
+                          />
+                          {isPoint && (
+                            <IconPicker
+                              selectedPointStyle={cls.style.pointStyle}
+                              selectedCustomIconId={cls.style.customIconId}
+                              color={cls.style.color}
+                              onSelect={(sel) => {
+                                updateGraduatedClass(i, {
+                                  style: {
+                                    ...cls.style,
+                                    pointStyle: sel.pointStyle as any,
+                                    customIconId: sel.customIconId,
+                                  },
+                                });
+                              }}
+                            />
+                          )}
+                          {isLine && (
+                            <LinePicker
+                              selectedLineStyle={cls.style.lineStyle || lineStyle}
+                              color={cls.style.color}
+                              onSelect={(ls) => {
+                                updateGraduatedClass(i, {
+                                  style: {
+                                    ...cls.style,
+                                    lineStyle: ls as any,
+                                  },
+                                });
+                              }}
+                            />
+                          )}
+                          <Input
+                            type="number"
+                            value={cls.min}
+                            onChange={(e) => {
+                              const min = parseFloat(e.target.value) || 0;
+                              updateGraduatedClass(i, {
+                                min,
+                                label: `${min} - ${cls.max}`,
+                              });
+                            }}
+                            placeholder="Мин"
+                            className="w-20 h-8 text-sm"
+                            data-testid={`input-range-min-${i}`}
+                          />
+                          <span className="text-muted-foreground text-sm">
+                            -
+                          </span>
+                          <Input
+                            type="number"
+                            value={cls.max}
+                            onChange={(e) => {
+                              const max = parseFloat(e.target.value) || 0;
+                              updateGraduatedClass(i, {
+                                max,
+                                label: `${cls.min} - ${max}`,
+                              });
+                            }}
+                            placeholder="Макс"
+                            className="w-20 h-8 text-sm"
+                            data-testid={`input-range-max-${i}`}
+                          />
+                          <Input
+                            type="number"
+                            value={cls.style.iconSize || iconSize}
+                            onChange={(e) => {
+                              const size = parseInt(e.target.value) || 24;
+                              updateGraduatedClass(i, {
+                                style: {
+                                  ...cls.style,
+                                  iconSize: Math.min(128, Math.max(4, size)),
+                                },
+                              });
+                            }}
+                            placeholder="Px"
+                            className="w-14 h-8 text-sm"
+                            title="Размер иконки (px)"
+                            data-testid={`input-range-size-${i}`}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeGraduatedClass(i)}
+                            data-testid={`button-remove-range-${i}`}
                           >
-                            <input
-                              type="color"
-                              value={cls.style.color}
-                              onChange={(e) =>
-                                updateGraduatedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    color: e.target.value,
-                                  },
-                                })
-                              }
-                              className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
-                              data-testid={`input-range-color-${i}`}
-                            />
-                            {isPoint && (
-                              <IconPicker
-                                selectedPointStyle={cls.style.pointStyle}
-                                selectedCustomIconId={cls.style.customIconId}
-                                color={cls.style.color}
-                                onSelect={(sel) => {
-                                  updateGraduatedClass(i, {
-                                    style: {
-                                      ...cls.style,
-                                      pointStyle: sel.pointStyle as any,
-                                      customIconId: sel.customIconId,
-                                    },
-                                  });
-                                }}
-                              />
-                            )}
-                            {isLine && (
-                              <LinePicker
-                                selectedLineStyle={cls.style.lineStyle || lineStyle}
-                                color={cls.style.color}
-                                onSelect={(ls) => {
-                                  updateGraduatedClass(i, {
-                                    style: {
-                                      ...cls.style,
-                                      lineStyle: ls as any,
-                                    },
-                                  });
-                                }}
-                              />
-                            )}
-                            <Input
-                              type="number"
-                              value={cls.min}
-                              onChange={(e) => {
-                                const min = parseFloat(e.target.value) || 0;
-                                updateGraduatedClass(i, {
-                                  min,
-                                  label: `${min} - ${cls.max}`,
-                                });
-                              }}
-                              placeholder="Мин"
-                              className="w-20 h-8 text-sm"
-                              data-testid={`input-range-min-${i}`}
-                            />
-                            <span className="text-muted-foreground text-sm">
-                              -
-                            </span>
-                            <Input
-                              type="number"
-                              value={cls.max}
-                              onChange={(e) => {
-                                const max = parseFloat(e.target.value) || 0;
-                                updateGraduatedClass(i, {
-                                  max,
-                                  label: `${cls.min} - ${max}`,
-                                });
-                              }}
-                              placeholder="Макс"
-                              className="w-20 h-8 text-sm"
-                              data-testid={`input-range-max-${i}`}
-                            />
-                            <Input
-                              type="number"
-                              value={cls.style.iconSize || iconSize}
-                              onChange={(e) => {
-                                const size = parseInt(e.target.value) || 24;
-                                updateGraduatedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    iconSize: Math.min(128, Math.max(4, size)),
-                                  },
-                                });
-                              }}
-                              placeholder="Px"
-                              className="w-14 h-8 text-sm"
-                              title="Размер иконки (px)"
-                              data-testid={`input-range-size-${i}`}
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeGraduatedClass(i)}
-                              data-testid={`button-remove-range-${i}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          </div>
-                        ))}
-                        {graduatedClasses.length === 0 && (
-                          <p className="text-sm text-muted-foreground py-4 text-center">
-                            Нажмите "Авторазбиение" для заполнения диапазонов
-                          </p>
-                        )}
-                      </div>
-                    </ScrollArea>
+                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      ))}
+                      {graduatedClasses.length === 0 && (
+                        <p className="text-sm text-muted-foreground py-4 text-center">
+                          Нажмите "Авторазбиение" для заполнения диапазонов
+                        </p>
+                      )}
+                    </div>
                   </>
                 )}
 
-                {renderer !== "single" && !field && (
-                  <div className="flex items-center justify-center flex-1">
+                {!field && (
+                  <div className="flex items-center justify-center py-8">
                     <p className="text-sm text-muted-foreground">
                       Выберите поле атрибута для настройки классов
                     </p>
                   </div>
                 )}
-              </div>
+              </>
             )}
+
+            <div className="border-t pt-4 space-y-3">
+              <Label className="text-xs font-medium text-muted-foreground">Общие параметры</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-xs font-medium mb-1 block">
+                    Толщина обводки: {strokeWidth}px
+                  </Label>
+                  <Slider
+                    value={[strokeWidth]}
+                    onValueChange={([v]) => setStrokeWidth(v)}
+                    min={0.5}
+                    max={10}
+                    step={0.5}
+                    className="w-full"
+                    data-testid="slider-stroke-width"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-medium mb-1 block">
+                    Прозрачность заливки: {Math.round(fillOpacity * 100)}%
+                  </Label>
+                  <Slider
+                    value={[fillOpacity]}
+                    onValueChange={([v]) => setFillOpacity(v)}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    className="w-full"
+                    data-testid="slider-fill-opacity"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-medium mb-1 block">
+                    Непрозрачность слоя: {Math.round(opacity * 100)}%
+                  </Label>
+                  <Slider
+                    value={[opacity]}
+                    onValueChange={([v]) => setOpacity(v)}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    className="w-full"
+                    data-testid="slider-layer-opacity"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        </ScrollArea>
 
         <DialogFooter className="px-4 py-3 border-t gap-2">
           <Button
