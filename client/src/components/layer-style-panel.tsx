@@ -424,8 +424,8 @@ export function LayerStylePanel({
           </Button>
         </div>
 
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="p-4 space-y-4">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="px-4 pt-3 space-y-3 flex-shrink-0">
             {renderer === "single" && (
               <>
                 <div>
@@ -612,339 +612,337 @@ export function LayerStylePanel({
                 </div>
 
                 {renderer === "categorized" && field && (
-                  <>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <Label className="text-xs">
-                        Классы ({categorizedClasses.length})
-                      </Label>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleAutoClassify}
-                          disabled={isFetchingValues}
-                          data-testid="button-auto-classify"
-                        >
-                          {isFetchingValues && (
-                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          )}
-                          Автоклассификация
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={addCategorizedClass}
-                          data-testid="button-add-class"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Label className="text-xs">
+                      Классы ({categorizedClasses.length})
+                    </Label>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAutoClassify}
+                        disabled={isFetchingValues}
+                        data-testid="button-auto-classify"
+                      >
+                        {isFetchingValues && (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        )}
+                        Автоклассификация
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addCategorizedClass}
+                        data-testid="button-add-class"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
                     </div>
-                    <div className="space-y-1.5">
-                      {categorizedClasses.map((cls, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-1.5 p-1.5 rounded border border-border"
-                          data-testid={`categorized-class-${i}`}
-                        >
-                          <input
-                            type="color"
-                            value={cls.style.color}
-                            onChange={(e) =>
-                              updateCategorizedClass(i, {
-                                style: {
-                                  ...cls.style,
-                                  color: e.target.value,
-                                },
-                              })
-                            }
-                            className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
-                            data-testid={`input-class-color-${i}`}
-                          />
-                          {isPoint && (
-                            <IconPicker
-                              selectedPointStyle={cls.style.pointStyle}
-                              selectedCustomIconId={cls.style.customIconId}
-                              color={cls.style.color}
-                              onSelect={(sel) => {
-                                updateCategorizedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    pointStyle: sel.pointStyle as any,
-                                    customIconId: sel.customIconId,
-                                  },
-                                });
-                              }}
-                            />
-                          )}
-                          {isLine && (
-                            <LinePicker
-                              selectedLineStyle={cls.style.lineStyle || lineStyle}
-                              color={cls.style.color}
-                              onSelect={(ls) => {
-                                updateCategorizedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    lineStyle: ls as any,
-                                  },
-                                });
-                              }}
-                            />
-                          )}
-                          <Input
-                            value={String(cls.value)}
-                            onChange={(e) =>
-                              updateCategorizedClass(i, {
-                                value: e.target.value,
-                                label: e.target.value,
-                              })
-                            }
-                            placeholder="Значение"
-                            className="flex-1 h-8 text-sm"
-                            data-testid={`input-class-value-${i}`}
-                          />
-                          <Input
-                            type="number"
-                            value={cls.style.iconSize || iconSize}
-                            onChange={(e) => {
-                              const size = parseInt(e.target.value) || 24;
-                              updateCategorizedClass(i, {
-                                style: {
-                                  ...cls.style,
-                                  iconSize: Math.min(128, Math.max(4, size)),
-                                },
-                              });
-                            }}
-                            placeholder="Px"
-                            className="w-14 h-8 text-sm"
-                            title="Размер иконки (px)"
-                            data-testid={`input-class-size-${i}`}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeCategorizedClass(i)}
-                            data-testid={`button-remove-class-${i}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      ))}
-                      {categorizedClasses.length === 0 && (
-                        <p className="text-sm text-muted-foreground py-4 text-center">
-                          Нажмите "Автоклассификация" для заполнения классов
-                        </p>
-                      )}
-                    </div>
-                  </>
+                  </div>
                 )}
 
                 {renderer === "graduated" && field && (
-                  <>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <Label className="text-xs">
-                        Диапазоны ({graduatedClasses.length})
-                      </Label>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleAutoGraduate}
-                          disabled={isFetchingStats}
-                          data-testid="button-auto-graduate"
-                        >
-                          {isFetchingStats && (
-                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          )}
-                          Авторазбиение
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={addGraduatedClass}
-                          data-testid="button-add-range"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Label className="text-xs">
+                      Диапазоны ({graduatedClasses.length})
+                    </Label>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAutoGraduate}
+                        disabled={isFetchingStats}
+                        data-testid="button-auto-graduate"
+                      >
+                        {isFetchingStats && (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        )}
+                        Авторазбиение
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addGraduatedClass}
+                        data-testid="button-add-range"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
                     </div>
-                    <div className="space-y-1.5">
-                      {graduatedClasses.map((cls, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-1.5 p-1.5 rounded border border-border"
-                          data-testid={`graduated-class-${i}`}
-                        >
-                          <input
-                            type="color"
-                            value={cls.style.color}
-                            onChange={(e) =>
-                              updateGraduatedClass(i, {
-                                style: {
-                                  ...cls.style,
-                                  color: e.target.value,
-                                },
-                              })
-                            }
-                            className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
-                            data-testid={`input-range-color-${i}`}
-                          />
-                          {isPoint && (
-                            <IconPicker
-                              selectedPointStyle={cls.style.pointStyle}
-                              selectedCustomIconId={cls.style.customIconId}
-                              color={cls.style.color}
-                              onSelect={(sel) => {
-                                updateGraduatedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    pointStyle: sel.pointStyle as any,
-                                    customIconId: sel.customIconId,
-                                  },
-                                });
-                              }}
-                            />
-                          )}
-                          {isLine && (
-                            <LinePicker
-                              selectedLineStyle={cls.style.lineStyle || lineStyle}
-                              color={cls.style.color}
-                              onSelect={(ls) => {
-                                updateGraduatedClass(i, {
-                                  style: {
-                                    ...cls.style,
-                                    lineStyle: ls as any,
-                                  },
-                                });
-                              }}
-                            />
-                          )}
-                          <Input
-                            type="number"
-                            value={cls.min}
-                            onChange={(e) => {
-                              const min = parseFloat(e.target.value) || 0;
-                              updateGraduatedClass(i, {
-                                min,
-                                label: `${min} - ${cls.max}`,
-                              });
-                            }}
-                            placeholder="Мин"
-                            className="w-20 h-8 text-sm"
-                            data-testid={`input-range-min-${i}`}
-                          />
-                          <span className="text-muted-foreground text-sm">
-                            -
-                          </span>
-                          <Input
-                            type="number"
-                            value={cls.max}
-                            onChange={(e) => {
-                              const max = parseFloat(e.target.value) || 0;
-                              updateGraduatedClass(i, {
-                                max,
-                                label: `${cls.min} - ${max}`,
-                              });
-                            }}
-                            placeholder="Макс"
-                            className="w-20 h-8 text-sm"
-                            data-testid={`input-range-max-${i}`}
-                          />
-                          <Input
-                            type="number"
-                            value={cls.style.iconSize || iconSize}
-                            onChange={(e) => {
-                              const size = parseInt(e.target.value) || 24;
-                              updateGraduatedClass(i, {
-                                style: {
-                                  ...cls.style,
-                                  iconSize: Math.min(128, Math.max(4, size)),
-                                },
-                              });
-                            }}
-                            placeholder="Px"
-                            className="w-14 h-8 text-sm"
-                            title="Размер иконки (px)"
-                            data-testid={`input-range-size-${i}`}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeGraduatedClass(i)}
-                            data-testid={`button-remove-range-${i}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      ))}
-                      {graduatedClasses.length === 0 && (
-                        <p className="text-sm text-muted-foreground py-4 text-center">
-                          Нажмите "Авторазбиение" для заполнения диапазонов
-                        </p>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {!field && (
-                  <div className="flex items-center justify-center py-8">
-                    <p className="text-sm text-muted-foreground">
-                      Выберите поле атрибута для настройки классов
-                    </p>
                   </div>
                 )}
               </>
             )}
+          </div>
 
-            <div className="border-t pt-4 space-y-3">
-              <Label className="text-xs font-medium text-muted-foreground">Общие параметры</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-xs font-medium mb-1 block">
-                    Толщина обводки: {strokeWidth}px
-                  </Label>
-                  <Slider
-                    value={[strokeWidth]}
-                    onValueChange={([v]) => setStrokeWidth(v)}
-                    min={0.5}
-                    max={10}
-                    step={0.5}
-                    className="w-full"
-                    data-testid="slider-stroke-width"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs font-medium mb-1 block">
-                    Прозрачность заливки: {Math.round(fillOpacity * 100)}%
-                  </Label>
-                  <Slider
-                    value={[fillOpacity]}
-                    onValueChange={([v]) => setFillOpacity(v)}
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    className="w-full"
-                    data-testid="slider-fill-opacity"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs font-medium mb-1 block">
-                    Непрозрачность слоя: {Math.round(opacity * 100)}%
-                  </Label>
-                  <Slider
-                    value={[opacity]}
-                    onValueChange={([v]) => setOpacity(v)}
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    className="w-full"
-                    data-testid="slider-layer-opacity"
-                  />
-                </div>
+          {renderer !== "single" && field && (
+            <ScrollArea className="flex-1 min-h-0 px-4 py-2">
+              <div className="space-y-1.5 pr-3">
+                {renderer === "categorized" && categorizedClasses.map((cls, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1.5 p-1.5 rounded border border-border"
+                    data-testid={`categorized-class-${i}`}
+                  >
+                    <input
+                      type="color"
+                      value={cls.style.color}
+                      onChange={(e) =>
+                        updateCategorizedClass(i, {
+                          style: {
+                            ...cls.style,
+                            color: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
+                      data-testid={`input-class-color-${i}`}
+                    />
+                    {isPoint && (
+                      <IconPicker
+                        selectedPointStyle={cls.style.pointStyle}
+                        selectedCustomIconId={cls.style.customIconId}
+                        color={cls.style.color}
+                        onSelect={(sel) => {
+                          updateCategorizedClass(i, {
+                            style: {
+                              ...cls.style,
+                              pointStyle: sel.pointStyle as any,
+                              customIconId: sel.customIconId,
+                            },
+                          });
+                        }}
+                      />
+                    )}
+                    {isLine && (
+                      <LinePicker
+                        selectedLineStyle={cls.style.lineStyle || lineStyle}
+                        color={cls.style.color}
+                        onSelect={(ls) => {
+                          updateCategorizedClass(i, {
+                            style: {
+                              ...cls.style,
+                              lineStyle: ls as any,
+                            },
+                          });
+                        }}
+                      />
+                    )}
+                    <Input
+                      value={String(cls.value)}
+                      onChange={(e) =>
+                        updateCategorizedClass(i, {
+                          value: e.target.value,
+                          label: e.target.value,
+                        })
+                      }
+                      placeholder="Значение"
+                      className="flex-1 h-8 text-sm"
+                      data-testid={`input-class-value-${i}`}
+                    />
+                    <Input
+                      type="number"
+                      value={cls.style.iconSize || iconSize}
+                      onChange={(e) => {
+                        const size = parseInt(e.target.value) || 24;
+                        updateCategorizedClass(i, {
+                          style: {
+                            ...cls.style,
+                            iconSize: Math.min(128, Math.max(4, size)),
+                          },
+                        });
+                      }}
+                      placeholder="Px"
+                      className="w-14 h-8 text-sm"
+                      title="Размер иконки (px)"
+                      data-testid={`input-class-size-${i}`}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeCategorizedClass(i)}
+                      data-testid={`button-remove-class-${i}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+                {renderer === "categorized" && categorizedClasses.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    Нажмите "Автоклассификация" для заполнения классов
+                  </p>
+                )}
+
+                {renderer === "graduated" && graduatedClasses.map((cls, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1.5 p-1.5 rounded border border-border"
+                    data-testid={`graduated-class-${i}`}
+                  >
+                    <input
+                      type="color"
+                      value={cls.style.color}
+                      onChange={(e) =>
+                        updateGraduatedClass(i, {
+                          style: {
+                            ...cls.style,
+                            color: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
+                      data-testid={`input-range-color-${i}`}
+                    />
+                    {isPoint && (
+                      <IconPicker
+                        selectedPointStyle={cls.style.pointStyle}
+                        selectedCustomIconId={cls.style.customIconId}
+                        color={cls.style.color}
+                        onSelect={(sel) => {
+                          updateGraduatedClass(i, {
+                            style: {
+                              ...cls.style,
+                              pointStyle: sel.pointStyle as any,
+                              customIconId: sel.customIconId,
+                            },
+                          });
+                        }}
+                      />
+                    )}
+                    {isLine && (
+                      <LinePicker
+                        selectedLineStyle={cls.style.lineStyle || lineStyle}
+                        color={cls.style.color}
+                        onSelect={(ls) => {
+                          updateGraduatedClass(i, {
+                            style: {
+                              ...cls.style,
+                              lineStyle: ls as any,
+                            },
+                          });
+                        }}
+                      />
+                    )}
+                    <Input
+                      type="number"
+                      value={cls.min}
+                      onChange={(e) => {
+                        const min = parseFloat(e.target.value) || 0;
+                        updateGraduatedClass(i, {
+                          min,
+                          label: `${min} - ${cls.max}`,
+                        });
+                      }}
+                      placeholder="Мин"
+                      className="w-20 h-8 text-sm"
+                      data-testid={`input-range-min-${i}`}
+                    />
+                    <span className="text-muted-foreground text-sm">-</span>
+                    <Input
+                      type="number"
+                      value={cls.max}
+                      onChange={(e) => {
+                        const max = parseFloat(e.target.value) || 0;
+                        updateGraduatedClass(i, {
+                          max,
+                          label: `${cls.min} - ${max}`,
+                        });
+                      }}
+                      placeholder="Макс"
+                      className="w-20 h-8 text-sm"
+                      data-testid={`input-range-max-${i}`}
+                    />
+                    <Input
+                      type="number"
+                      value={cls.style.iconSize || iconSize}
+                      onChange={(e) => {
+                        const size = parseInt(e.target.value) || 24;
+                        updateGraduatedClass(i, {
+                          style: {
+                            ...cls.style,
+                            iconSize: Math.min(128, Math.max(4, size)),
+                          },
+                        });
+                      }}
+                      placeholder="Px"
+                      className="w-14 h-8 text-sm"
+                      title="Размер иконки (px)"
+                      data-testid={`input-range-size-${i}`}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeGraduatedClass(i)}
+                      data-testid={`button-remove-range-${i}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+                {renderer === "graduated" && graduatedClasses.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    Нажмите "Авторазбиение" для заполнения диапазонов
+                  </p>
+                )}
               </div>
+            </ScrollArea>
+          )}
+
+          {renderer !== "single" && !field && (
+            <div className="flex items-center justify-center flex-1 px-4">
+              <p className="text-sm text-muted-foreground">
+                Выберите поле атрибута для настройки классов
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t px-4 py-3 space-y-3 flex-shrink-0">
+          <Label className="text-xs font-medium text-muted-foreground">Общие параметры</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <Label className="text-xs font-medium mb-1 block">
+                Толщина обводки: {strokeWidth}px
+              </Label>
+              <Slider
+                value={[strokeWidth]}
+                onValueChange={([v]) => setStrokeWidth(v)}
+                min={0.5}
+                max={10}
+                step={0.5}
+                className="w-full"
+                data-testid="slider-stroke-width"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium mb-1 block">
+                Прозрачность заливки: {Math.round(fillOpacity * 100)}%
+              </Label>
+              <Slider
+                value={[fillOpacity]}
+                onValueChange={([v]) => setFillOpacity(v)}
+                min={0}
+                max={1}
+                step={0.05}
+                className="w-full"
+                data-testid="slider-fill-opacity"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium mb-1 block">
+                Непрозрачность слоя: {Math.round(opacity * 100)}%
+              </Label>
+              <Slider
+                value={[opacity]}
+                onValueChange={([v]) => setOpacity(v)}
+                min={0}
+                max={1}
+                step={0.05}
+                className="w-full"
+                data-testid="slider-layer-opacity"
+              />
             </div>
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="px-4 py-3 border-t gap-2">
           <Button
