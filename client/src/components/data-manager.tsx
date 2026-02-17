@@ -938,7 +938,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Слои сцены ({sceneLayers.length})</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"
@@ -984,53 +984,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                   onChange={handleExcelFileChange}
                   data-testid="input-excel"
                 />
-              </div>
-            </div>
-
-            {canEdit && (
-              <div className="flex items-center gap-2 pb-2">
-                {isCreatingFolder ? (
-                  <div className="flex items-center gap-1 flex-1">
-                    <Input
-                      value={newFolderName}
-                      onChange={(e) => setNewFolderName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && newFolderName.trim()) {
-                          createFolderMutation.mutate(newFolderName.trim());
-                        } else if (e.key === "Escape") {
-                          setIsCreatingFolder(false);
-                          setNewFolderName("");
-                        }
-                      }}
-                      placeholder="Имя папки..."
-                      className="h-7 text-xs"
-                      autoFocus
-                      data-no-drag
-                      data-testid="input-new-folder-name"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        if (newFolderName.trim()) {
-                          createFolderMutation.mutate(newFolderName.trim());
-                        }
-                      }}
-                      disabled={!newFolderName.trim() || createFolderMutation.isPending}
-                      data-testid="button-confirm-create-folder"
-                    >
-                      <Check className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => { setIsCreatingFolder(false); setNewFolderName(""); }}
-                      data-testid="button-cancel-create-folder"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
+                {canEdit && !isCreatingFolder && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1041,6 +995,49 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                     Папка
                   </Button>
                 )}
+              </div>
+            </div>
+
+            {canEdit && isCreatingFolder && (
+              <div className="flex items-center gap-1 pb-2">
+                <Input
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newFolderName.trim()) {
+                      createFolderMutation.mutate(newFolderName.trim());
+                    } else if (e.key === "Escape") {
+                      setIsCreatingFolder(false);
+                      setNewFolderName("");
+                    }
+                  }}
+                  placeholder="Имя папки..."
+                  className="h-7 text-xs"
+                  autoFocus
+                  data-no-drag
+                  data-testid="input-new-folder-name"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (newFolderName.trim()) {
+                      createFolderMutation.mutate(newFolderName.trim());
+                    }
+                  }}
+                  disabled={!newFolderName.trim() || createFolderMutation.isPending}
+                  data-testid="button-confirm-create-folder"
+                >
+                  <Check className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setIsCreatingFolder(false); setNewFolderName(""); }}
+                  data-testid="button-cancel-create-folder"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
             )}
             
