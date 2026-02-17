@@ -19,6 +19,59 @@ import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
 import { transformPropertyKeys } from "@shared/field-labels";
 
+function normalizeSvgForColorSupport(svgContent: string): string {
+  let svg = svgContent;
+
+  const svgTagMatch = svg.match(/<svg([^>]*)>/i);
+  if (svgTagMatch) {
+    let attrs = svgTagMatch[1];
+    const hasViewBox = /viewBox/i.test(attrs);
+    if (!hasViewBox) {
+      const wMatch = attrs.match(/\bwidth\s*=\s*["']?(\d+(?:\.\d+)?)/i);
+      const hMatch = attrs.match(/\bheight\s*=\s*["']?(\d+(?:\.\d+)?)/i);
+      if (wMatch && hMatch) {
+        attrs += ` viewBox="0 0 ${wMatch[1]} ${hMatch[1]}"`;
+      } else {
+        attrs += ` viewBox="0 0 24 24"`;
+      }
+    }
+
+    attrs = attrs.replace(/\bwidth\s*=\s*["'][^"']*["']/gi, '');
+    attrs = attrs.replace(/\bheight\s*=\s*["'][^"']*["']/gi, '');
+    attrs += ` width="24" height="24"`;
+
+    svg = svg.replace(/<svg[^>]*>/i, `<svg${attrs}>`);
+  }
+
+  const preserveColors = new Set(["none", "transparent", "currentcolor", "{color}"]);
+  function shouldPreserveColor(value: string): boolean {
+    const trimmed = value.trim().toLowerCase();
+    if (preserveColors.has(trimmed)) return true;
+    if (trimmed.startsWith("url(")) return true;
+    return false;
+  }
+
+  svg = svg.replace(/(fill|stroke)\s*=\s*"([^"]*)"/gi, (match, prop, value) => {
+    if (shouldPreserveColor(value)) return match;
+    return `${prop}="currentColor"`;
+  });
+
+  svg = svg.replace(/(fill|stroke)\s*:\s*([^;}"']+)/gi, (match, prop, value) => {
+    if (shouldPreserveColor(value)) return match;
+    return `${prop}: currentColor`;
+  });
+
+  svg = svg.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (styleMatch, cssContent) => {
+    const replaced = cssContent.replace(/(fill|stroke)\s*:\s*([^;}"']+)/gi, (_: string, prop: string, value: string) => {
+      if (shouldPreserveColor(value)) return `${prop}: ${value}`;
+      return `${prop}: currentColor`;
+    });
+    return styleMatch.replace(cssContent, replaced);
+  });
+
+  return svg;
+}
+
 const uploadDir = path.join(os.tmpdir(), "gis-uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -4191,9 +4244,10 @@ export async function registerRoutes(
       if (!svgContent.includes("<svg")) {
         return res.status(400).json({ message: "Invalid SVG content" });
       }
+      const normalizedSvg = normalizeSvgForColorSupport(svgContent);
       const icon = await storage.createCustomIcon({
         name,
-        svgContent,
+        svgContent: normalizedSvg,
         category: category || "custom",
       });
       return res.status(201).json(icon);

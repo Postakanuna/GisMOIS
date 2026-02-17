@@ -40,8 +40,29 @@ interface IconPickerProps {
 }
 
 function getCustomIconPreview(svgContent: string, color: string): string {
-  let svg = svgContent.replace(/\{color\}/g, color);
-  svg = svg.replace(/currentColor/g, color);
+  let svg = svgContent;
+
+  const svgTagMatch = svg.match(/<svg([^>]*)>/i);
+  if (svgTagMatch) {
+    let attrs = svgTagMatch[1];
+    const hasViewBox = /viewBox/i.test(attrs);
+    if (!hasViewBox) {
+      const wMatch = attrs.match(/\bwidth\s*=\s*["']?(\d+(?:\.\d+)?)/i);
+      const hMatch = attrs.match(/\bheight\s*=\s*["']?(\d+(?:\.\d+)?)/i);
+      if (wMatch && hMatch) {
+        attrs += ` viewBox="0 0 ${wMatch[1]} ${hMatch[1]}"`;
+      } else {
+        attrs += ` viewBox="0 0 24 24"`;
+      }
+    }
+    attrs = attrs.replace(/\bwidth\s*=\s*["'][^"']*["']/gi, '');
+    attrs = attrs.replace(/\bheight\s*=\s*["'][^"']*["']/gi, '');
+    attrs += ` width="24" height="24"`;
+    svg = svg.replace(/<svg[^>]*>/i, `<svg${attrs}>`);
+  }
+
+  svg = svg.replace(/\{color\}/g, color);
+  svg = svg.replace(/currentColor/gi, color);
   const encoded = encodeURIComponent(svg);
   return `data:image/svg+xml,${encoded}`;
 }

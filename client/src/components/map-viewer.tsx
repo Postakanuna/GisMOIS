@@ -200,16 +200,46 @@ function allIconsCached(ids: number[]): boolean {
   return ids.every(id => customIconCache.has(id));
 }
 
+function normalizeSvgSize(svgContent: string, targetSize: number): string {
+  let svg = svgContent;
+  const svgTagMatch = svg.match(/<svg([^>]*)>/i);
+  if (svgTagMatch) {
+    let attrs = svgTagMatch[1];
+    const hasViewBox = /viewBox/i.test(attrs);
+    if (!hasViewBox) {
+      const wMatch = attrs.match(/\bwidth\s*=\s*["']?(\d+(?:\.\d+)?)/i);
+      const hMatch = attrs.match(/\bheight\s*=\s*["']?(\d+(?:\.\d+)?)/i);
+      if (wMatch && hMatch) {
+        attrs += ` viewBox="0 0 ${wMatch[1]} ${hMatch[1]}"`;
+      } else {
+        attrs += ` viewBox="0 0 24 24"`;
+      }
+    }
+    attrs = attrs.replace(/\bwidth\s*=\s*["'][^"']*["']/gi, '');
+    attrs = attrs.replace(/\bheight\s*=\s*["'][^"']*["']/gi, '');
+    attrs += ` width="${targetSize}" height="${targetSize}"`;
+    svg = svg.replace(/<svg[^>]*>/i, `<svg${attrs}>`);
+  }
+  return svg;
+}
+
+function replaceColorsInSvg(svgContent: string, color: string): string {
+  let svg = svgContent;
+  svg = svg.replace(/\{color\}/g, color);
+  svg = svg.replace(/currentColor/gi, color);
+  return svg;
+}
+
 function createCustomIconImage(svgContent: string, color: string, iconSize: number, zoom?: number): Icon {
   const sizes = getPointSizeForZoom(zoom ?? 10);
-  let svg = svgContent.replace(/\{color\}/g, color);
-  svg = svg.replace(/currentColor/g, color);
+  const pixelSize = iconSize * sizes.iconScale;
+  let svg = normalizeSvgSize(svgContent, pixelSize);
+  svg = replaceColorsInSvg(svg, color);
   const encoded = encodeURIComponent(svg);
   const dataUrl = `data:image/svg+xml,${encoded}`;
-  const baseScale = iconSize / 24;
   return new Icon({
     src: dataUrl,
-    scale: baseScale * sizes.iconScale,
+    scale: 1,
     anchor: [0.5, 0.5],
     anchorXUnits: 'fraction',
     anchorYUnits: 'fraction',
