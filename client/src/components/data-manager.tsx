@@ -567,6 +567,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   };
 
   const handleLayerDragStart = (e: React.DragEvent, layerId: number) => {
+    e.stopPropagation();
     e.dataTransfer.setData("text/layer", String(layerId));
     e.dataTransfer.effectAllowed = "move";
     setDragLayerId(layerId);
@@ -598,7 +599,10 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
 
   const handleInsertDragLeave = (e: React.DragEvent) => {
     e.stopPropagation();
-    setDropInsertIndex(null);
+    const related = e.relatedTarget as HTMLElement | null;
+    if (!related || !e.currentTarget.contains(related)) {
+      setDropInsertIndex(null);
+    }
   };
 
   const computeGlobalLayerOrder = (
@@ -713,17 +717,23 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   };
 
   const renderInsertZone = (scope: number | "ungrouped", index: number) => {
+    const isDragging = dragLayerId !== null || dragFolderId !== null;
     const isActive = dropInsertIndex?.scope === scope && dropInsertIndex?.index === index;
+    if (!isDragging) return null;
     return (
       <div
         key={`insert-${scope}-${index}`}
-        className={`transition-all ${isActive ? "h-1 bg-primary rounded-full mx-1 my-0.5" : "h-0"}`}
+        className="relative"
+        style={{ height: 6 }}
         onDragOver={(e) => handleLayerDragOverInsert(e, scope, index)}
         onDragLeave={handleInsertDragLeave}
         onDrop={(e) => handleDropAtIndex(e, scope, index)}
-        style={{ minHeight: dragLayerId !== null || dragFolderId !== null ? 8 : 0 }}
         data-testid={`drop-zone-${scope}-${index}`}
-      />
+      >
+        {isActive && (
+          <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-0.5 bg-primary rounded-full" />
+        )}
+      </div>
     );
   };
 
@@ -954,14 +964,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         </Tooltip>
       </div>
 
-      {canEdit && folders.length > 0 && layer.folderId && (
-        <div className="px-2 py-0.5 border-t bg-muted/10 flex items-center gap-1.5">
-          <FolderOpen className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-          <span className="text-[10px] text-muted-foreground truncate">
-            {folders.find(f => f.id === layer.folderId)?.name || ""}
-          </span>
-        </div>
-      )}
       
       {expandedLayerId === layer.id && layer.sourceFiles && layer.sourceFiles.length > 0 && (
         <div className="px-2 py-1.5 border-t bg-muted/30">
@@ -1379,9 +1381,17 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                             )}
                           </div>
                           <CollapsibleContent>
-                            <div className="space-y-0 px-2 pb-1.5">
+                            <div
+                              className="space-y-0 px-2 pb-1.5"
+                              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            >
                               {folderLayers.length === 0 ? (
-                                <div className="text-[10px] text-muted-foreground text-center py-2" data-testid={`folder-empty-${folder.id}`}>
+                                <div
+                                  className="text-[10px] text-muted-foreground text-center py-2"
+                                  onDragOver={(e) => { e.preventDefault(); handleLayerDragOverInsert(e, folder.id, 0); }}
+                                  onDrop={(e) => handleDropAtIndex(e, folder.id, 0)}
+                                  data-testid={`folder-empty-${folder.id}`}
+                                >
                                   {dragLayerId !== null ? "Перетащите слой сюда" : "Пусто"}
                                 </div>
                               ) : (
