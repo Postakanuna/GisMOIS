@@ -20,9 +20,14 @@ interface ShapefileSet {
 }
 
 const CP1251_DECODER = new TextDecoder('windows-1251');
+const CP866_DECODER = new TextDecoder('ibm866');
 
 function decodeCP1251(buffer: ArrayBuffer): string {
   return CP1251_DECODER.decode(buffer);
+}
+
+function decodeCP866(buffer: ArrayBuffer): string {
+  return CP866_DECODER.decode(buffer);
 }
 
 // WGS84 ellipsoid parameters
@@ -471,12 +476,12 @@ function transformFeatureCollection(fc: FeatureCollection, prjContent: string | 
   return { featureCollection: fc, failed: false };
 }
 
-function decodeCP1251Filename(rawBytes: Uint8Array | string[] | ArrayBuffer): string {
+function decodeZipFilename(rawBytes: Uint8Array | string[] | ArrayBuffer): string {
   if (rawBytes instanceof Uint8Array) {
-    return CP1251_DECODER.decode(rawBytes);
+    return CP866_DECODER.decode(rawBytes);
   }
   if (rawBytes instanceof ArrayBuffer) {
-    return CP1251_DECODER.decode(new Uint8Array(rawBytes));
+    return CP866_DECODER.decode(new Uint8Array(rawBytes));
   }
   if (Array.isArray(rawBytes)) {
     return rawBytes.join('');
@@ -489,7 +494,7 @@ export async function parseShapefileZip(arrayBuffer: ArrayBuffer): Promise<Parse
   const shpjs = await import('shpjs');
   
   const zip = await JSZip.loadAsync(arrayBuffer, {
-    decodeFileName: decodeCP1251Filename as any
+    decodeFileName: decodeZipFilename as any
   });
   
   const shapefileSets = new Map<string, ShapefileSet>();

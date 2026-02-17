@@ -154,7 +154,12 @@ export async function parseShapefileBuffer(
       return { features, geometryType, crs, fileList: [] };
     }
     
-    const zip = await JSZip.loadAsync(buffer);
+    const zip = await JSZip.loadAsync(buffer, {
+      decodeFileName: (rawBytes: Uint8Array) => {
+        const decoder = new TextDecoder('ibm866');
+        return decoder.decode(rawBytes);
+      }
+    } as any);
     
     const shapefileSets = new Map<string, {
       shp: ArrayBuffer | null;
