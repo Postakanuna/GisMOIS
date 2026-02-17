@@ -95,6 +95,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const isMobile = useIsMobile();
   const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const { currentProjection, setProjection, projectionInfo } = useProjection();
+  type FlatItem = { type: "folder"; folderId: number; displayOrder: number; layers: number[] } | { type: "layer"; layerId: number; displayOrder: number };
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [size, setSize] = useState({ width: 700, height: 450 });
@@ -127,6 +128,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [dragType, setDragType] = useState<"layer" | "folder" | null>(null);
   const [dragFolderId, setDragFolderId] = useState<number | null>(null);
   const [dropInsertIndex, setDropInsertIndex] = useState<{ scope: number | "ungrouped"; index: number } | null>(null);
+  const currentFlatOrderRef = useRef<FlatItem[]>([]);
 
   const foldersQueryKey = ["/api/scenes", currentSceneId, "folders"];
 
@@ -572,6 +574,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     e.dataTransfer.effectAllowed = "move";
     setDragLayerId(layerId);
     setDragType("layer");
+    console.log("[DnD] Layer drag start:", layerId);
   };
 
   const handleFolderDragStart = (e: React.DragEvent, folderId: number) => {
@@ -579,6 +582,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     e.dataTransfer.effectAllowed = "move";
     setDragFolderId(folderId);
     setDragType("folder");
+    console.log("[DnD] Folder drag start:", folderId);
   };
 
   const handleDragEnd = () => {
@@ -604,8 +608,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       setDropInsertIndex(null);
     }
   };
-
-  type FlatItem = { type: "folder"; folderId: number; displayOrder: number; layers: number[] } | { type: "layer"; layerId: number; displayOrder: number };
 
   const buildFlatItems = (currentFolders: typeof folders, currentLayers: typeof sceneLayers): FlatItem[] => {
     const items: FlatItem[] = [];
@@ -658,6 +660,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         layerDisplayOrders.push(baseOrder);
       }
     }
+    console.log("[DnD] persistFlatOrder: folders=", folderIds, "folderOrders=", folderDisplayOrders, "layers=", layerIds, "layerOrders=", layerDisplayOrders);
     reorderFoldersMutation.mutate({ folderIds, displayOrders: folderDisplayOrders });
     
     const doReorder = () => {
@@ -678,40 +681,55 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     const layerIdStr = e.dataTransfer.getData("text/layer");
     const folderIdStr = e.dataTransfer.getData("text/folder");
     
+    console.log("[DnD] Drop at index:", { scope, index, layerIdStr, folderIdStr, dragType });
+    
     if (folderIdStr && dragType === "folder") {
       const movedFolderId = Number(folderIdStr);
-      const flatItems = buildFlatItems(folders, sceneLayers);
+      const flatItems: FlatItem[] = currentFlatOrderRef.current.map(it => 
+        it.type === "folder" ? { ...it, layers: [...it.layers] } : { ...it }
+      );
       const fromIdx = flatItems.findIndex(it => it.type === "folder" && it.folderId === movedFolderId);
+      console.log("[DnD] Folder drop: fromIdx=", fromIdx, "targetIdx=", index);
       if (fromIdx >= 0) {
         const [removed] = flatItems.splice(fromIdx, 1);
         const insertAt = index > fromIdx ? index - 1 : index;
         flatItems.splice(Math.min(insertAt, flatItems.length), 0, removed);
+        console.log("[DnD] Folder reorder result:", flatItems.map(it => it.type === "folder" ? `F${it.folderId}` : `L${it.layerId}`));
         persistFlatOrder(flatItems);
       }
     } else if (layerIdStr && dragType === "layer") {
       const movedLayerId = Number(layerIdStr);
       const layer = sceneLayers.find(l => l.id === movedLayerId);
-      if (!layer) return;
+      if (!layer) {
+        console.log("[DnD] Layer not found:", movedLayerId);
+        handleDragEnd();
+        return;
+      }
       
       const sourceFolderId = layer.folderId ?? null;
-      const flatItems = buildFlatItems(folders, sceneLayers);
+      const flatItems: FlatItem[] = currentFlatOrderRef.current.map(it => 
+        it.type === "folder" ? { ...it, layers: [...it.layers] } : { ...it }
+      );
       
       if (scope === "ungrouped") {
         const fromIdx = flatItems.findIndex(it => 
           (it.type === "layer" && it.layerId === movedLayerId) ||
           (it.type === "folder" && it.layers.includes(movedLayerId))
         );
+        let wasSplicedOut = false;
         if (fromIdx >= 0) {
           const fromItem = flatItems[fromIdx];
           if (fromItem.type === "folder") {
             fromItem.layers = fromItem.layers.filter(id => id !== movedLayerId);
           } else {
             flatItems.splice(fromIdx, 1);
+            wasSplicedOut = true;
           }
         }
-        const adjustedIndex = fromIdx >= 0 && fromIdx < index && flatItems[fromIdx]?.type !== "folder" ? index : index;
+        const adjustedIndex = wasSplicedOut && fromIdx < index ? index - 1 : index;
         const insertAt = Math.min(adjustedIndex, flatItems.length);
         flatItems.splice(insertAt, 0, { type: "layer", layerId: movedLayerId, displayOrder: 0 });
+        console.log("[DnD] Layer ungrouped drop: fromIdx=", fromIdx, "adjustedIdx=", adjustedIndex, "result=", flatItems.map(it => it.type === "folder" ? `F${it.folderId}` : `L${it.layerId}`));
         persistFlatOrder(flatItems, movedLayerId, sourceFolderId, null);
       } else {
         const targetFolderId = scope as number;
@@ -733,8 +751,11 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           filteredLayers.splice(insertAt, 0, movedLayerId);
           tgtFolder.layers = filteredLayers;
         }
+        console.log("[DnD] Layer folder drop: targetFolder=", targetFolderId, "index=", index);
         persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
       }
+    } else {
+      console.log("[DnD] No valid data for drop:", { layerIdStr, folderIdStr, dragType });
     }
     
     handleDragEnd();
@@ -743,12 +764,15 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const handleFolderDrop = (e: React.DragEvent, targetFolderId: number) => {
     e.preventDefault();
     const layerIdStr = e.dataTransfer.getData("text/layer");
+    console.log("[DnD] Folder body drop:", { targetFolderId, layerIdStr, dragType });
     if (layerIdStr && dragType === "layer") {
       const movedLayerId = Number(layerIdStr);
       const layer = sceneLayers.find(l => l.id === movedLayerId);
       if (layer && layer.folderId !== targetFolderId) {
         const sourceFolderId = layer.folderId ?? null;
-        const flatItems = buildFlatItems(folders, sceneLayers);
+        const flatItems: FlatItem[] = currentFlatOrderRef.current.map(it => 
+          it.type === "folder" ? { ...it, layers: [...it.layers] } : { ...it }
+        );
         if (sourceFolderId) {
           const srcFolder = flatItems.find(it => it.type === "folder" && it.folderId === sourceFolderId);
           if (srcFolder && srcFolder.type === "folder") {
@@ -789,14 +813,14 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       <div
         key={`insert-${scope}-${index}`}
         className="relative"
-        style={{ height: 6 }}
+        style={{ height: isActive ? 12 : 8, transition: "height 0.1s" }}
         onDragOver={(e) => handleLayerDragOverInsert(e, scope, index)}
         onDragLeave={handleInsertDragLeave}
         onDrop={(e) => handleDropAtIndex(e, scope, index)}
         data-testid={`drop-zone-${scope}-${index}`}
       >
         {isActive && (
-          <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-0.5 bg-primary rounded-full" />
+          <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-1 bg-primary rounded-full shadow-sm" />
         )}
       </div>
     );
@@ -1328,18 +1352,22 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 <div className="space-y-1">
                   {(() => {
                     const flatOrder = buildFlatItems(folders, sceneLayers);
+                    currentFlatOrderRef.current = flatOrder;
                     
                     type RenderItem = { type: "folder"; folder: Folder; layers: EditableLayer[] } | { type: "layer"; layer: EditableLayer };
-                    const renderItems: RenderItem[] = flatOrder.map(fi => {
+                    const renderItems: RenderItem[] = [];
+                    for (const fi of flatOrder) {
                       if (fi.type === "folder") {
-                        const folder = folders.find(f => f.id === fi.folderId)!;
-                        const folderLayers = fi.layers.map(lid => sceneLayers.find(l => l.id === lid)!).filter(Boolean);
-                        return { type: "folder" as const, folder, layers: folderLayers };
+                        const folder = folders.find(f => f.id === fi.folderId);
+                        if (!folder) continue;
+                        const folderLayers = fi.layers.map(lid => sceneLayers.find(l => l.id === lid)).filter((l): l is EditableLayer => !!l);
+                        renderItems.push({ type: "folder" as const, folder, layers: folderLayers });
                       } else {
-                        const layer = sceneLayers.find(l => l.id === fi.layerId)!;
-                        return { type: "layer" as const, layer };
+                        const layer = sceneLayers.find(l => l.id === fi.layerId);
+                        if (!layer) continue;
+                        renderItems.push({ type: "layer" as const, layer });
                       }
-                    }).filter(ri => ri.type === "folder" ? !!ri.folder : !!ri.layer);
+                    }
 
                     return (
                       <>
