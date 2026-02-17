@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, drawnFeatures } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, drawnFeatures, type AttributeField } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -2979,6 +2979,39 @@ export async function registerRoutes(
         sendSSE({ type: "error", message: error.message || "Ошибка геокодирования" });
         res.end();
         return;
+      }
+
+      if (successCount > 0) {
+        try {
+          const existingSchema = await storage.getLayerSchema(layerId);
+          const existingFields: AttributeField[] = existingSchema ? (existingSchema.fields as AttributeField[]) : [];
+          const existingNames = new Set(existingFields.map((f: AttributeField) => f.name));
+
+          const newFields: AttributeField[] = [];
+          if (isLine) {
+            if (!existingNames.has("addr_begin")) {
+              newFields.push({ name: "addr_begin", type: "text", required: false });
+            }
+            if (!existingNames.has("addr_end")) {
+              newFields.push({ name: "addr_end", type: "text", required: false });
+            }
+          } else {
+            if (!existingNames.has("addr_point")) {
+              newFields.push({ name: "addr_point", type: "text", required: false });
+            }
+          }
+
+          if (newFields.length > 0) {
+            const updatedFields = [...existingFields, ...newFields];
+            if (existingSchema) {
+              await storage.updateLayerSchema(layerId, updatedFields);
+            } else {
+              await storage.createLayerSchema({ layerId, fields: updatedFields });
+            }
+          }
+        } catch (schemaErr) {
+          console.error("Error updating layer schema with geocode fields:", schemaErr);
+        }
       }
 
       sendSSE({
