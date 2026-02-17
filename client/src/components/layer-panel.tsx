@@ -612,46 +612,54 @@ export function LayerPanel({
                         ? "border-primary bg-primary/10"
                         : "border-sidebar-border hover:bg-accent/50"
                     }`}>
-                      <Popover open={popoverLayerId === layer.id} onOpenChange={(open) => setPopoverLayerId(open ? layer.id : null)}>
-                        <PopoverTrigger asChild>
+                      <div
+                        className="flex items-center gap-1 px-2 py-1 cursor-pointer"
+                        onClick={() => {
+                          if (hasLegend) {
+                            setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
+                          }
+                          onSelectEditableLayer?.(layer);
+                        }}
+                        data-testid={`editable-layer-item-${layer.id}`}
+                      >
+                        <div className="flex items-center gap-1 shrink-0">
                           <div
-                            className="flex items-center gap-1 px-2 py-1 cursor-pointer"
-                            onClick={() => {
-                              if (hasLegend) {
-                                setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
-                              }
-                              if (activeEditableLayer?.id !== layer.id) {
-                                onSelectEditableLayer?.(layer);
-                              }
-                            }}
-                            data-testid={`editable-layer-item-${layer.id}`}
-                          >
-                            <div className="flex items-center gap-1 shrink-0">
-                              <div
-                                className="h-3 w-3 rounded-sm"
-                                style={{ backgroundColor: layer.color }}
-                              />
-                            </div>
-                            <div className="flex-1 min-w-0 flex items-center gap-1">
-                              <span className="text-xs font-medium" title={layer.name}>
-                                {truncateName(layer.name)}
-                              </span>
-                              {layer.source === "import" && (
-                                <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-                              )}
-                              {!layer.visible && (
-                                <EyeOff className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-                              )}
-                              {hasLegend && (
-                                <ChevronRight className={`h-2.5 w-2.5 text-muted-foreground shrink-0 transition-transform ${legendLayerId === layer.id ? "rotate-90" : ""}`} />
-                              )}
-                            </div>
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              {layer.featureCount || 0}
-                            </span>
-                          </div>
-                        </PopoverTrigger>
-                        <PopoverContent side="right" align="start" className="w-auto p-1.5" data-testid={`popover-layer-toolbar-${layer.id}`}>
+                            className="h-3 w-3 rounded-sm"
+                            style={{ backgroundColor: layer.color }}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0 flex items-center gap-1">
+                          <span className="text-xs font-medium" title={layer.name}>
+                            {truncateName(layer.name)}
+                          </span>
+                          {layer.source === "import" && (
+                            <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                          )}
+                          {!layer.visible && (
+                            <EyeOff className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                          )}
+                          {hasLegend && (
+                            <ChevronRight className={`h-2.5 w-2.5 text-muted-foreground shrink-0 transition-transform ${legendLayerId === layer.id ? "rotate-90" : ""}`} />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {layer.featureCount || 0}
+                        </span>
+                        <Popover open={popoverLayerId === layer.id} onOpenChange={(open) => setPopoverLayerId(open ? layer.id : null)}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                              }}
+                              data-testid={`button-layer-tools-${layer.id}`}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent side="right" align="start" className="w-auto p-1.5" data-testid={`popover-layer-toolbar-${layer.id}`}>
                           <div className="flex items-center gap-0.5">
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -752,6 +760,7 @@ export function LayerPanel({
                           </div>
                         </PopoverContent>
                       </Popover>
+                      </div>
                       {legendLayerId === layer.id && hasLegend && (
                         <div className="px-3 py-2 border-t bg-muted/20 space-y-1" data-testid={`legend-layer-${layer.id}`}>
                           <p className="text-[10px] text-muted-foreground font-medium mb-1">

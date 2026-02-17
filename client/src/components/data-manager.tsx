@@ -43,7 +43,6 @@ import { type ProjectionType } from "@/lib/projections";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { GeocodeDialog } from "@/components/geocode-dialog";
@@ -120,6 +119,8 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [editingFolderId, setEditingFolderId] = useState<number | null>(null);
   const [editingFolderName, setEditingFolderName] = useState("");
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<number>>(new Set());
+  const [dragLayerId, setDragLayerId] = useState<number | null>(null);
+  const [dropTargetFolderId, setDropTargetFolderId] = useState<number | "ungrouped" | null>(null);
 
   const foldersQueryKey = ["/api/scenes", currentSceneId, "folders"];
 
@@ -539,10 +540,47 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     }
   };
 
+  const handleDragStart = (e: React.DragEvent, layerId: number) => {
+    e.dataTransfer.setData("text/plain", String(layerId));
+    e.dataTransfer.effectAllowed = "move";
+    setDragLayerId(layerId);
+  };
+
+  const handleDragEnd = () => {
+    setDragLayerId(null);
+    setDropTargetFolderId(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetId: number | "ungrouped") => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropTargetFolderId(targetId);
+  };
+
+  const handleDragLeave = () => {
+    setDropTargetFolderId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetFolderId: number | null) => {
+    e.preventDefault();
+    const layerId = Number(e.dataTransfer.getData("text/plain"));
+    if (layerId) {
+      const layer = sceneLayers.find(l => l.id === layerId);
+      if (layer && layer.folderId !== targetFolderId) {
+        moveLayerToFolderMutation.mutate({ layerId, folderId: targetFolderId });
+      }
+    }
+    setDragLayerId(null);
+    setDropTargetFolderId(null);
+  };
+
   const renderLayerRow = (layer: EditableLayer) => (
     <div
       key={layer.id}
-      className="rounded border bg-background"
+      className={`rounded border bg-background ${dragLayerId === layer.id ? "opacity-50" : ""}`}
+      draggable={canEdit && folders.length > 0}
+      onDragStart={(e) => handleDragStart(e, layer.id)}
+      onDragEnd={handleDragEnd}
       data-testid={`scene-layer-${layer.id}`}
     >
       <div 
@@ -554,6 +592,9 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           }
         }}
       >
+        {canEdit && folders.length > 0 && (
+          <GripVertical className="h-3 w-3 text-muted-foreground/50 shrink-0 cursor-grab" />
+        )}
         {layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0 && (
           <button
             onClick={(e) => { e.stopPropagation(); setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id); }}
@@ -760,30 +801,12 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         </Tooltip>
       </div>
 
-      {canEdit && folders.length > 0 && (
-        <div className="px-2 py-1 border-t bg-muted/10 flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground shrink-0">Папка:</span>
-          <Select
-            value={layer.folderId ? String(layer.folderId) : "__none__"}
-            onValueChange={(val) => {
-              moveLayerToFolderMutation.mutate({
-                layerId: layer.id,
-                folderId: val === "__none__" ? null : Number(val),
-              });
-            }}
-          >
-            <SelectTrigger className="h-5 text-[10px] flex-1 min-w-0" data-testid={`select-layer-folder-${layer.id}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__" data-testid={`select-folder-none-${layer.id}`}>Без папки</SelectItem>
-              {folders.map(f => (
-                <SelectItem key={f.id} value={String(f.id)} data-testid={`select-folder-${f.id}-layer-${layer.id}`}>
-                  {f.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {canEdit && folders.length > 0 && layer.folderId && (
+        <div className="px-2 py-0.5 border-t bg-muted/10 flex items-center gap-1.5">
+          <FolderOpen className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+          <span className="text-[10px] text-muted-foreground truncate">
+            {folders.find(f => f.id === layer.folderId)?.name || ""}
+          </span>
         </div>
       )}
       
@@ -1042,6 +1065,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                   {folders.map(folder => {
                     const folderLayers = sceneLayers.filter(l => l.folderId === folder.id);
                     const isExpanded = expandedFolderIds.has(folder.id);
+                    const isDragTarget = dropTargetFolderId === folder.id && dragLayerId !== null;
                     return (
                       <Collapsible
                         key={`folder-${folder.id}`}
@@ -1049,7 +1073,12 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                         onOpenChange={() => toggleFolderExpanded(folder.id)}
                         data-testid={`folder-${folder.id}`}
                       >
-                        <div className="rounded border bg-muted/30">
+                        <div
+                          className={`rounded border transition-colors ${isDragTarget ? "border-primary bg-primary/10" : "bg-muted/30"}`}
+                          onDragOver={(e) => handleDragOver(e, folder.id)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, folder.id)}
+                        >
                           <div className="flex items-center gap-1.5 px-2 py-1">
                             <CollapsibleTrigger asChild>
                               <button className="shrink-0 hover:bg-muted rounded p-0.5" data-testid={`button-toggle-folder-${folder.id}`}>
@@ -1151,7 +1180,9 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                           <CollapsibleContent>
                             <div className="space-y-1 px-2 pb-1.5">
                               {folderLayers.length === 0 ? (
-                                <div className="text-[10px] text-muted-foreground text-center py-1" data-testid={`folder-empty-${folder.id}`}>Пусто</div>
+                                <div className="text-[10px] text-muted-foreground text-center py-2" data-testid={`folder-empty-${folder.id}`}>
+                                  {dragLayerId !== null ? "Перетащите слой сюда" : "Пусто"}
+                                </div>
                               ) : (
                                 folderLayers.map(layer => renderLayerRow(layer))
                               )}
@@ -1161,7 +1192,19 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                       </Collapsible>
                     );
                   })}
-                  {sceneLayers.filter(l => !l.folderId).map(layer => renderLayerRow(layer))}
+                  <div
+                    className={`space-y-1 rounded transition-colors ${dropTargetFolderId === "ungrouped" && dragLayerId !== null ? "border-2 border-dashed border-primary bg-primary/5 p-1" : ""}`}
+                    onDragOver={(e) => handleDragOver(e, "ungrouped")}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, null)}
+                  >
+                    {sceneLayers.filter(l => !l.folderId).map(layer => renderLayerRow(layer))}
+                    {dragLayerId !== null && sceneLayers.filter(l => !l.folderId).length === 0 && (
+                      <div className="text-[10px] text-muted-foreground text-center py-2 border-2 border-dashed border-muted rounded">
+                        Перетащите сюда для удаления из папки
+                      </div>
+                    )}
+                  </div>
             </div>
           )}
             </ScrollArea>
