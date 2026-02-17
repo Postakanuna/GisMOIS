@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
 import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
+import { GeocodeDialog } from "@/components/geocode-dialog";
+import { LayerStylePanel } from "@/components/layer-style-panel";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -69,6 +71,9 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   onToggleEditMode: () => void;
   activeSceneDataset: SceneDataset | null;
   onSelectSceneDataset: (sd: SceneDataset | null) => void;
+  onOpenAttributeTable?: (layerId: number, layerName: string) => void;
+  onOpenStyleConfig?: (layerId: number) => void;
+  onOpenGeocodeDialog?: (layerId: number) => void;
 }
 
 function SidebarContentPanel({
@@ -87,6 +92,9 @@ function SidebarContentPanel({
   onToggleEditMode,
   activeSceneDataset,
   onSelectSceneDataset,
+  onOpenAttributeTable,
+  onOpenStyleConfig,
+  onOpenGeocodeDialog,
 }: SidebarContentPanelProps) {
   return (
     <ScrollArea className="h-full w-full min-w-0">
@@ -107,6 +115,9 @@ function SidebarContentPanel({
           onToggleEditMode={onToggleEditMode}
           activeSceneDataset={activeSceneDataset}
           onSelectSceneDataset={onSelectSceneDataset}
+          onOpenAttributeTable={onOpenAttributeTable}
+          onOpenStyleConfig={onOpenStyleConfig}
+          onOpenGeocodeDialog={onOpenGeocodeDialog}
         />
       </div>
     </ScrollArea>
@@ -220,6 +231,8 @@ export default function Home() {
   const [showComplaintDialog, setShowComplaintDialog] = useState(false);
   const [complaintResult, setComplaintResult] = useState<ComplaintAnalysisResult | null>(null);
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
+  const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
+  const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -416,6 +429,11 @@ export default function Home() {
                     onToggleEditMode={toggleEditMode}
                     activeSceneDataset={activeSceneDataset}
                     onSelectSceneDataset={handleSelectSceneDataset}
+                    onOpenAttributeTable={(layerId, layerName) => {
+                      setImportedLayerTable({ layerId, layerName });
+                    }}
+                    onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
+                    onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                   />
                 ) : (
                   <FeatureInfoSidebarPanel
@@ -470,6 +488,11 @@ export default function Home() {
                     onToggleEditMode={toggleEditMode}
                     activeSceneDataset={activeSceneDataset}
                     onSelectSceneDataset={handleSelectSceneDataset}
+                    onOpenAttributeTable={(layerId, layerName) => {
+                      setImportedLayerTable({ layerId, layerName });
+                    }}
+                    onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
+                    onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                   />
                 </SheetContent>
               </Sheet>
@@ -696,6 +719,46 @@ export default function Home() {
                 onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
               />
             )}
+
+            {/* Layer Panel Style Config */}
+            {layerPanelStyleConfigId !== null && (() => {
+              const layer = drawing.editableLayers.find(l => l.id === layerPanelStyleConfigId);
+              if (!layer) return null;
+              return (
+                <LayerStylePanel
+                  open={true}
+                  onOpenChange={(open) => { if (!open) setLayerPanelStyleConfigId(null); }}
+                  layer={{
+                    id: layer.id,
+                    color: layer.color,
+                    pointStyle: layer.pointStyle,
+                    lineStyle: layer.lineStyle,
+                    opacity: layer.opacity,
+                    geometryType: layer.geometryType,
+                    styleConfig: layer.styleConfig,
+                  }}
+                  onSave={async (updates) => {
+                    await apiRequest("PATCH", `/api/editable-layers/${layer.id}`, updates);
+                    queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+                    setLayerPanelStyleConfigId(null);
+                  }}
+                />
+              );
+            })()}
+
+            {/* Layer Panel Geocode Dialog */}
+            {layerPanelGeocodeId !== null && (() => {
+              const layer = drawing.editableLayers.find(l => l.id === layerPanelGeocodeId);
+              return (
+                <GeocodeDialog
+                  layerId={layerPanelGeocodeId}
+                  layerName={layer?.name || ""}
+                  open={true}
+                  onOpenChange={(open) => { if (!open) setLayerPanelGeocodeId(null); }}
+                />
+              );
+            })()}
 
             {/* Trace Route Dialog */}
             <TraceRouteDialog

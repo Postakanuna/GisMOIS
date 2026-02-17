@@ -2328,6 +2328,98 @@ export async function registerRoutes(
     }
   });
 
+  // Layer folders endpoints
+  app.get("/api/scenes/:sceneId/folders", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const sceneId = parseInt(req.params.sceneId);
+      const folders = await storage.getLayerFolders(sceneId);
+      return res.json(folders);
+    } catch (error) {
+      console.error("Error fetching folders:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/scenes/:sceneId/folders", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const sceneId = parseInt(req.params.sceneId);
+      const { name } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      const folder = await storage.createLayerFolder({ sceneId, name: name.trim() });
+      return res.json(folder);
+    } catch (error) {
+      console.error("Error creating folder:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/folders/:folderId", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const folderId = parseInt(req.params.folderId);
+      const { name, visible } = req.body;
+      const updates: Partial<{ name: string; visible: number }> = {};
+      if (name !== undefined) updates.name = name;
+      if (visible !== undefined) updates.visible = visible ? 1 : 0;
+      const folder = await storage.updateLayerFolder(folderId, updates);
+      if (!folder) return res.status(404).json({ message: "Folder not found" });
+      return res.json(folder);
+    } catch (error) {
+      console.error("Error updating folder:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/folders/:folderId", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const folderId = parseInt(req.params.folderId);
+      const deleted = await storage.deleteLayerFolder(folderId);
+      if (!deleted) return res.status(404).json({ message: "Folder not found" });
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting folder:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/folders/:folderId/toggle-visibility", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const folderId = parseInt(req.params.folderId);
+      const { visible } = req.body;
+      await storage.toggleFolderVisibility(folderId, !!visible);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error toggling folder visibility:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/editable-layers/:id/folder", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const layerId = parseInt(req.params.id);
+      const { folderId } = req.body;
+      const layer = await storage.setLayerFolder(layerId, folderId ?? null);
+      if (!layer) return res.status(404).json({ message: "Layer not found" });
+      return res.json(layer);
+    } catch (error) {
+      console.error("Error setting layer folder:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/editable-layers/viewport-batch", async (req: Request, res: Response) => {
     try {
       const user = await getUserFromSession(req);

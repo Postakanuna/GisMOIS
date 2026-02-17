@@ -255,6 +255,7 @@ export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
 export const editableLayerSchema = z.object({
   id: z.number(),
   sceneId: z.number().nullable().optional(), // null for global layers, scene ID for scene-specific layers
+  folderId: z.number().nullable().optional(), // null = not in any folder
   name: z.string(),
   geometryType: geometryTypeSchema,
   color: z.string().default("#1976D2"),
@@ -283,10 +284,36 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, jsonb, timestamp, real, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
+// Layer folders for grouping layers
+export const layerFolders = pgTable("layer_folders", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sceneId: integer("scene_id").notNull(),
+  name: text("name").notNull(),
+  visible: integer("visible").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type LayerFolder = typeof layerFolders.$inferSelect;
+export type InsertLayerFolder = typeof layerFolders.$inferInsert;
+
+export const layerFolderSchema = z.object({
+  id: z.number(),
+  sceneId: z.number(),
+  name: z.string(),
+  visible: z.boolean(),
+  createdAt: z.string(),
+});
+
+export const insertLayerFolderSchema = z.object({
+  sceneId: z.number(),
+  name: z.string().min(1),
+});
+
 // PostgreSQL tables for GIS data
 export const editableLayers = pgTable("editable_layers", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   sceneId: integer("scene_id"), // null for global layers, scene ID for scene-specific layers
+  folderId: integer("folder_id"), // null = not in any folder
   name: text("name").notNull(),
   geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
   color: text("color").notNull().default("#1976D2"),

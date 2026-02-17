@@ -33,6 +33,9 @@ import {
   Settings,
   Table2,
   Download,
+  FolderOpen,
+  FolderClosed,
+  FolderPlus,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
@@ -40,13 +43,24 @@ import { type ProjectionType } from "@/lib/projections";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { MapPin } from "lucide-react";
 
+interface Folder {
+  id: number;
+  sceneId: number;
+  name: string;
+  visible: number;
+  createdAt: string;
+}
+
 interface EditableLayer {
   id: number;
   sceneId: number | null;
+  folderId?: number | null;
   name: string;
   geometryType: string;
   color: string;
@@ -101,6 +115,18 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [styleConfigLayerId, setStyleConfigLayerId] = useState<number | null>(null);
   const [legendLayerId, setLegendLayerId] = useState<number | null>(null);
   const [geocodeLayerId, setGeocodeLayerId] = useState<number | null>(null);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [editingFolderId, setEditingFolderId] = useState<number | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState("");
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<number>>(new Set());
+
+  const foldersQueryKey = ["/api/scenes", currentSceneId, "folders"];
+
+  const { data: folders = [] } = useQuery<Folder[]>({
+    queryKey: foldersQueryKey,
+    enabled: !!currentSceneId,
+  });
 
   const { data: sceneLayersRaw = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
@@ -189,6 +215,92 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     },
   });
+
+  const createFolderMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", `/api/scenes/${currentSceneId}/folders`, { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Папка создана" });
+      setIsCreatingFolder(false);
+      setNewFolderName("");
+    },
+    onError: () => {
+      toast({ title: "Ошибка создания папки", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
+    },
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: async (folderId: number) => {
+      await apiRequest("DELETE", `/api/folders/${folderId}`);
+    },
+    onSuccess: () => {
+      toast({ title: "Папка удалена" });
+    },
+    onError: () => {
+      toast({ title: "Ошибка удаления папки", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
+    },
+  });
+
+  const renameFolderMutation = useMutation({
+    mutationFn: async ({ folderId, name }: { folderId: number; name: string }) => {
+      const res = await apiRequest("PATCH", `/api/folders/${folderId}`, { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      setEditingFolderId(null);
+    },
+    onError: () => {
+      toast({ title: "Ошибка переименования папки", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
+    },
+  });
+
+  const toggleFolderVisibilityMutation = useMutation({
+    mutationFn: async ({ folderId, visible }: { folderId: number; visible: boolean }) => {
+      const res = await apiRequest("POST", `/api/folders/${folderId}/toggle-visibility`, { visible });
+      return res.json();
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
+    },
+  });
+
+  const moveLayerToFolderMutation = useMutation({
+    mutationFn: async ({ layerId, folderId }: { layerId: number; folderId: number | null }) => {
+      const res = await apiRequest("PATCH", `/api/editable-layers/${layerId}/folder`, { folderId });
+      return res.json();
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
+    },
+  });
+
+  const toggleFolderExpanded = (folderId: number) => {
+    setExpandedFolderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  };
 
   const handleStartEditing = (layer: EditableLayer) => {
     setEditingLayerId(layer.id);
@@ -427,6 +539,320 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     }
   };
 
+  const renderLayerRow = (layer: EditableLayer) => (
+    <div
+      key={layer.id}
+      className="rounded border bg-background"
+      data-testid={`scene-layer-${layer.id}`}
+    >
+      <div 
+        className={`flex items-center gap-1.5 px-2 py-1 ${layer.styleConfig && layer.styleConfig.renderer !== "single" ? "cursor-pointer" : ""}`}
+        onClick={() => {
+          const sc = layer.styleConfig;
+          if (sc && sc.renderer !== "single") {
+            setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
+          }
+        }}
+      >
+        {layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id); }}
+            className="shrink-0 hover:bg-muted rounded"
+            data-testid={`button-expand-${layer.id}`}
+          >
+            {expandedLayerId === layer.id ? (
+              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            )}
+          </button>
+        )}
+        <div 
+          className="w-2.5 h-2.5 rounded-sm shrink-0" 
+          style={{ backgroundColor: layer.color }}
+        />
+        <span className="text-sm shrink-0" title={layer.geometryType}>
+          {getGeometryIcon(layer.geometryType)}
+        </span>
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          {editingLayerId === layer.id ? (
+            <div className="flex items-center gap-1 flex-1">
+              <Input
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, layer.id)}
+                className="h-5 text-xs"
+                autoFocus
+                data-no-drag
+                data-testid={`input-layer-name-${layer.id}`}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0"
+                onClick={() => handleSaveName(layer.id)}
+                data-testid={`button-save-name-${layer.id}`}
+              >
+                <Check className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <span 
+                className="text-xs font-medium truncate"
+                data-testid={`label-layer-name-${layer.id}`}
+              >
+                {layer.name}
+              </span>
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                ({layer.featureCount})
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="text-[10px] text-muted-foreground/60 shrink-0 cursor-pointer"
+                    data-no-drag
+                    data-testid={`label-layer-id-${layer.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const idStr = String(layer.id);
+                      if (navigator.clipboard?.writeText) {
+                        navigator.clipboard.writeText(idStr).then(() => {
+                          toast({ title: "ID скопирован", description: `ID слоя: ${idStr}` });
+                        }).catch(() => {
+                          toast({ title: "ID слоя", description: idStr });
+                        });
+                      } else {
+                        toast({ title: "ID слоя", description: idStr });
+                      }
+                    }}
+                  >
+                    ID:{layer.id}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Нажмите, чтобы скопировать ID слоя</p>
+                </TooltipContent>
+              </Tooltip>
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
+                  onClick={(e) => { e.stopPropagation(); handleStartEditing(layer); }}
+                  data-testid={`button-edit-name-${layer.id}`}
+                >
+                  <Pencil className="h-2.5 w-2.5" />
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={(e) => { e.stopPropagation(); setStyleConfigLayerId(layer.id); }}
+              data-testid={`button-layer-style-${layer.id}`}
+            >
+              <Palette className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p className="text-xs">Стилизация слоя</p>
+          </TooltipContent>
+        </Tooltip>
+      
+        {onOpenAttributeTable && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => { e.stopPropagation(); onOpenAttributeTable(layer.id, layer.name); }}
+                data-testid={`button-attribute-table-${layer.id}`}
+              >
+                <Table2 className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Таблица атрибутов</TooltipContent>
+          </Tooltip>
+        )}
+      
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => { e.stopPropagation(); toggleVisibilityMutation.mutate({
+                id: layer.id,
+                visible: !layer.visible,
+              }); }}
+              data-testid={`button-toggle-visibility-${layer.id}`}
+            >
+              {layer.visible ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
+        </Tooltip>
+      
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => { e.stopPropagation(); setGeocodeLayerId(layer.id); }}
+              data-testid={`button-geocode-layer-${layer.id}`}
+            >
+              <MapPin className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Геокодировать (адресные ориентиры)</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => {
+                e.stopPropagation();
+                const url = `/api/editable-layers/${layer.id}/export/shapefile`;
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${layer.name}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                toast({ title: "Экспорт", description: `Слой "${layer.name}" экспортируется в Shapefile...` });
+              }}
+              data-testid={`button-export-layer-${layer.id}`}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Экспорт в Shapefile</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-destructive"
+              onClick={(e) => { e.stopPropagation(); deleteLayerMutation.mutate(layer.id); }}
+              data-testid={`button-delete-layer-${layer.id}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Удалить слой</TooltipContent>
+        </Tooltip>
+      </div>
+
+      {canEdit && folders.length > 0 && (
+        <div className="px-2 py-1 border-t bg-muted/10 flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground shrink-0">Папка:</span>
+          <Select
+            value={layer.folderId ? String(layer.folderId) : "__none__"}
+            onValueChange={(val) => {
+              moveLayerToFolderMutation.mutate({
+                layerId: layer.id,
+                folderId: val === "__none__" ? null : Number(val),
+              });
+            }}
+          >
+            <SelectTrigger className="h-5 text-[10px] flex-1 min-w-0" data-testid={`select-layer-folder-${layer.id}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__" data-testid={`select-folder-none-${layer.id}`}>Без папки</SelectItem>
+              {folders.map(f => (
+                <SelectItem key={f.id} value={String(f.id)} data-testid={`select-folder-${f.id}-layer-${layer.id}`}>
+                  {f.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      
+      {expandedLayerId === layer.id && layer.sourceFiles && layer.sourceFiles.length > 0 && (
+        <div className="px-2 py-1.5 border-t bg-muted/30">
+          <div className="flex flex-wrap gap-1 items-center">
+            <span className="text-[10px] text-muted-foreground">SHP:</span>
+            {layer.sourceFiles.map((file, idx) => (
+              <Badge key={idx} variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                {file}
+              </Badge>
+            ))}
+            {layer.crs && (
+              <span className="text-[10px] text-muted-foreground ml-1">
+                CRS: {layer.crs}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {legendLayerId === layer.id && layer.styleConfig && layer.styleConfig.renderer !== "single" && (() => {
+        const sc = layer.styleConfig;
+        return (
+          <div className="px-3 py-2 border-t bg-muted/20 space-y-1" data-testid={`legend-layer-${layer.id}`}>
+            <p className="text-[10px] text-muted-foreground font-medium mb-1">
+              {sc.renderer === "categorized" ? "Категории" : "Градация"}: {sc.field}
+            </p>
+            {sc.renderer === "categorized" && sc.categorizedClasses && (
+              <div className="space-y-0.5">
+                {sc.categorizedClasses.map((cls: any, i: number) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <span
+                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                      style={{ backgroundColor: cls.style.color }}
+                    />
+                    <span className="text-[11px] truncate">{cls.label || String(cls.value)}</span>
+                  </div>
+                ))}
+                {sc.defaultStyle && (
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                      style={{ backgroundColor: sc.defaultStyle.color }}
+                    />
+                    <span className="text-[11px] truncate text-muted-foreground">Прочее</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {sc.renderer === "graduated" && sc.graduatedClasses && (
+              <div className="space-y-0.5">
+                {sc.graduatedClasses.map((cls: any, i: number) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <span
+                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                      style={{ backgroundColor: cls.style.color }}
+                    />
+                    <span className="text-[11px] truncate">{cls.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </div>
+  );
+
   const containerClasses = isMobile
     ? "fixed inset-0 bg-card flex flex-col z-50"
     : "fixed bg-card border rounded-lg shadow-lg flex flex-col z-50";
@@ -537,6 +963,63 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 />
               </div>
             </div>
+
+            {canEdit && (
+              <div className="flex items-center gap-2 pb-2">
+                {isCreatingFolder ? (
+                  <div className="flex items-center gap-1 flex-1">
+                    <Input
+                      value={newFolderName}
+                      onChange={(e) => setNewFolderName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newFolderName.trim()) {
+                          createFolderMutation.mutate(newFolderName.trim());
+                        } else if (e.key === "Escape") {
+                          setIsCreatingFolder(false);
+                          setNewFolderName("");
+                        }
+                      }}
+                      placeholder="Имя папки..."
+                      className="h-7 text-xs"
+                      autoFocus
+                      data-no-drag
+                      data-testid="input-new-folder-name"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        if (newFolderName.trim()) {
+                          createFolderMutation.mutate(newFolderName.trim());
+                        }
+                      }}
+                      disabled={!newFolderName.trim() || createFolderMutation.isPending}
+                      data-testid="button-confirm-create-folder"
+                    >
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => { setIsCreatingFolder(false); setNewFolderName(""); }}
+                      data-testid="button-cancel-create-folder"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsCreatingFolder(true)}
+                    data-testid="button-create-folder"
+                  >
+                    <FolderPlus className="h-4 w-4 mr-2" />
+                    Папка
+                  </Button>
+                )}
+              </div>
+            )}
             
             {uploadProgress && (
               <div className="mb-3 p-2 bg-muted rounded text-sm text-muted-foreground flex items-center gap-2">
@@ -556,293 +1039,129 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {sceneLayers.map(layer => (
-                <div
-                  key={layer.id}
-                  className="rounded border bg-background"
-                  data-testid={`scene-layer-${layer.id}`}
-                >
-                  <div 
-                    className={`flex items-center gap-1.5 px-2 py-1 ${layer.styleConfig && layer.styleConfig.renderer !== "single" ? "cursor-pointer" : ""}`}
-                    onClick={() => {
-                      const sc = layer.styleConfig;
-                      if (sc && sc.renderer !== "single") {
-                        setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
-                      }
-                    }}
-                  >
-                    {layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0 && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id); }}
-                        className="shrink-0 hover:bg-muted rounded"
-                        data-testid={`button-expand-${layer.id}`}
+                  {folders.map(folder => {
+                    const folderLayers = sceneLayers.filter(l => l.folderId === folder.id);
+                    const isExpanded = expandedFolderIds.has(folder.id);
+                    return (
+                      <Collapsible
+                        key={`folder-${folder.id}`}
+                        open={isExpanded}
+                        onOpenChange={() => toggleFolderExpanded(folder.id)}
+                        data-testid={`folder-${folder.id}`}
                       >
-                        {expandedLayerId === layer.id ? (
-                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                        )}
-                      </button>
-                    )}
-                    <div 
-                      className="w-2.5 h-2.5 rounded-sm shrink-0" 
-                      style={{ backgroundColor: layer.color }}
-                    />
-                    <span className="text-sm shrink-0" title={layer.geometryType}>
-                      {getGeometryIcon(layer.geometryType)}
-                    </span>
-                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                      {editingLayerId === layer.id ? (
-                        <div className="flex items-center gap-1 flex-1">
-                          <Input
-                            value={editingName}
-                            onChange={(e) => setEditingName(e.target.value)}
-                            onKeyDown={(e) => handleKeyDown(e, layer.id)}
-                            className="h-5 text-xs"
-                            autoFocus
-                            data-no-drag
-                            data-testid={`input-layer-name-${layer.id}`}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 shrink-0"
-                            onClick={() => handleSaveName(layer.id)}
-                            data-testid={`button-save-name-${layer.id}`}
-                          >
-                            <Check className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <span 
-                            className="text-xs font-medium truncate"
-                            data-testid={`label-layer-name-${layer.id}`}
-                          >
-                            {layer.name}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground shrink-0">
-                            ({layer.featureCount})
-                          </span>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span
-                                className="text-[10px] text-muted-foreground/60 shrink-0 cursor-pointer"
-                                data-no-drag
-                                data-testid={`label-layer-id-${layer.id}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const idStr = String(layer.id);
-                                  if (navigator.clipboard?.writeText) {
-                                    navigator.clipboard.writeText(idStr).then(() => {
-                                      toast({ title: "ID скопирован", description: `ID слоя: ${idStr}` });
-                                    }).catch(() => {
-                                      toast({ title: "ID слоя", description: idStr });
-                                    });
-                                  } else {
-                                    toast({ title: "ID слоя", description: idStr });
-                                  }
-                                }}
-                              >
-                                ID:{layer.id}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">
-                              <p className="text-xs">Нажмите, чтобы скопировать ID слоя</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          {canEdit && (
+                        <div className="rounded border bg-muted/30">
+                          <div className="flex items-center gap-1.5 px-2 py-1">
+                            <CollapsibleTrigger asChild>
+                              <button className="shrink-0 hover:bg-muted rounded p-0.5" data-testid={`button-toggle-folder-${folder.id}`}>
+                                {isExpanded ? (
+                                  <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                                ) : (
+                                  <FolderClosed className="h-3.5 w-3.5 text-muted-foreground" />
+                                )}
+                              </button>
+                            </CollapsibleTrigger>
+                            <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                              {editingFolderId === folder.id ? (
+                                <div className="flex items-center gap-1 flex-1">
+                                  <Input
+                                    value={editingFolderName}
+                                    onChange={(e) => setEditingFolderName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && editingFolderName.trim()) {
+                                        renameFolderMutation.mutate({ folderId: folder.id, name: editingFolderName.trim() });
+                                      } else if (e.key === "Escape") {
+                                        setEditingFolderId(null);
+                                      }
+                                    }}
+                                    className="h-5 text-xs"
+                                    autoFocus
+                                    data-no-drag
+                                    data-testid={`input-folder-name-${folder.id}`}
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      if (editingFolderName.trim()) {
+                                        renameFolderMutation.mutate({ folderId: folder.id, name: editingFolderName.trim() });
+                                      }
+                                    }}
+                                    data-testid={`button-save-folder-name-${folder.id}`}
+                                  >
+                                    <Check className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="text-xs font-medium truncate" data-testid={`label-folder-name-${folder.id}`}>
+                                    {folder.name}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground shrink-0">
+                                    ({folderLayers.length})
+                                  </span>
+                                  {canEdit && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingFolderId(folder.id);
+                                        setEditingFolderName(folder.name);
+                                      }}
+                                      data-testid={`button-edit-folder-name-${folder.id}`}
+                                    >
+                                      <Pencil className="h-2.5 w-2.5" />
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
-                              onClick={(e) => { e.stopPropagation(); handleStartEditing(layer); }}
-                              data-testid={`button-edit-name-${layer.id}`}
+                              className="h-6 w-6"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFolderVisibilityMutation.mutate({ folderId: folder.id, visible: folder.visible !== 1 });
+                              }}
+                              data-testid={`button-toggle-folder-visibility-${folder.id}`}
                             >
-                              <Pencil className="h-2.5 w-2.5" />
+                              {folder.visible === 1 ? (
+                                <Eye className="h-3.5 w-3.5" />
+                              ) : (
+                                <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                              )}
                             </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(e) => { e.stopPropagation(); setStyleConfigLayerId(layer.id); }}
-                          data-testid={`button-layer-style-${layer.id}`}
-                        >
-                          <Palette className="h-3.5 w-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p className="text-xs">Стилизация слоя</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  
-                  {onOpenAttributeTable && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={(e) => { e.stopPropagation(); onOpenAttributeTable(layer.id, layer.name); }}
-                          data-testid={`button-attribute-table-${layer.id}`}
-                        >
-                          <Table2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Таблица атрибутов</TooltipContent>
-                    </Tooltip>
-                  )}
-                  
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={(e) => { e.stopPropagation(); toggleVisibilityMutation.mutate({
-                          id: layer.id,
-                          visible: !layer.visible,
-                        }); }}
-                        data-testid={`button-toggle-visibility-${layer.id}`}
-                      >
-                        {layer.visible ? (
-                          <Eye className="h-3.5 w-3.5" />
-                        ) : (
-                          <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
-                  </Tooltip>
-                  
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={(e) => { e.stopPropagation(); setGeocodeLayerId(layer.id); }}
-                        data-testid={`button-geocode-layer-${layer.id}`}
-                      >
-                        <MapPin className="h-3.5 w-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Геокодировать (адресные ориентиры)</TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const url = `/api/editable-layers/${layer.id}/export/shapefile`;
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = `${layer.name}.zip`;
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          toast({ title: "Экспорт", description: `Слой "${layer.name}" экспортируется в Shapefile...` });
-                        }}
-                        data-testid={`button-export-layer-${layer.id}`}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Экспорт в Shapefile</TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-destructive"
-                        onClick={(e) => { e.stopPropagation(); deleteLayerMutation.mutate(layer.id); }}
-                        data-testid={`button-delete-layer-${layer.id}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Удалить слой</TooltipContent>
-                  </Tooltip>
-                  </div>
-                  
-                  {/* Source files panel - shown when expanded */}
-                  {expandedLayerId === layer.id && layer.sourceFiles && layer.sourceFiles.length > 0 && (
-                    <div className="px-2 py-1.5 border-t bg-muted/30">
-                      <div className="flex flex-wrap gap-1 items-center">
-                        <span className="text-[10px] text-muted-foreground">SHP:</span>
-                        {layer.sourceFiles.map((file, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-[9px] px-1 py-0 h-4">
-                            {file}
-                          </Badge>
-                        ))}
-                        {layer.crs && (
-                          <span className="text-[10px] text-muted-foreground ml-1">
-                            CRS: {layer.crs}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {legendLayerId === layer.id && layer.styleConfig && layer.styleConfig.renderer !== "single" && (() => {
-                    const sc = layer.styleConfig;
-                    return (
-                      <div className="px-3 py-2 border-t bg-muted/20 space-y-1" data-testid={`legend-layer-${layer.id}`}>
-                        <p className="text-[10px] text-muted-foreground font-medium mb-1">
-                          {sc.renderer === "categorized" ? "Категории" : "Градация"}: {sc.field}
-                        </p>
-                        {sc.renderer === "categorized" && sc.categorizedClasses && (
-                          <div className="space-y-0.5">
-                            {sc.categorizedClasses.map((cls: any, i: number) => (
-                              <div key={i} className="flex items-center gap-1.5">
-                                <span
-                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                                  style={{ backgroundColor: cls.style.color }}
-                                />
-                                <span className="text-[11px] truncate">{cls.label || String(cls.value)}</span>
-                              </div>
-                            ))}
-                            {sc.defaultStyle && (
-                              <div className="flex items-center gap-1.5">
-                                <span
-                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                                  style={{ backgroundColor: sc.defaultStyle.color }}
-                                />
-                                <span className="text-[11px] truncate text-muted-foreground">Прочее</span>
-                              </div>
+                            {canEdit && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteFolderMutation.mutate(folder.id);
+                                }}
+                                data-testid={`button-delete-folder-${folder.id}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             )}
                           </div>
-                        )}
-                        {sc.renderer === "graduated" && sc.graduatedClasses && (
-                          <div className="space-y-0.5">
-                            {sc.graduatedClasses.map((cls: any, i: number) => (
-                              <div key={i} className="flex items-center gap-1.5">
-                                <span
-                                  className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                                  style={{ backgroundColor: cls.style.color }}
-                                />
-                                <span className="text-[11px] truncate">{cls.label}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                          <CollapsibleContent>
+                            <div className="space-y-1 px-2 pb-1.5">
+                              {folderLayers.length === 0 ? (
+                                <div className="text-[10px] text-muted-foreground text-center py-1" data-testid={`folder-empty-${folder.id}`}>Пусто</div>
+                              ) : (
+                                folderLayers.map(layer => renderLayerRow(layer))
+                              )}
+                            </div>
+                          </CollapsibleContent>
+                        </div>
+                      </Collapsible>
                     );
-                  })()}
-                </div>
-              ))}
+                  })}
+                  {sceneLayers.filter(l => !l.folderId).map(layer => renderLayerRow(layer))}
             </div>
           )}
             </ScrollArea>

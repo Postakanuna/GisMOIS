@@ -13,8 +13,9 @@ import {
   type SceneRole,
   type ApiKey, type InsertApiKey, type ApiKeyPermission,
   type CustomIcon, type InsertCustomIcon,
+  type LayerFolder,
   editableLayers, drawnFeatures, layerSchemas,
-  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons
+  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { db } from "./db";
@@ -102,12 +103,22 @@ export interface IStorage {
   getCustomIcon(id: number): Promise<CustomIcon | undefined>;
   createCustomIcon(icon: { name: string; svgContent: string; category?: string; createdBy?: string }): Promise<CustomIcon>;
   deleteCustomIcon(id: number): Promise<boolean>;
+  
+  // Layer folders methods
+  getLayerFolders(sceneId: number): Promise<LayerFolder[]>;
+  getLayerFolder(id: number): Promise<LayerFolder | undefined>;
+  createLayerFolder(folder: { sceneId: number; name: string }): Promise<LayerFolder>;
+  updateLayerFolder(id: number, updates: Partial<{ name: string; visible: number }>): Promise<LayerFolder | undefined>;
+  deleteLayerFolder(id: number): Promise<boolean>;
+  setLayerFolder(layerId: number, folderId: number | null): Promise<EditableLayer | undefined>;
+  toggleFolderVisibility(folderId: number, visible: boolean): Promise<void>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
   return {
     id: row.id,
     sceneId: row.sceneId ?? undefined,
+    folderId: row.folderId ?? undefined,
     name: row.name,
     geometryType: row.geometryType as EditableLayer["geometryType"],
     color: row.color,
@@ -246,6 +257,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.source !== undefined) updateData.source = updates.source;
     if (updates.sourceFileName !== undefined) updateData.sourceFileName = updates.sourceFileName;
     if (updates.sceneId !== undefined) updateData.sceneId = updates.sceneId;
+    if ((updates as any).folderId !== undefined) updateData.folderId = (updates as any).folderId;
     if (updates.crs !== undefined) updateData.crs = updates.crs;
     if ((updates as any).styleConfig !== undefined) updateData.styleConfig = (updates as any).styleConfig;
 
@@ -834,6 +846,61 @@ export class DatabaseStorage implements IStorage {
   async deleteCustomIcon(id: number): Promise<boolean> {
     const [row] = await db.delete(customIcons).where(eq(customIcons.id, id)).returning();
     return !!row;
+  }
+
+  // Layer folders methods
+  async getLayerFolders(sceneId: number): Promise<LayerFolder[]> {
+    return db.select().from(layerFolders).where(eq(layerFolders.sceneId, sceneId));
+  }
+
+  async getLayerFolder(id: number): Promise<LayerFolder | undefined> {
+    const [row] = await db.select().from(layerFolders).where(eq(layerFolders.id, id));
+    return row;
+  }
+
+  async createLayerFolder(folder: { sceneId: number; name: string }): Promise<LayerFolder> {
+    const [row] = await db.insert(layerFolders).values({
+      sceneId: folder.sceneId,
+      name: folder.name,
+    }).returning();
+    return row;
+  }
+
+  async updateLayerFolder(id: number, updates: Partial<{ name: string; visible: number }>): Promise<LayerFolder | undefined> {
+    const updateData: Record<string, unknown> = {};
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.visible !== undefined) updateData.visible = updates.visible;
+    
+    const [row] = await db.update(layerFolders)
+      .set(updateData)
+      .where(eq(layerFolders.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteLayerFolder(id: number): Promise<boolean> {
+    await db.update(editableLayers)
+      .set({ folderId: null, updatedAt: new Date() })
+      .where(eq(editableLayers.folderId, id));
+    const result = await db.delete(layerFolders).where(eq(layerFolders.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async setLayerFolder(layerId: number, folderId: number | null): Promise<EditableLayer | undefined> {
+    const [row] = await db.update(editableLayers)
+      .set({ folderId, updatedAt: new Date() })
+      .where(eq(editableLayers.id, layerId))
+      .returning();
+    return row ? toEditableLayer(row) : undefined;
+  }
+
+  async toggleFolderVisibility(folderId: number, visible: boolean): Promise<void> {
+    await db.update(layerFolders)
+      .set({ visible: visible ? 1 : 0 })
+      .where(eq(layerFolders.id, folderId));
+    await db.update(editableLayers)
+      .set({ visible: visible ? 1 : 0, updatedAt: new Date() })
+      .where(eq(editableLayers.folderId, folderId));
   }
 }
 
