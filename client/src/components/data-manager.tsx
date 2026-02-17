@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,7 @@ interface Folder {
   sceneId: number;
   name: string;
   visible: number;
+  displayOrder: number;
   createdAt: string;
 }
 
@@ -73,6 +74,7 @@ interface EditableLayer {
   sourceFileName: string | null;
   sourceFiles: string[] | null;
   crs: string;
+  displayOrder: number;
   createdAt: string;
   updatedAt: string;
   styleConfig?: any;
@@ -122,6 +124,9 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<number>>(new Set());
   const [dragLayerId, setDragLayerId] = useState<number | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<number | "ungrouped" | null>(null);
+  const [dragType, setDragType] = useState<"layer" | "folder" | null>(null);
+  const [dragFolderId, setDragFolderId] = useState<number | null>(null);
+  const [dropInsertIndex, setDropInsertIndex] = useState<{ scope: number | "ungrouped"; index: number } | null>(null);
 
   const foldersQueryKey = ["/api/scenes", currentSceneId, "folders"];
 
@@ -136,7 +141,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   });
   
   // Sort layers by id to maintain consistent order
-  const sceneLayers = [...sceneLayersRaw].sort((a, b) => a.id - b.id);
+  const sceneLayers = [...sceneLayersRaw].sort((a, b) => a.displayOrder - b.displayOrder);
 
   // Single query key for all editable layers operations
   const editableLayersQueryKey = ["/api/scenes", currentSceneId, "editable-layers"];
@@ -289,6 +294,26 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: foldersQueryKey });
       queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
+    },
+  });
+
+  const reorderLayersMutation = useMutation({
+    mutationFn: async (layerIds: number[]) => {
+      const res = await apiRequest("POST", "/api/editable-layers/reorder", { layerIds });
+      return res.json();
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
+    },
+  });
+
+  const reorderFoldersMutation = useMutation({
+    mutationFn: async (folderIds: number[]) => {
+      const res = await apiRequest("POST", "/api/layer-folders/reorder", { folderIds });
+      return res.json();
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
     },
   });
 
@@ -541,46 +566,173 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     }
   };
 
-  const handleDragStart = (e: React.DragEvent, layerId: number) => {
-    e.dataTransfer.setData("text/plain", String(layerId));
+  const handleLayerDragStart = (e: React.DragEvent, layerId: number) => {
+    e.dataTransfer.setData("text/layer", String(layerId));
     e.dataTransfer.effectAllowed = "move";
     setDragLayerId(layerId);
+    setDragType("layer");
+  };
+
+  const handleFolderDragStart = (e: React.DragEvent, folderId: number) => {
+    e.dataTransfer.setData("text/folder", String(folderId));
+    e.dataTransfer.effectAllowed = "move";
+    setDragFolderId(folderId);
+    setDragType("folder");
   };
 
   const handleDragEnd = () => {
     setDragLayerId(null);
+    setDragFolderId(null);
+    setDragType(null);
+    setDropTargetFolderId(null);
+    setDropInsertIndex(null);
+  };
+
+  const handleLayerDragOverInsert = (e: React.DragEvent, scope: number | "ungrouped", index: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    setDropInsertIndex({ scope, index });
     setDropTargetFolderId(null);
   };
 
-  const handleDragOver = (e: React.DragEvent, targetId: number | "ungrouped") => {
+  const handleInsertDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+    setDropInsertIndex(null);
+  };
+
+  const computeGlobalLayerOrder = (
+    currentFolders: typeof folders,
+    currentLayers: typeof sceneLayers,
+    movedLayerId: number | null,
+    targetFolderId: number | null,
+    targetScope: number | "ungrouped",
+    insertIndex: number
+  ): number[] => {
+    const result: number[] = [];
+    
+    const buildScopeList = (scopeFolderId: number | null) => {
+      const scopeLayers = currentLayers
+        .filter(l => {
+          if (l.id === movedLayerId) return false;
+          return scopeFolderId === null ? !l.folderId : l.folderId === scopeFolderId;
+        })
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .map(l => l.id);
+      
+      if (movedLayerId !== null) {
+        const isTargetScope = (targetScope === "ungrouped" && scopeFolderId === null) || targetScope === scopeFolderId;
+        if (isTargetScope) {
+          const idx = Math.min(insertIndex, scopeLayers.length);
+          scopeLayers.splice(idx, 0, movedLayerId);
+        }
+      }
+      
+      return scopeLayers;
+    };
+    
+    for (const folder of currentFolders) {
+      result.push(...buildScopeList(folder.id));
+    }
+    result.push(...buildScopeList(null));
+    
+    return result;
+  };
+
+  const handleDropAtIndex = (e: React.DragEvent, scope: number | "ungrouped", index: number) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDropTargetFolderId(targetId);
+    e.stopPropagation();
+    
+    const layerIdStr = e.dataTransfer.getData("text/layer");
+    const folderIdStr = e.dataTransfer.getData("text/folder");
+    
+    if (folderIdStr && dragType === "folder") {
+      const movedFolderId = Number(folderIdStr);
+      const currentOrder = folders.map(f => f.id);
+      const fromIndex = currentOrder.indexOf(movedFolderId);
+      if (fromIndex >= 0) {
+        currentOrder.splice(fromIndex, 1);
+        currentOrder.splice(index, 0, movedFolderId);
+        reorderFoldersMutation.mutate(currentOrder);
+        const reorderedFolders = currentOrder.map(id => folders.find(f => f.id === id)!).filter(Boolean);
+        const globalOrder = computeGlobalLayerOrder(reorderedFolders, sceneLayers, null, null, "ungrouped", 0);
+        if (globalOrder.length > 0) {
+          reorderLayersMutation.mutate(globalOrder);
+        }
+      }
+    } else if (layerIdStr && dragType === "layer") {
+      const movedLayerId = Number(layerIdStr);
+      const layer = sceneLayers.find(l => l.id === movedLayerId);
+      if (!layer) return;
+      
+      const targetFolderId = scope === "ungrouped" ? null : scope as number;
+      const sourceFolderId = layer.folderId ?? null;
+      
+      const globalOrder = computeGlobalLayerOrder(folders, sceneLayers, movedLayerId, targetFolderId, scope, index);
+      
+      if (sourceFolderId !== targetFolderId) {
+        moveLayerToFolderMutation.mutateAsync({ layerId: movedLayerId, folderId: targetFolderId }).then(() => {
+          reorderLayersMutation.mutate(globalOrder);
+        });
+      } else {
+        reorderLayersMutation.mutate(globalOrder);
+      }
+    }
+    
+    handleDragEnd();
+  };
+
+  const handleFolderDrop = (e: React.DragEvent, targetFolderId: number) => {
+    e.preventDefault();
+    const layerIdStr = e.dataTransfer.getData("text/layer");
+    if (layerIdStr && dragType === "layer") {
+      const movedLayerId = Number(layerIdStr);
+      const layer = sceneLayers.find(l => l.id === movedLayerId);
+      if (layer && layer.folderId !== targetFolderId) {
+        const folderLayerCount = sceneLayers.filter(l => l.folderId === targetFolderId).length;
+        const globalOrder = computeGlobalLayerOrder(folders, sceneLayers, movedLayerId, targetFolderId, targetFolderId, folderLayerCount);
+        moveLayerToFolderMutation.mutateAsync({ layerId: movedLayerId, folderId: targetFolderId }).then(() => {
+          reorderLayersMutation.mutate(globalOrder);
+        });
+      }
+    }
+    handleDragEnd();
+  };
+
+  const handleFolderDragOver = (e: React.DragEvent, targetId: number) => {
+    if (dragType === "layer") {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDropTargetFolderId(targetId);
+      setDropInsertIndex(null);
+    }
   };
 
   const handleDragLeave = () => {
     setDropTargetFolderId(null);
   };
 
-  const handleDrop = (e: React.DragEvent, targetFolderId: number | null) => {
-    e.preventDefault();
-    const layerId = Number(e.dataTransfer.getData("text/plain"));
-    if (layerId) {
-      const layer = sceneLayers.find(l => l.id === layerId);
-      if (layer && layer.folderId !== targetFolderId) {
-        moveLayerToFolderMutation.mutate({ layerId, folderId: targetFolderId });
-      }
-    }
-    setDragLayerId(null);
-    setDropTargetFolderId(null);
+  const renderInsertZone = (scope: number | "ungrouped", index: number) => {
+    const isActive = dropInsertIndex?.scope === scope && dropInsertIndex?.index === index;
+    return (
+      <div
+        key={`insert-${scope}-${index}`}
+        className={`transition-all ${isActive ? "h-1 bg-primary rounded-full mx-1 my-0.5" : "h-0"}`}
+        onDragOver={(e) => handleLayerDragOverInsert(e, scope, index)}
+        onDragLeave={handleInsertDragLeave}
+        onDrop={(e) => handleDropAtIndex(e, scope, index)}
+        style={{ minHeight: dragLayerId !== null || dragFolderId !== null ? 8 : 0 }}
+        data-testid={`drop-zone-${scope}-${index}`}
+      />
+    );
   };
 
   const renderLayerRow = (layer: EditableLayer) => (
     <div
       key={layer.id}
       className={`rounded border bg-background ${dragLayerId === layer.id ? "opacity-50" : ""}`}
-      draggable={canEdit && folders.length > 0}
-      onDragStart={(e) => handleDragStart(e, layer.id)}
+      draggable={canEdit}
+      onDragStart={(e) => handleLayerDragStart(e, layer.id)}
       onDragEnd={handleDragEnd}
       data-testid={`scene-layer-${layer.id}`}
     >
@@ -593,7 +745,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           }
         }}
       >
-        {canEdit && folders.length > 0 && (
+        {canEdit && (
           <GripVertical className="h-3 w-3 text-muted-foreground/50 shrink-0 cursor-grab" />
         )}
         {((layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0) || (layer as any).metadata) && (
@@ -1107,23 +1259,27 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {folders.map(folder => {
-                    const folderLayers = sceneLayers.filter(l => l.folderId === folder.id);
+                  {folders.map((folder, folderIdx) => {
+                    const folderLayers = sceneLayers.filter(l => l.folderId === folder.id).sort((a, b) => a.displayOrder - b.displayOrder);
                     const isExpanded = expandedFolderIds.has(folder.id);
                     const isDragTarget = dropTargetFolderId === folder.id && dragLayerId !== null;
                     return (
-                      <Collapsible
-                        key={`folder-${folder.id}`}
-                        open={isExpanded}
-                        onOpenChange={() => toggleFolderExpanded(folder.id)}
-                        data-testid={`folder-${folder.id}`}
-                      >
-                        <div
-                          className={`rounded border transition-colors ${isDragTarget ? "border-primary bg-primary/10" : "bg-muted/30"}`}
-                          onDragOver={(e) => handleDragOver(e, folder.id)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, folder.id)}
+                      <Fragment key={`folder-${folder.id}`}>
+                        {dragType === "folder" && renderInsertZone("ungrouped", folderIdx)}
+                        <Collapsible
+                          open={isExpanded}
+                          onOpenChange={() => toggleFolderExpanded(folder.id)}
+                          data-testid={`folder-${folder.id}`}
                         >
+                          <div
+                            className={`rounded border transition-colors ${dragFolderId === folder.id ? "opacity-50" : ""} ${isDragTarget ? "border-primary bg-primary/10" : "bg-muted/30"}`}
+                            draggable={canEdit}
+                            onDragStart={(e) => handleFolderDragStart(e, folder.id)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleFolderDragOver(e, folder.id)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleFolderDrop(e, folder.id)}
+                          >
                           <div className="flex items-center gap-1.5 px-2 py-1">
                             <CollapsibleTrigger asChild>
                               <button className="shrink-0 hover:bg-muted rounded p-0.5" data-testid={`button-toggle-folder-${folder.id}`}>
@@ -1223,32 +1379,50 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                             )}
                           </div>
                           <CollapsibleContent>
-                            <div className="space-y-1 px-2 pb-1.5">
+                            <div className="space-y-0 px-2 pb-1.5">
                               {folderLayers.length === 0 ? (
                                 <div className="text-[10px] text-muted-foreground text-center py-2" data-testid={`folder-empty-${folder.id}`}>
                                   {dragLayerId !== null ? "Перетащите слой сюда" : "Пусто"}
                                 </div>
                               ) : (
-                                folderLayers.map(layer => renderLayerRow(layer))
+                                <>
+                                  {folderLayers.map((layer, idx) => (
+                                    <Fragment key={layer.id}>
+                                      {dragType === "layer" && renderInsertZone(folder.id, idx)}
+                                      {renderLayerRow(layer)}
+                                    </Fragment>
+                                  ))}
+                                  {dragType === "layer" && renderInsertZone(folder.id, folderLayers.length)}
+                                </>
                               )}
                             </div>
                           </CollapsibleContent>
                         </div>
                       </Collapsible>
+                    </Fragment>
                     );
                   })}
-                  <div
-                    className={`space-y-1 rounded transition-colors ${dropTargetFolderId === "ungrouped" && dragLayerId !== null ? "border-2 border-dashed border-primary bg-primary/5 p-1" : ""}`}
-                    onDragOver={(e) => handleDragOver(e, "ungrouped")}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, null)}
-                  >
-                    {sceneLayers.filter(l => !l.folderId).map(layer => renderLayerRow(layer))}
-                    {dragLayerId !== null && sceneLayers.filter(l => !l.folderId).length === 0 && (
-                      <div className="text-[10px] text-muted-foreground text-center py-2 border-2 border-dashed border-muted rounded">
-                        Перетащите сюда для удаления из папки
-                      </div>
-                    )}
+                  {dragType === "folder" && renderInsertZone("ungrouped", folders.length)}
+                  <div className="space-y-0">
+                    {(() => {
+                      const ungroupedLayers = sceneLayers.filter(l => !l.folderId).sort((a, b) => a.displayOrder - b.displayOrder);
+                      return (
+                        <>
+                          {ungroupedLayers.map((layer, idx) => (
+                            <Fragment key={layer.id}>
+                              {dragType === "layer" && renderInsertZone("ungrouped", idx)}
+                              {renderLayerRow(layer)}
+                            </Fragment>
+                          ))}
+                          {dragType === "layer" && renderInsertZone("ungrouped", ungroupedLayers.length)}
+                          {dragLayerId !== null && ungroupedLayers.length === 0 && (
+                            <div className="text-[10px] text-muted-foreground text-center py-2 border-2 border-dashed border-muted rounded">
+                              Перетащите сюда
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
             </div>
           )}

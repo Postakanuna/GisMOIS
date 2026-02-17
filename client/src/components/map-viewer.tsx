@@ -605,28 +605,23 @@ function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, c
 // Note: Clustering removed in favor of server-side point sampling (GIS-style approach)
 // Points are now filtered on the server based on zoom level for better performance
 
-// Z-index constants for proper layer stacking
-// Polygons should render below lines, lines below points
-const EDITABLE_LAYER_Z_INDEX = {
-  Polygon: 500,      // Base layer - renders first (bottom)
-  LineString: 600,   // Middle layer
-  Point: 700,        // Top layer - renders last (on top)
-};
-
-// Helper to determine z-index based on layer's geometry type
-function getLayerZIndex(layerFeatures: Array<{ geometryType: string }>): number {
-  if (layerFeatures.length === 0) return EDITABLE_LAYER_Z_INDEX.Point;
+// Compute z-index: user displayOrder is primary, geometry type is secondary tiebreaker
+// Lower displayOrder = top of list = rendered on top (higher z-index)
+function getLayerZIndex(displayOrder: number, totalLayers: number, layerFeatures: Array<{ geometryType: string }>): number {
+  const baseZ = 500;
+  const orderZ = (totalLayers - displayOrder) * 10;
   
-  // Determine primary geometry type from features
-  const geometryTypes = new Set(layerFeatures.map(f => f.geometryType));
+  let geomOffset = 2;
+  if (layerFeatures.length > 0) {
+    const geometryTypes = new Set(layerFeatures.map(f => f.geometryType));
+    if (geometryTypes.has("Polygon") || geometryTypes.has("MultiPolygon")) {
+      geomOffset = 0;
+    } else if (geometryTypes.has("LineString") || geometryTypes.has("MultiLineString")) {
+      geomOffset = 1;
+    }
+  }
   
-  if (geometryTypes.has("Polygon") || geometryTypes.has("MultiPolygon")) {
-    return EDITABLE_LAYER_Z_INDEX.Polygon;
-  }
-  if (geometryTypes.has("LineString") || geometryTypes.has("MultiLineString")) {
-    return EDITABLE_LAYER_Z_INDEX.LineString;
-  }
-  return EDITABLE_LAYER_Z_INDEX.Point;
+  return baseZ + orderZ + geomOffset;
 }
 
 // Viewport buffer ratio for hysteresis (50% buffer = request 1.5x visible area)
@@ -1943,8 +1938,8 @@ export function MapViewer({
           },
         });
         
-        // Set z-index based on geometry type: Polygons bottom, Lines middle, Points top
-        const layerZIndex = getLayerZIndex(layerFeatures);
+        // Set z-index: user displayOrder primary, geometry type secondary
+        const layerZIndex = getLayerZIndex(editableLayerItem.displayOrder, allEditableLayers.length, layerFeatures);
         vectorLayer.setZIndex(layerZIndex);
         
         map.addLayer(vectorLayer);
@@ -2013,9 +2008,11 @@ export function MapViewer({
         }
       }
       
-      // Update visibility and opacity
+      // Update visibility, opacity, and z-index (displayOrder may have changed)
       vectorLayer.setVisible(editableLayerItem.visible);
       vectorLayer.setOpacity(editableLayerItem.opacity);
+      const updatedZIndex = getLayerZIndex(editableLayerItem.displayOrder, allEditableLayers.length, layerFeatures);
+      vectorLayer.setZIndex(updatedZIndex);
       
       // Only update style when style properties actually changed
       // Use a style key to detect changes without storing duplicate values

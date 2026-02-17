@@ -254,8 +254,8 @@ export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
 // Editable layer (user-created layer for drawing or imported from shapefile)
 export const editableLayerSchema = z.object({
   id: z.number(),
-  sceneId: z.number().nullable().optional(), // null for global layers, scene ID for scene-specific layers
-  folderId: z.number().nullable().optional(), // null = not in any folder
+  sceneId: z.number().nullable().optional(),
+  folderId: z.number().nullable().optional(),
   name: z.string(),
   geometryType: geometryTypeSchema,
   color: z.string().default("#1976D2"),
@@ -264,10 +264,11 @@ export const editableLayerSchema = z.object({
   visible: z.boolean().default(true),
   opacity: z.number().min(0).max(1).default(1),
   featureCount: z.number().default(0),
-  source: layerSourceSchema.default("user"), // "user" = created in app, "import" = from shapefile
-  sourceFileName: z.string().optional(), // original filename for imported layers
-  sourceFiles: z.array(z.string()).optional(), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
-  crs: z.string().default("EPSG:4326"), // coordinate reference system for imported layers
+  displayOrder: z.number().default(0),
+  source: layerSourceSchema.default("user"),
+  sourceFileName: z.string().optional(),
+  sourceFiles: z.array(z.string()).optional(),
+  crs: z.string().default("EPSG:4326"),
   styleConfig: styleConfigSchema.optional(),
   metadata: z.record(z.unknown()).nullable().optional(),
   createdAt: z.string(),
@@ -291,6 +292,7 @@ export const layerFolders = pgTable("layer_folders", {
   sceneId: integer("scene_id").notNull(),
   name: text("name").notNull(),
   visible: integer("visible").notNull().default(1),
+  displayOrder: integer("display_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -302,6 +304,7 @@ export const layerFolderSchema = z.object({
   sceneId: z.number(),
   name: z.string(),
   visible: z.boolean(),
+  displayOrder: z.number().default(0),
   createdAt: z.string(),
 });
 
@@ -323,6 +326,7 @@ export const editableLayers = pgTable("editable_layers", {
   visible: integer("visible").notNull().default(1),
   opacity: real("opacity").notNull().default(1),
   featureCount: integer("feature_count").notNull().default(0),
+  displayOrder: integer("display_order").notNull().default(0),
   source: text("source").notNull().default("user"), // "user" or "import"
   sourceFileName: text("source_file_name"), // original filename for imported layers
   sourceFiles: jsonb("source_files").default([]), // list of files in shapefile set (shp, dbf, prj, cpg, shx)

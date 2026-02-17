@@ -19,7 +19,7 @@ import {
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { db } from "./db";
-import { eq, sql, and, inArray, gte, lte } from "drizzle-orm";
+import { eq, sql, and, inArray, gte, lte, isNull } from "drizzle-orm";
 
 export interface IStorage {
   getTickets(): Promise<Ticket[]>;
@@ -110,8 +110,12 @@ export interface IStorage {
   createLayerFolder(folder: { sceneId: number; name: string }): Promise<LayerFolder>;
   updateLayerFolder(id: number, updates: Partial<{ name: string; visible: number }>): Promise<LayerFolder | undefined>;
   deleteLayerFolder(id: number): Promise<boolean>;
-  setLayerFolder(layerId: number, folderId: number | null): Promise<EditableLayer | undefined>;
+  setLayerFolder(layerId: number, folderId: number | null, displayOrder?: number): Promise<EditableLayer | undefined>;
   toggleFolderVisibility(folderId: number, visible: boolean): Promise<void>;
+  reorderLayers(layerIds: number[]): Promise<void>;
+  reorderFolders(folderIds: number[]): Promise<void>;
+  getMaxLayerDisplayOrder(sceneId: number, folderId: number | null): Promise<number>;
+  getMaxFolderDisplayOrder(sceneId: number): Promise<number>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -127,6 +131,7 @@ function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer
     visible: row.visible === 1,
     opacity: row.opacity,
     featureCount: row.featureCount,
+    displayOrder: row.displayOrder ?? 0,
     source: row.source as EditableLayer["source"],
     sourceFileName: row.sourceFileName || undefined,
     sourceFiles: row.sourceFiles || [],
@@ -228,8 +233,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEditableLayer(layer: InsertEditableLayer): Promise<EditableLayer> {
+    const sceneId = layer.sceneId ?? null;
+    const maxOrder = sceneId !== null ? await this.getMaxLayerDisplayOrder(sceneId, null) : -1;
     const [row] = await db.insert(editableLayers).values({
-      sceneId: layer.sceneId ?? null,
+      sceneId,
       name: layer.name,
       geometryType: layer.geometryType,
       color: layer.color || "#1976D2",
@@ -238,6 +245,7 @@ export class DatabaseStorage implements IStorage {
       visible: layer.visible !== false ? 1 : 0,
       opacity: layer.opacity ?? 1,
       featureCount: 0,
+      displayOrder: layer.displayOrder ?? (maxOrder + 1),
       source: layer.source || "user",
       sourceFileName: layer.sourceFileName,
       sourceFiles: layer.sourceFiles || [],
@@ -853,7 +861,7 @@ export class DatabaseStorage implements IStorage {
 
   // Layer folders methods
   async getLayerFolders(sceneId: number): Promise<LayerFolder[]> {
-    return db.select().from(layerFolders).where(eq(layerFolders.sceneId, sceneId));
+    return db.select().from(layerFolders).where(eq(layerFolders.sceneId, sceneId)).orderBy(layerFolders.displayOrder);
   }
 
   async getLayerFolder(id: number): Promise<LayerFolder | undefined> {
@@ -862,9 +870,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLayerFolder(folder: { sceneId: number; name: string }): Promise<LayerFolder> {
+    const maxOrder = await this.getMaxFolderDisplayOrder(folder.sceneId);
     const [row] = await db.insert(layerFolders).values({
       sceneId: folder.sceneId,
       name: folder.name,
+      displayOrder: maxOrder + 1,
     }).returning();
     return row;
   }
@@ -889,9 +899,13 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async setLayerFolder(layerId: number, folderId: number | null): Promise<EditableLayer | undefined> {
+  async setLayerFolder(layerId: number, folderId: number | null, displayOrder?: number): Promise<EditableLayer | undefined> {
+    const setData: Record<string, unknown> = { folderId, updatedAt: new Date() };
+    if (displayOrder !== undefined) {
+      setData.displayOrder = displayOrder;
+    }
     const [row] = await db.update(editableLayers)
-      .set({ folderId, updatedAt: new Date() })
+      .set(setData)
       .where(eq(editableLayers.id, layerId))
       .returning();
     return row ? toEditableLayer(row) : undefined;
@@ -904,6 +918,39 @@ export class DatabaseStorage implements IStorage {
     await db.update(editableLayers)
       .set({ visible: visible ? 1 : 0, updatedAt: new Date() })
       .where(eq(editableLayers.folderId, folderId));
+  }
+
+  async reorderLayers(layerIds: number[]): Promise<void> {
+    for (let i = 0; i < layerIds.length; i++) {
+      await db.update(editableLayers)
+        .set({ displayOrder: i })
+        .where(eq(editableLayers.id, layerIds[i]));
+    }
+  }
+
+  async reorderFolders(folderIds: number[]): Promise<void> {
+    for (let i = 0; i < folderIds.length; i++) {
+      await db.update(layerFolders)
+        .set({ displayOrder: i })
+        .where(eq(layerFolders.id, folderIds[i]));
+    }
+  }
+
+  async getMaxLayerDisplayOrder(sceneId: number, folderId: number | null): Promise<number> {
+    const result = await db.select({ maxOrder: sql<number>`COALESCE(MAX(${editableLayers.displayOrder}), -1)` })
+      .from(editableLayers)
+      .where(folderId !== null
+        ? and(eq(editableLayers.sceneId, sceneId), eq(editableLayers.folderId, folderId))
+        : and(eq(editableLayers.sceneId, sceneId), isNull(editableLayers.folderId))
+      );
+    return (result[0]?.maxOrder ?? -1);
+  }
+
+  async getMaxFolderDisplayOrder(sceneId: number): Promise<number> {
+    const result = await db.select({ maxOrder: sql<number>`COALESCE(MAX(${layerFolders.displayOrder}), -1)` })
+      .from(layerFolders)
+      .where(eq(layerFolders.sceneId, sceneId));
+    return (result[0]?.maxOrder ?? -1);
   }
 }
 

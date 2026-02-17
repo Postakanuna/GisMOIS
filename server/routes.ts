@@ -2463,12 +2463,44 @@ export async function registerRoutes(
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const layerId = parseInt(req.params.id);
-      const { folderId } = req.body;
-      const layer = await storage.setLayerFolder(layerId, folderId ?? null);
+      const { folderId, displayOrder } = req.body;
+      const layer = await storage.setLayerFolder(layerId, folderId ?? null, displayOrder);
       if (!layer) return res.status(404).json({ message: "Layer not found" });
       return res.json(layer);
     } catch (error) {
       console.error("Error setting layer folder:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/editable-layers/reorder", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const { layerIds } = req.body;
+      if (!Array.isArray(layerIds) || layerIds.some((id: unknown) => typeof id !== "number")) {
+        return res.status(400).json({ message: "layerIds must be an array of numbers" });
+      }
+      await storage.reorderLayers(layerIds);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error reordering layers:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/layer-folders/reorder", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const { folderIds } = req.body;
+      if (!Array.isArray(folderIds) || folderIds.some((id: unknown) => typeof id !== "number")) {
+        return res.status(400).json({ message: "folderIds must be an array of numbers" });
+      }
+      await storage.reorderFolders(folderIds);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error reordering folders:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
