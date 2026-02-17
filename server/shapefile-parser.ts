@@ -1,5 +1,6 @@
 import shp from "shpjs";
 import simplify from "simplify-js";
+import JSZip from "jszip";
 
 interface ParsedFeature {
   geometry: {
@@ -114,17 +115,116 @@ export async function parseShapefileBuffer(
   const bufferSizeMB = buffer.length / (1024 * 1024);
   console.log(`Parsing shapefile buffer: ${bufferSizeMB.toFixed(2)} MB`);
   
-  // Warn about large files that may cause memory issues
   if (bufferSizeMB > 50) {
     console.warn(`Large file detected (${bufferSizeMB.toFixed(0)} MB). Processing may take longer and use significant memory.`);
   }
   
   let geojson: any;
+  const fileList: string[] = [];
+  
   try {
-    geojson = await shp(buffer);
+    const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B;
+    if (!isZip) {
+      const cpgBuffer = Buffer.from('CP1251');
+      const shapefileObj: any = {
+        shp: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+        cpg: cpgBuffer.buffer.slice(cpgBuffer.byteOffset, cpgBuffer.byteOffset + cpgBuffer.byteLength),
+      };
+      geojson = await shp(shapefileObj);
+      
+      const collection = Array.isArray(geojson) ? geojson[0] : geojson;
+      if (!collection || !collection.features) {
+        throw new Error("Invalid shapefile: no features found");
+      }
+      
+      const geometryType = detectGeometryType(collection);
+      const crs = extractCRS(collection);
+      
+      const features: ParsedFeature[] = collection.features.map((feature: any) => {
+        let coordinates = feature.geometry?.coordinates;
+        if (simplifyTolerance > 0 && geometryType !== "Point") {
+          coordinates = simplifyCoordinates(coordinates, simplifyTolerance);
+        }
+        return {
+          geometry: { type: feature.geometry?.type || geometryType, coordinates },
+          properties: feature.properties || {},
+        };
+      });
+      
+      return { features, geometryType, crs, fileList: [] };
+    }
+    
+    const zip = await JSZip.loadAsync(buffer);
+    
+    const shapefileSets = new Map<string, {
+      shp: ArrayBuffer | null;
+      shx: ArrayBuffer | null;
+      dbf: ArrayBuffer | null;
+      prj: string | null;
+      cpg: string | null;
+      fileNames: string[];
+    }>();
+    
+    const entries: { path: string; entry: any }[] = [];
+    zip.forEach((path: string, entry: any) => {
+      entries.push({ path, entry });
+    });
+    
+    for (const { path, entry } of entries) {
+      if (entry.dir) continue;
+      
+      const pathLower = path.toLowerCase();
+      const ext = pathLower.split('.').pop() || '';
+      
+      if (!['shp', 'shx', 'dbf', 'prj', 'cpg'].includes(ext)) continue;
+      
+      const pathWithoutExt = path.substring(0, path.lastIndexOf('.'));
+      const fileName = path.split('/').pop() || path;
+      
+      if (!shapefileSets.has(pathWithoutExt)) {
+        shapefileSets.set(pathWithoutExt, {
+          shp: null, shx: null, dbf: null, prj: null, cpg: null, fileNames: []
+        });
+      }
+      
+      const set = shapefileSets.get(pathWithoutExt)!;
+      set.fileNames.push(fileName);
+      
+      if (ext === 'prj' || ext === 'cpg') {
+        const content = await entry.async('nodebuffer');
+        const text = decodeCP1251(content);
+        if (ext === 'prj') set.prj = text;
+        if (ext === 'cpg') set.cpg = text;
+      } else {
+        const content = await entry.async('arraybuffer');
+        if (ext === 'shp') set.shp = content;
+        if (ext === 'shx') set.shx = content;
+        if (ext === 'dbf') set.dbf = content;
+      }
+    }
+    
+    const firstSet = Array.from(shapefileSets.values()).find(s => s.shp !== null);
+    if (!firstSet || !firstSet.shp) {
+      throw new Error("No .shp file found in archive");
+    }
+    
+    fileList.push(...firstSet.fileNames);
+    
+    const shapefileObj: any = {
+      shp: firstSet.shp,
+      dbf: firstSet.dbf,
+      prj: firstSet.prj,
+    };
+    
+    const cpgEncoding = firstSet.cpg?.trim() || 'CP1251';
+    const cpgBuffer = new TextEncoder().encode(cpgEncoding);
+    shapefileObj.cpg = cpgBuffer.buffer;
+    
+    console.log(`Parsing shapefile with encoding: ${cpgEncoding}, files: ${firstSet.fileNames.join(', ')}`);
+    
+    geojson = await shp(shapefileObj);
   } catch (parseError: any) {
     console.error("shpjs parse error:", parseError);
-    // Provide more helpful error message
     if (parseError.message?.includes("memory") || parseError.message?.includes("heap")) {
       throw new Error(`File too large to process. The uncompressed data exceeds memory limits. Try splitting the shapefile into smaller parts.`);
     }
@@ -160,7 +260,7 @@ export async function parseShapefileBuffer(
     features,
     geometryType,
     crs,
-    fileList: [],
+    fileList,
   };
 }
 

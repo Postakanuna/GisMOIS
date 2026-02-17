@@ -599,19 +599,45 @@ export async function parseShapefileWithEncoding(arrayBuffer: ArrayBuffer, fileN
   }
   
   const shpjs = await import('shpjs');
-  const geojson = await shpjs.default(arrayBuffer) as FeatureCollection | FeatureCollection[];
   
-  if (Array.isArray(geojson)) {
-    return geojson.map((fc, i) => ({
-      name: (fc as any).fileName || `Layer ${i + 1}`,
-      geojson: fc,
+  const cpgBuffer = new TextEncoder().encode('CP1251');
+  const shapefileObj: any = {
+    shp: arrayBuffer,
+    cpg: cpgBuffer.buffer,
+  };
+  
+  try {
+    const geojson = await shpjs.default(shapefileObj) as FeatureCollection | FeatureCollection[];
+    
+    if (Array.isArray(geojson)) {
+      return geojson.map((fc, i) => ({
+        name: (fc as any).fileName || `Layer ${i + 1}`,
+        geojson: fc,
+        sourceCrs: null
+      }));
+    }
+    
+    return [{
+      name: fileName.replace(/\.(zip|shp)$/i, ''),
+      geojson: geojson,
       sourceCrs: null
-    }));
+    }];
+  } catch (err) {
+    console.warn('Failed to parse .shp with CP1251 encoding, falling back to default:', err);
+    const geojson = await shpjs.default(arrayBuffer) as FeatureCollection | FeatureCollection[];
+    
+    if (Array.isArray(geojson)) {
+      return geojson.map((fc, i) => ({
+        name: (fc as any).fileName || `Layer ${i + 1}`,
+        geojson: fc,
+        sourceCrs: null
+      }));
+    }
+    
+    return [{
+      name: fileName.replace(/\.(zip|shp)$/i, ''),
+      geojson: geojson,
+      sourceCrs: null
+    }];
   }
-  
-  return [{
-    name: fileName.replace(/\.(zip|shp)$/i, ''),
-    geojson: geojson,
-    sourceCrs: null
-  }];
 }
