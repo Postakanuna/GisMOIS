@@ -145,39 +145,112 @@ function writeDoubleLE(buf: Buffer, val: number, offset: number) {
   buf.writeDoubleLE(val, offset);
 }
 
-function collectFieldInfo(features: Feature[]): { name: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[] {
-  const fieldMap = new Map<string, { type: "C" | "N" | "F" | "L"; maxLen: number; hasDecimal: boolean }>();
+type DbfFieldType = "C" | "N" | "F" | "L" | "D";
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+const DOT_DATE_RE = /^\d{2}\.\d{2}\.\d{4}$/;
+
+function isValidDateComponents(year: number, month: number, day: number): boolean {
+  if (year < 1900 || year > 2100) return false;
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+  const d = new Date(year, month - 1, day);
+  return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+}
+
+function isDateLikeValue(val: unknown): boolean {
+  if (val instanceof Date) return !isNaN(val.getTime());
+  if (typeof val !== "string" || val.length === 0) return false;
+  if (typeof val === "string" && /^\d+$/.test(val)) return false;
+  if (ISO_DATE_RE.test(val)) {
+    const d = new Date(val);
+    return !isNaN(d.getTime());
+  }
+  if (DOT_DATE_RE.test(val)) {
+    const [dd, mm, yyyy] = val.split(".").map(Number);
+    return isValidDateComponents(yyyy, mm, dd);
+  }
+  return false;
+}
+
+function formatDateForDbf(val: unknown): string {
+  if (val === null || val === undefined || val === "") return "        ";
+
+  let d: Date | null = null;
+
+  if (val instanceof Date) {
+    d = val;
+  } else if (typeof val === "string") {
+    if (DOT_DATE_RE.test(val)) {
+      const [dd, mm, yyyy] = val.split(".");
+      return `${yyyy}${mm}${dd}`;
+    }
+    if (ISO_DATE_RE.test(val)) {
+      d = new Date(val);
+    }
+  }
+
+  if (!d || isNaN(d.getTime())) return "        ";
+
+  const y = String(d.getFullYear()).padStart(4, "0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+function collectFieldInfo(features: Feature[]): { name: string; type: DbfFieldType; size: number; decimal: number }[] {
+  const fieldMap = new Map<string, { type: DbfFieldType; maxLen: number; hasDecimal: boolean; dateCount: number; nonNullCount: number }>();
 
   for (const f of features) {
     if (!f.properties) continue;
     for (const [key, val] of Object.entries(f.properties)) {
       if (key === "id") continue;
       const existing = fieldMap.get(key);
-      if (val === null || val === undefined) {
-        if (!existing) fieldMap.set(key, { type: "C", maxLen: 1, hasDecimal: false });
+      if (val === null || val === undefined || val === "") {
+        if (!existing) fieldMap.set(key, { type: "C", maxLen: 1, hasDecimal: false, dateCount: 0, nonNullCount: 0 });
         continue;
       }
 
       const strVal = String(val);
       const len = iconv.encode(strVal, "cp1251").length;
 
-      if (typeof val === "boolean") {
-        if (!existing) fieldMap.set(key, { type: "L", maxLen: 1, hasDecimal: false });
-      } else if (typeof val === "number") {
-        const hasDecimal = !Number.isInteger(val);
-        if (!existing) {
-          fieldMap.set(key, { type: hasDecimal ? "F" : "N", maxLen: Math.max(len, 10), hasDecimal });
+      if (!existing) {
+        if (typeof val === "boolean") {
+          fieldMap.set(key, { type: "L", maxLen: 1, hasDecimal: false, dateCount: 0, nonNullCount: 1 });
+        } else if (typeof val === "number") {
+          const hasDecimal = !Number.isInteger(val);
+          fieldMap.set(key, { type: hasDecimal ? "F" : "N", maxLen: Math.max(len, 10), hasDecimal, dateCount: 0, nonNullCount: 1 });
+        } else if (isDateLikeValue(val)) {
+          fieldMap.set(key, { type: "D", maxLen: 8, hasDecimal: false, dateCount: 1, nonNullCount: 1 });
         } else {
-          existing.maxLen = Math.max(existing.maxLen, len, 10);
-          if (hasDecimal) {
-            existing.type = "F";
-            existing.hasDecimal = true;
-          }
+          fieldMap.set(key, { type: "C", maxLen: Math.max(len, 1), hasDecimal: false, dateCount: 0, nonNullCount: 1 });
         }
       } else {
-        if (!existing) {
-          fieldMap.set(key, { type: "C", maxLen: Math.max(len, 1), hasDecimal: false });
+        existing.nonNullCount++;
+        if (typeof val === "boolean") {
+        } else if (typeof val === "number") {
+          const hasDecimal = !Number.isInteger(val);
+          if (existing.type === "N" || existing.type === "F") {
+            existing.maxLen = Math.max(existing.maxLen, len, 10);
+            if (hasDecimal) {
+              existing.type = "F";
+              existing.hasDecimal = true;
+            }
+          } else if (existing.type === "D") {
+            existing.type = "C";
+            existing.maxLen = Math.max(existing.maxLen, len, 1);
+          } else {
+            existing.maxLen = Math.max(existing.maxLen, len);
+          }
+        } else if (isDateLikeValue(val)) {
+          existing.dateCount++;
+          if (existing.type === "C") {
+            existing.maxLen = Math.max(existing.maxLen, len);
+          }
         } else {
+          if (existing.type === "D") {
+            existing.maxLen = Math.max(24, len);
+          }
           existing.type = "C";
           existing.maxLen = Math.max(existing.maxLen, len);
         }
@@ -185,7 +258,14 @@ function collectFieldInfo(features: Feature[]): { name: string; type: "C" | "N" 
     }
   }
 
-  const fields: { name: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[] = [];
+  for (const [, info] of Array.from(fieldMap.entries())) {
+    if (info.type === "D" && info.nonNullCount > 0 && info.dateCount < info.nonNullCount) {
+      info.type = "C";
+      info.maxLen = Math.max(info.maxLen, 24);
+    }
+  }
+
+  const fields: { name: string; type: DbfFieldType; size: number; decimal: number }[] = [];
   for (const [name, info] of Array.from(fieldMap.entries())) {
     let fieldName = name.substring(0, 10);
     let size: number;
@@ -204,6 +284,9 @@ function collectFieldInfo(features: Feature[]): { name: string; type: "C" | "N" 
         break;
       case "L":
         size = 1;
+        break;
+      case "D":
+        size = 8;
         break;
       default:
         size = Math.min(info.maxLen, 254);
@@ -332,7 +415,7 @@ function buildShp(features: Feature[], shapeType: number): { shp: Buffer; shx: B
   return { shp, shx };
 }
 
-function buildDbf(features: Feature[], fields: { name: string; type: "C" | "N" | "F" | "L"; size: number; decimal: number }[]): Buffer {
+function buildDbf(features: Feature[], fields: { name: string; type: DbfFieldType; size: number; decimal: number }[]): Buffer {
   const numRecords = features.length;
   const recordSize = 1 + fields.reduce((sum, f) => sum + f.size, 0);
   const headerSize = DBF_HEADER_SIZE + fields.length * DBF_FIELD_SIZE + 1;
@@ -370,6 +453,8 @@ function buildDbf(features: Feature[], fields: { name: string; type: "C" | "N" |
 
       if (val === null || val === undefined) {
         strVal = "";
+      } else if (field.type === "D") {
+        strVal = formatDateForDbf(val);
       } else if (field.type === "L") {
         strVal = val ? "T" : "F";
       } else if (field.type === "N" || field.type === "F") {
@@ -388,6 +473,13 @@ function buildDbf(features: Feature[], fields: { name: string; type: "C" | "N" |
         const padded = Buffer.alloc(field.size, 0x20);
         valBuf.copy(padded, field.size - copyLen, 0, copyLen);
         padded.copy(rec, pos);
+      } else if (field.type === "D") {
+        const dateBuf = Buffer.alloc(8, 0x20);
+        const dateStr = strVal.substring(0, 8);
+        for (let c = 0; c < dateStr.length; c++) {
+          dateBuf[c] = dateStr.charCodeAt(c);
+        }
+        dateBuf.copy(rec, pos);
       } else {
         valBuf.copy(rec, pos, 0, copyLen);
       }
