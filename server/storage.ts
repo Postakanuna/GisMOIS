@@ -16,6 +16,7 @@ import {
   editableLayers, drawnFeatures, layerSchemas,
   scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons
 } from "@shared/schema";
+import { users } from "@shared/models/auth";
 import { db } from "./db";
 import { eq, sql, and, inArray, gte, lte } from "drizzle-orm";
 
@@ -53,7 +54,7 @@ export interface IStorage {
   deleteScene(id: number): Promise<boolean>;
   
   // Scene members methods
-  getSceneMembers(sceneId: number): Promise<(SceneMember & { username?: string })[]>;
+  getSceneMembers(sceneId: number): Promise<(SceneMember & { username?: string; firstName?: string | null; lastName?: string | null })[]>;
   getSceneMember(sceneId: number, userId: string): Promise<SceneMember | undefined>;
   addSceneMember(sceneId: number, userId: string, role: SceneRole): Promise<SceneMember>;
   updateSceneMemberRole(sceneId: number, userId: string, role: SceneRole): Promise<SceneMember | undefined>;
@@ -532,9 +533,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Scene members methods
-  async getSceneMembers(sceneId: number): Promise<(SceneMember & { username?: string })[]> {
-    const members = await db.select().from(sceneMembers).where(eq(sceneMembers.sceneId, sceneId));
-    return members.map(m => ({ ...m, username: undefined })); // Username populated by route
+  async getSceneMembers(sceneId: number): Promise<(SceneMember & { username?: string; firstName?: string | null; lastName?: string | null })[]> {
+    const members = await db.select({
+      id: sceneMembers.id,
+      sceneId: sceneMembers.sceneId,
+      userId: sceneMembers.userId,
+      role: sceneMembers.role,
+      addedAt: sceneMembers.addedAt,
+      username: users.username,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    }).from(sceneMembers)
+      .leftJoin(users, eq(sceneMembers.userId, users.id))
+      .where(eq(sceneMembers.sceneId, sceneId));
+    return members;
   }
 
   async getSceneMember(sceneId: number, userId: string): Promise<SceneMember | undefined> {

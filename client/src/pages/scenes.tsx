@@ -31,9 +31,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FolderOpen, Plus, Users, Calendar, LogOut, Settings, Pencil, Trash2 } from "lucide-react";
+import { FolderOpen, Plus, Users, Calendar, LogOut, Settings, Pencil, Trash2, Shield } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { SceneAccessDialog } from "@/components/scene-access-dialog";
 
 interface Scene {
   id: number;
@@ -63,6 +64,10 @@ export default function ScenesPage() {
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
+
+  // Access dialog state
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+  const [accessScene, setAccessScene] = useState<Scene | null>(null);
 
   const { data: scenes, isLoading } = useQuery<Scene[]>({
     queryKey: ["/api/scenes"],
@@ -147,6 +152,12 @@ export default function ScenesPage() {
     e.stopPropagation();
     setSceneToDelete(scene);
     setDeleteDialogOpen(true);
+  };
+
+  const handleAccessClick = (scene: Scene, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAccessScene(scene);
+    setAccessDialogOpen(true);
   };
 
   const handleConfirmDelete = () => {
@@ -313,30 +324,39 @@ export default function ScenesPage() {
                         </span>
                       </div>
                     </div>
-                    {(scene.role === "owner" || scene.role === "editor") && (
-                      <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1">
+                      {user?.role === "admin" && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7"
+                          onClick={(e) => handleAccessClick(scene, e)}
+                          data-testid={`button-access-scene-${scene.id}`}
+                        >
+                          <Shield className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {(scene.role === "owner" || scene.role === "editor" || user?.role === "admin") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={(e) => handleEditScene(scene, e)}
                           data-testid={`button-edit-scene-${scene.id}`}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        {scene.role === "owner" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={(e) => handleDeleteClick(scene, e)}
-                            data-testid={`button-delete-scene-${scene.id}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                      )}
+                      {(scene.role === "owner" || user?.role === "admin") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive"
+                          onClick={(e) => handleDeleteClick(scene, e)}
+                          data-testid={`button-delete-scene-${scene.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -426,6 +446,15 @@ export default function ScenesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {accessScene && (
+        <SceneAccessDialog
+          open={accessDialogOpen}
+          onOpenChange={setAccessDialogOpen}
+          sceneId={accessScene.id}
+          sceneName={accessScene.name}
+        />
+      )}
     </div>
   );
 }
