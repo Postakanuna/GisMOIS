@@ -132,6 +132,7 @@ function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer
     sourceFiles: row.sourceFiles || [],
     crs: row.crs || "EPSG:4326",
     styleConfig: (row as any).styleConfig || undefined,
+    metadata: (row as any).metadata || undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -241,6 +242,7 @@ export class DatabaseStorage implements IStorage {
       sourceFileName: layer.sourceFileName,
       sourceFiles: layer.sourceFiles || [],
       crs: layer.crs || "EPSG:4326",
+      metadata: (layer as any).metadata || null,
     }).returning();
     return toEditableLayer(row);
   }
@@ -260,6 +262,7 @@ export class DatabaseStorage implements IStorage {
     if ((updates as any).folderId !== undefined) updateData.folderId = (updates as any).folderId;
     if (updates.crs !== undefined) updateData.crs = updates.crs;
     if ((updates as any).styleConfig !== undefined) updateData.styleConfig = (updates as any).styleConfig;
+    if ((updates as any).metadata !== undefined) updateData.metadata = (updates as any).metadata;
 
     const [row] = await db.update(editableLayers)
       .set(updateData)

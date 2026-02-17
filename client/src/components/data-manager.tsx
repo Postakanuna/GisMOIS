@@ -36,6 +36,8 @@ import {
   FolderOpen,
   FolderClosed,
   FolderPlus,
+  AlertTriangle,
+  MapPin,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
@@ -46,7 +48,6 @@ import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { GeocodeDialog } from "@/components/geocode-dialog";
-import { MapPin } from "lucide-react";
 
 interface Folder {
   id: number;
@@ -595,7 +596,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         {canEdit && folders.length > 0 && (
           <GripVertical className="h-3 w-3 text-muted-foreground/50 shrink-0 cursor-grab" />
         )}
-        {layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0 && (
+        {((layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0) || (layer as any).metadata) && (
           <button
             onClick={(e) => { e.stopPropagation(); setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id); }}
             className="shrink-0 hover:bg-muted rounded"
@@ -827,6 +828,53 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           </div>
         </div>
       )}
+      
+      {expandedLayerId === layer.id && (layer as any).metadata && (layer as any).metadata.analysisType === "complaint_analysis" && (() => {
+        const meta = (layer as any).metadata as Record<string, unknown>;
+        const metaLabelMap: Record<string, string> = {
+          analysisMode: "Режим анализа",
+          analysisDate: "Дата анализа",
+          totalComplaints: "Всего жалоб",
+          totalMatched: "Сопоставлено",
+          totalUnmatched: "Не сопоставлено",
+          emptyNistCount: "Пустой НИСТ",
+          dateGroupCount: "Групп по дате/НИСТ",
+          failureZoneCount: "Зон отказа",
+          totalClustered: "В кластерах",
+          totalUnclustered: "Вне кластеров",
+          clusterCount: "Кластеров",
+          complaintLayerName: "Слой жалоб",
+          matchRadius: "Радиус привязки (м)",
+          dateFieldName: "Поле даты",
+          addressFieldName: "Поле адреса",
+        };
+        const displayKeys = Object.keys(meta).filter(k => k !== "analysisType" && metaLabelMap[k]);
+        return (
+          <div className="px-2 py-1.5 border-t bg-muted/30 space-y-0.5" data-testid={`metadata-layer-${layer.id}`}>
+            <div className="flex items-center gap-1 mb-1">
+              <AlertTriangle className="h-3 w-3 text-orange-500 shrink-0" />
+              <span className="text-[10px] font-medium text-muted-foreground">
+                {String(meta.analysisMode || "Анализ жалоб")}
+              </span>
+            </div>
+            {displayKeys.map(key => {
+              let value = meta[key];
+              if (key === "analysisDate" && typeof value === "string") {
+                try {
+                  const d = new Date(value);
+                  value = `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getFullYear()} ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+                } catch {}
+              }
+              return (
+                <div key={key} className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted-foreground shrink-0">{metaLabelMap[key]}:</span>
+                  <span className="text-[10px] font-medium truncate">{String(value ?? "")}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {legendLayerId === layer.id && layer.styleConfig && layer.styleConfig.renderer !== "single" && (() => {
         const sc = layer.styleConfig;

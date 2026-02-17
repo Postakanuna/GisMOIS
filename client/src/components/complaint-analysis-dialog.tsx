@@ -231,10 +231,18 @@ export function ComplaintAnalysisDialog({
       const modeSuffix = analysisMode === "topology" ? "топология" : "кластеры";
       const defaultName = `Анализ жалоб (${modeSuffix}) ${dateStr}`;
 
+      const selectedLayer = editableLayers.find(l => l.id === Number(selectedLayerId));
+
       const body: Record<string, unknown> = {
         mode: analysisMode,
         sceneId: sceneId || null,
         layerName: defaultName,
+        analysisParams: {
+          complaintLayerName: selectedLayer?.name || "",
+          matchRadius,
+          dateFieldName: dateFieldName || undefined,
+          addressFieldName: addressFieldName || undefined,
+        },
       };
 
       if (analysisMode === "topology" && result) {

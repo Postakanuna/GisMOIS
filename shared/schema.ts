@@ -269,6 +269,7 @@ export const editableLayerSchema = z.object({
   sourceFiles: z.array(z.string()).optional(), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
   crs: z.string().default("EPSG:4326"), // coordinate reference system for imported layers
   styleConfig: styleConfigSchema.optional(),
+  metadata: z.record(z.unknown()).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -327,6 +328,7 @@ export const editableLayers = pgTable("editable_layers", {
   sourceFiles: jsonb("source_files").default([]), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
   crs: text("crs").notNull().default("EPSG:4326"), // coordinate reference system
   styleConfig: jsonb("style_config"),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

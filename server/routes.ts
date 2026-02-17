@@ -5175,7 +5175,7 @@ export async function registerRoutes(
 
   app.post("/api/complaint-analysis/save-as-layer", async (req: Request, res: Response) => {
     try {
-      const { mode, sceneId, layerName, topologyResult, noTopologyResult } = req.body;
+      const { mode, sceneId, layerName, topologyResult, noTopologyResult, analysisParams } = req.body;
 
       if (!mode || !layerName) {
         return res.status(400).json({ error: "mode and layerName are required" });
@@ -5356,6 +5356,33 @@ export async function registerRoutes(
         return res.status(422).json({ error: "No features with valid geometry to save" });
       }
 
+      const layerMetadata: Record<string, unknown> = {
+        analysisType: "complaint_analysis",
+        analysisMode: mode === "topology" ? "Топологический анализ" : "Кластерный анализ",
+        analysisDate: new Date().toISOString(),
+      };
+
+      if (mode === "topology" && topologyResult) {
+        layerMetadata.totalComplaints = topologyResult.totalComplaints || 0;
+        layerMetadata.totalMatched = topologyResult.totalMatched || 0;
+        layerMetadata.totalUnmatched = topologyResult.totalUnmatched || 0;
+        layerMetadata.emptyNistCount = topologyResult.emptyNistCount || 0;
+        layerMetadata.dateGroupCount = topologyResult.dateGroups?.length || 0;
+        layerMetadata.failureZoneCount = features.length;
+      } else if (mode === "no_topology" && noTopologyResult) {
+        layerMetadata.totalComplaints = noTopologyResult.totalComplaints || 0;
+        layerMetadata.totalClustered = noTopologyResult.totalClustered || 0;
+        layerMetadata.totalUnclustered = noTopologyResult.totalUnclustered || 0;
+        layerMetadata.clusterCount = features.length;
+      }
+
+      if (analysisParams) {
+        if (analysisParams.complaintLayerName) layerMetadata.complaintLayerName = analysisParams.complaintLayerName;
+        if (analysisParams.matchRadius !== undefined && analysisParams.matchRadius !== null) layerMetadata.matchRadius = analysisParams.matchRadius;
+        if (analysisParams.dateFieldName) layerMetadata.dateFieldName = analysisParams.dateFieldName;
+        if (analysisParams.addressFieldName) layerMetadata.addressFieldName = analysisParams.addressFieldName;
+      }
+
       const layer = await storage.createEditableLayer({
         sceneId: sceneId ? Number(sceneId) : null,
         name: layerName,
@@ -5364,7 +5391,8 @@ export async function registerRoutes(
         source: "import" as const,
         visible: true as any,
         opacity: 0.6,
-      });
+        metadata: layerMetadata,
+      } as any);
 
       const insertFeatures = features.map(f => ({
         layerId: layer.id,
@@ -5375,10 +5403,39 @@ export async function registerRoutes(
 
       await storage.createDrawnFeaturesBatch(insertFeatures);
 
+      const allPropertyKeys = new Set<string>();
+      for (const f of features) {
+        for (const key of Object.keys(f.properties)) {
+          allPropertyKeys.add(key);
+        }
+      }
+
+      const schemaFields = Array.from(allPropertyKeys).map(key => {
+        const sampleValue = features.find(f => f.properties[key] !== null && f.properties[key] !== undefined)?.properties[key];
+        let fieldType: "text" | "number" = "text";
+        if (typeof sampleValue === "number") fieldType = "number";
+
+        return {
+          name: key,
+          type: fieldType,
+          required: false,
+        };
+      });
+
+      try {
+        await storage.createLayerSchema({
+          layerId: layer.id,
+          fields: schemaFields,
+        });
+      } catch (schemaErr: any) {
+        console.error("Failed to create layer schema for complaint analysis:", schemaErr);
+      }
+
       return res.status(201).json({
         layerId: layer.id,
         layerName: layer.name,
         featureCount: features.length,
+        metadata: layerMetadata,
       });
     } catch (error: any) {
       console.error("Save complaint analysis as layer error:", error);
