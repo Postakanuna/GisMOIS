@@ -112,8 +112,8 @@ export interface IStorage {
   deleteLayerFolder(id: number): Promise<boolean>;
   setLayerFolder(layerId: number, folderId: number | null, displayOrder?: number): Promise<EditableLayer | undefined>;
   toggleFolderVisibility(folderId: number, visible: boolean): Promise<void>;
-  reorderLayers(layerIds: number[]): Promise<void>;
-  reorderFolders(folderIds: number[]): Promise<void>;
+  reorderLayers(layerIds: number[], displayOrders?: number[]): Promise<void>;
+  reorderFolders(folderIds: number[], displayOrders?: number[]): Promise<void>;
   getMaxLayerDisplayOrder(sceneId: number, folderId: number | null): Promise<number>;
   getMaxFolderDisplayOrder(sceneId: number): Promise<number>;
 }
@@ -920,18 +920,20 @@ export class DatabaseStorage implements IStorage {
       .where(eq(editableLayers.folderId, folderId));
   }
 
-  async reorderLayers(layerIds: number[]): Promise<void> {
+  async reorderLayers(layerIds: number[], displayOrders?: number[]): Promise<void> {
     for (let i = 0; i < layerIds.length; i++) {
+      const order = displayOrders ? displayOrders[i] : i;
       await db.update(editableLayers)
-        .set({ displayOrder: i })
+        .set({ displayOrder: order })
         .where(eq(editableLayers.id, layerIds[i]));
     }
   }
 
-  async reorderFolders(folderIds: number[]): Promise<void> {
+  async reorderFolders(folderIds: number[], displayOrders?: number[]): Promise<void> {
     for (let i = 0; i < folderIds.length; i++) {
+      const order = displayOrders ? displayOrders[i] : i;
       await db.update(layerFolders)
-        .set({ displayOrder: i })
+        .set({ displayOrder: order })
         .where(eq(layerFolders.id, folderIds[i]));
     }
   }

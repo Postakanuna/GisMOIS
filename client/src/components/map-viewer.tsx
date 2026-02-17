@@ -605,11 +605,12 @@ function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, c
 // Note: Clustering removed in favor of server-side point sampling (GIS-style approach)
 // Points are now filtered on the server based on zoom level for better performance
 
-// Compute z-index: user displayOrder is primary, geometry type is secondary tiebreaker
+// Compute z-index: user displayOrder rank is primary, geometry type is secondary tiebreaker
 // Lower displayOrder = top of list = rendered on top (higher z-index)
-function getLayerZIndex(displayOrder: number, totalLayers: number, layerFeatures: Array<{ geometryType: string }>): number {
+// displayOrder may be sparse (e.g., 0, 1000, 2000), so we use rank among all layers
+function getLayerZIndex(rank: number, totalLayers: number, layerFeatures: Array<{ geometryType: string }>): number {
   const baseZ = 500;
-  const orderZ = (totalLayers - displayOrder) * 10;
+  const orderZ = (totalLayers - rank) * 10;
   
   let geomOffset = 2;
   if (layerFeatures.length > 0) {
@@ -1938,8 +1939,9 @@ export function MapViewer({
           },
         });
         
-        // Set z-index: user displayOrder primary, geometry type secondary
-        const layerZIndex = getLayerZIndex(editableLayerItem.displayOrder, allEditableLayers.length, layerFeatures);
+        const sortedByOrder = [...allEditableLayers].sort((a, b) => a.displayOrder - b.displayOrder);
+        const layerRank = sortedByOrder.findIndex(l => l.id === editableLayerItem.id);
+        const layerZIndex = getLayerZIndex(layerRank >= 0 ? layerRank : 0, allEditableLayers.length, layerFeatures);
         vectorLayer.setZIndex(layerZIndex);
         
         map.addLayer(vectorLayer);
@@ -2008,10 +2010,11 @@ export function MapViewer({
         }
       }
       
-      // Update visibility, opacity, and z-index (displayOrder may have changed)
       vectorLayer.setVisible(editableLayerItem.visible);
       vectorLayer.setOpacity(editableLayerItem.opacity);
-      const updatedZIndex = getLayerZIndex(editableLayerItem.displayOrder, allEditableLayers.length, layerFeatures);
+      const sortedForRank = [...allEditableLayers].sort((a, b) => a.displayOrder - b.displayOrder);
+      const updatedRank = sortedForRank.findIndex(l => l.id === editableLayerItem.id);
+      const updatedZIndex = getLayerZIndex(updatedRank >= 0 ? updatedRank : 0, allEditableLayers.length, layerFeatures);
       vectorLayer.setZIndex(updatedZIndex);
       
       // Only update style when style properties actually changed

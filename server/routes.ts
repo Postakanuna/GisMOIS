@@ -2477,11 +2477,12 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const { layerIds } = req.body;
+      const { layerIds, displayOrders } = req.body;
       if (!Array.isArray(layerIds) || layerIds.some((id: unknown) => typeof id !== "number")) {
         return res.status(400).json({ message: "layerIds must be an array of numbers" });
       }
-      await storage.reorderLayers(layerIds);
+      const orders = Array.isArray(displayOrders) && displayOrders.length === layerIds.length ? displayOrders : undefined;
+      await storage.reorderLayers(layerIds, orders);
       return res.json({ success: true });
     } catch (error) {
       console.error("Error reordering layers:", error);
@@ -2493,11 +2494,12 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const { folderIds } = req.body;
+      const { folderIds, displayOrders } = req.body;
       if (!Array.isArray(folderIds) || folderIds.some((id: unknown) => typeof id !== "number")) {
         return res.status(400).json({ message: "folderIds must be an array of numbers" });
       }
-      await storage.reorderFolders(folderIds);
+      const orders = Array.isArray(displayOrders) && displayOrders.length === folderIds.length ? displayOrders : undefined;
+      await storage.reorderFolders(folderIds, orders);
       return res.json({ success: true });
     } catch (error) {
       console.error("Error reordering folders:", error);
