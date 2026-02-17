@@ -41,6 +41,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { LayerStylePanel } from "@/components/layer-style-panel";
+import { GeocodeDialog } from "@/components/geocode-dialog";
+import { MapPin } from "lucide-react";
 
 interface EditableLayer {
   id: number;
@@ -98,6 +100,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [isParsingExcel, setIsParsingExcel] = useState(false);
   const [styleConfigLayerId, setStyleConfigLayerId] = useState<number | null>(null);
   const [legendLayerId, setLegendLayerId] = useState<number | null>(null);
+  const [geocodeLayerId, setGeocodeLayerId] = useState<number | null>(null);
 
   const { data: sceneLayersRaw = [], isLoading: sceneLoading } = useQuery<EditableLayer[]>({
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
@@ -724,6 +727,21 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
+                        onClick={(e) => { e.stopPropagation(); setGeocodeLayerId(layer.id); }}
+                        data-testid={`button-geocode-layer-${layer.id}`}
+                      >
+                        <MapPin className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Геокодировать (адресные ориентиры)</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
                         onClick={(e) => {
                           e.stopPropagation();
                           const url = `/api/editable-layers/${layer.id}/export/shapefile`;
@@ -933,6 +951,19 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           }}
         />
       )}
+
+      {geocodeLayerId && (() => {
+        const targetLayer = sceneLayers.find(l => l.id === geocodeLayerId);
+        if (!targetLayer) return null;
+        return (
+          <GeocodeDialog
+            layerId={targetLayer.id}
+            layerName={targetLayer.name}
+            open={true}
+            onOpenChange={(open) => { if (!open) setGeocodeLayerId(null); }}
+          />
+        );
+      })()}
 
       {styleConfigLayerId && (() => {
         const targetLayer = sceneLayers.find(l => l.id === styleConfigLayerId);

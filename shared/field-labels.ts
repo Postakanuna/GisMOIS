@@ -427,6 +427,11 @@ export const fieldLabels: Record<string, string> = {
 
   // --- Источник: расчётные ---
   T1to_so_ist: "Расчетная температура на выходе 1 контура, °C",
+
+  // --- Адресные ориентиры (обратное геокодирование) ---
+  addr_begin: "Адресный ориентир начала участка",
+  addr_end: "Адресный ориентир окончания участка",
+  addr_point: "Адресный ориентир",
 };
 
 const fieldLabelsLower: Record<string, string> = {};

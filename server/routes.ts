@@ -13,7 +13,7 @@ import { users } from "@shared/models/auth";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import multer from "multer";
 import fs from "fs";
-import { geocodeBatch } from "./geocoder";
+import { geocodeBatch, reverseGeocodeBatch, type ReverseGeocodeBatchItem } from "./geocoder";
 import path from "path";
 import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
@@ -2807,6 +2807,252 @@ export async function registerRoutes(
       return res.status(400).json({ message: `Unsupported format: ${format}. Supported: geojson, shapefile` });
     } catch (error) {
       console.error("Error exporting layer:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // REVERSE GEOCODING API (Address landmarks)
+  // ============================================
+
+  app.post("/api/editable-layers/:layerId/geocode", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const apiKey = process.env.YANDEX_GEOCODER_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ message: "Яндекс Геокодер API ключ не настроен" });
+      }
+
+      const layer = await storage.getEditableLayer(layerId);
+      if (!layer) {
+        return res.status(404).json({ message: "Слой не найден" });
+      }
+
+      const features = await storage.getDrawnFeatures(layerId);
+      if (features.length === 0) {
+        return res.status(400).json({ message: "В слое нет объектов" });
+      }
+
+      const isLine = layer.geometryType === "LineString" || layer.geometryType === "MultiLineString";
+      const isPoint = layer.geometryType === "Point" || layer.geometryType === "MultiPoint";
+
+      if (!isLine && !isPoint) {
+        return res.status(400).json({ message: `Геокодирование не поддерживается для геометрии типа ${layer.geometryType}` });
+      }
+
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+
+      const sendSSE = (data: any) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      const abortController = new AbortController();
+      req.on("close", () => abortController.abort());
+
+      const batchItems: ReverseGeocodeBatchItem[] = [];
+      const featureMap = new Map<number, { feature: typeof features[0]; skipBegin: boolean; skipEnd: boolean; skipPoint: boolean }>();
+
+      for (const feature of features) {
+        const props = (feature.properties || {}) as Record<string, unknown>;
+        const coords = feature.coordinates as any;
+
+        if (isLine) {
+          const skipBegin = typeof props.addr_begin === "string" && props.addr_begin.length > 0;
+          const skipEnd = typeof props.addr_end === "string" && props.addr_end.length > 0;
+
+          if (skipBegin && skipEnd) continue;
+
+          let firstCoord: number[] | null = null;
+          let lastCoord: number[] | null = null;
+
+          if (feature.geometryType === "MultiLineString" && Array.isArray(coords) && coords.length > 0) {
+            const firstSegment = coords[0];
+            const lastSegment = coords[coords.length - 1];
+            if (Array.isArray(firstSegment) && firstSegment.length > 0) {
+              firstCoord = firstSegment[0];
+            }
+            if (Array.isArray(lastSegment) && lastSegment.length > 0) {
+              lastCoord = lastSegment[lastSegment.length - 1];
+            }
+          } else if (Array.isArray(coords) && coords.length >= 2) {
+            firstCoord = coords[0];
+            lastCoord = coords[coords.length - 1];
+          }
+
+          if (!firstCoord && !lastCoord) continue;
+
+          const coordsToGeocode: { lon: number; lat: number }[] = [];
+          if (!skipBegin && firstCoord) {
+            coordsToGeocode.push({ lon: firstCoord[0], lat: firstCoord[1] });
+          }
+          if (!skipEnd && lastCoord) {
+            coordsToGeocode.push({ lon: lastCoord[0], lat: lastCoord[1] });
+          }
+
+          if (coordsToGeocode.length === 0) continue;
+
+          featureMap.set(feature.id, { feature, skipBegin, skipEnd, skipPoint: false });
+          batchItems.push({ featureId: feature.id, coords: coordsToGeocode });
+        } else {
+          const skipPoint = typeof props.addr_point === "string" && props.addr_point.length > 0;
+          if (skipPoint) continue;
+
+          let lon: number, lat: number;
+          if (feature.geometryType === "MultiPoint" && Array.isArray(coords) && coords.length > 0) {
+            [lon, lat] = coords[0];
+          } else if (Array.isArray(coords)) {
+            [lon, lat] = coords;
+          } else {
+            continue;
+          }
+
+          featureMap.set(feature.id, { feature, skipBegin: false, skipEnd: false, skipPoint: false });
+          batchItems.push({ featureId: feature.id, coords: [{ lon, lat }] });
+        }
+      }
+
+      if (batchItems.length === 0) {
+        sendSSE({ type: "complete", processed: 0, total: 0, success: 0, skipped: features.length });
+        res.end();
+        return;
+      }
+
+      let totalRequests = 0;
+      for (const item of batchItems) {
+        totalRequests += item.coords.length;
+      }
+
+      sendSSE({ type: "start", total: totalRequests, features: batchItems.length, totalFeatures: features.length });
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      try {
+        const results = await reverseGeocodeBatch(
+          batchItems,
+          apiKey,
+          (processed, total) => {
+            sendSSE({ type: "progress", processed, total });
+          },
+          abortController.signal
+        );
+
+        for (const result of results) {
+          const info = featureMap.get(result.featureId);
+          if (!info) continue;
+
+          const props = { ...((info.feature.properties || {}) as Record<string, unknown>) };
+          let updated = false;
+
+          if (isLine) {
+            let addrIdx = 0;
+            if (!info.skipBegin && result.addresses[addrIdx] !== undefined) {
+              props.addr_begin = result.addresses[addrIdx] || "";
+              addrIdx++;
+              updated = true;
+            }
+            if (!info.skipEnd && result.addresses[addrIdx] !== undefined) {
+              props.addr_end = result.addresses[addrIdx] || "";
+              updated = true;
+            }
+          } else {
+            if (result.addresses[0] !== undefined) {
+              props.addr_point = result.addresses[0] || "";
+              updated = true;
+            }
+          }
+
+          if (updated) {
+            await storage.updateDrawnFeature(result.featureId, { properties: props });
+            successCount++;
+          }
+
+          if (result.error) {
+            errorCount++;
+          }
+        }
+      } catch (error: any) {
+        sendSSE({ type: "error", message: error.message || "Ошибка геокодирования" });
+        res.end();
+        return;
+      }
+
+      sendSSE({
+        type: "complete",
+        processed: totalRequests,
+        total: totalRequests,
+        success: successCount,
+        errors: errorCount,
+        skipped: features.length - batchItems.length,
+      });
+      res.end();
+    } catch (error) {
+      console.error("Error in reverse geocoding:", error);
+      if (!res.headersSent) {
+        return res.status(500).json({ message: "Internal server error" });
+      }
+      res.end();
+    }
+  });
+
+  app.get("/api/editable-layers/:layerId/geocode-info", async (req: Request, res: Response) => {
+    try {
+      const layerId = parseInt(req.params.layerId);
+      const layer = await storage.getEditableLayer(layerId);
+      if (!layer) {
+        return res.status(404).json({ message: "Слой не найден" });
+      }
+
+      const features = await storage.getDrawnFeatures(layerId);
+      const isLine = layer.geometryType === "LineString" || layer.geometryType === "MultiLineString";
+      const isPoint = layer.geometryType === "Point" || layer.geometryType === "MultiPoint";
+
+      let alreadyGeocoded = 0;
+      let needsGeocoding = 0;
+      let requestsNeeded = 0;
+
+      for (const feature of features) {
+        const props = (feature.properties || {}) as Record<string, unknown>;
+        if (isLine) {
+          const hasBegin = typeof props.addr_begin === "string" && props.addr_begin.length > 0;
+          const hasEnd = typeof props.addr_end === "string" && props.addr_end.length > 0;
+          if (hasBegin && hasEnd) {
+            alreadyGeocoded++;
+          } else {
+            needsGeocoding++;
+            if (!hasBegin) requestsNeeded++;
+            if (!hasEnd) requestsNeeded++;
+          }
+        } else if (isPoint) {
+          if (typeof props.addr_point === "string" && props.addr_point.length > 0) {
+            alreadyGeocoded++;
+          } else {
+            needsGeocoding++;
+            requestsNeeded++;
+          }
+        }
+      }
+      const estimatedSeconds = Math.ceil(requestsNeeded / 40) + 1;
+
+      return res.json({
+        layerId,
+        layerName: layer.name,
+        geometryType: layer.geometryType,
+        isLine,
+        isPoint,
+        totalFeatures: features.length,
+        alreadyGeocoded,
+        needsGeocoding,
+        requestsNeeded,
+        estimatedSeconds,
+        fields: isLine ? ["addr_begin", "addr_end"] : ["addr_point"],
+      });
+    } catch (error) {
+      console.error("Error getting geocode info:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
