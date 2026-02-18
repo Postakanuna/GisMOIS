@@ -39,7 +39,7 @@ export interface NetworkGraph {
   reverseAdj: Map<string, string[]>;
 }
 
-export type SimulationMode = "shutdown" | "upstream" | "downstream";
+export type SimulationMode = "shutdown" | "upstream" | "downstream" | "spatial";
 
 interface SimulationResult {
   mode: SimulationMode;
@@ -1478,4 +1478,557 @@ export async function recalculateBindings(sceneId: number): Promise<{
   }
 
   return { totalSegments: segments.length, changes, unchanged, noMatch };
+}
+
+interface SpatialGraphNode {
+  coordKey: string;
+  coordinates: [number, number];
+  type: "source" | "ctp" | "consumer" | "node" | "valve" | "pump" | "other";
+  featureId: number;
+  layerId: number;
+  name: string;
+  properties: Record<string, unknown>;
+}
+
+interface SpatialGraphEdge {
+  fromKey: string;
+  toKey: string;
+  featureId: number;
+  layerId: number;
+  length: number;
+  coordinates: any;
+  properties: Record<string, unknown>;
+  name: string;
+}
+
+interface SpatialGraph {
+  nodes: Map<string, SpatialGraphNode>;
+  edges: SpatialGraphEdge[];
+  adjacency: Map<string, Set<string>>;
+  edgesByNode: Map<string, SpatialGraphEdge[]>;
+}
+
+function coordKey(x: number, y: number): string {
+  return `${x},${y}`;
+}
+
+function extractEndpoints(coordinates: any): { start: [number, number]; end: [number, number] } | null {
+  if (!coordinates) return null;
+  let coords: number[][] = [];
+  if (Array.isArray(coordinates) && coordinates.length > 0) {
+    if (Array.isArray(coordinates[0]) && typeof coordinates[0][0] === "number") {
+      coords = coordinates;
+    } else if (Array.isArray(coordinates[0]) && Array.isArray(coordinates[0][0])) {
+      coords = coordinates[0];
+    }
+  }
+  if (coords.length < 2) return null;
+  return {
+    start: [coords[0][0], coords[0][1]],
+    end: [coords[coords.length - 1][0], coords[coords.length - 1][1]],
+  };
+}
+
+function extractPointCoord(coordinates: any): [number, number] | null {
+  if (!coordinates) return null;
+  if (Array.isArray(coordinates) && coordinates.length >= 2 && typeof coordinates[0] === "number") {
+    return [coordinates[0], coordinates[1]];
+  }
+  if (typeof coordinates === "object" && coordinates.coordinates) {
+    return extractPointCoord(coordinates.coordinates);
+  }
+  return null;
+}
+
+export async function buildSpatialNetworkGraph(sceneId: number): Promise<SpatialGraph> {
+  const graph: SpatialGraph = {
+    nodes: new Map(),
+    edges: [],
+    adjacency: new Map(),
+    edgesByNode: new Map(),
+  };
+
+  const layerConfig = await getSceneNetworkLayers(sceneId);
+
+  if (layerConfig.segmentLayerIds.length === 0) return graph;
+
+  const segments = await db
+    .select({
+      id: drawnFeatures.id,
+      layerId: drawnFeatures.layerId,
+      coordinates: drawnFeatures.coordinates,
+      properties: drawnFeatures.properties,
+    })
+    .from(drawnFeatures)
+    .where(inArray(drawnFeatures.layerId, layerConfig.segmentLayerIds));
+
+  console.log(`[SpatialGraph] Total segments loaded: ${segments.length}`);
+
+  for (const seg of segments) {
+    const props = seg.properties as Record<string, unknown>;
+    const endpoints = extractEndpoints(seg.coordinates);
+    if (!endpoints) continue;
+
+    const fromKey = coordKey(endpoints.start[0], endpoints.start[1]);
+    const toKey = coordKey(endpoints.end[0], endpoints.end[1]);
+
+    if (fromKey === toKey) continue;
+
+    const beginName = (props.Begin_uch as string) || "";
+    const endName = (props.End_uch as string) || "";
+    const length = parseFloat((props.L as string) || "0") || 0;
+
+    if (!graph.nodes.has(fromKey)) {
+      graph.nodes.set(fromKey, {
+        coordKey: fromKey,
+        coordinates: endpoints.start,
+        type: "other",
+        featureId: 0,
+        layerId: 0,
+        name: beginName,
+        properties: {},
+      });
+    }
+    if (!graph.nodes.has(toKey)) {
+      graph.nodes.set(toKey, {
+        coordKey: toKey,
+        coordinates: endpoints.end,
+        type: "other",
+        featureId: 0,
+        layerId: 0,
+        name: endName,
+        properties: {},
+      });
+    }
+
+    const edge: SpatialGraphEdge = {
+      fromKey,
+      toKey,
+      featureId: seg.id,
+      layerId: seg.layerId,
+      length,
+      coordinates: seg.coordinates,
+      properties: props,
+      name: `${beginName} → ${endName}`,
+    };
+    graph.edges.push(edge);
+
+    if (!graph.adjacency.has(fromKey)) graph.adjacency.set(fromKey, new Set());
+    if (!graph.adjacency.has(toKey)) graph.adjacency.set(toKey, new Set());
+    graph.adjacency.get(fromKey)!.add(toKey);
+    graph.adjacency.get(toKey)!.add(fromKey);
+
+    if (!graph.edgesByNode.has(fromKey)) graph.edgesByNode.set(fromKey, []);
+    if (!graph.edgesByNode.has(toKey)) graph.edgesByNode.set(toKey, []);
+    graph.edgesByNode.get(fromKey)!.push(edge);
+    graph.edgesByNode.get(toKey)!.push(edge);
+  }
+
+  const allPointLayerIds = [
+    ...layerConfig.nodeLayerIds, ...layerConfig.consumerLayerIds,
+    ...layerConfig.ctpLayerIds, ...layerConfig.sourceLayerIds,
+    ...layerConfig.valveLayerIds, ...layerConfig.pumpLayerIds,
+  ];
+
+  if (allPointLayerIds.length > 0) {
+    const pointFeatures = await db
+      .select({
+        id: drawnFeatures.id,
+        layerId: drawnFeatures.layerId,
+        coordinates: drawnFeatures.coordinates,
+        properties: drawnFeatures.properties,
+      })
+      .from(drawnFeatures)
+      .where(inArray(drawnFeatures.layerId, allPointLayerIds));
+
+    for (const feat of pointFeatures) {
+      const coord = extractPointCoord(feat.coordinates);
+      if (!coord) continue;
+
+      const key = coordKey(coord[0], coord[1]);
+      const props = feat.properties as Record<string, unknown>;
+      const nameRaw = (props.Name as string) || "";
+
+      let nodeType: SpatialGraphNode["type"];
+      if (layerConfig.sourceLayerIds.includes(feat.layerId)) nodeType = "source";
+      else if (layerConfig.ctpLayerIds.includes(feat.layerId)) nodeType = "ctp";
+      else if (layerConfig.consumerLayerIds.includes(feat.layerId)) nodeType = "consumer";
+      else if (layerConfig.nodeLayerIds.includes(feat.layerId)) nodeType = "node";
+      else if (layerConfig.valveLayerIds.includes(feat.layerId)) nodeType = "valve";
+      else if (layerConfig.pumpLayerIds.includes(feat.layerId)) nodeType = "pump";
+      else nodeType = "other";
+
+      const existing = graph.nodes.get(key);
+      if (existing) {
+        if (existing.featureId === 0 || (nodeType !== "other" && nodeType !== "node")) {
+          existing.type = nodeType;
+          existing.featureId = feat.id;
+          existing.layerId = feat.layerId;
+          existing.name = nameRaw || existing.name;
+          existing.properties = props;
+        }
+      }
+    }
+  }
+
+  const nodeTypes = new Map<string, number>();
+  for (const [, node] of graph.nodes) {
+    nodeTypes.set(node.type, (nodeTypes.get(node.type) || 0) + 1);
+  }
+  console.log(`[SpatialGraph] Graph built: ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
+  console.log(`[SpatialGraph] Node types:`, Object.fromEntries(nodeTypes));
+
+  return graph;
+}
+
+function findFeatureInSpatialGraph(
+  graph: SpatialGraph,
+  featureId: number,
+  layerId: number,
+  featureCoordinates: any,
+  geometryType: string
+): { nodeKeys: string[]; isEdge: boolean } {
+  if (geometryType === "LineString") {
+    for (const edge of graph.edges) {
+      if (edge.featureId === featureId && edge.layerId === layerId) {
+        return { nodeKeys: [edge.fromKey, edge.toKey], isEdge: true };
+      }
+    }
+    const endpoints = extractEndpoints(featureCoordinates);
+    if (endpoints) {
+      const fromKey = coordKey(endpoints.start[0], endpoints.start[1]);
+      const toKey = coordKey(endpoints.end[0], endpoints.end[1]);
+      const keys: string[] = [];
+      if (graph.nodes.has(fromKey)) keys.push(fromKey);
+      if (graph.nodes.has(toKey)) keys.push(toKey);
+      if (keys.length > 0) return { nodeKeys: keys, isEdge: true };
+    }
+  } else {
+    for (const [key, node] of graph.nodes) {
+      if (node.featureId === featureId && node.layerId === layerId) {
+        return { nodeKeys: [key], isEdge: false };
+      }
+    }
+    const coord = extractPointCoord(featureCoordinates);
+    if (coord) {
+      const key = coordKey(coord[0], coord[1]);
+      if (graph.nodes.has(key)) return { nodeKeys: [key], isEdge: false };
+    }
+  }
+  return { nodeKeys: [], isEdge: false };
+}
+
+function findSourceInComponent(
+  graph: SpatialGraph,
+  componentNodes: Set<string>
+): string | null {
+  for (const key of componentNodes) {
+    const node = graph.nodes.get(key);
+    if (node && node.type === "source") return key;
+  }
+
+  const sourcePatterns = ["кот.", "котельн", "грэс", "тэц", "бмк", "бойлерн", "мини-тэц"];
+  for (const key of componentNodes) {
+    const node = graph.nodes.get(key);
+    if (!node) continue;
+    const lower = node.name.toLowerCase();
+    for (const pattern of sourcePatterns) {
+      if (lower.includes(pattern)) return key;
+    }
+  }
+
+  return null;
+}
+
+function getConnectedComponent(
+  graph: SpatialGraph,
+  startKey: string
+): Set<string> {
+  const visited = new Set<string>();
+  const queue: string[] = [startKey];
+  visited.add(startKey);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const neighbors = graph.adjacency.get(current);
+    if (!neighbors) continue;
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  return visited;
+}
+
+function spatialBfsFromSource(
+  graph: SpatialGraph,
+  sourceKey: string,
+  componentNodes: Set<string>
+): Map<string, string | null> {
+  const parent = new Map<string, string | null>();
+  parent.set(sourceKey, null);
+  const queue: string[] = [sourceKey];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const neighbors = graph.adjacency.get(current);
+    if (!neighbors) continue;
+    for (const neighbor of neighbors) {
+      if (!parent.has(neighbor) && componentNodes.has(neighbor)) {
+        parent.set(neighbor, current);
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  return parent;
+}
+
+function getSpatialDownstream(
+  parentMap: Map<string, string | null>,
+  failureKeys: string[],
+  sourceKey: string
+): Set<string> {
+  const children = new Map<string, string[]>();
+  for (const [node, par] of parentMap) {
+    if (par !== null) {
+      if (!children.has(par)) children.set(par, []);
+      children.get(par)!.push(node);
+    }
+  }
+
+  const downstream = new Set<string>();
+  for (const key of failureKeys) {
+    if (key === sourceKey) continue;
+    downstream.add(key);
+  }
+
+  const collectDownstream = (nodeKey: string) => {
+    const childNodes = children.get(nodeKey) || [];
+    for (const child of childNodes) {
+      if (!downstream.has(child)) {
+        downstream.add(child);
+        collectDownstream(child);
+      }
+    }
+  };
+
+  for (const key of failureKeys) {
+    collectDownstream(key);
+  }
+
+  return downstream;
+}
+
+function getDepth(parentMap: Map<string, string | null>, key: string): number {
+  let depth = 0;
+  let current = key;
+  while (true) {
+    const p = parentMap.get(current);
+    if (p === null || p === undefined) break;
+    depth++;
+    current = p;
+  }
+  return depth;
+}
+
+export async function simulateSpatialDisconnection(
+  featureId: number,
+  layerId: number,
+  sceneId: number
+): Promise<SimulationResult> {
+  const feature = await db
+    .select({
+      id: drawnFeatures.id,
+      layerId: drawnFeatures.layerId,
+      geometryType: drawnFeatures.geometryType,
+      coordinates: drawnFeatures.coordinates,
+      properties: drawnFeatures.properties,
+    })
+    .from(drawnFeatures)
+    .where(eq(drawnFeatures.id, featureId))
+    .limit(1);
+
+  if (feature.length === 0) {
+    throw new Error("Feature not found");
+  }
+
+  const feat = feature[0];
+  const props = feat.properties as Record<string, unknown>;
+  const featName = (props.Name as string) || (props.Begin_uch as string) || "";
+
+  console.log(`[SpatialGraph] === Spatial Simulation Start ===`);
+  console.log(`[SpatialGraph] Feature: id=${featureId}, layer=${layerId}, name="${featName}", geom=${feat.geometryType}`);
+
+  const graph = await buildSpatialNetworkGraph(sceneId);
+
+  const found = findFeatureInSpatialGraph(graph, featureId, layerId, feat.coordinates, feat.geometryType);
+
+  if (found.nodeKeys.length === 0) {
+    throw new Error(`Объект "${featName}" (id=${featureId}) не найден в пространственном графе. Граф содержит ${graph.nodes.size} узлов и ${graph.edges.length} рёбер.`);
+  }
+
+  console.log(`[SpatialGraph] Found ${found.nodeKeys.length} node keys, isEdge=${found.isEdge}`);
+
+  const startKey = found.nodeKeys[0];
+  const componentNodes = getConnectedComponent(graph, startKey);
+  console.log(`[SpatialGraph] Connected component: ${componentNodes.size} nodes`);
+
+  const sourceKey = findSourceInComponent(graph, componentNodes);
+  console.log(`[SpatialGraph] Source in component: ${sourceKey ? graph.nodes.get(sourceKey)?.name : "NOT FOUND"}`);
+
+  let targetNodes: Set<string>;
+
+  if (!sourceKey) {
+    targetNodes = componentNodes;
+    console.log(`[SpatialGraph] No source found, using entire component as affected zone`);
+  } else {
+    const parentMap = spatialBfsFromSource(graph, sourceKey, componentNodes);
+    console.log(`[SpatialGraph] BFS tree: ${parentMap.size} nodes reachable from source`);
+
+    if (found.nodeKeys.includes(sourceKey)) {
+      targetNodes = componentNodes;
+      console.log(`[SpatialGraph] Failure at source, entire component affected`);
+    } else if (found.isEdge && found.nodeKeys.length === 2) {
+      const [keyA, keyB] = found.nodeKeys;
+      const parentA = parentMap.get(keyA);
+      const parentB = parentMap.get(keyB);
+
+      let downstreamKey: string | null = null;
+      if (parentB === keyA) {
+        downstreamKey = keyB;
+      } else if (parentA === keyB) {
+        downstreamKey = keyA;
+      } else {
+        const depthA = getDepth(parentMap, keyA);
+        const depthB = getDepth(parentMap, keyB);
+        downstreamKey = depthA > depthB ? keyA : keyB;
+      }
+
+      console.log(`[SpatialGraph] Edge failure: downstream endpoint = ${downstreamKey}`);
+
+      if (downstreamKey && parentMap.has(downstreamKey)) {
+        targetNodes = getSpatialDownstream(parentMap, [downstreamKey], sourceKey);
+      } else {
+        targetNodes = new Set(found.nodeKeys);
+      }
+      console.log(`[SpatialGraph] Downstream nodes: ${targetNodes.size}`);
+    } else {
+      const failureKeys = found.nodeKeys.filter(k => k !== sourceKey);
+      const downstreamKeys = failureKeys.filter(k => parentMap.has(k));
+      if (downstreamKeys.length === 0) {
+        targetNodes = new Set(found.nodeKeys);
+      } else {
+        targetNodes = getSpatialDownstream(parentMap, downstreamKeys, sourceKey);
+      }
+      console.log(`[SpatialGraph] Downstream nodes: ${targetNodes.size}`);
+    }
+  }
+
+  const affectedConsumers: SimulationResult["affectedConsumers"] = [];
+  const affectedCTPs: SimulationResult["affectedCTPs"] = [];
+  const affectedNodes: SimulationResult["affectedNodes"] = [];
+
+  for (const nodeKey of targetNodes) {
+    const node = graph.nodes.get(nodeKey);
+    if (!node || node.featureId === 0) continue;
+
+    switch (node.type) {
+      case "consumer":
+        affectedConsumers.push({
+          featureId: node.featureId,
+          layerId: node.layerId,
+          name: node.name,
+          address: (node.properties.Adres as string) || node.name,
+          coordinates: node.coordinates,
+        });
+        break;
+      case "ctp":
+        affectedCTPs.push({
+          featureId: node.featureId,
+          layerId: node.layerId,
+          name: node.name,
+          address: (node.properties.Adres as string) || "",
+          coordinates: node.coordinates,
+        });
+        break;
+      case "source":
+        break;
+      default:
+        affectedNodes.push({
+          featureId: node.featureId,
+          layerId: node.layerId,
+          name: node.name,
+          coordinates: node.coordinates,
+        });
+        break;
+    }
+  }
+
+  const affectedSegments: SimulationResult["affectedSegments"] = [];
+  let totalLengthM = 0;
+
+  for (const edge of graph.edges) {
+    const fromInSet = targetNodes.has(edge.fromKey);
+    const toInSet = targetNodes.has(edge.toKey);
+
+    if (fromInSet && toInSet) {
+      const edgeProps = edge.properties;
+      affectedSegments.push({
+        featureId: edge.featureId,
+        layerId: edge.layerId,
+        from: (edgeProps.Begin_uch as string) || edge.fromKey,
+        to: (edgeProps.End_uch as string) || edge.toKey,
+        length: edge.length,
+        coordinates: edge.coordinates,
+      });
+      totalLengthM += edge.length;
+    } else if (toInSet && found.nodeKeys.includes(edge.toKey)) {
+      const edgeProps = edge.properties;
+      affectedSegments.push({
+        featureId: edge.featureId,
+        layerId: edge.layerId,
+        from: (edgeProps.Begin_uch as string) || edge.fromKey,
+        to: (edgeProps.End_uch as string) || edge.toKey,
+        length: edge.length,
+        coordinates: edge.coordinates,
+      });
+      totalLengthM += edge.length;
+    }
+  }
+
+  const sourceNode = sourceKey ? graph.nodes.get(sourceKey) : null;
+  const nist = props.Nist !== undefined && props.Nist !== null ? String(props.Nist) : "";
+
+  console.log(`[SpatialGraph] Results: ${affectedConsumers.length} consumers, ${affectedSegments.length} segments, ${affectedCTPs.length} CTPs, ${affectedNodes.length} nodes`);
+  console.log(`[SpatialGraph] === Spatial Simulation End ===`);
+
+  return {
+    mode: "spatial" as SimulationMode,
+    failurePoint: {
+      featureId,
+      layerId,
+      name: featName || found.nodeKeys[0],
+      type: feat.geometryType === "LineString" ? "segment" : (graph.nodes.get(found.nodeKeys[0])?.type || "unknown"),
+      coordinates: feat.coordinates,
+    },
+    source: sourceNode ? {
+      name: sourceNode.name,
+      nist: (sourceNode.properties.Nist as string) || nist,
+    } : null,
+    affectedConsumers,
+    affectedSegments,
+    affectedCTPs,
+    affectedNodes,
+    stats: {
+      totalConsumers: affectedConsumers.length,
+      totalSegments: affectedSegments.length,
+      totalCTPs: affectedCTPs.length,
+      totalNodes: affectedNodes.length,
+      totalLengthM: Math.round(totalLengthM),
+    },
+  };
 }

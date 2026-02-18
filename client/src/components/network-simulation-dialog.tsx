@@ -25,9 +25,11 @@ import {
   Download,
   ArrowUp,
   ArrowDown,
+  Crosshair,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-type SimulationMode = "shutdown" | "upstream" | "downstream";
+type SimulationMode = "shutdown" | "upstream" | "downstream" | "spatial";
 
 interface SimulationResult {
   mode: SimulationMode;
@@ -142,12 +144,13 @@ export function NetworkSimulationDialog({
 
   const simulationMutation = useMutation({
     mutationFn: async (selectedMode: SimulationMode) => {
-      const res = await apiRequest("POST", "/api/network-graph/simulate", {
-        featureId,
-        layerId,
-        sceneId,
-        mode: selectedMode,
-      });
+      const endpoint = selectedMode === "spatial"
+        ? "/api/network-graph/simulate-spatial"
+        : "/api/network-graph/simulate";
+      const body = selectedMode === "spatial"
+        ? { featureId, layerId, sceneId }
+        : { featureId, layerId, sceneId, mode: selectedMode };
+      const res = await apiRequest("POST", endpoint, body);
       return res.json() as Promise<SimulationResult>;
     },
     onSuccess: (data) => {
@@ -208,12 +211,14 @@ export function NetworkSimulationDialog({
 
   const modeLabels: Record<SimulationMode, string> = {
     shutdown: "Отключение",
+    spatial: "Пространственный граф",
     upstream: "Восходящий граф",
     downstream: "Нисходящий граф",
   };
 
   const modeDescriptions: Record<SimulationMode, string> = {
-    shutdown: "Зона отключения ниже выбранного объекта",
+    shutdown: "Зона отключения ниже выбранного объекта (по атрибутам Nist)",
+    spatial: "Зона отключения по пространственной связности координат участков",
     upstream: "Путь от объекта к источнику (Begin_uch)",
     downstream: "Все объекты ниже по направлению (End_uch)",
   };
@@ -266,24 +271,42 @@ export function NetworkSimulationDialog({
           </Button>
           <Button
             size="sm"
-            variant={mode === "upstream" ? "default" : "outline"}
+            variant={mode === "spatial" ? "default" : "outline"}
             className="flex-1 text-xs toggle-elevate"
-            onClick={() => setMode("upstream")}
-            data-testid="button-mode-upstream"
+            onClick={() => setMode("spatial")}
+            data-testid="button-mode-spatial"
           >
-            <ArrowUp className="h-3 w-3 mr-1" />
-            {modeLabels.upstream}
+            <Crosshair className="h-3 w-3 mr-1" />
+            {modeLabels.spatial}
           </Button>
-          <Button
-            size="sm"
-            variant={mode === "downstream" ? "default" : "outline"}
-            className="flex-1 text-xs toggle-elevate"
-            onClick={() => setMode("downstream")}
-            data-testid="button-mode-downstream"
-          >
-            <ArrowDown className="h-3 w-3 mr-1" />
-            {modeLabels.downstream}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={mode === "upstream" ? "default" : "outline"}
+                className="toggle-elevate shrink-0"
+                onClick={() => setMode("upstream")}
+                data-testid="button-mode-upstream"
+              >
+                <ArrowUp className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{modeLabels.upstream}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={mode === "downstream" ? "default" : "outline"}
+                className="toggle-elevate shrink-0"
+                onClick={() => setMode("downstream")}
+                data-testid="button-mode-downstream"
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{modeLabels.downstream}</TooltipContent>
+          </Tooltip>
         </div>
 
         <p className="text-xs text-muted-foreground">{modeDescriptions[mode]}</p>
@@ -438,7 +461,7 @@ export function NetworkSimulationDialog({
               </>
             )}
           </Button>
-          {result && (
+          {result && result.mode !== "spatial" && (
             <Button
               variant="outline"
               onClick={handleExport}

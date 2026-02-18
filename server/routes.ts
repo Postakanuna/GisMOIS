@@ -4834,6 +4834,28 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/network-graph/simulate-spatial", async (req: Request, res: Response) => {
+    try {
+      const { featureId, layerId, sceneId } = req.body;
+
+      if (!featureId || !layerId || !sceneId) {
+        return res.status(400).json({ error: "featureId, layerId, and sceneId are required" });
+      }
+
+      const { simulateSpatialDisconnection } = await import("./network-graph");
+      const result = await simulateSpatialDisconnection(
+        Number(featureId),
+        Number(layerId),
+        Number(sceneId)
+      );
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Spatial network graph simulation error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
   app.post("/api/network-graph/simulate/export", async (req: Request, res: Response) => {
     try {
       const { featureId, layerId, sceneId, mode } = req.body;
