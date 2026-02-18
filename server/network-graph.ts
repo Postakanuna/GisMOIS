@@ -1564,8 +1564,17 @@ export async function buildSpatialNetworkGraph(sceneId: number): Promise<Spatial
 
   console.log(`[SpatialGraph] Total segments loaded: ${segments.length}`);
 
+  let skippedDisabled = 0;
+
   for (const seg of segments) {
     const props = seg.properties as Record<string, unknown>;
+
+    const zMode = props.ZMode !== undefined && props.ZMode !== null ? Number(props.ZMode) : null;
+    if (zMode === 2) {
+      skippedDisabled++;
+      continue;
+    }
+
     const endpoints = extractEndpoints(seg.coordinates);
     if (!endpoints) continue;
 
@@ -1676,6 +1685,9 @@ export async function buildSpatialNetworkGraph(sceneId: number): Promise<Spatial
     nodeTypes.set(node.type, (nodeTypes.get(node.type) || 0) + 1);
   }
   console.log(`[SpatialGraph] Graph built: ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
+  if (skippedDisabled > 0) {
+    console.log(`[SpatialGraph] Skipped ${skippedDisabled} disabled segments (ZMode=2)`);
+  }
   console.log(`[SpatialGraph] Node types:`, Object.fromEntries(nodeTypes));
 
   return graph;
