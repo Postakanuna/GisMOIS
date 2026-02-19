@@ -23,7 +23,6 @@ import {
   X,
   GripHorizontal,
   Download,
-  Crosshair,
 } from "lucide-react";
 
 type SimulationMode = "spatial";
@@ -202,14 +201,6 @@ export function NetworkSimulationDialog({
 
   const featureTypeLabel = featureType === "LineString" ? "Участок сети" : "Узел/объект";
 
-  const modeLabels: Record<SimulationMode, string> = {
-    spatial: "Пространственный граф",
-  };
-
-  const modeDescriptions: Record<SimulationMode, string> = {
-    spatial: "Зона отключения по пространственной связности координат участков",
-  };
-
   if (!open) return null;
 
   return (
@@ -244,20 +235,6 @@ export function NetworkSimulationDialog({
             </div>
           )}
         </Card>
-
-        <div className="flex gap-1" data-testid="mode-selector">
-          <Button
-            size="sm"
-            variant="default"
-            className="flex-1 text-xs"
-            data-testid="button-mode-spatial"
-          >
-            <Crosshair className="h-3 w-3 mr-1" />
-            {modeLabels.spatial}
-          </Button>
-        </div>
-
-        <p className="text-xs text-muted-foreground">{modeDescriptions[mode]}</p>
 
         {!result && !simulationMutation.isPending && !simulationMutation.isError && (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 text-muted-foreground py-8">
