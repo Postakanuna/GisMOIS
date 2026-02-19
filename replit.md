@@ -2,7 +2,7 @@
 
 ## Overview
 
-ГИС МО "Инженерные сети" — это веб-приложение для управления инженерной инфраструктурой, использующее мультисценовую архитектуру. Оно предназначено для визуализации картографических данных через WMS/WFS API, управления слоями, отображения информации об объектах и загрузки shapefile-слоев. Приложение ставит карту в центр внимания, предоставляя интерактивное картографическое пространство с управляющими элементами на боковой панели. Проект нацелен на создание удобного и мощного инструмента для работы с геопространственными данными, поддерживающего стандарты ГОСТ для иконок и стилей тепловых сетей.
+ГИС МО "Инженерные сети" is a web application for managing engineering infrastructure using a multi-scene architecture. It is designed for visualizing cartographic data via WMS/WFS APIs, layer management, object information display, and shapefile layer uploads. The application centers around an interactive map with control elements on a sidebar, aiming to be a powerful and user-friendly tool for geospatial data, supporting GOST standards for icons and thermal network styles. It integrates business vision for market potential and project ambitions to provide a comprehensive GIS solution.
 
 ## User Preferences
 
@@ -10,133 +10,69 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### Frontend
 
-**Framework**: React 18 с TypeScript, Vite
-- Одностраничное приложение с маршрутизацией Wouter.
-- Управление состоянием: React Query для серверного состояния, React Hooks для локального.
-- Библиотека компонентов: shadcn/ui на базе Radix UI.
-- Стилизация: Tailwind CSS с CSS-переменными для тем (светлая/тёмная).
-- Дизайн: Принципы Material Design 3 для приложений с интенсивным использованием данных.
-- Контекст сцены (SceneContext) для управления состоянием текущей сцены.
+The frontend is built with React 18 and TypeScript, using Vite. It's a single-page application with Wouter for routing. State management relies on React Query for server-side data and React Hooks for local state. UI components are built with shadcn/ui (based on Radix UI) and styled using Tailwind CSS, supporting light/dark themes. The design adheres to Material Design 3 principles, optimized for data-intensive applications. A `SceneContext` manages the current scene's state.
 
-**Map Rendering**: OpenLayers (ol) library
-- Поддержка слоев WMS и WFS от ZuluServer.
-- OpenStreetMap в качестве базового слоя.
-- Интерактивные функции: управление зумом, отображение координат, информация об объектах по клику.
-- Рендеринг наборов данных сцен в формате GeoJSON.
-- Оптимизированная загрузка объектов по области просмотра (viewport-based feature loading) с упрощением геометрии и кластеризацией точечных слоев.
-- Properties-on-demand: viewport-эндпоинты возвращают геометрию и свойства (id, geometryType, coordinates, properties), свойства также загружаются через `/api/features/:id` при клике на объект.
-- Атрибутная стилизация (QGIS/ArcGIS-стиль): поддержка трёх типов рендереров — single (единый стиль), categorized (категоризированный по уникальным значениям), graduated (градуированный по числовым диапазонам). Настройка через StyleConfigDialog в менеджере данных. Легенда карты (MapLegend) отображает стилизированные слои.
+Map rendering is handled by OpenLayers (ol) library, supporting WMS/WFS layers from ZuluServer and OpenStreetMap as a base. Key features include zoom control, coordinate display, and object information on click. It renders GeoJSON data, optimizes feature loading by viewport with geometry simplification and clustering, and supports "properties-on-demand." Attribute styling (QGIS/ArcGIS-like) includes single, categorized, and graduated renderers, configurable via `StyleConfigDialog`, with `MapLegend` displaying active styles.
 
-**Key Frontend Components**:
-- `MapViewer`: Основной компонент карты.
-- `DataManager`: Модальное окно для управления наборами данных.
-- `ScenesPage`: Выбор и управление сценами после входа.
+Key frontend components include `MapViewer` for the map, `DataManager` for dataset management, and `ScenesPage` for scene selection.
 
-### Backend Architecture
+### Backend
 
-**Runtime**: Node.js с Express
-- TypeScript, компилируется с tsx (разработка) и esbuild (production).
+The backend uses Node.js with Express and TypeScript. It provides a REST API (`/api/`) supporting multi-scene architecture with role-based access. Features include universal tracing (`/api/trace-route`), optimized shapefile uploads with CP1251 encoding, and an external API with key management for integrations (e.g., Telegram bot, ARM ARKI). Cross-scene search and geospatial analytics (`/api/analytics/geospatial`) are supported, offering configurable reports. Layer attributes can be easily accessed (`/api/editable-layers/:id/attributes`), with Russian localization for GIS Zulu fields. Attribute value endpoints (`/api/editable-layers/:id/attribute-values`) provide unique values for filtering, and filtered object counts are available (`/api/editable-layers/:id/count-filtered`). Layer export supports GeoJSON and Shapefile formats.
 
-**API Design**:
-- REST API с префиксом `/api/`.
-- Поддержка мультисценовой архитектуры с ролевым доступом (владелец/редактор/просмотрщик).
-- Универсальная трассировка объектов (`/api/trace-route`) для построения маршрутов OSRM.
-- Оптимизированная загрузка больших файлов shapefile с поддержкой CP1251 и пакетными вставками.
-- Внешнее API с управлением ключами для интеграций (например, создание точечных объектов из Telegram бота, пространственные запросы для внешних систем типа АРМ АРКИ). Поддержка кросс-сценного поиска: query-параметры `crossScene=true` и `sourceSceneIds` позволяют искать объекты в слоях из нескольких сцен (с проверкой прав доступа). Эндпоинт слоёв (`/api/external/scenes/:sceneId/layers`) поддерживает фильтр `geometryType` и возвращает все типы слоёв.
-- ГОСТ-совместимые иконки и стили линий для тепловых сетей.
-- Единый эндпоинт геоанализа (`/api/analytics/geospatial`): поддержка нескольких исходных слоёв (sourceLayerIds[]), опциональный целевой слой для привязки по расстоянию, режим пространственной фильтрации (внутри/вне полигонов), конфигурируемый отчёт (JSON/XLSX).
-- Лёгкий эндпоинт атрибутов слоя (`/api/editable-layers/:id/attributes`) для быстрого получения списка атрибутов.
-- Русская локализация полей ГИС Зулу: словарь `shared/field-labels.ts` содержит маппинг технических имён полей (begin_uch, dpod и т.д.) в русские наименования. Формат отображения: «Русское наименование (technical_field)». Используется в attribute-table.tsx (заголовки столбцов), feature-info.tsx (свойства объектов) и внешних API-эндпоинтах (transformPropertyKeys для преобразования ключей properties). Словарь покрывает все типы слоёв: ЦТП, Источник, Участки, Перемычка, Узел, Дросселирующий узел, Обобщённый потребитель, Насосная станция, Задвижка, Потребитель.
-- Эндпоинт значений атрибутов (`/api/editable-layers/:id/attribute-values`) для lazy-загрузки уникальных значений (≤200 на атрибут) с подсказками в фильтре.
-- Эндпоинт подсчёта отфильтрованных объектов (`/api/editable-layers/:id/count-filtered`) для валидации фильтра в реальном времени (использует общую функцию applyFilters).
-- Экспорт слоёв (`/api/editable-layers/:id/export/:format`): поддержка GeoJSON и Shapefile (ZIP-архив с .shp, .shx, .dbf, .prj, .cpg). Бинарный Shapefile-генератор в `server/shapefile-writer.ts`.
+### Storage
 
-**Storage**: PostgreSQL с Drizzle ORM
-- Схемы для пользователей, сцен, участников сцен, наборов данных, API ключей.
-- Валидация схем с использованием Zod.
-- Индексация для оптимизации запросов.
+Data is stored in PostgreSQL, managed by Drizzle ORM. Schemas are defined for users, scenes, scene members, datasets, and API keys, with Zod for schema validation. Indexing is used for query optimization.
 
 ### Build System
 
-**Development**: Vite dev server с HMR, проксируется через Express.
-**Production**: Frontend собирается Vite, Backend — esbuild.
+Development uses Vite dev server with HMR and Express proxy. Production builds frontend with Vite and backend with esbuild.
 
 ### Project Structure
 
-- `client/`: React приложение.
-- `server/`: Express бэкенд.
-- `shared/`: Общие типы и схемы (Zod + Drizzle).
-- `migrations/`: Миграции базы данных.
+The project is organized into `client/` (React app), `server/` (Express backend), `shared/` (common types/schemas), and `migrations/` (database migrations).
 
 ### Database Schema
 
-- `users`: Учетные записи пользователей.
-- `scenes`: Проектные сцены.
-- `scene_members`: Управление доступом к сценам.
-- `datasets`: Загруженные shapefile-наборы данных.
-- `scene_datasets`: Связь наборов данных со сценами и стилизация.
-- `dataset_features`: Отдельные объекты с геометрией и свойствами.
-- `api_keys`: Токены для внешних API с разрешениями (create_point, read_layers, read_scenes, spatial_query).
+Key tables include `users`, `scenes`, `scene_members`, `datasets`, `scene_datasets`, `dataset_features`, and `api_keys` (with permissions like `create_point`, `read_layers`, `read_scenes`, `spatial_query`).
+
+### Advanced Styling
+
+The application offers extensive styling options:
+- **Point Styles**: Basic shapes (circle, square) and GOST-compliant thermal network icons (heat-source, ctp, itp). Custom SVG icons are supported.
+- **Line Styles**: Basic patterns (solid, dashed) and GOST-compliant thermal network styles (relaying, bypass).
+- **Per-class Styling**: Categorized and graduated renderers allow assigning specific point and line styles to individual classes. `IconPicker` and `LinePicker` components facilitate this, and `MapLegend` accurately displays per-class symbols.
+
+### Geocoding (Multi-Provider)
+
+Two geocoding providers are supported: Yandex Geocoder and DaData, configurable in settings.
+- **Yandex Geocoder**: High request rate, requires `YANDEX_GEOCODER_API_KEY`.
+- **DaData**: Returns FIAS ID in addition to coordinates, requires `DADATA_API_KEY`.
+The chosen provider influences both Excel import (address to coordinates) and reverse geocoding (coordinates to address), adding specific attributes like `fias_id`. The geocoding service ensures all coordinates are in EPSG:4326 (WGS84).
+
+### Reverse Geocoding
+
+This feature enriches layer attributes with address information based on coordinates. It can be initiated from the data manager, showing a progress bar and allowing cancellation. For linear objects, `addr_begin` and `addr_end` fields are populated, while point objects get `addr_point`. DaData integration also adds `fias_begin`/`fias_end`/`fias_point`. Field names are compatible with Shapefile constraints (≤10 characters, Latin alphabet), with Russian descriptions provided via `shared/field-labels.ts`. The process intelligently skips objects with already filled address fields.
 
 ## External Dependencies
 
 ### Third-Party Services
 
-**ZuluServer**: Внешний ГИС-сервер, предоставляющий картографические сервисы WMS/WFS.
-- Бэкенд проксирует запросы для обхода CORS и аутентификации.
+- **ZuluServer**: External GIS server providing WMS/WFS cartographic services, proxied by the backend to handle CORS and authentication.
+- **Yandex Geocoder**: Optional geocoding service.
+- **DaData**: Optional geocoding service, offering additional FIAS ID.
 
 ### Database
 
-**PostgreSQL**: Настраивается через Drizzle ORM.
-- Строка подключения из переменной окружения `DATABASE_URL`.
+- **PostgreSQL**: Used for all persistent data storage, configured via Drizzle ORM.
 
 ### Key Libraries
 
-- **OpenLayers**: Интерактивная отрисовка карт и ГИС-функциональность.
-- **React Query**: Управление состоянием сервера и кэширование.
-- **Radix UI**: Доступные UI-примитивы для shadcn/ui.
-- **Zod**: Валидация типов для API-запросов и схем.
-- **Drizzle ORM**: Типобезопасные запросы к базе данных и управление схемой.
-- **shpjs**: Парсинг Shapefile с поддержкой кодировок.
-
-### Расширенная библиотека стилей
-
-**Точечные стили** (pointStyle):
-- Базовые: circle, square, triangle, cloud, diamond, star, cross, hexagon, pentagon
-- ГОСТ теплосети: heat-source, ctp, itp, valve, heat-chamber, pump-station, compensator, support
-- Пользовательские SVG-иконки (custom icons)
-
-**Линейные стили** (lineStyle):
-- Базовые: solid, dashed, double, dash-dot, dotted, long-dash, dash-dot-dot
-- ГОСТ теплосети: relaying, bypass, demolition, above-ground, underground-channel, underground-channelless, state-program
-
-**Per-class стилизация**: В категоризированном и градуированном рендерерах можно назначить отдельный pointStyle и lineStyle для каждого класса (например, ZMode=1 → круг, ZMode=2 → треугольник).
-- Компоненты: IconPicker (точки), LinePicker (линии)
-- Легенда карты (MapLegend) отображает правильные символы per-class.
-
-### Геокодирование (Yandex Geocoder API)
-
-Импорт Excel поддерживает два режима получения координат:
-1. **Координаты** — пользователь указывает колонки широты/долготы (как было раньше)
-2. **Адрес** — пользователь указывает колонку с адресом, координаты получаются через Яндекс Геокодер API
-
-- Сервис геокодирования: `server/geocoder.ts`
-- API Яндекс Геокодера возвращает координаты в EPSG:4326 (WGS84) — совпадает с внутренней СК приложения
-- Ограничение скорости: не более 40 запросов/сек
-- Требует секрет `YANDEX_GEOCODER_API_KEY`
-- При геокодировании к каждому объекту добавляются атрибуты `geocoded_address` и `geocode_precision`
-
-### Обратное геокодирование (адресные ориентиры)
-
-Функция обратного геокодирования позволяет обогатить атрибуты объектов слоя адресными ориентирами по координатам.
-- Кнопка «Геокодировать» (MapPin icon) в менеджере данных для каждого слоя
-- Диалог `GeocodeDialog` с информацией о слое, прогресс-баром и возможностью отмены
-- Эндпоинт `POST /api/editable-layers/:id/geocode` — SSE с прогрессом обработки
-- Эндпоинт `GET /api/editable-layers/:id/geocode-info` — информация о слое для диалога
-- Для линейных объектов: поля `addr_begin` (начало) и `addr_end` (окончание)
-- Для точечных объектов: поле `addr_point`
-- Имена полей совместимы с ограничениями Shapefile (≤10 символов, латиница)
-- Русские описания через справочник `shared/field-labels.ts`
-- Пропуск объектов, у которых уже заполнены адресные поля
+- **OpenLayers**: Core library for interactive map rendering and GIS functionalities.
+- **React Query**: Manages server state and caching for the frontend.
+- **Radix UI**: Provides accessible UI primitives, foundational for shadcn/ui components.
+- **Zod**: Used for robust type validation of API requests and database schemas.
+- **Drizzle ORM**: Enables type-safe database queries and schema management.
+- **shpjs**: Parses Shapefile data, including support for various encodings.
