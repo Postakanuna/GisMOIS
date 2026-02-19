@@ -22,9 +22,28 @@ const MAX_RPS = 40;
 const DELAY_MS = Math.ceil(1000 / MAX_RPS);
 const DADATA_MAX_RPS = 10;
 const DADATA_DELAY_MS = Math.ceil(1000 / DADATA_MAX_RPS);
+const FETCH_TIMEOUT_MS = 15000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createTimeoutSignal(timeoutMs: number, parentSignal?: AbortSignal): AbortSignal {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      controller.abort();
+      clearTimeout(timer);
+    } else {
+      parentSignal.addEventListener("abort", () => {
+        controller.abort();
+        clearTimeout(timer);
+      }, { once: true });
+    }
+  }
+  controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  return controller.signal;
 }
 
 class GeocoderAuthError extends Error {
@@ -41,9 +60,17 @@ class GeocoderRateLimitError extends Error {
   }
 }
 
+class GeocoderTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GeocoderTimeoutError";
+  }
+}
+
 async function geocodeAddress(
   address: string,
-  apiKey: string
+  apiKey: string,
+  parentSignal?: AbortSignal
 ): Promise<GeocodingResult | null> {
   const params = new URLSearchParams({
     apikey: apiKey,
@@ -53,7 +80,18 @@ async function geocodeAddress(
     lang: "ru_RU",
   });
 
-  const response = await fetch(`${YANDEX_GEOCODER_URL}?${params.toString()}`);
+  const signal = createTimeoutSignal(FETCH_TIMEOUT_MS, parentSignal);
+
+  let response: Response;
+  try {
+    response = await fetch(`${YANDEX_GEOCODER_URL}?${params.toString()}`, { signal });
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      if (parentSignal?.aborted) throw err;
+      throw new GeocoderTimeoutError(`Таймаут запроса к Яндекс Геокодеру (${FETCH_TIMEOUT_MS / 1000}с)`);
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     if (response.status === 403) {
@@ -93,20 +131,33 @@ async function geocodeAddress(
 
 async function geocodeAddressDadata(
   address: string,
-  apiKey: string
+  apiKey: string,
+  parentSignal?: AbortSignal
 ): Promise<GeocodingResult | null> {
-  const response = await fetch(DADATA_SUGGEST_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "Authorization": `Token ${apiKey}`,
-    },
-    body: JSON.stringify({
-      query: address,
-      count: 1,
-    }),
-  });
+  const signal = createTimeoutSignal(FETCH_TIMEOUT_MS, parentSignal);
+
+  let response: Response;
+  try {
+    response = await fetch(DADATA_SUGGEST_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": `Token ${apiKey}`,
+      },
+      body: JSON.stringify({
+        query: address,
+        count: 1,
+      }),
+      signal,
+    });
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      if (parentSignal?.aborted) throw err;
+      throw new GeocoderTimeoutError(`Таймаут запроса к DaData (${FETCH_TIMEOUT_MS / 1000}с)`);
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     if (response.status === 403 || response.status === 401) {
@@ -158,7 +209,8 @@ export interface ReverseGeocodingResult {
 export async function reverseGeocode(
   lon: number,
   lat: number,
-  apiKey: string
+  apiKey: string,
+  parentSignal?: AbortSignal
 ): Promise<ReverseGeocodingResult | null> {
   const params = new URLSearchParams({
     apikey: apiKey,
@@ -169,7 +221,18 @@ export async function reverseGeocode(
     lang: "ru_RU",
   });
 
-  const response = await fetch(`${YANDEX_GEOCODER_URL}?${params.toString()}`);
+  const signal = createTimeoutSignal(FETCH_TIMEOUT_MS, parentSignal);
+
+  let response: Response;
+  try {
+    response = await fetch(`${YANDEX_GEOCODER_URL}?${params.toString()}`, { signal });
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      if (parentSignal?.aborted) throw err;
+      throw new GeocoderTimeoutError(`Таймаут запроса к Яндекс Геокодеру (${FETCH_TIMEOUT_MS / 1000}с)`);
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     if (response.status === 403) {
@@ -200,22 +263,35 @@ export async function reverseGeocode(
 export async function reverseGeocodeDadata(
   lon: number,
   lat: number,
-  apiKey: string
+  apiKey: string,
+  parentSignal?: AbortSignal
 ): Promise<ReverseGeocodingResult | null> {
-  const response = await fetch(DADATA_GEOLOCATE_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "Authorization": `Token ${apiKey}`,
-    },
-    body: JSON.stringify({
-      lat,
-      lon,
-      count: 1,
-      radius_meters: 100,
-    }),
-  });
+  const signal = createTimeoutSignal(FETCH_TIMEOUT_MS, parentSignal);
+
+  let response: Response;
+  try {
+    response = await fetch(DADATA_GEOLOCATE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": `Token ${apiKey}`,
+      },
+      body: JSON.stringify({
+        lat,
+        lon,
+        count: 1,
+        radius_meters: 100,
+      }),
+      signal,
+    });
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      if (parentSignal?.aborted) throw err;
+      throw new GeocoderTimeoutError(`Таймаут запроса к DaData (${FETCH_TIMEOUT_MS / 1000}с)`);
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     if (response.status === 403 || response.status === 401) {
@@ -276,6 +352,10 @@ export async function reverseGeocodeBatch(
   let retryCount = 0;
   const maxRetries = 3;
   const delayMs = provider === "dadata" ? DADATA_DELAY_MS : DELAY_MS;
+  let consecutiveTimeouts = 0;
+  const maxConsecutiveTimeouts = 5;
+
+  console.log(`[Geocoder] Starting reverse geocode batch: ${totalCoords} coords, provider=${provider}`);
 
   for (const item of items) {
     if (abortSignal?.aborted) break;
@@ -291,28 +371,48 @@ export async function reverseGeocodeBatch(
       try {
         let result: ReverseGeocodingResult | null;
         if (provider === "dadata") {
-          result = await reverseGeocodeDadata(lon, lat, apiKey);
+          result = await reverseGeocodeDadata(lon, lat, apiKey, abortSignal);
         } else {
-          result = await reverseGeocode(lon, lat, apiKey);
+          result = await reverseGeocode(lon, lat, apiKey, abortSignal);
         }
         addresses.push(result?.formattedAddress || null);
         fiasIds.push(result?.fiasId || null);
         retryCount = 0;
+        consecutiveTimeouts = 0;
       } catch (error: any) {
-        if (error instanceof GeocoderRateLimitError) {
+        if (error instanceof GeocoderTimeoutError) {
+          consecutiveTimeouts++;
+          console.warn(`[Geocoder] Timeout ${consecutiveTimeouts}/${maxConsecutiveTimeouts} at coord ${processedCoords + 1}/${totalCoords}: ${error.message}`);
+          if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
+            console.error(`[Geocoder] Too many consecutive timeouts (${maxConsecutiveTimeouts}), stopping batch`);
+            throw new Error(`Слишком много таймаутов подряд (${maxConsecutiveTimeouts}). API-провайдер не отвечает. Обработано ${processedCoords} из ${totalCoords}.`);
+          }
+          addresses.push(null);
+          fiasIds.push(null);
+          itemError = error.message;
+          await sleep(3000);
+        } else if (error instanceof GeocoderRateLimitError) {
           if (retryCount < maxRetries) {
             retryCount++;
+            console.warn(`[Geocoder] Rate limit, retry ${retryCount}/${maxRetries} at coord ${processedCoords + 1}/${totalCoords}`);
             await sleep(2000 * retryCount);
             ci--;
             continue;
           }
-        }
-        if (error instanceof GeocoderAuthError) {
+          console.error(`[Geocoder] Rate limit exhausted after ${maxRetries} retries`);
+          addresses.push(null);
+          fiasIds.push(null);
+          itemError = error.message;
+        } else if (error instanceof GeocoderAuthError) {
           throw error;
+        } else if (error.name === "AbortError") {
+          break;
+        } else {
+          addresses.push(null);
+          fiasIds.push(null);
+          itemError = error.message || "Ошибка геокодирования";
+          console.warn(`[Geocoder] Error at coord ${processedCoords + 1}/${totalCoords}: ${error.message}`);
         }
-        addresses.push(null);
-        fiasIds.push(null);
-        itemError = error.message || "Ошибка геокодирования";
       }
 
       processedCoords++;
@@ -320,6 +420,10 @@ export async function reverseGeocodeBatch(
 
       if (onProgress) {
         onProgress(processedCoords, totalCoords);
+      }
+
+      if (processedCoords % 50 === 0) {
+        console.log(`[Geocoder] Progress: ${processedCoords}/${totalCoords} (${Math.round(processedCoords / totalCoords * 100)}%)`);
       }
     }
 
@@ -331,6 +435,7 @@ export async function reverseGeocodeBatch(
     });
   }
 
+  console.log(`[Geocoder] Batch complete: ${processedCoords}/${totalCoords} processed`);
   return results;
 }
 
@@ -338,12 +443,17 @@ export async function geocodeBatch(
   addresses: { index: number; address: string }[],
   apiKey: string,
   onProgress?: (processed: number, total: number) => void,
-  provider: GeocodeProvider = "yandex"
+  provider: GeocodeProvider = "yandex",
+  abortSignal?: AbortSignal
 ): Promise<GeocodingBatchResult[]> {
   const results: GeocodingBatchResult[] = [];
   let retryCount = 0;
   const maxRetries = 3;
   const delayMs = provider === "dadata" ? DADATA_DELAY_MS : DELAY_MS;
+  let consecutiveTimeouts = 0;
+  const maxConsecutiveTimeouts = 5;
+
+  console.log(`[Geocoder] Starting forward geocode batch: ${addresses.length} addresses, provider=${provider}`);
 
   for (let i = 0; i < addresses.length; i++) {
     const { index, address } = addresses[i];
@@ -358,12 +468,14 @@ export async function geocodeBatch(
       continue;
     }
 
+    if (abortSignal?.aborted) break;
+
     try {
       let result: GeocodingResult | null;
       if (provider === "dadata") {
-        result = await geocodeAddressDadata(address.trim(), apiKey);
+        result = await geocodeAddressDadata(address.trim(), apiKey, abortSignal);
       } else {
-        result = await geocodeAddress(address.trim(), apiKey);
+        result = await geocodeAddress(address.trim(), apiKey, abortSignal);
       }
       results.push({
         index,
@@ -372,26 +484,37 @@ export async function geocodeBatch(
         error: result ? null : "Адрес не найден",
       });
       retryCount = 0;
+      consecutiveTimeouts = 0;
     } catch (error: any) {
-      if (error instanceof GeocoderRateLimitError) {
+      if (error instanceof GeocoderTimeoutError) {
+        consecutiveTimeouts++;
+        console.warn(`[Geocoder] Timeout ${consecutiveTimeouts}/${maxConsecutiveTimeouts} at address ${i + 1}/${addresses.length}`);
+        if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
+          console.error(`[Geocoder] Too many consecutive timeouts, stopping`);
+          throw new Error(`Слишком много таймаутов подряд. Обработано ${results.length} из ${addresses.length}.`);
+        }
+        results.push({ index, address, result: null, error: error.message });
+        await sleep(3000);
+      } else if (error instanceof GeocoderRateLimitError) {
         if (retryCount < maxRetries) {
           retryCount++;
           await sleep(2000 * retryCount);
           i--;
           continue;
         }
-      }
-
-      if (error instanceof GeocoderAuthError) {
+        results.push({ index, address, result: null, error: error.message });
+      } else if (error instanceof GeocoderAuthError) {
         throw error;
+      } else if (error.name === "AbortError") {
+        break;
+      } else {
+        results.push({
+          index,
+          address,
+          result: null,
+          error: error.message || "Ошибка геокодирования",
+        });
       }
-
-      results.push({
-        index,
-        address,
-        result: null,
-        error: error.message || "Ошибка геокодирования",
-      });
     }
 
     if (i < addresses.length - 1) {
@@ -401,7 +524,12 @@ export async function geocodeBatch(
     if (onProgress) {
       onProgress(results.length, addresses.length);
     }
+
+    if ((i + 1) % 50 === 0) {
+      console.log(`[Geocoder] Progress: ${i + 1}/${addresses.length} (${Math.round((i + 1) / addresses.length * 100)}%)`);
+    }
   }
 
+  console.log(`[Geocoder] Forward batch complete: ${results.length}/${addresses.length} processed`);
   return results;
 }

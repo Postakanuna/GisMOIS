@@ -4,6 +4,8 @@ import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -13,7 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { MapPin, Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
+import { MapPin, Loader2, CheckCircle2, AlertTriangle, X, RefreshCw } from "lucide-react";
 
 interface GeocodeDialogProps {
   layerId: number;
@@ -51,6 +53,7 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
   const [total, setTotal] = useState(0);
   const [result, setResult] = useState<{ success: number; errors: number; skipped: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [forceOverwrite, setForceOverwrite] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const { data: info, isLoading: infoLoading } = useQuery<GeocodeInfo>({
@@ -66,6 +69,7 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
       setTotal(0);
       setResult(null);
       setErrorMessage(null);
+      setForceOverwrite(false);
     }
   }, [open]);
 
@@ -81,6 +85,8 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
     try {
       const response = await fetch(`/api/editable-layers/${layerId}/geocode`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceOverwrite }),
         signal: controller.signal,
       });
 
@@ -141,7 +147,7 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
         setStatus("error");
       }
     }
-  }, [layerId, toast]);
+  }, [layerId, toast, forceOverwrite]);
 
   const cancelGeocoding = useCallback(() => {
     abortRef.current?.abort();
@@ -152,6 +158,9 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
   const geometryLabel = info?.isLine ? "Линейный" : info?.isPoint ? "Точечный" : info?.geometryType || "";
   const fieldsLabel = info?.fields?.join(", ") || "";
   const providerLabel = info?.provider ? (PROVIDER_LABELS[info.provider] || info.provider) : "";
+
+  const effectiveNeedsGeocoding = forceOverwrite ? info?.totalFeatures || 0 : info?.needsGeocoding || 0;
+  const hasAlreadyGeocoded = (info?.alreadyGeocoded || 0) > 0;
 
   return (
     <Dialog open={open} onOpenChange={(v) => {
@@ -199,7 +208,9 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Требует обработки:</span>
-                  <span className="font-medium" data-testid="text-geocode-needs">{info.needsGeocoding}</span>
+                  <span className="font-medium" data-testid="text-geocode-needs">
+                    {forceOverwrite ? info.totalFeatures : info.needsGeocoding}
+                  </span>
                 </div>
                 <div className="flex justify-between flex-wrap gap-1">
                   <span className="text-muted-foreground">Добавляемые поля:</span>
@@ -213,14 +224,31 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
                 )}
               </div>
 
-              {info.needsGeocoding === 0 && status === "idle" && (
+              {hasAlreadyGeocoded && status === "idle" && (
+                <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted/50">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <RefreshCw className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <Label htmlFor="force-overwrite" className="text-sm cursor-pointer">
+                      Перезаписать существующие адреса
+                    </Label>
+                  </div>
+                  <Switch
+                    id="force-overwrite"
+                    checked={forceOverwrite}
+                    onCheckedChange={setForceOverwrite}
+                    data-testid="switch-force-overwrite"
+                  />
+                </div>
+              )}
+
+              {effectiveNeedsGeocoding === 0 && status === "idle" && (
                 <div className="flex items-center gap-2 p-3 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-sm">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   <span>Все объекты уже геокодированы</span>
                 </div>
               )}
 
-              {info.totalFeatures > 500 && status === "idle" && info.needsGeocoding > 0 && (
+              {info.totalFeatures > 500 && status === "idle" && effectiveNeedsGeocoding > 0 && (
                 <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 text-sm">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   <span>Большой объём данных — обработка может занять несколько минут</span>
@@ -280,13 +308,13 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
               >
                 Закрыть
               </Button>
-              {info && info.needsGeocoding > 0 && status !== "complete" && (
+              {info && effectiveNeedsGeocoding > 0 && status !== "complete" && (
                 <Button
                   onClick={startGeocoding}
                   data-testid="button-start-geocode"
                 >
                   <MapPin className="h-4 w-4 mr-1" />
-                  Запустить
+                  {forceOverwrite ? "Перезаписать все" : "Запустить"}
                 </Button>
               )}
             </>

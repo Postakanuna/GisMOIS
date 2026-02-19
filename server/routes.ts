@@ -3300,6 +3300,7 @@ export async function registerRoutes(
   app.post("/api/editable-layers/:layerId/geocode", async (req: Request, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
+      const forceOverwrite = req.body?.forceOverwrite === true;
       const providerSetting = await storage.getAppSetting("geocode_provider");
       const provider: GeocodeProvider = providerSetting === "dadata" ? "dadata" : "yandex";
 
@@ -3355,8 +3356,8 @@ export async function registerRoutes(
         const coords = feature.coordinates as any;
 
         if (isLine) {
-          const skipBegin = typeof props.addr_begin === "string" && props.addr_begin.length > 0;
-          const skipEnd = typeof props.addr_end === "string" && props.addr_end.length > 0;
+          const skipBegin = !forceOverwrite && typeof props.addr_begin === "string" && props.addr_begin.length > 0;
+          const skipEnd = !forceOverwrite && typeof props.addr_end === "string" && props.addr_end.length > 0;
 
           if (skipBegin && skipEnd) continue;
 
@@ -3392,7 +3393,7 @@ export async function registerRoutes(
           featureMap.set(feature.id, { feature, skipBegin, skipEnd, skipPoint: false });
           batchItems.push({ featureId: feature.id, coords: coordsToGeocode });
         } else {
-          const skipPoint = typeof props.addr_point === "string" && props.addr_point.length > 0;
+          const skipPoint = !forceOverwrite && typeof props.addr_point === "string" && props.addr_point.length > 0;
           if (skipPoint) continue;
 
           let lon: number, lat: number;
