@@ -1015,6 +1015,35 @@ export async function buildSpatialNetworkGraph(sceneId: number): Promise<Spatial
     }
   }
 
+  let closedValves = 0;
+  for (const [key, node] of graph.nodes) {
+    if (node.type === "valve") {
+      const valveZMode = node.properties.ZMode !== undefined && node.properties.ZMode !== null ? Number(node.properties.ZMode) : null;
+      if (valveZMode === 2) {
+        closedValves++;
+        const neighbors = graph.adjacency.get(key);
+        if (neighbors) {
+          for (const neighbor of neighbors) {
+            const neighborSet = graph.adjacency.get(neighbor);
+            if (neighborSet) {
+              neighborSet.delete(key);
+            }
+          }
+          graph.adjacency.set(key, new Set());
+        }
+
+        graph.edges = graph.edges.filter(e => e.fromKey !== key && e.toKey !== key);
+
+        graph.edgesByNode.set(key, []);
+        for (const [nk, edges] of graph.edgesByNode) {
+          if (nk !== key) {
+            graph.edgesByNode.set(nk, edges.filter(e => e.fromKey !== key && e.toKey !== key));
+          }
+        }
+      }
+    }
+  }
+
   const nodeTypes = new Map<string, number>();
   for (const [, node] of graph.nodes) {
     nodeTypes.set(node.type, (nodeTypes.get(node.type) || 0) + 1);
@@ -1022,6 +1051,9 @@ export async function buildSpatialNetworkGraph(sceneId: number): Promise<Spatial
   console.log(`[SpatialGraph] Graph built: ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
   if (skippedDisabled > 0) {
     console.log(`[SpatialGraph] Skipped ${skippedDisabled} disabled segments (ZMode=2)`);
+  }
+  if (closedValves > 0) {
+    console.log(`[SpatialGraph] Disconnected ${closedValves} closed valves (ZMode=2)`);
   }
   console.log(`[SpatialGraph] Node types:`, Object.fromEntries(nodeTypes));
 
