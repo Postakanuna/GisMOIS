@@ -3,7 +3,6 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import {
   Collapsible,
@@ -254,8 +253,8 @@ export function NetworkSimulationDialog({
         )}
 
         {result && (
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="space-y-3 pr-3">
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="space-y-3 pr-1">
               <Card className="p-3">
                 <h4 className="text-sm font-medium mb-2">Сводка</h4>
                 <div className="grid grid-cols-2 gap-2">
@@ -359,7 +358,7 @@ export function NetworkSimulationDialog({
                 </CollapsibleSection>
               )}
             </div>
-          </ScrollArea>
+          </div>
         )}
 
         <div className="flex gap-2 shrink-0">
