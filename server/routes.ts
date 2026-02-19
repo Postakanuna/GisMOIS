@@ -3347,6 +3347,7 @@ export async function registerRoutes(
 
       req.on("close", () => {
         clientConnected = false;
+        clearInterval(keepaliveInterval);
         abortController.abort();
         console.log(`[Geocoder] Client disconnected for layer ${layerId}`);
       });
