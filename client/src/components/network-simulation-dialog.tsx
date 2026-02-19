@@ -222,7 +222,7 @@ export function NetworkSimulationDialog({
         </Button>
       </div>
 
-      <div className="space-y-3 flex-1 overflow-hidden flex flex-col p-4">
+      <div className="space-y-3 flex-1 min-h-0 overflow-hidden flex flex-col p-4">
         <Card className="p-3 space-y-2">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs">{featureTypeLabel}</Badge>
@@ -254,7 +254,7 @@ export function NetworkSimulationDialog({
         )}
 
         {result && (
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-3 pr-3">
               <Card className="p-3">
                 <h4 className="text-sm font-medium mb-2">Сводка</h4>
