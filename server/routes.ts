@@ -4338,20 +4338,33 @@ export async function registerRoutes(
   app.get("/api/external/scenes/:sceneId/layers", isApiAuthenticated("read_layers"), async (req: ApiAuthenticatedRequest, res: Response) => {
     try {
       const apiKey = req.apiKey!;
+      const apiUser = req.apiUser!;
       const sceneId = parseInt(req.params.sceneId);
 
       if (apiKey.sceneId && apiKey.sceneId !== sceneId) {
         return res.status(403).json({ error: "Forbidden", message: "API key restricted to different scene" });
       }
 
-      const layers = await storage.getEditableLayersByScene(sceneId);
-      const pointLayers = layers.filter(l => l.geometryType === "Point");
+      if (!apiKey.sceneId) {
+        const membership = await storage.getSceneMember(sceneId, apiUser.id);
+        if (!membership && apiUser.role !== "admin") {
+          return res.status(403).json({ error: "Forbidden", message: "Access denied to this scene" });
+        }
+      }
 
-      return res.json(pointLayers.map(l => ({
+      const geometryTypeFilter = req.query.geometryType ? String(req.query.geometryType) : null;
+
+      const layers = await storage.getEditableLayersByScene(sceneId);
+      const filteredLayers = geometryTypeFilter
+        ? layers.filter(l => l.geometryType === geometryTypeFilter)
+        : layers;
+
+      return res.json(filteredLayers.map(l => ({
         id: l.id,
         name: l.name,
         geometryType: l.geometryType,
         featureCount: l.featureCount,
+        sceneId: l.sceneId,
       })));
     } catch (error) {
       console.error("External API error:", error);
@@ -4481,6 +4494,27 @@ export async function registerRoutes(
       };
       const boundaryFeatures = [boundaryFeature];
 
+      const crossScene = req.query.crossScene === "true";
+      const sourceSceneIdsParam = req.query.sourceSceneIds;
+      let allowedSceneIds: number[] = [boundaryLayer.sceneId];
+
+      if (crossScene && !apiKey.sceneId) {
+        if (sourceSceneIdsParam) {
+          const raw = Array.isArray(sourceSceneIdsParam) ? sourceSceneIdsParam : [sourceSceneIdsParam];
+          const requestedSceneIds = raw.map(v => parseInt(String(v))).filter(v => !isNaN(v));
+          for (const sid of requestedSceneIds) {
+            if (sid === boundaryLayer.sceneId) continue;
+            const membership = await storage.getSceneMember(sid, apiUser.id);
+            if (membership || apiUser.role === "admin") {
+              allowedSceneIds.push(sid);
+            }
+          }
+        } else {
+          const userScenes = await storage.getScenesForUser(apiUser.id);
+          allowedSceneIds = userScenes.map(s => s.id);
+        }
+      }
+
       const sourceLayerIdsParam = req.query.sourceLayerIds;
       let sourceLayerIds: number[] = [];
 
@@ -4490,8 +4524,10 @@ export async function registerRoutes(
       }
 
       if (sourceLayerIds.length === 0) {
-        const sceneLayers = await storage.getEditableLayersByScene(boundaryLayer.sceneId);
-        sourceLayerIds = sceneLayers.filter(l => l.id !== layerId).map(l => l.id);
+        for (const sid of allowedSceneIds) {
+          const sceneLayers = await storage.getEditableLayersByScene(sid);
+          sourceLayerIds.push(...sceneLayers.filter(l => l.id !== layerId).map(l => l.id));
+        }
       }
 
       if (sourceLayerIds.length === 0) {
@@ -4503,7 +4539,7 @@ export async function registerRoutes(
             geometry: boundaryFeature.geometry,
           },
           results: [],
-          meta: { analyzedAt: new Date().toISOString(), totalLayersAnalyzed: 0, totalFeaturesMatched: 0 },
+          meta: { analyzedAt: new Date().toISOString(), totalLayersAnalyzed: 0, totalFeaturesMatched: 0, crossScene, scenesSearched: allowedSceneIds },
         });
       }
 
@@ -4519,6 +4555,7 @@ export async function registerRoutes(
       const results: {
         layerId: number;
         layerName: string;
+        sceneId: number | null;
         geometryType: string;
         totalCount: number;
         matchedCount: number;
@@ -4530,7 +4567,8 @@ export async function registerRoutes(
         if (!sourceLayer) continue;
 
         if (apiKey.sceneId && sourceLayer.sceneId !== apiKey.sceneId) continue;
-        if (!apiKey.sceneId && sourceLayer.sceneId !== boundaryLayer.sceneId) continue;
+        if (!sourceLayer.sceneId) continue;
+        if (!allowedSceneIds.includes(sourceLayer.sceneId)) continue;
 
         const sourceFeaturesRaw = await storage.getDrawnFeatures(srcLayerId);
         const sourceFeatures = sourceFeaturesRaw.map(f => ({
@@ -4564,6 +4602,7 @@ export async function registerRoutes(
         results.push({
           layerId: sourceLayer.id,
           layerName: sourceLayer.name,
+          sceneId: sourceLayer.sceneId,
           geometryType: sourceLayer.geometryType,
           totalCount: sourceFeatures.length,
           matchedCount: matched.length,
@@ -4589,6 +4628,8 @@ export async function registerRoutes(
           analyzedAt: new Date().toISOString(),
           totalLayersAnalyzed: results.length,
           totalFeaturesMatched,
+          crossScene,
+          scenesSearched: allowedSceneIds,
         },
       });
     } catch (error) {
@@ -4641,6 +4682,27 @@ export async function registerRoutes(
         properties: f.properties || {},
       }));
 
+      const crossScene = req.query.crossScene === "true";
+      const sourceSceneIdsParam = req.query.sourceSceneIds;
+      let allowedSceneIds: number[] = [boundaryLayer.sceneId];
+
+      if (crossScene && !apiKey.sceneId) {
+        if (sourceSceneIdsParam) {
+          const raw = Array.isArray(sourceSceneIdsParam) ? sourceSceneIdsParam : [sourceSceneIdsParam];
+          const requestedSceneIds = raw.map(v => parseInt(String(v))).filter(v => !isNaN(v));
+          for (const sid of requestedSceneIds) {
+            if (sid === boundaryLayer.sceneId) continue;
+            const membership = await storage.getSceneMember(sid, apiUser.id);
+            if (membership || apiUser.role === "admin") {
+              allowedSceneIds.push(sid);
+            }
+          }
+        } else {
+          const userScenes = await storage.getScenesForUser(apiUser.id);
+          allowedSceneIds = userScenes.map(s => s.id);
+        }
+      }
+
       const sourceLayerIdsParam = req.query.sourceLayerIds;
       let sourceLayerIds: number[] = [];
 
@@ -4649,16 +4711,18 @@ export async function registerRoutes(
         sourceLayerIds = raw.map(v => parseInt(String(v))).filter(v => !isNaN(v));
       }
 
-      if (sourceLayerIds.length === 0 && boundaryLayer.sceneId) {
-        const sceneLayers = await storage.getEditableLayersByScene(boundaryLayer.sceneId);
-        sourceLayerIds = sceneLayers.filter(l => l.id !== layerId).map(l => l.id);
+      if (sourceLayerIds.length === 0) {
+        for (const sid of allowedSceneIds) {
+          const sceneLayers = await storage.getEditableLayersByScene(sid);
+          sourceLayerIds.push(...sceneLayers.filter(l => l.id !== layerId).map(l => l.id));
+        }
       }
 
       if (sourceLayerIds.length === 0) {
         return res.json({
           boundaryLayer: { id: boundaryLayer.id, name: boundaryLayer.name, featureCount: boundaryFeaturesRaw.length },
           results: [],
-          meta: { analyzedAt: new Date().toISOString(), totalLayersAnalyzed: 0, totalFeaturesMatched: 0 },
+          meta: { analyzedAt: new Date().toISOString(), totalLayersAnalyzed: 0, totalFeaturesMatched: 0, crossScene, scenesSearched: allowedSceneIds },
         });
       }
 
@@ -4674,6 +4738,7 @@ export async function registerRoutes(
       const results: {
         layerId: number;
         layerName: string;
+        sceneId: number | null;
         geometryType: string;
         totalCount: number;
         matchedCount: number;
@@ -4685,7 +4750,8 @@ export async function registerRoutes(
         if (!sourceLayer) continue;
 
         if (apiKey.sceneId && sourceLayer.sceneId !== apiKey.sceneId) continue;
-        if (!apiKey.sceneId && sourceLayer.sceneId !== boundaryLayer.sceneId) continue;
+        if (!sourceLayer.sceneId) continue;
+        if (!allowedSceneIds.includes(sourceLayer.sceneId)) continue;
 
         const sourceFeaturesRaw = await storage.getDrawnFeatures(srcLayerId);
         const sourceFeatures = sourceFeaturesRaw.map(f => ({
@@ -4719,6 +4785,7 @@ export async function registerRoutes(
         results.push({
           layerId: sourceLayer.id,
           layerName: sourceLayer.name,
+          sceneId: sourceLayer.sceneId,
           geometryType: sourceLayer.geometryType,
           totalCount: sourceFeatures.length,
           matchedCount: matched.length,
@@ -4739,6 +4806,8 @@ export async function registerRoutes(
           analyzedAt: new Date().toISOString(),
           totalLayersAnalyzed: results.length,
           totalFeaturesMatched,
+          crossScene,
+          scenesSearched: allowedSceneIds,
         },
       });
     } catch (error) {
