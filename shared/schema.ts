@@ -563,6 +563,19 @@ export const insertApiKeySchema = z.object({
   permissions: z.array(apiKeyPermissionSchema).default(["create_point"]),
 });
 
+// Application settings - key-value store for app configuration
+export const appSettings = pgTable("app_settings", {
+  key: varchar("key", { length: 255 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+export type InsertAppSetting = typeof appSettings.$inferInsert;
+
+export const geocodeProviderSchema = z.enum(["yandex", "dadata"]);
+export type GeocodeProvider = z.infer<typeof geocodeProviderSchema>;
+
 // External API schemas
 export const externalCreatePointSchema = z.object({
   sceneId: z.number(),

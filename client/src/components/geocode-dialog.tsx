@@ -34,9 +34,15 @@ interface GeocodeInfo {
   requestsNeeded: number;
   estimatedSeconds: number;
   fields: string[];
+  provider: string;
 }
 
 type GeocodeStatus = "idle" | "running" | "complete" | "error";
+
+const PROVIDER_LABELS: Record<string, string> = {
+  yandex: "Яндекс Геокодер",
+  dadata: "DaData",
+};
 
 export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: GeocodeDialogProps) {
   const { toast } = useToast();
@@ -144,6 +150,7 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
 
   const geometryLabel = info?.isLine ? "Линейный" : info?.isPoint ? "Точечный" : info?.geometryType || "";
   const fieldsLabel = info?.fields?.join(", ") || "";
+  const providerLabel = info?.provider ? (PROVIDER_LABELS[info.provider] || info.provider) : "";
 
   return (
     <Dialog open={open} onOpenChange={(v) => {
@@ -157,7 +164,7 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
             Геокодирование слоя
           </DialogTitle>
           <DialogDescription>
-            Добавление адресных ориентиров через Яндекс Геокодер
+            Добавление адресных ориентиров через {providerLabel || "API геокодирования"}
           </DialogDescription>
         </DialogHeader>
 
@@ -178,6 +185,10 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
                   <Badge variant="secondary" data-testid="text-geocode-geometry-type">{geometryLabel}</Badge>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-muted-foreground">API-провайдер:</span>
+                  <Badge variant="outline" data-testid="text-geocode-provider">{providerLabel}</Badge>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-muted-foreground">Всего объектов:</span>
                   <span data-testid="text-geocode-total">{info.totalFeatures}</span>
                 </div>
@@ -189,7 +200,7 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
                   <span className="text-muted-foreground">Требует обработки:</span>
                   <span className="font-medium" data-testid="text-geocode-needs">{info.needsGeocoding}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between flex-wrap gap-1">
                   <span className="text-muted-foreground">Добавляемые поля:</span>
                   <span className="font-mono text-xs" data-testid="text-geocode-fields">{fieldsLabel}</span>
                 </div>

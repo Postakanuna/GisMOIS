@@ -1,3 +1,5 @@
+import type { GeocodeProvider } from "@shared/schema";
+
 interface GeocodingResult {
   lat: number;
   lon: number;
@@ -13,8 +15,11 @@ interface GeocodingBatchResult {
 }
 
 const YANDEX_GEOCODER_URL = "https://geocode-maps.yandex.ru/1.x/";
+const DADATA_GEOLOCATE_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/geolocate/address";
 const MAX_RPS = 40;
 const DELAY_MS = Math.ceil(1000 / MAX_RPS);
+const DADATA_MAX_RPS = 10;
+const DADATA_DELAY_MS = Math.ceil(1000 / DADATA_MAX_RPS);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,6 +92,7 @@ async function geocodeAddress(
 export interface ReverseGeocodingResult {
   formattedAddress: string;
   precision: string;
+  fiasId?: string;
 }
 
 export async function reverseGeocode(
@@ -131,6 +137,57 @@ export async function reverseGeocode(
   return { formattedAddress, precision };
 }
 
+export async function reverseGeocodeDadata(
+  lon: number,
+  lat: number,
+  apiKey: string
+): Promise<ReverseGeocodingResult | null> {
+  const response = await fetch(DADATA_GEOLOCATE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "Authorization": `Token ${apiKey}`,
+    },
+    body: JSON.stringify({
+      lat,
+      lon,
+      count: 1,
+      radius_meters: 100,
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 403 || response.status === 401) {
+      throw new GeocoderAuthError("Недействительный API-ключ DaData");
+    }
+    if (response.status === 429) {
+      throw new GeocoderRateLimitError("Превышен лимит запросов к DaData");
+    }
+    throw new Error(`Ошибка DaData: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const suggestions = data?.suggestions;
+
+  if (!suggestions || suggestions.length === 0) {
+    return null;
+  }
+
+  const suggestion = suggestions[0];
+  const formattedAddress = suggestion.value || "";
+  const fiasId = suggestion.data?.fias_id || "";
+  const fiasLevel = suggestion.data?.fias_level || "";
+
+  if (!formattedAddress) return null;
+
+  return {
+    formattedAddress,
+    precision: fiasLevel ? `fias_level_${fiasLevel}` : "unknown",
+    fiasId: fiasId || undefined,
+  };
+}
+
 export interface ReverseGeocodeBatchItem {
   featureId: number;
   coords: { lon: number; lat: number }[];
@@ -139,6 +196,7 @@ export interface ReverseGeocodeBatchItem {
 export interface ReverseGeocodeBatchResult {
   featureId: number;
   addresses: (string | null)[];
+  fiasIds: (string | null)[];
   error: string | null;
 }
 
@@ -146,7 +204,8 @@ export async function reverseGeocodeBatch(
   items: ReverseGeocodeBatchItem[],
   apiKey: string,
   onProgress?: (processed: number, total: number) => void,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  provider: GeocodeProvider = "yandex"
 ): Promise<ReverseGeocodeBatchResult[]> {
   const results: ReverseGeocodeBatchResult[] = [];
   let totalCoords = 0;
@@ -156,11 +215,13 @@ export async function reverseGeocodeBatch(
   let processedCoords = 0;
   let retryCount = 0;
   const maxRetries = 3;
+  const delayMs = provider === "dadata" ? DADATA_DELAY_MS : DELAY_MS;
 
   for (const item of items) {
     if (abortSignal?.aborted) break;
 
     const addresses: (string | null)[] = [];
+    const fiasIds: (string | null)[] = [];
     let itemError: string | null = null;
 
     for (let ci = 0; ci < item.coords.length; ci++) {
@@ -168,8 +229,14 @@ export async function reverseGeocodeBatch(
 
       const { lon, lat } = item.coords[ci];
       try {
-        const result = await reverseGeocode(lon, lat, apiKey);
+        let result: ReverseGeocodingResult | null;
+        if (provider === "dadata") {
+          result = await reverseGeocodeDadata(lon, lat, apiKey);
+        } else {
+          result = await reverseGeocode(lon, lat, apiKey);
+        }
         addresses.push(result?.formattedAddress || null);
+        fiasIds.push(result?.fiasId || null);
         retryCount = 0;
       } catch (error: any) {
         if (error instanceof GeocoderRateLimitError) {
@@ -184,11 +251,12 @@ export async function reverseGeocodeBatch(
           throw error;
         }
         addresses.push(null);
+        fiasIds.push(null);
         itemError = error.message || "Ошибка геокодирования";
       }
 
       processedCoords++;
-      await sleep(DELAY_MS);
+      await sleep(delayMs);
 
       if (onProgress) {
         onProgress(processedCoords, totalCoords);
@@ -198,6 +266,7 @@ export async function reverseGeocodeBatch(
     results.push({
       featureId: item.featureId,
       addresses,
+      fiasIds,
       error: itemError,
     });
   }

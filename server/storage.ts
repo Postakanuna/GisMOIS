@@ -15,7 +15,8 @@ import {
   type CustomIcon, type InsertCustomIcon,
   type LayerFolder,
   editableLayers, drawnFeatures, layerSchemas,
-  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders
+  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
+  appSettings
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { db } from "./db";
@@ -116,6 +117,10 @@ export interface IStorage {
   reorderFolders(folderIds: number[], displayOrders?: number[]): Promise<void>;
   getMaxLayerDisplayOrder(sceneId: number, folderId: number | null): Promise<number>;
   getMaxFolderDisplayOrder(sceneId: number): Promise<number>;
+  
+  // App settings methods
+  getAppSetting(key: string): Promise<string | undefined>;
+  setAppSetting(key: string, value: string): Promise<void>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -953,6 +958,17 @@ export class DatabaseStorage implements IStorage {
       .from(layerFolders)
       .where(eq(layerFolders.sceneId, sceneId));
     return (result[0]?.maxOrder ?? -1);
+  }
+
+  async getAppSetting(key: string): Promise<string | undefined> {
+    const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key));
+    return row?.value;
+  }
+
+  async setAppSetting(key: string, value: string): Promise<void> {
+    await db.insert(appSettings)
+      .values({ key, value, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
   }
 }
 

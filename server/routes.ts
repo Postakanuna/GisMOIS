@@ -7,7 +7,7 @@ import ExcelJS from "exceljs";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, seedAdminUser, isAuthenticated, type AuthRequest } from "./auth";
 import { isApiAuthenticated, generateApiToken, hashApiToken, type ApiAuthenticatedRequest } from "./auth/api-auth";
-import { externalCreatePointSchema, apiKeys } from "@shared/schema";
+import { externalCreatePointSchema, apiKeys, geocodeProviderSchema, type GeocodeProvider } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq, and, sql, inArray } from "drizzle-orm";
@@ -2991,16 +2991,56 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // APP SETTINGS API
+  // ============================================
+
+  app.get("/api/settings/geocode-provider", async (req: Request, res: Response) => {
+    try {
+      const value = await storage.getAppSetting("geocode_provider");
+      return res.json({ provider: value || "yandex" });
+    } catch (error) {
+      console.error("Error getting geocode provider:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/settings/geocode-provider", async (req: Request, res: Response) => {
+    try {
+      const parsed = geocodeProviderSchema.safeParse(req.body?.provider);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Некорректный провайдер. Допустимые значения: yandex, dadata" });
+      }
+      await storage.setAppSetting("geocode_provider", parsed.data);
+      return res.json({ provider: parsed.data });
+    } catch (error) {
+      console.error("Error setting geocode provider:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
   // REVERSE GEOCODING API (Address landmarks)
   // ============================================
 
   app.post("/api/editable-layers/:layerId/geocode", async (req: Request, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
-      const apiKey = process.env.YANDEX_GEOCODER_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ message: "Яндекс Геокодер API ключ не настроен" });
+      const providerSetting = await storage.getAppSetting("geocode_provider");
+      const provider: GeocodeProvider = providerSetting === "dadata" ? "dadata" : "yandex";
+
+      let apiKey: string | undefined;
+      if (provider === "dadata") {
+        apiKey = process.env.DADATA_API_KEY;
+        if (!apiKey) {
+          return res.status(500).json({ message: "DaData API ключ не настроен. Добавьте DADATA_API_KEY в секреты проекта." });
+        }
+      } else {
+        apiKey = process.env.YANDEX_GEOCODER_API_KEY;
+        if (!apiKey) {
+          return res.status(500).json({ message: "Яндекс Геокодер API ключ не настроен" });
+        }
       }
+      const useDadata = provider === "dadata";
 
       const layer = await storage.getEditableLayer(layerId);
       if (!layer) {
@@ -3117,7 +3157,8 @@ export async function registerRoutes(
           (processed, total) => {
             sendSSE({ type: "progress", processed, total });
           },
-          abortController.signal
+          abortController.signal,
+          provider
         );
 
         for (const result of results) {
@@ -3131,16 +3172,25 @@ export async function registerRoutes(
             let addrIdx = 0;
             if (!info.skipBegin && result.addresses[addrIdx] !== undefined) {
               props.addr_begin = result.addresses[addrIdx] || "";
+              if (useDadata && result.fiasIds[addrIdx]) {
+                props.fias_begin = result.fiasIds[addrIdx];
+              }
               addrIdx++;
               updated = true;
             }
             if (!info.skipEnd && result.addresses[addrIdx] !== undefined) {
               props.addr_end = result.addresses[addrIdx] || "";
+              if (useDadata && result.fiasIds[addrIdx]) {
+                props.fias_end = result.fiasIds[addrIdx];
+              }
               updated = true;
             }
           } else {
             if (result.addresses[0] !== undefined) {
               props.addr_point = result.addresses[0] || "";
+              if (useDadata && result.fiasIds[0]) {
+                props.fias_point = result.fiasIds[0];
+              }
               updated = true;
             }
           }
@@ -3174,9 +3224,22 @@ export async function registerRoutes(
             if (!existingNames.has("addr_end")) {
               newFields.push({ name: "addr_end", type: "text", required: false });
             }
+            if (useDadata) {
+              if (!existingNames.has("fias_begin")) {
+                newFields.push({ name: "fias_begin", type: "text", required: false });
+              }
+              if (!existingNames.has("fias_end")) {
+                newFields.push({ name: "fias_end", type: "text", required: false });
+              }
+            }
           } else {
             if (!existingNames.has("addr_point")) {
               newFields.push({ name: "addr_point", type: "text", required: false });
+            }
+            if (useDadata) {
+              if (!existingNames.has("fias_point")) {
+                newFields.push({ name: "fias_point", type: "text", required: false });
+              }
             }
           }
 
@@ -3219,6 +3282,9 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Слой не найден" });
       }
 
+      const providerSetting = await storage.getAppSetting("geocode_provider");
+      const provider: GeocodeProvider = providerSetting === "dadata" ? "dadata" : "yandex";
+
       const features = await storage.getDrawnFeatures(layerId);
       const isLine = layer.geometryType === "LineString" || layer.geometryType === "MultiLineString";
       const isPoint = layer.geometryType === "Point" || layer.geometryType === "MultiPoint";
@@ -3248,7 +3314,19 @@ export async function registerRoutes(
           }
         }
       }
-      const estimatedSeconds = Math.ceil(requestsNeeded / 40) + 1;
+      const rps = provider === "dadata" ? 10 : 40;
+      const estimatedSeconds = Math.ceil(requestsNeeded / rps) + 1;
+
+      let fields: string[];
+      if (isLine) {
+        fields = provider === "dadata"
+          ? ["addr_begin", "addr_end", "fias_begin", "fias_end"]
+          : ["addr_begin", "addr_end"];
+      } else {
+        fields = provider === "dadata"
+          ? ["addr_point", "fias_point"]
+          : ["addr_point"];
+      }
 
       return res.json({
         layerId,
@@ -3261,7 +3339,8 @@ export async function registerRoutes(
         needsGeocoding,
         requestsNeeded,
         estimatedSeconds,
-        fields: isLine ? ["addr_begin", "addr_end"] : ["addr_point"],
+        fields,
+        provider,
       });
     } catch (error) {
       console.error("Error getting geocode info:", error);

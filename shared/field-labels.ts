@@ -432,6 +432,9 @@ export const fieldLabels: Record<string, string> = {
   addr_begin: "Адресный ориентир начала участка",
   addr_end: "Адресный ориентир окончания участка",
   addr_point: "Адресный ориентир",
+  fias_begin: "ФИАС ID начала участка",
+  fias_end: "ФИАС ID окончания участка",
+  fias_point: "ФИАС ID",
 
   cluster_id: "ID кластера",
   complaint_count: "Кол-во жалоб",
