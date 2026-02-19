@@ -27,6 +27,7 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings/geocode-provider"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       toast({ title: "Сохранено", description: "Провайдер геокодирования обновлён" });
     },
     onError: (err: any) => {

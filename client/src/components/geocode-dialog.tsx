@@ -56,6 +56,7 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
   const { data: info, isLoading: infoLoading } = useQuery<GeocodeInfo>({
     queryKey: ["/api/editable-layers", layerId, "geocode-info"],
     enabled: open,
+    staleTime: 0,
   });
 
   useEffect(() => {
