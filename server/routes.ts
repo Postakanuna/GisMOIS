@@ -1219,7 +1219,31 @@ export async function registerRoutes(
         required: false,
       }));
 
+      let excelGeoProvider: GeocodeProvider = "yandex";
+      let excelGeoApiKey: string | undefined;
+
       if (useGeocoding) {
+        const providerSetting = await storage.getAppSetting("geocode_provider");
+        excelGeoProvider = providerSetting === "dadata" ? "dadata" : "yandex";
+
+        if (excelGeoProvider === "dadata") {
+          excelGeoApiKey = process.env.DADATA_API_KEY;
+          if (!excelGeoApiKey) {
+            await storage.deleteEditableLayer(layer.id);
+            return res.status(400).json({
+              message: "API-ключ DaData не настроен. Добавьте DADATA_API_KEY в секреты проекта.",
+            });
+          }
+        } else {
+          excelGeoApiKey = process.env.YANDEX_GEOCODER_API_KEY;
+          if (!excelGeoApiKey) {
+            await storage.deleteEditableLayer(layer.id);
+            return res.status(400).json({
+              message: "API-ключ Яндекс Геокодера не настроен. Добавьте YANDEX_GEOCODER_API_KEY в секреты проекта.",
+            });
+          }
+        }
+
         schemaFields.push({
           name: "geocoded_address",
           type: "text" as const,
@@ -1230,6 +1254,13 @@ export async function registerRoutes(
           type: "text" as const,
           required: false,
         });
+        if (excelGeoProvider === "dadata") {
+          schemaFields.push({
+            name: "fias_id",
+            type: "text" as const,
+            required: false,
+          });
+        }
       }
 
       if (schemaFields.length > 0) {
@@ -1243,24 +1274,16 @@ export async function registerRoutes(
       const invalidRows: { row: number; reason: string }[] = [];
 
       if (useGeocoding) {
-        const apiKey = process.env.YANDEX_GEOCODER_API_KEY;
-        if (!apiKey) {
-          await storage.deleteEditableLayer(layer.id);
-          return res.status(400).json({
-            message: "API-ключ Яндекс Геокодера не настроен. Добавьте YANDEX_GEOCODER_API_KEY в секреты проекта.",
-          });
-        }
-
         const addressEntries = rows.map((row, i) => ({
           index: i,
           address: String(row[addressColumn!] || ""),
         }));
 
-        console.log(`Starting geocoding of ${addressEntries.length} addresses...`);
+        console.log(`Starting geocoding of ${addressEntries.length} addresses via ${excelGeoProvider}...`);
 
         let geocodeResults;
         try {
-          geocodeResults = await geocodeBatch(addressEntries, apiKey);
+          geocodeResults = await geocodeBatch(addressEntries, excelGeoApiKey!, undefined, excelGeoProvider);
         } catch (error: any) {
           await storage.deleteEditableLayer(layer.id);
           return res.status(400).json({
@@ -1285,6 +1308,9 @@ export async function registerRoutes(
           }
           properties["geocoded_address"] = gr.result.formattedAddress;
           properties["geocode_precision"] = gr.result.precision;
+          if (excelGeoProvider === "dadata" && gr.result.fiasId) {
+            properties["fias_id"] = gr.result.fiasId;
+          }
 
           validFeatures.push({
             layerId: layer.id,

@@ -435,6 +435,7 @@ export const fieldLabels: Record<string, string> = {
   fias_begin: "ФИАС ID начала участка",
   fias_end: "ФИАС ID окончания участка",
   fias_point: "ФИАС ID",
+  fias_id: "ФИАС ID",
 
   cluster_id: "ID кластера",
   complaint_count: "Кол-во жалоб",

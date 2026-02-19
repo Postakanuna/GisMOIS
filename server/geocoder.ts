@@ -5,6 +5,7 @@ interface GeocodingResult {
   lon: number;
   formattedAddress: string;
   precision: string;
+  fiasId?: string;
 }
 
 interface GeocodingBatchResult {
@@ -16,6 +17,7 @@ interface GeocodingBatchResult {
 
 const YANDEX_GEOCODER_URL = "https://geocode-maps.yandex.ru/1.x/";
 const DADATA_GEOLOCATE_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/geolocate/address";
+const DADATA_SUGGEST_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address";
 const MAX_RPS = 40;
 const DELAY_MS = Math.ceil(1000 / MAX_RPS);
 const DADATA_MAX_RPS = 10;
@@ -87,6 +89,64 @@ async function geocodeAddress(
     geoObject?.metaDataProperty?.GeocoderMetaData?.text || address;
 
   return { lat, lon, formattedAddress, precision };
+}
+
+async function geocodeAddressDadata(
+  address: string,
+  apiKey: string
+): Promise<GeocodingResult | null> {
+  const response = await fetch(DADATA_SUGGEST_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "Authorization": `Token ${apiKey}`,
+    },
+    body: JSON.stringify({
+      query: address,
+      count: 1,
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 403 || response.status === 401) {
+      throw new GeocoderAuthError("Недействительный API-ключ DaData");
+    }
+    if (response.status === 429) {
+      throw new GeocoderRateLimitError("Превышен лимит запросов к DaData");
+    }
+    throw new Error(`Ошибка DaData: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const suggestions = data?.suggestions;
+
+  if (!suggestions || suggestions.length === 0) {
+    return null;
+  }
+
+  const suggestion = suggestions[0];
+  const latStr = suggestion.data?.geo_lat;
+  const lonStr = suggestion.data?.geo_lon;
+
+  if (!latStr || !lonStr) return null;
+
+  const lat = parseFloat(latStr);
+  const lon = parseFloat(lonStr);
+
+  if (isNaN(lat) || isNaN(lon)) return null;
+
+  const formattedAddress = suggestion.value || address;
+  const fiasId = suggestion.data?.fias_id || "";
+  const fiasLevel = suggestion.data?.fias_level || "";
+
+  return {
+    lat,
+    lon,
+    formattedAddress,
+    precision: fiasLevel ? `fias_level_${fiasLevel}` : "unknown",
+    fiasId: fiasId || undefined,
+  };
 }
 
 export interface ReverseGeocodingResult {
@@ -277,11 +337,13 @@ export async function reverseGeocodeBatch(
 export async function geocodeBatch(
   addresses: { index: number; address: string }[],
   apiKey: string,
-  onProgress?: (processed: number, total: number) => void
+  onProgress?: (processed: number, total: number) => void,
+  provider: GeocodeProvider = "yandex"
 ): Promise<GeocodingBatchResult[]> {
   const results: GeocodingBatchResult[] = [];
   let retryCount = 0;
   const maxRetries = 3;
+  const delayMs = provider === "dadata" ? DADATA_DELAY_MS : DELAY_MS;
 
   for (let i = 0; i < addresses.length; i++) {
     const { index, address } = addresses[i];
@@ -297,7 +359,12 @@ export async function geocodeBatch(
     }
 
     try {
-      const result = await geocodeAddress(address.trim(), apiKey);
+      let result: GeocodingResult | null;
+      if (provider === "dadata") {
+        result = await geocodeAddressDadata(address.trim(), apiKey);
+      } else {
+        result = await geocodeAddress(address.trim(), apiKey);
+      }
       results.push({
         index,
         address,
@@ -328,7 +395,7 @@ export async function geocodeBatch(
     }
 
     if (i < addresses.length - 1) {
-      await sleep(DELAY_MS);
+      await sleep(delayMs);
     }
 
     if (onProgress) {
