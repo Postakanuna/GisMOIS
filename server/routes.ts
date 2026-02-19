@@ -3339,14 +3339,32 @@ export async function registerRoutes(
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
       });
 
-      const sendSSE = (data: any) => {
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-      };
-
+      let clientConnected = true;
       const abortController = new AbortController();
-      req.on("close", () => abortController.abort());
+
+      req.on("close", () => {
+        clientConnected = false;
+        abortController.abort();
+        console.log(`[Geocoder] Client disconnected for layer ${layerId}`);
+      });
+
+      const keepaliveInterval = setInterval(() => {
+        if (clientConnected) {
+          try {
+            res.write(`:keepalive\n\n`);
+          } catch {}
+        }
+      }, 5000);
+
+      const sendSSE = (data: any) => {
+        if (!clientConnected) return;
+        try {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        } catch {}
+      };
 
       const batchItems: ReverseGeocodeBatchItem[] = [];
       const featureMap = new Map<number, { feature: typeof features[0]; skipBegin: boolean; skipEnd: boolean; skipPoint: boolean }>();
@@ -3411,6 +3429,7 @@ export async function registerRoutes(
       }
 
       if (batchItems.length === 0) {
+        clearInterval(keepaliveInterval);
         sendSSE({ type: "complete", processed: 0, total: 0, success: 0, skipped: features.length });
         res.end();
         return;
@@ -3481,6 +3500,7 @@ export async function registerRoutes(
           }
         }
       } catch (error: any) {
+        clearInterval(keepaliveInterval);
         sendSSE({ type: "error", message: error.message || "Ошибка геокодирования" });
         res.end();
         return;
@@ -3532,6 +3552,7 @@ export async function registerRoutes(
         }
       }
 
+      clearInterval(keepaliveInterval);
       sendSSE({
         type: "complete",
         processed: totalRequests,
@@ -3542,6 +3563,7 @@ export async function registerRoutes(
       });
       res.end();
     } catch (error) {
+      clearInterval(keepaliveInterval);
       console.error("Error in reverse geocoding:", error);
       if (!res.headersSent) {
         return res.status(500).json({ message: "Internal server error" });
