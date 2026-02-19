@@ -23,13 +23,10 @@ import {
   X,
   GripHorizontal,
   Download,
-  ArrowUp,
-  ArrowDown,
   Crosshair,
 } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-type SimulationMode = "shutdown" | "upstream" | "downstream" | "spatial";
+type SimulationMode = "spatial";
 
 interface SimulationResult {
   mode: SimulationMode;
@@ -103,7 +100,7 @@ export function NetworkSimulationDialog({
   onSimulationResult,
 }: NetworkSimulationDialogProps) {
   const [result, setResult] = useState<SimulationResult | null>(null);
-  const [mode, setMode] = useState<SimulationMode>("shutdown");
+  const [mode, setMode] = useState<SimulationMode>("spatial");
   const [consumersOpen, setConsumersOpen] = useState(true);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
   const [ctpsOpen, setCtpsOpen] = useState(false);
@@ -143,14 +140,10 @@ export function NetworkSimulationDialog({
   }, []);
 
   const simulationMutation = useMutation({
-    mutationFn: async (selectedMode: SimulationMode) => {
-      const endpoint = selectedMode === "spatial"
-        ? "/api/network-graph/simulate-spatial"
-        : "/api/network-graph/simulate";
-      const body = selectedMode === "spatial"
-        ? { featureId, layerId, sceneId }
-        : { featureId, layerId, sceneId, mode: selectedMode };
-      const res = await apiRequest("POST", endpoint, body);
+    mutationFn: async (_selectedMode: SimulationMode) => {
+      const res = await apiRequest("POST", "/api/network-graph/simulate-spatial", {
+        featureId, layerId, sceneId,
+      });
       return res.json() as Promise<SimulationResult>;
     },
     onSuccess: (data) => {
@@ -166,7 +159,7 @@ export function NetworkSimulationDialog({
 
   const handleClose = () => {
     setResult(null);
-    setMode("shutdown");
+    setMode("spatial");
     simulationMutation.reset();
     onSimulationResult(null);
     onOpenChange(false);
@@ -210,17 +203,11 @@ export function NetworkSimulationDialog({
   const featureTypeLabel = featureType === "LineString" ? "Участок сети" : "Узел/объект";
 
   const modeLabels: Record<SimulationMode, string> = {
-    shutdown: "Отключение",
     spatial: "Пространственный граф",
-    upstream: "Восходящий граф",
-    downstream: "Нисходящий граф",
   };
 
   const modeDescriptions: Record<SimulationMode, string> = {
-    shutdown: "Зона отключения ниже выбранного объекта (по атрибутам Nist)",
     spatial: "Зона отключения по пространственной связности координат участков",
-    upstream: "Путь от объекта к источнику (Begin_uch)",
-    downstream: "Все объекты ниже по направлению (End_uch)",
   };
 
   if (!open) return null;
@@ -261,52 +248,13 @@ export function NetworkSimulationDialog({
         <div className="flex gap-1" data-testid="mode-selector">
           <Button
             size="sm"
-            variant={mode === "shutdown" ? "default" : "outline"}
-            className="flex-1 text-xs toggle-elevate"
-            onClick={() => setMode("shutdown")}
-            data-testid="button-mode-shutdown"
-          >
-            <AlertTriangle className="h-3 w-3 mr-1" />
-            {modeLabels.shutdown}
-          </Button>
-          <Button
-            size="sm"
-            variant={mode === "spatial" ? "default" : "outline"}
-            className="flex-1 text-xs toggle-elevate"
-            onClick={() => setMode("spatial")}
+            variant="default"
+            className="flex-1 text-xs"
             data-testid="button-mode-spatial"
           >
             <Crosshair className="h-3 w-3 mr-1" />
             {modeLabels.spatial}
           </Button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant={mode === "upstream" ? "default" : "outline"}
-                className="toggle-elevate shrink-0"
-                onClick={() => setMode("upstream")}
-                data-testid="button-mode-upstream"
-              >
-                <ArrowUp className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{modeLabels.upstream}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant={mode === "downstream" ? "default" : "outline"}
-                className="toggle-elevate shrink-0"
-                onClick={() => setMode("downstream")}
-                data-testid="button-mode-downstream"
-              >
-                <ArrowDown className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{modeLabels.downstream}</TooltipContent>
-          </Tooltip>
         </div>
 
         <p className="text-xs text-muted-foreground">{modeDescriptions[mode]}</p>
