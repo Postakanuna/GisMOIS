@@ -48,6 +48,7 @@ import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { GeocodeDialog } from "@/components/geocode-dialog";
+import { JoinExcelDialog } from "@/components/join-excel-dialog";
 
 interface Folder {
   id: number;
@@ -118,6 +119,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [styleConfigLayerId, setStyleConfigLayerId] = useState<number | null>(null);
   const [legendLayerId, setLegendLayerId] = useState<number | null>(null);
   const [geocodeLayerId, setGeocodeLayerId] = useState<number | null>(null);
+  const [joinLayerId, setJoinLayerId] = useState<number | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [editingFolderId, setEditingFolderId] = useState<number | null>(null);
@@ -1018,6 +1020,21 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
               variant="ghost"
               size="icon"
               className="h-6 w-6"
+              onClick={(e) => { e.stopPropagation(); setJoinLayerId(layer.id); }}
+              data-testid={`button-join-layer-${layer.id}`}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Обогатить из XLSX</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
               onClick={(e) => {
                 e.stopPropagation();
                 const url = `/api/editable-layers/${layer.id}/export/shapefile`;
@@ -1653,6 +1670,19 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
             layerName={targetLayer.name}
             open={true}
             onOpenChange={(open) => { if (!open) setGeocodeLayerId(null); }}
+          />
+        );
+      })()}
+
+      {joinLayerId && (() => {
+        const targetLayer = sceneLayers.find(l => l.id === joinLayerId);
+        if (!targetLayer) return null;
+        return (
+          <JoinExcelDialog
+            layerId={targetLayer.id}
+            layerName={targetLayer.name}
+            open={true}
+            onOpenChange={(open) => { if (!open) setJoinLayerId(null); }}
           />
         );
       })()}

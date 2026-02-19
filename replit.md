@@ -76,3 +76,8 @@ This feature enriches layer attributes with address information based on coordin
 - **Zod**: Used for robust type validation of API requests and database schemas.
 - **Drizzle ORM**: Enables type-safe database queries and schema management.
 - **shpjs**: Parses Shapefile data, including support for various encodings.
+- **ExcelJS**: Reads and parses XLSX files for geocoding import and attribute join features.
+
+### Attribute Join
+
+The attribute join feature allows enriching layer data from XLSX files without geocoding, using key-based matching (similar to QGIS/ArcGIS table join). Users select a key field from the layer and a key column from the XLSX file; matching rows have their selected columns added as new attributes. The workflow includes: file upload, key field + column selection, preview with match statistics (matched/unmatched counts), and execution. Backend endpoints: `/api/parse-excel-for-join`, `/api/editable-layers/:id/join-preview`, `/api/editable-layers/:id/join-excel`.

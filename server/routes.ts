@@ -1376,6 +1376,255 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // ATTRIBUTE JOIN FROM EXCEL (Enrich layer with XLSX data)
+  // ============================================
+
+  app.post("/api/parse-excel-for-join", excelUpload.single("file"), async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      if (!req.file) {
+        return res.status(400).json({ message: "Файл не загружен" });
+      }
+
+      const filePath = req.file.path;
+      const workbook = new ExcelJS.Workbook();
+
+      try {
+        await workbook.xlsx.readFile(filePath);
+      } catch (readError) {
+        console.error("Error reading Excel file for join:", readError);
+        return res.status(400).json({ message: "Не удалось прочитать файл Excel. Убедитесь, что файл не повреждён." });
+      }
+
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        return res.status(400).json({ message: "Файл Excel не содержит листов" });
+      }
+
+      const headerRow = worksheet.getRow(1);
+      const columns: { index: number; name: string }[] = [];
+
+      headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+        const cellValue = cell.value?.toString() || `Колонка ${colNumber}`;
+        columns.push({ index: colNumber, name: cellValue });
+      });
+
+      if (columns.length === 0) {
+        return res.status(400).json({ message: "Файл Excel не содержит данных в первой строке" });
+      }
+
+      const allRows: Record<string, unknown>[] = [];
+
+      for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+        const row = worksheet.getRow(rowNum);
+        const rowData: Record<string, unknown> = {};
+        let hasData = false;
+
+        for (const col of columns) {
+          const cell = row.getCell(col.index);
+          let value: unknown = null;
+
+          if (cell.value !== null && cell.value !== undefined) {
+            if (typeof cell.value === "object" && "result" in cell.value) {
+              value = (cell.value as any).result;
+            } else if (typeof cell.value === "object" && "text" in cell.value) {
+              value = (cell.value as any).text;
+            } else {
+              value = cell.value;
+            }
+            hasData = true;
+          }
+
+          rowData[col.name] = value;
+        }
+
+        if (hasData) {
+          allRows.push(rowData);
+        }
+      }
+
+      fs.unlink(filePath, () => {});
+
+      return res.json({
+        fileName: req.file.originalname,
+        columns: columns.map(c => c.name),
+        rows: allRows,
+        totalRows: allRows.length,
+        previewRows: allRows.slice(0, 10),
+      });
+    } catch (error) {
+      console.error("Parse Excel for join error:", error);
+      return res.status(500).json({ message: "Ошибка при обработке файла Excel" });
+    }
+  });
+
+  const joinPreviewSchema = z.object({
+    layerKeyField: z.string().min(1),
+    excelKeyColumn: z.string().min(1),
+    rows: z.array(z.record(z.string(), z.unknown())).min(1),
+  });
+
+  app.post("/api/editable-layers/:layerId/join-preview", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const layerId = parseInt(req.params.layerId);
+      const parsed = joinPreviewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Некорректные параметры", errors: parsed.error.issues });
+      }
+
+      const { layerKeyField, excelKeyColumn, rows: excelRows } = parsed.data;
+
+      const layer = await storage.getEditableLayer(layerId);
+      if (!layer) {
+        return res.status(404).json({ message: "Слой не найден" });
+      }
+
+      const features = await storage.getDrawnFeatures(layerId);
+
+      const excelKeyMap = new Map<string, number>();
+      for (const row of excelRows) {
+        const keyVal = String(row[excelKeyColumn] ?? "").trim();
+        if (keyVal) {
+          excelKeyMap.set(keyVal, (excelKeyMap.get(keyVal) || 0) + 1);
+        }
+      }
+
+      let matchedFeatures = 0;
+      let unmatchedFeatures = 0;
+      const matchedExcelKeys = new Set<string>();
+
+      for (const feature of features) {
+        const props = (feature.properties || {}) as Record<string, unknown>;
+        const featureKeyVal = String(props[layerKeyField] ?? "").trim();
+        if (featureKeyVal && excelKeyMap.has(featureKeyVal)) {
+          matchedFeatures++;
+          matchedExcelKeys.add(featureKeyVal);
+        } else {
+          unmatchedFeatures++;
+        }
+      }
+
+      const unmatchedExcelRows = excelRows.filter(row => {
+        const keyVal = String(row[excelKeyColumn] ?? "").trim();
+        return keyVal && !matchedExcelKeys.has(keyVal);
+      }).length;
+
+      const emptyKeyExcelRows = excelRows.filter(row => {
+        const keyVal = String(row[excelKeyColumn] ?? "").trim();
+        return !keyVal;
+      }).length;
+
+      return res.json({
+        totalFeatures: features.length,
+        matchedFeatures,
+        unmatchedFeatures,
+        totalExcelRows: excelRows.length,
+        unmatchedExcelRows,
+        emptyKeyExcelRows,
+        uniqueExcelKeys: excelKeyMap.size,
+        uniqueMatchedKeys: matchedExcelKeys.size,
+      });
+    } catch (error) {
+      console.error("Join preview error:", error);
+      return res.status(500).json({ message: "Ошибка при предпросмотре обогащения" });
+    }
+  });
+
+  const joinExcelSchema = z.object({
+    layerKeyField: z.string().min(1),
+    excelKeyColumn: z.string().min(1),
+    rows: z.array(z.record(z.string(), z.unknown())).min(1),
+    columnsToJoin: z.array(z.object({
+      sourceColumn: z.string(),
+      targetName: z.string(),
+    })).min(1),
+  });
+
+  app.post("/api/editable-layers/:layerId/join-excel", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const layerId = parseInt(req.params.layerId);
+      const parsed = joinExcelSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Некорректные параметры", errors: parsed.error.issues });
+      }
+
+      const { layerKeyField, excelKeyColumn, rows: excelRows, columnsToJoin } = parsed.data;
+
+      const layer = await storage.getEditableLayer(layerId);
+      if (!layer) {
+        return res.status(404).json({ message: "Слой не найден" });
+      }
+
+      const excelByKey = new Map<string, Record<string, unknown>>();
+      for (const row of excelRows) {
+        const keyVal = String(row[excelKeyColumn] ?? "").trim();
+        if (keyVal && !excelByKey.has(keyVal)) {
+          excelByKey.set(keyVal, row);
+        }
+      }
+
+      const features = await storage.getDrawnFeatures(layerId);
+      const updates: { id: number; properties: Record<string, unknown> }[] = [];
+      let enrichedCount = 0;
+
+      for (const feature of features) {
+        const props = { ...((feature.properties || {}) as Record<string, unknown>) };
+        const featureKeyVal = String(props[layerKeyField] ?? "").trim();
+
+        if (featureKeyVal && excelByKey.has(featureKeyVal)) {
+          const excelRow = excelByKey.get(featureKeyVal)!;
+          for (const col of columnsToJoin) {
+            const val = excelRow[col.sourceColumn];
+            if (val !== null && val !== undefined) {
+              props[col.targetName] = val;
+            }
+          }
+          updates.push({ id: feature.id, properties: props });
+          enrichedCount++;
+        }
+      }
+
+      if (updates.length > 0) {
+        await storage.updateDrawnFeaturesBatch(updates);
+      }
+
+      const schema = await storage.getLayerSchema(layerId);
+      if (schema) {
+        const existingFieldNames = new Set(schema.fields.map(f => f.name));
+        const newFields = columnsToJoin
+          .filter(col => !existingFieldNames.has(col.targetName))
+          .map(col => ({ name: col.targetName, type: "text" as const, required: false }));
+
+        if (newFields.length > 0) {
+          const updatedFields = [...schema.fields, ...newFields];
+          await storage.updateLayerSchema(layerId, updatedFields);
+        }
+      } else {
+        const newFields = columnsToJoin.map(col => ({
+          name: col.targetName,
+          type: "text" as const,
+          required: false,
+        }));
+        await storage.createLayerSchema({ layerId, fields: newFields });
+      }
+
+      return res.json({
+        enrichedCount,
+        totalFeatures: features.length,
+        skippedCount: features.length - enrichedCount,
+      });
+    } catch (error) {
+      console.error("Join Excel error:", error);
+      return res.status(500).json({ message: "Ошибка при обогащении слоя" });
+    }
+  });
+
   // Batch create features endpoint
   app.post("/api/editable-layers/:id/features/batch", async (req: Request, res: Response) => {
     try {
