@@ -385,7 +385,7 @@ export function NetworkSimulationDialog({
               </>
             )}
           </Button>
-          {result && result.mode !== "spatial" && (
+          {result && (
             <Button
               variant="outline"
               onClick={handleExport}
