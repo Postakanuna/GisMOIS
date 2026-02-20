@@ -1,40 +1,9 @@
-import { ArrowLeft, Server, MapPin, Loader2 } from "lucide-react";
+import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { Link } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ConnectionForm } from "@/components/connection-form";
-import { ApiKeysManager } from "@/components/api-keys-manager";
-import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 
 export default function Settings() {
-  const { connect, connectZws, connectCustomZws, disconnect, status, error } = useZuluConnectionContext();
-  const { toast } = useToast();
-
-  const { data: providerData, isLoading: providerLoading } = useQuery<{ provider: string }>({
-    queryKey: ["/api/settings/geocode-provider"],
-  });
-
-  const updateProvider = useMutation({
-    mutationFn: async (provider: string) => {
-      await apiRequest("PUT", "/api/settings/geocode-provider", { provider });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings/geocode-provider"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
-      toast({ title: "Сохранено", description: "Провайдер геокодирования обновлён" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Ошибка", description: err.message || "Не удалось обновить настройку", variant: "destructive" });
-    },
-  });
-
   return (
     <div className="min-h-screen bg-background">
       <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4">
@@ -45,7 +14,7 @@ export default function Settings() {
             </Button>
           </Link>
           <div className="flex items-center gap-2">
-            <Server className="h-5 w-5 text-muted-foreground" />
+            <SettingsIcon className="h-5 w-5 text-muted-foreground" />
             <span className="font-semibold">Настройки</span>
           </div>
         </div>
@@ -53,77 +22,28 @@ export default function Settings() {
         <ThemeToggle />
       </header>
 
-      <main className="container max-w-2xl py-6">
-        <ScrollArea className="h-[calc(100vh-5rem)]">
-          <div className="space-y-6 px-1">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Server className="h-5 w-5" />
-                  Подключение к серверу
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ConnectionForm
-                  onConnect={connect}
-                  onConnectZws={connectZws}
-                  onConnectCustomZws={connectCustomZws}
-                  onDisconnect={disconnect}
-                  status={status}
-                  error={error}
-                />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  Геокодирование
-                </CardTitle>
-                <CardDescription>
-                  Выбор API-провайдера для обратного геокодирования (определение адреса по координатам)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="geocode-provider">Провайдер геокодирования</Label>
-                    {providerLoading ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Загрузка...</span>
-                      </div>
-                    ) : (
-                      <Select
-                        value={providerData?.provider || "yandex"}
-                        onValueChange={(value) => updateProvider.mutate(value)}
-                        disabled={updateProvider.isPending}
-                      >
-                        <SelectTrigger id="geocode-provider" data-testid="select-geocode-provider">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="yandex">Яндекс Геокодер</SelectItem>
-                          <SelectItem value="dadata">DaData</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    {(providerData?.provider || "yandex") === "yandex" ? (
-                      <p>Яндекс Геокодер определяет адрес по координатам. Поддерживает до 40 запросов/сек. Поля: адресные ориентиры.</p>
-                    ) : (
-                      <p>DaData определяет адрес и ФИАС ID по координатам. Поддерживает до 10 запросов/сек. Поля: адресные ориентиры + ФИАС ID.</p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <ApiKeysManager />
+      <main className="px-6 py-6">
+        <div className="space-y-6">
+          <div className="rounded-lg border bg-card p-6">
+            <h3 className="text-lg font-medium mb-2">Тема оформления</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Переключайте между светлой и тёмной темой с помощью кнопки в правом верхнем углу.
+            </p>
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
+              <span className="text-sm text-muted-foreground">Переключить тему</span>
+            </div>
           </div>
-        </ScrollArea>
+
+          <div className="rounded-lg border bg-card p-6">
+            <h3 className="text-lg font-medium mb-2">Подсказки</h3>
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p>• Подключение к серверу ГИС Zulu доступно в <strong>Менеджере данных → Подключения</strong></p>
+              <p>• Настройки геокодирования и API-ключи доступны администратору на <strong>странице «Сцены»</strong></p>
+              <p>• Проекция карты настраивается в <strong>Менеджере данных → Настройки</strong></p>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   );

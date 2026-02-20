@@ -900,8 +900,8 @@ export default function Home() {
                     {[
                       { id: 1, name: "Многопользовательская работа и мониторинг", desc: "Управление доступом, ролями, контроль работы системы", where: "Панель администратора", icon: Shield, action: () => { setShowSubsystemsDialog(false); setLocation("/admin/users"); } },
                       { id: 2, name: "Мобильный доступ через веб-службы", desc: "Адаптивный веб-интерфейс для мобильных устройств", where: "Все страницы (адаптивный дизайн)", icon: Smartphone, action: null },
-                      { id: 3, name: "Удалённый доступ через веб-службы", desc: "Внешний API с управлением ключами доступа", where: "Настройки → API-ключи", icon: Globe, action: () => { setShowSubsystemsDialog(false); setLocation("/settings"); } },
-                      { id: 4, name: "Интеграция с АСУ ТП", desc: "Обмен данными через внешний API", where: "Настройки → API-ключи", icon: Cpu, action: () => { setShowSubsystemsDialog(false); setLocation("/settings"); } },
+                      { id: 3, name: "Удалённый доступ через веб-службы", desc: "Внешний API с управлением ключами доступа", where: "Сцены → Настройки администратора", icon: Globe, action: () => { setShowSubsystemsDialog(false); setLocation("/scenes"); } },
+                      { id: 4, name: "Интеграция с АСУ ТП", desc: "Обмен данными через внешний API", where: "Сцены → Настройки администратора", icon: Cpu, action: () => { setShowSubsystemsDialog(false); setLocation("/scenes"); } },
                       { id: 5, name: "Геоинформационные плагины", desc: "Управление слоями, импорт/экспорт данных", where: "Менеджер данных", icon: Puzzle, action: () => { setShowSubsystemsDialog(false); setShowDataManager(true); } },
                       { id: 6, name: "Настройка интерфейса", desc: "Темы, стилизация слоёв, конфигурация отображения", where: "Настройки", icon: Settings2, action: () => { setShowSubsystemsDialog(false); setLocation("/settings"); } },
                     ].map((sub) => {

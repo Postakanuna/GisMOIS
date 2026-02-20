@@ -38,9 +38,12 @@ import {
   FolderPlus,
   AlertTriangle,
   MapPin,
+  Plug,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
+import { ConnectionForm } from "@/components/connection-form";
+import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { type ProjectionType } from "@/lib/projections";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -96,6 +99,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const isMobile = useIsMobile();
   const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const { currentProjection, setProjection, projectionInfo } = useProjection();
+  const { connect, connectZws, connectCustomZws, disconnect, status: zuluStatus, error: zuluError } = useZuluConnectionContext();
   type FlatItem = { type: "folder"; folderId: number; displayOrder: number; layers: number[] } | { type: "layer"; layerId: number; displayOrder: number };
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 100, y: 100 });
@@ -1226,7 +1230,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
 
       <div className="flex-1 flex flex-col overflow-hidden" data-no-drag>
         <Tabs defaultValue="layers" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mx-3 mt-3 shrink-0 grid w-auto grid-cols-3" data-testid="data-manager-tabs">
+          <TabsList className="mx-3 mt-3 shrink-0 grid w-auto grid-cols-4" data-testid="data-manager-tabs">
             <TabsTrigger value="layers" className="gap-1.5" data-testid="tab-layers">
               <Layers className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Слои</span>
@@ -1234,6 +1238,10 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
             <TabsTrigger value="sources" className="gap-1.5" data-testid="tab-sources">
               <Globe className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Источники</span>
+            </TabsTrigger>
+            <TabsTrigger value="connections" className="gap-1.5" data-testid="tab-connections">
+              <Plug className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Подключения</span>
             </TabsTrigger>
             <TabsTrigger value="settings" className="gap-1.5" data-testid="tab-settings">
               <Settings className="h-3.5 w-3.5" />
@@ -1564,6 +1572,27 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 <p>Внешние источники данных</p>
                 <p className="text-xs mt-1">WMS, WFS, ZWS сервисы</p>
                 <p className="text-xs text-muted-foreground mt-4">Функционал в разработке</p>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="connections" className="flex-1 overflow-auto mt-0 px-3 pb-3 data-[state=inactive]:hidden">
+            <div className="py-3 space-y-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Plug className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Подключение к серверу ГИС Zulu</span>
+                </div>
+                <div className="rounded-md border bg-background p-3">
+                  <ConnectionForm
+                    onConnect={connect}
+                    onConnectZws={connectZws}
+                    onConnectCustomZws={connectCustomZws}
+                    onDisconnect={disconnect}
+                    status={zuluStatus}
+                    error={zuluError}
+                  />
+                </div>
               </div>
             </div>
           </TabsContent>

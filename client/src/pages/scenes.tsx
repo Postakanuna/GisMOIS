@@ -31,10 +31,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FolderOpen, Plus, Users, Calendar, LogOut, Settings, Pencil, Trash2, Shield } from "lucide-react";
+import { FolderOpen, Plus, Users, Calendar, LogOut, Settings, Pencil, Trash2, Shield, MapPin, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { SceneAccessDialog } from "@/components/scene-access-dialog";
+import { ApiKeysManager } from "@/components/api-keys-manager";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Scene {
   id: number;
@@ -69,8 +71,30 @@ export default function ScenesPage() {
   const [accessDialogOpen, setAccessDialogOpen] = useState(false);
   const [accessScene, setAccessScene] = useState<Scene | null>(null);
 
+  // Admin settings
+  const [adminSettingsOpen, setAdminSettingsOpen] = useState(false);
+  const isAdmin = user?.role === "admin";
+
   const { data: scenes, isLoading } = useQuery<Scene[]>({
     queryKey: ["/api/scenes"],
+  });
+
+  const { data: providerData, isLoading: providerLoading } = useQuery<{ provider: string }>({
+    queryKey: ["/api/settings/geocode-provider"],
+    enabled: isAdmin,
+  });
+
+  const updateProvider = useMutation({
+    mutationFn: async (provider: string) => {
+      await apiRequest("PUT", "/api/settings/geocode-provider", { provider });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/geocode-provider"] });
+      toast({ title: "Сохранено", description: "Провайдер геокодирования обновлён" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Ошибка", description: err.message || "Не удалось обновить настройку", variant: "destructive" });
+    },
   });
 
   const createSceneMutation = useMutation({
@@ -376,6 +400,72 @@ export default function ScenesPage() {
               </Button>
             </CardContent>
           </Card>
+        )}
+
+        {isAdmin && (
+          <div className="mt-8">
+            <button
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-4"
+              onClick={() => setAdminSettingsOpen(!adminSettingsOpen)}
+              data-testid="button-toggle-admin-settings"
+            >
+              <Shield className="h-4 w-4" />
+              Настройки администратора
+              {adminSettingsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+
+            {adminSettingsOpen && (
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <MapPin className="h-5 w-5" />
+                      Геокодирование
+                    </CardTitle>
+                    <CardDescription>
+                      Выбор API-провайдера для обратного геокодирования (определение адреса по координатам)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="geocode-provider">Провайдер геокодирования</Label>
+                        {providerLoading ? (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Загрузка...</span>
+                          </div>
+                        ) : (
+                          <Select
+                            value={providerData?.provider || "yandex"}
+                            onValueChange={(value) => updateProvider.mutate(value)}
+                            disabled={updateProvider.isPending}
+                          >
+                            <SelectTrigger id="geocode-provider" data-testid="select-geocode-provider">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="yandex">Яндекс Геокодер</SelectItem>
+                              <SelectItem value="dadata">DaData</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        {(providerData?.provider || "yandex") === "yandex" ? (
+                          <p>Яндекс Геокодер определяет адрес по координатам. Поддерживает до 40 запросов/сек.</p>
+                        ) : (
+                          <p>DaData определяет адрес и ФИАС ID по координатам. Поддерживает до 10 запросов/сек.</p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <ApiKeysManager />
+              </div>
+            )}
+          </div>
         )}
       </main>
 
