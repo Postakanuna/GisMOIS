@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Upload, Trash2, FileArchive, BarChart3, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Upload, Trash2, FileArchive, BarChart3, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot } from "lucide-react";
 import { useScene } from "@/contexts/scene-context";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -121,6 +121,7 @@ interface LayerPanelProps {
   onOpenAttributeTable?: (layerId: number, layerName: string) => void;
   onOpenStyleConfig?: (layerId: number) => void;
   onOpenGeocodeDialog?: (layerId: number) => void;
+  onToggleAiChat?: () => void;
 }
 
 export function LayerPanel({
@@ -142,6 +143,7 @@ export function LayerPanel({
   onOpenAttributeTable,
   onOpenStyleConfig,
   onOpenGeocodeDialog,
+  onToggleAiChat,
 }: LayerPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -458,6 +460,16 @@ export function LayerPanel({
       <div className="flex items-center gap-2">
         <Layers className="h-4 w-4 text-muted-foreground" />
         <h2 className="text-lg font-medium">Слои карты</h2>
+        {onToggleAiChat && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="ghost" onClick={onToggleAiChat} data-testid="button-toggle-ai-chat">
+                <Bot className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>ИИ-ассистент</TooltipContent>
+          </Tooltip>
+        )}
       </div>
       <div className="flex items-center gap-1">
         <Input

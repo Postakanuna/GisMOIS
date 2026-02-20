@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck, Bot } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -75,6 +75,7 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   onOpenAttributeTable?: (layerId: number, layerName: string) => void;
   onOpenStyleConfig?: (layerId: number) => void;
   onOpenGeocodeDialog?: (layerId: number) => void;
+  onToggleAiChat?: () => void;
 }
 
 function SidebarContentPanel({
@@ -96,6 +97,7 @@ function SidebarContentPanel({
   onOpenAttributeTable,
   onOpenStyleConfig,
   onOpenGeocodeDialog,
+  onToggleAiChat,
 }: SidebarContentPanelProps) {
   return (
     <ScrollArea className="h-full w-full min-w-0">
@@ -119,6 +121,7 @@ function SidebarContentPanel({
           onOpenAttributeTable={onOpenAttributeTable}
           onOpenStyleConfig={onOpenStyleConfig}
           onOpenGeocodeDialog={onOpenGeocodeDialog}
+          onToggleAiChat={onToggleAiChat}
         />
       </div>
     </ScrollArea>
@@ -408,24 +411,11 @@ export default function Home() {
                 <p className="text-xs text-muted-foreground">Инженерные сети</p>
               </div>
             </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant={sidebarView === "ai-chat" ? "default" : "ghost"}
-                  onClick={() => setSidebarView(sidebarView === "ai-chat" ? "layers" : "ai-chat")}
-                  data-testid="button-toggle-ai-chat"
-                >
-                  {sidebarView === "ai-chat" ? <Layers className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{sidebarView === "ai-chat" ? "Показать слои" : "ИИ-ассистент"}</TooltipContent>
-            </Tooltip>
           </SidebarHeader>
 
-          <SidebarContent className="min-w-0 overflow-hidden">
-            <SidebarGroup className="min-w-0 overflow-hidden">
-              <SidebarGroupContent className="min-w-0 overflow-hidden">
+          <SidebarContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex flex-col" : "overflow-hidden"}`}>
+            <SidebarGroup className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
+              <SidebarGroupContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
                 {sidebarView === "ai-chat" ? (
                   <AiChatPanel onBack={handleBackToLayers} />
                 ) : sidebarView === "layers" ? (
@@ -450,6 +440,7 @@ export default function Home() {
                     }}
                     onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
+                    onToggleAiChat={() => setSidebarView("ai-chat")}
                   />
                 ) : (
                   <FeatureInfoSidebarPanel
@@ -478,8 +469,8 @@ export default function Home() {
                     <Menu className="h-4 w-4" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-80 p-0">
-                  <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+                <SheetContent side="left" className="w-80 p-0 flex flex-col">
+                  <div className="flex items-center justify-between gap-2 border-b px-4 py-3 shrink-0">
                     <div className="flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
                         <Map className="h-4 w-4 text-primary-foreground" />
@@ -489,14 +480,6 @@ export default function Home() {
                         <p className="text-xs text-muted-foreground">Инженерные сети</p>
                       </div>
                     </div>
-                    <Button
-                      size="icon"
-                      variant={sidebarView === "ai-chat" ? "default" : "ghost"}
-                      onClick={() => setSidebarView(sidebarView === "ai-chat" ? "layers" : "ai-chat")}
-                      data-testid="button-toggle-ai-chat-mobile"
-                    >
-                      {sidebarView === "ai-chat" ? <Layers className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-                    </Button>
                   </div>
                   {sidebarView === "ai-chat" ? (
                     <AiChatPanel onBack={handleBackToLayers} />
@@ -522,6 +505,7 @@ export default function Home() {
                       }}
                       onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                       onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
+                      onToggleAiChat={() => setSidebarView("ai-chat")}
                     />
                   )}
                 </SheetContent>
