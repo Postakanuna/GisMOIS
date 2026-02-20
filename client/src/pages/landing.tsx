@@ -181,7 +181,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             <Card
               className="cursor-pointer transition-all hover:border-primary/50 hover:shadow-md group"
-              onClick={() => setLocation("/app")}
+              onClick={() => setLocation("/scenes")}
               data-testid="card-analytics"
             >
               <CardContent className="p-6 flex flex-col items-center text-center space-y-4">

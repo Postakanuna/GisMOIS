@@ -20,7 +20,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      setLocation("/app");
+      setLocation("/scenes");
     }
   }, [isLoading, isAuthenticated, setLocation]);
 
@@ -39,7 +39,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       await loginAsync({ username, password });
-      setLocation("/app");
+      setLocation("/scenes");
     } catch (error) {
       toast({
         title: "Ошибка входа",
