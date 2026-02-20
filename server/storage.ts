@@ -121,6 +121,7 @@ export interface IStorage {
   // App settings methods
   getAppSetting(key: string): Promise<string | undefined>;
   setAppSetting(key: string, value: string): Promise<void>;
+  deleteAppSetting(key: string): Promise<void>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -969,6 +970,10 @@ export class DatabaseStorage implements IStorage {
     await db.insert(appSettings)
       .values({ key, value, updatedAt: new Date() })
       .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+  }
+
+  async deleteAppSetting(key: string): Promise<void> {
+    await db.delete(appSettings).where(eq(appSettings.key, key));
   }
 }
 

@@ -1228,19 +1228,19 @@ export async function registerRoutes(
         excelGeoProvider = providerSetting === "dadata" ? "dadata" : "yandex";
 
         if (excelGeoProvider === "dadata") {
-          excelGeoApiKey = process.env.DADATA_API_KEY;
+          excelGeoApiKey = (await storage.getAppSetting("geocode_dadata_api_key")) || process.env.DADATA_API_KEY;
           if (!excelGeoApiKey) {
             await storage.deleteEditableLayer(layer.id);
             return res.status(400).json({
-              message: "API-ключ DaData не настроен. Добавьте DADATA_API_KEY в секреты проекта.",
+              message: "API-ключ DaData не настроен. Добавьте ключ в Администрирование → Геокодирование.",
             });
           }
         } else {
-          excelGeoApiKey = process.env.YANDEX_GEOCODER_API_KEY;
+          excelGeoApiKey = (await storage.getAppSetting("geocode_yandex_api_key")) || process.env.YANDEX_GEOCODER_API_KEY;
           if (!excelGeoApiKey) {
             await storage.deleteEditableLayer(layer.id);
             return res.status(400).json({
-              message: "API-ключ Яндекс Геокодера не настроен. Добавьте YANDEX_GEOCODER_API_KEY в секреты проекта.",
+              message: "API-ключ Яндекс Геокодера не настроен. Добавьте ключ в Администрирование → Геокодирование.",
             });
           }
         }
@@ -3295,6 +3295,111 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // ADMIN API KEYS MANAGEMENT
+  // ============================================
+
+  const MANAGED_KEYS = [
+    "geocode_yandex_api_key",
+    "geocode_dadata_api_key",
+    "ai_yandex_api_key",
+    "ai_yandex_folder_id",
+    "ai_provider",
+  ] as const;
+
+  function maskSecret(value: string): string {
+    if (value.length <= 4) return "****";
+    return "****" + value.slice(-4);
+  }
+
+  app.get("/api/settings/keys", async (req: Request, res: Response) => {
+    try {
+      if ((req as any).user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const result: Record<string, { masked: string; isSet: boolean }> = {};
+      for (const key of MANAGED_KEYS) {
+        const value = await storage.getAppSetting(key);
+        if (value) {
+          result[key] = { masked: maskSecret(value), isSet: true };
+        } else {
+          result[key] = { masked: "", isSet: false };
+        }
+      }
+      return res.json(result);
+    } catch (error) {
+      console.error("Error getting keys:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/settings/keys", async (req: Request, res: Response) => {
+    try {
+      if ((req as any).user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { key, value } = req.body;
+      if (!key || typeof key !== "string" || !MANAGED_KEYS.includes(key as any)) {
+        return res.status(400).json({ message: "Недопустимый ключ" });
+      }
+      if (typeof value !== "string") {
+        return res.status(400).json({ message: "Значение должно быть строкой" });
+      }
+      if (value.trim() === "") {
+        return res.status(400).json({ message: "Значение не может быть пустым" });
+      }
+      await storage.setAppSetting(key, value.trim());
+      return res.json({ success: true, masked: maskSecret(value.trim()) });
+    } catch (error) {
+      console.error("Error setting key:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/settings/keys/:key", async (req: Request, res: Response) => {
+    try {
+      if ((req as any).user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const key = req.params.key;
+      if (!MANAGED_KEYS.includes(key as any)) {
+        return res.status(400).json({ message: "Недопустимый ключ" });
+      }
+      await storage.deleteAppSetting(key);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting key:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/settings/ai-provider", async (req: Request, res: Response) => {
+    try {
+      const value = await storage.getAppSetting("ai_provider");
+      return res.json({ provider: value || "openai" });
+    } catch (error) {
+      console.error("Error getting AI provider:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/settings/ai-provider", async (req: Request, res: Response) => {
+    try {
+      if ((req as any).user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const provider = req.body?.provider;
+      if (!["openai", "yandex"].includes(provider)) {
+        return res.status(400).json({ message: "Некорректный провайдер. Допустимые: openai, yandex" });
+      }
+      await storage.setAppSetting("ai_provider", provider);
+      return res.json({ provider });
+    } catch (error) {
+      console.error("Error setting AI provider:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
   // REVERSE GEOCODING API (Address landmarks)
   // ============================================
 
@@ -3307,14 +3412,14 @@ export async function registerRoutes(
 
       let apiKey: string | undefined;
       if (provider === "dadata") {
-        apiKey = process.env.DADATA_API_KEY;
+        apiKey = (await storage.getAppSetting("geocode_dadata_api_key")) || process.env.DADATA_API_KEY;
         if (!apiKey) {
-          return res.status(500).json({ message: "DaData API ключ не настроен. Добавьте DADATA_API_KEY в секреты проекта." });
+          return res.status(500).json({ message: "DaData API ключ не настроен. Добавьте ключ в Администрирование → Геокодирование." });
         }
       } else {
-        apiKey = process.env.YANDEX_GEOCODER_API_KEY;
+        apiKey = (await storage.getAppSetting("geocode_yandex_api_key")) || process.env.YANDEX_GEOCODER_API_KEY;
         if (!apiKey) {
-          return res.status(500).json({ message: "Яндекс Геокодер API ключ не настроен" });
+          return res.status(500).json({ message: "Яндекс Геокодер API ключ не настроен. Добавьте ключ в Администрирование → Геокодирование." });
         }
       }
       const useDadata = provider === "dadata";
@@ -5916,9 +6021,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/ai/providers", (_req: Request, res: Response) => {
+  app.get("/api/ai/providers", async (_req: Request, res: Response) => {
     const providers = [];
-    const hasYandex = !!(process.env.YANDEX_STUDIO_API_KEY && process.env.YANDEX_FOLDER_ID);
+    const dbYandexKey = await storage.getAppSetting("ai_yandex_api_key");
+    const dbYandexFolder = await storage.getAppSetting("ai_yandex_folder_id");
+    const hasYandex = !!((dbYandexKey || process.env.YANDEX_STUDIO_API_KEY) && (dbYandexFolder || process.env.YANDEX_FOLDER_ID));
     const hasOpenAI = !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
 
     if (hasOpenAI) {
@@ -6000,8 +6107,8 @@ export async function registerRoutes(
         return res.json({ content: aiText, provider: "openai" });
 
       } else if (selectedProvider === "yandex") {
-        const apiKey = process.env.YANDEX_STUDIO_API_KEY;
-        const folderId = process.env.YANDEX_FOLDER_ID;
+        const apiKey = (await storage.getAppSetting("ai_yandex_api_key")) || process.env.YANDEX_STUDIO_API_KEY;
+        const folderId = (await storage.getAppSetting("ai_yandex_folder_id")) || process.env.YANDEX_FOLDER_ID;
 
         if (!apiKey || !folderId) {
           return res.status(500).json({ error: "Yandex Studio AI не настроен: отсутствует API-ключ или Folder ID" });
