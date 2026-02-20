@@ -112,8 +112,8 @@ The system then performs automatic tracing via `POST /api/auto-trace`:
 5. **AI parameter calculation** — uses OpenAI (gpt-4o-mini) with detailed route data (real segment lengths, turning angles, heat chamber count) to calculate pipe diameters, flow rates, velocities, pressure losses, compensators, and valves; falls back to heuristic calculation if AI is unavailable
 
 Results are displayed in collapsible sections showing route details, AI-calculated parameters with visual cards and badges, and heat chamber placements. User can:
-- **Confirm and create** — updates the selected point feature's properties with consumer data
-- **Save to new layer** (`POST /api/auto-trace/save-layer`) — creates two new layers: a LineString layer with the route (including AI-calculated pipe parameters as attributes) and a Point layer with heat chambers and consumer point
+- **Confirm and create** — updates the selected point feature's properties with consumer data; the dialog stays open showing a success banner
+- **Save to new layer** (appears only after confirmation) — via `POST /api/auto-trace/save-layer`, creates two new layers: a LineString layer with the route (including AI-calculated pipe parameters as attributes) and a Point layer with heat chambers and consumer point. This two-step flow lets the user first see the created object on the map before deciding to save layers.
 
 ### Attribute Join
 

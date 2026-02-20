@@ -136,6 +136,7 @@ export function ConsumerConnectDialog({
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [layerName, setLayerName] = useState("");
   const [showSaveLayer, setShowSaveLayer] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const { toast } = useToast();
 
   const traceMutation = useMutation({
@@ -204,8 +205,9 @@ export function ConsumerConnectDialog({
   const handleConfirm = () => {
     if (traceResult) {
       onConfirm(traceResult, formData);
-      onOpenChange(false);
-      setTraceResult(null);
+      setConfirmed(true);
+      setLayerName(formData.name || "Новая трасса");
+      toast({ title: "Объект создан", description: "Потребитель добавлен на карту. Можете сохранить маршрут в отдельный слой." });
     }
   };
 
@@ -213,8 +215,10 @@ export function ConsumerConnectDialog({
     onOpenChange(false);
     setTraceResult(null);
     setShowSaveLayer(false);
+    setConfirmed(false);
     setLayerName("");
     traceMutation.reset();
+    saveMutation.reset();
   };
 
   const updateField = (field: keyof ConsumerFormData, value: string | number) => {
@@ -224,7 +228,7 @@ export function ConsumerConnectDialog({
   const totalLoad = formData.qo + formData.qgv + formData.qsv;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) handleClose(); }}>
       <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto" data-testid="consumer-connect-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -511,57 +515,73 @@ export function ConsumerConnectDialog({
 
                 <Separator />
 
-                {!showSaveLayer ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      setLayerName(formData.name || "Новая трасса");
-                      setShowSaveLayer(true);
-                    }}
-                    data-testid="button-show-save-layer"
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Сохранить в новый слой
-                  </Button>
-                ) : (
-                  <div className="space-y-2 p-3 border rounded-md bg-muted/50">
-                    <Label htmlFor="layer-name" className="text-sm font-medium">
-                      Название слоя
-                    </Label>
-                    <Input
-                      id="layer-name"
-                      value={layerName}
-                      onChange={(e) => setLayerName(e.target.value)}
-                      placeholder="Подключение ..."
-                      data-testid="input-layer-name"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handleSaveLayer}
-                        disabled={!layerName.trim() || saveMutation.isPending}
-                        data-testid="button-save-layer"
-                      >
-                        {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                        {saveMutation.isPending ? "Сохранение..." : "Сохранить"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowSaveLayer(false)}
-                        data-testid="button-cancel-save-layer"
-                      >
-                        Отмена
-                      </Button>
-                    </div>
-                    {saveMutation.isSuccess && (
-                      <p className="text-xs text-green-600 flex items-center gap-1">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Слои успешно созданы
+                {confirmed && (
+                  <div className="p-3 bg-green-50 dark:bg-green-950 rounded-md flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-green-700 dark:text-green-300">
+                        Потребитель создан
                       </p>
-                    )}
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                        Объект добавлен на карту. Теперь вы можете сохранить маршрут и тепловые камеры в отдельные слои.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {confirmed && !saveMutation.isSuccess && (
+                  !showSaveLayer ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setShowSaveLayer(true)}
+                      data-testid="button-show-save-layer"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Сохранить маршрут в новый слой
+                    </Button>
+                  ) : (
+                    <div className="space-y-2 p-3 border rounded-md bg-muted/50">
+                      <Label htmlFor="layer-name" className="text-sm font-medium">
+                        Название слоя
+                      </Label>
+                      <Input
+                        id="layer-name"
+                        value={layerName}
+                        onChange={(e) => setLayerName(e.target.value)}
+                        placeholder="Подключение ..."
+                        data-testid="input-layer-name"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={handleSaveLayer}
+                          disabled={!layerName.trim() || saveMutation.isPending}
+                          data-testid="button-save-layer"
+                        >
+                          {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          {saveMutation.isPending ? "Сохранение..." : "Сохранить"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowSaveLayer(false)}
+                          data-testid="button-cancel-save-layer"
+                        >
+                          Отмена
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {saveMutation.isSuccess && (
+                  <div className="p-3 bg-green-50 dark:bg-green-950 rounded-md flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    <p className="text-sm text-green-700 dark:text-green-300">
+                      Слои успешно созданы
+                    </p>
                   </div>
                 )}
               </div>
@@ -593,7 +613,7 @@ export function ConsumerConnectDialog({
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={handleClose} data-testid="button-cancel-consumer">
-            Отмена
+            {confirmed ? "Закрыть" : "Отмена"}
           </Button>
 
           {!traceResult ? (
@@ -606,7 +626,7 @@ export function ConsumerConnectDialog({
               {traceMutation.isPending ? "Трассировка..." : "Выполнить трассировку"}
             </Button>
           ) : (
-            traceResult.success && (
+            traceResult.success && !confirmed && (
               <Button onClick={handleConfirm} data-testid="button-confirm-consumer">
                 <CheckCircle2 className="h-4 w-4 mr-2" />
                 Подтвердить и создать

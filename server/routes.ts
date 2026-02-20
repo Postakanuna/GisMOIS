@@ -1097,23 +1097,30 @@ export async function registerRoutes(
     }
   });
 
+  const coordPair = z.array(z.number()).min(2).transform(arr => [arr[0], arr[1]] as [number, number]);
+
   const saveTraceSchema = z.object({
     sceneId: z.number(),
     layerName: z.string().min(1),
     route: z.object({
-      coordinates: z.array(z.tuple([z.number(), z.number()])),
+      coordinates: z.array(coordPair),
       totalLength: z.number(),
+      turningAngles: z.any().optional(),
+      segments: z.any().optional(),
     }),
     heatChambers: z.array(z.object({
-      coordinates: z.tuple([z.number(), z.number()]),
+      coordinates: coordPair,
       name: z.string(),
       reason: z.string(),
     })),
-    consumerCoords: z.tuple([z.number(), z.number()]),
+    consumerCoords: coordPair,
     connectionPoint: z.object({
       name: z.string(),
       type: z.string(),
-      coordinates: z.tuple([z.number(), z.number()]),
+      coordinates: coordPair,
+      distance: z.number().optional(),
+      featureId: z.number().optional(),
+      layerId: z.number().optional(),
     }),
     aiParams: z.any().optional(),
     consumer: z.object({
