@@ -18,6 +18,7 @@ import path from "path";
 import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
 import { transformPropertyKeys } from "@shared/field-labels";
+import { searchObjectsForRAG, getLayersSummaryForContext } from "./ai-rag";
 
 function normalizeSvgForColorSupport(svgContent: string): string {
   let svg = svgContent;
@@ -5934,7 +5935,7 @@ export async function registerRoutes(
     return res.json({ providers, default: providers.find(p => p.available)?.id || "openai" });
   });
 
-  // ===== AI Chat (Multi-provider: OpenAI + Yandex) =====
+  // ===== AI Chat (Multi-provider: OpenAI + Yandex) with RAG =====
   app.post("/api/ai/chat", async (req: Request, res: Response) => {
     try {
       const { messages, provider } = req.body;
@@ -5942,9 +5943,29 @@ export async function registerRoutes(
         return res.status(400).json({ error: "messages is required and must be a non-empty array" });
       }
 
+      const lastUserMessage = [...messages].reverse().find((m: any) => m.role === "user")?.content || "";
+
+      let ragContext = "";
+      let layersSummary = "";
+      try {
+        const [ragResult, layersResult] = await Promise.all([
+          searchObjectsForRAG(lastUserMessage),
+          getLayersSummaryForContext(),
+        ]);
+        ragContext = ragResult;
+        layersSummary = layersResult;
+        if (ragContext) {
+          console.log("[RAG] Found relevant data for query:", lastUserMessage.substring(0, 80));
+        }
+      } catch (e) {
+        console.error("[RAG] Error during search:", e);
+      }
+
       const systemMessage = {
         role: "system",
-        content: `Ты — ИИ-ассистент ГИС теплосетей муниципального образования. Помогай пользователю с вопросами об инженерных сетях, теплоснабжении, объектах инфраструктуры. Отвечай на русском языке, кратко и по делу. Ты разбираешься в тепловых сетях, потребителях, источниках теплоснабжения, ЦТП, задвижках, узлах учёта. Можешь помочь с анализом данных, поиском проблемных участков и планированием обслуживания.`,
+        content: `Ты — ИИ-ассистент ГИС теплосетей муниципального образования. Помогай пользователю с вопросами об инженерных сетях, теплоснабжении, объектах инфраструктуры. Отвечай на русском языке, кратко и по делу. Ты разбираешься в тепловых сетях, потребителях, источниках теплоснабжения, ЦТП, задвижках, узлах учёта. Можешь помочь с анализом данных, поиском проблемных участков и планированием обслуживания.
+
+ВАЖНО: Если ниже приведены данные из базы — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${ragContext}`,
       };
 
       const apiMessages = [systemMessage, ...messages.map((m: any) => ({
@@ -5970,8 +5991,8 @@ export async function registerRoutes(
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
           messages: apiMessages as any,
-          temperature: 0.4,
-          max_tokens: 1500,
+          temperature: 0.3,
+          max_tokens: 2000,
         });
 
         const aiText = completion.choices?.[0]?.message?.content || "Нет ответа от модели";
@@ -5989,8 +6010,8 @@ export async function registerRoutes(
         const requestBody = {
           model: `gpt://${folderId}/yandexgpt-lite/latest`,
           messages: apiMessages.map(m => ({ role: m.role, content: m.content })),
-          temperature: 0.4,
-          max_tokens: 1500,
+          temperature: 0.3,
+          max_tokens: 2000,
         };
 
         console.log("Yandex AI request:", JSON.stringify({ model: requestBody.model, messageCount: requestBody.messages.length }));
