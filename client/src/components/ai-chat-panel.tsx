@@ -34,7 +34,7 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
     }
   }, [messages]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
 
@@ -48,16 +48,38 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
     setInput("");
     setIsLoading(true);
 
-    setTimeout(() => {
+    try {
+      const allMessages = [...messages.filter(m => m.id !== "welcome"), userMsg];
+      const apiMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
+
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: apiMessages }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || `Ошибка сервера: ${response.status}`);
+      }
+
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         role: "assistant",
-        content: "ИИ-ассистент пока не подключён. Интеграция с Yandex Studio AI будет добавлена в следующем обновлении.",
+        content: data.content || "Нет ответа от модели",
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, aiMsg]);
+    } catch (error: any) {
+      const errorMsg: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: `Ошибка: ${error.message || "Не удалось получить ответ от ИИ"}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
       setIsLoading(false);
-    }, 800);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

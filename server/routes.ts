@@ -5915,6 +5915,77 @@ export async function registerRoutes(
     }
   });
 
+  // ===== AI Chat (Yandex Studio AI) =====
+  app.post("/api/ai/chat", async (req: Request, res: Response) => {
+    try {
+      const apiKey = process.env.YANDEX_STUDIO_API_KEY;
+      const folderId = process.env.YANDEX_FOLDER_ID;
+
+      if (!apiKey || !folderId) {
+        return res.status(500).json({ error: "Yandex Studio AI не настроен: отсутствует API-ключ или Folder ID" });
+      }
+
+      const { messages } = req.body;
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: "messages is required and must be a non-empty array" });
+      }
+
+      const systemMessage = {
+        role: "system",
+        content: `Ты — ИИ-ассистент ГИС теплосетей муниципального образования. Помогай пользователю с вопросами об инженерных сетях, теплоснабжении, объектах инфраструктуры. Отвечай на русском языке, кратко и по делу. Ты разбираешься в тепловых сетях, потребителях, источниках теплоснабжения, ЦТП, задвижках, узлах учёта. Можешь помочь с анализом данных, поиском проблемных участков и планированием обслуживания.`,
+      };
+
+      const apiMessages = [systemMessage, ...messages.map((m: any) => ({
+        role: m.role,
+        content: m.content,
+      }))];
+
+      const requestBody = {
+        model: `gpt://${folderId}/yandexgpt-lite/latest`,
+        messages: apiMessages.map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+        temperature: 0.4,
+        max_tokens: 1500,
+      };
+
+      console.log("Yandex AI request:", JSON.stringify({ model: requestBody.model, messageCount: requestBody.messages.length }));
+
+      const response = await fetch("https://llm.api.cloud.yandex.net/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "x-folder-id": folderId,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Yandex Studio AI error:", response.status, errorText);
+        
+        if (response.status === 401) {
+          return res.status(502).json({ 
+            error: "Ошибка авторизации Yandex AI. API-ключ и Folder ID не совпадают. Убедитесь, что API-ключ создан в том же каталоге (folder), который указан в YANDEX_FOLDER_ID.",
+            details: errorText.substring(0, 300)
+          });
+        }
+        return res.status(502).json({ error: `Ошибка Yandex AI: ${response.status} - ${errorText.substring(0, 200)}` });
+      }
+
+      const data = await response.json() as any;
+      console.log("Yandex AI response received successfully");
+      const aiText = data?.choices?.[0]?.message?.content || "Нет ответа от модели";
+
+      return res.json({ content: aiText });
+    } catch (error: any) {
+      console.error("AI chat error:", error);
+      return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
 
