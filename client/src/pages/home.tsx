@@ -2,12 +2,13 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck, LayoutGrid, Shield, Smartphone, Globe, Cpu, Puzzle, Settings2, Home as HomeIcon } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -238,6 +239,7 @@ export default function Home() {
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
   const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
+  const [showSubsystemsDialog, setShowSubsystemsDialog] = useState(false);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -587,6 +589,29 @@ export default function Home() {
                 <Pencil className="h-4 w-4" />
                 <span className="hidden sm:inline">Редактор</span>
               </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowSubsystemsDialog(true)}
+                    data-testid="button-open-subsystems"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Подсистемы</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/">
+                    <Button variant="ghost" size="icon" data-testid="button-back-landing">
+                      <HomeIcon className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>На главную</TooltipContent>
+              </Tooltip>
               <Link href="/settings">
                 <Button variant="ghost" size="icon" data-testid="button-open-settings">
                   <Settings className="h-4 w-4" />
@@ -863,6 +888,52 @@ export default function Home() {
               onOpenChange={setShowTopologyDialog}
               sceneId={currentSceneId || 0}
             />
+
+            <Dialog open={showSubsystemsDialog} onOpenChange={setShowSubsystemsDialog}>
+              <DialogContent className="max-w-2xl max-h-[80vh]">
+                <DialogHeader>
+                  <DialogTitle>Подсистемы «Аналитические инструменты»</DialogTitle>
+                  <DialogDescription>Подсистемы 1–6, реализованные в данном модуле</DialogDescription>
+                </DialogHeader>
+                <ScrollArea className="max-h-[55vh] pr-4">
+                  <div className="space-y-2">
+                    {[
+                      { id: 1, name: "Многопользовательская работа и мониторинг", desc: "Управление доступом, ролями, контроль работы системы", where: "Панель администратора", icon: Shield, action: () => { setShowSubsystemsDialog(false); setLocation("/admin/users"); } },
+                      { id: 2, name: "Мобильный доступ через веб-службы", desc: "Адаптивный веб-интерфейс для мобильных устройств", where: "Все страницы (адаптивный дизайн)", icon: Smartphone, action: null },
+                      { id: 3, name: "Удалённый доступ через веб-службы", desc: "Внешний API с управлением ключами доступа", where: "Настройки → API-ключи", icon: Globe, action: () => { setShowSubsystemsDialog(false); setLocation("/settings"); } },
+                      { id: 4, name: "Интеграция с АСУ ТП", desc: "Обмен данными через внешний API", where: "Настройки → API-ключи", icon: Cpu, action: () => { setShowSubsystemsDialog(false); setLocation("/settings"); } },
+                      { id: 5, name: "Геоинформационные плагины", desc: "Управление слоями, импорт/экспорт данных", where: "Менеджер данных", icon: Puzzle, action: () => { setShowSubsystemsDialog(false); setShowDataManager(true); } },
+                      { id: 6, name: "Настройка интерфейса", desc: "Темы, стилизация слоёв, конфигурация отображения", where: "Настройки", icon: Settings2, action: () => { setShowSubsystemsDialog(false); setLocation("/settings"); } },
+                    ].map((sub) => {
+                      const Icon = sub.icon;
+                      return (
+                        <div
+                          key={sub.id}
+                          className={`flex items-start gap-3 p-3 rounded-lg border bg-card ${sub.action ? "cursor-pointer hover:border-primary/50 transition-colors" : ""}`}
+                          onClick={sub.action || undefined}
+                          data-testid={`subsystem-nav-${sub.id}`}
+                        >
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                            <Icon className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-mono text-muted-foreground">#{sub.id}</span>
+                              <span className="text-sm font-medium">{sub.name}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">{sub.desc}</p>
+                            <p className="text-xs text-primary/70 mt-0.5">{sub.where}</p>
+                          </div>
+                          {sub.action && (
+                            <Badge variant="outline" className="text-xs shrink-0 mt-1">Перейти</Badge>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              </DialogContent>
+            </Dialog>
           </main>
         </div>
       </div>

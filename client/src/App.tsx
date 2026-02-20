@@ -9,6 +9,7 @@ import { BaseLayersProvider } from "@/contexts/base-layers-context";
 import { ProjectionProvider } from "@/contexts/projection-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
+import LandingPage from "@/pages/landing";
 import Home from "@/pages/home";
 import Settings from "@/pages/settings";
 import AdminUsers from "@/pages/admin-users";
@@ -18,13 +19,14 @@ import ScenesPage from "@/pages/scenes";
 function Router() {
   return (
     <Switch>
+      <Route path="/" component={LandingPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/scenes">
         <ProtectedRoute>
           <ScenesPage />
         </ProtectedRoute>
       </Route>
-      <Route path="/">
+      <Route path="/app">
         <ProtectedRoute>
           <Home />
         </ProtectedRoute>

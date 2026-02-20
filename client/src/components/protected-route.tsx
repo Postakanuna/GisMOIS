@@ -17,7 +17,7 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
       setLocation("/login");
     }
     if (!isLoading && user && requireAdmin && !isAdmin) {
-      setLocation("/");
+      setLocation("/app");
     }
   }, [isLoading, user, isAdmin, requireAdmin, setLocation]);
 

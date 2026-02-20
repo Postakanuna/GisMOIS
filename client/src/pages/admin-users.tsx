@@ -108,7 +108,7 @@ export default function AdminUsers() {
         <Card className="w-96">
           <CardContent className="pt-6 text-center">
             <p className="text-muted-foreground">Доступ запрещен</p>
-            <Link href="/">
+            <Link href="/app">
               <Button className="mt-4" data-testid="button-back-home">На главную</Button>
             </Link>
           </CardContent>
@@ -120,7 +120,7 @@ export default function AdminUsers() {
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <div className="flex items-center gap-4 mb-6">
-        <Link href="/">
+        <Link href="/app">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>

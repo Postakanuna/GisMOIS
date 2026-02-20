@@ -39,7 +39,7 @@ export default function Settings() {
     <div className="min-h-screen bg-background">
       <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4">
         <div className="flex items-center gap-2">
-          <Link href="/">
+          <Link href="/app">
             <Button variant="ghost" size="icon" data-testid="button-back-to-map">
               <ArrowLeft className="h-4 w-4" />
             </Button>

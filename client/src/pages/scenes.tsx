@@ -167,7 +167,7 @@ export default function ScenesPage() {
 
   const handleSelectScene = (sceneId: number) => {
     setCurrentSceneId(sceneId);
-    setLocation("/");
+    setLocation("/app");
   };
 
   const handleLogout = async () => {
