@@ -226,8 +226,8 @@ export function DrawingToolbar({
             </Tooltip>
           )}
 
-          {/* Consumer Connect */}
-          {onConsumerConnect && (
+          {/* Consumer Connect - only when exactly 1 feature selected */}
+          {onConsumerConnect && selectedCount === 1 && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

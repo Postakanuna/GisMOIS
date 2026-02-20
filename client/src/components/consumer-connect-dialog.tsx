@@ -129,14 +129,9 @@ export function ConsumerConnectDialog({
     qsv: 0,
   });
 
-  const [manualLon, setManualLon] = useState("");
-  const [manualLat, setManualLat] = useState("");
   const [traceResult, setTraceResult] = useState<AutoTraceResult | null>(null);
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
-
-  const effectiveCoords: [number, number] | null = consumerCoords || 
-    (manualLon && manualLat ? [parseFloat(manualLon), parseFloat(manualLat)] : null);
 
   const traceMutation = useMutation({
     mutationFn: async (data: {
@@ -154,9 +149,9 @@ export function ConsumerConnectDialog({
   });
 
   const handleTrace = () => {
-    if (!effectiveCoords) return;
+    if (!consumerCoords) return;
     traceMutation.mutate({
-      consumerCoords: effectiveCoords,
+      consumerCoords,
       sceneId,
       consumer: formData,
     });
@@ -196,39 +191,12 @@ export function ConsumerConnectDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {consumerCoords ? (
+          {consumerCoords && (
             <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
               <MapPin className="h-4 w-4 text-primary" />
               <span className="text-sm">
                 Координаты: {consumerCoords[0].toFixed(6)}, {consumerCoords[1].toFixed(6)}
               </span>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="coord-lon">Долгота (lon)</Label>
-                <Input
-                  id="coord-lon"
-                  type="number"
-                  step="0.000001"
-                  placeholder="37.615"
-                  value={manualLon}
-                  onChange={(e) => setManualLon(e.target.value)}
-                  data-testid="input-coord-lon"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="coord-lat">Широта (lat)</Label>
-                <Input
-                  id="coord-lat"
-                  type="number"
-                  step="0.000001"
-                  placeholder="55.751"
-                  value={manualLat}
-                  onChange={(e) => setManualLat(e.target.value)}
-                  data-testid="input-coord-lat"
-                />
-              </div>
             </div>
           )}
 
@@ -529,7 +497,7 @@ export function ConsumerConnectDialog({
           {!traceResult ? (
             <Button
               onClick={handleTrace}
-              disabled={!effectiveCoords || traceMutation.isPending || !formData.name}
+              disabled={!consumerCoords || traceMutation.isPending || !formData.name}
               data-testid="button-run-trace"
             >
               {traceMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

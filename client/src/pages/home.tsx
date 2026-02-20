@@ -248,7 +248,7 @@ export default function Home() {
   const [showSubsystemsDialog, setShowSubsystemsDialog] = useState(false);
   const [showConsumerConnectDialog, setShowConsumerConnectDialog] = useState(false);
   const [consumerConnectCoords, setConsumerConnectCoords] = useState<[number, number] | null>(null);
-  const [consumerConnectMode, setConsumerConnectMode] = useState(false);
+  const [consumerConnectFeatureRef, setConsumerConnectFeatureRef] = useState<{ layerId: number; featureId: number } | null>(null);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -385,8 +385,23 @@ export default function Home() {
   }, [selectedFeatures]);
 
   const handleConsumerConnect = useCallback(() => {
-    setShowConsumerConnectDialog(true);
-  }, []);
+    if (selectedFeatures.length !== 1) return;
+
+    const feature = selectedFeatures[0];
+    const realFeatureId = feature.properties?.featureId as number | undefined;
+    const featureData = realFeatureId
+      ? drawing.features.find(f => f.id === realFeatureId)
+      : drawing.features.find((_, idx) => idx === feature.featureIndex);
+
+    if (featureData && featureData.geometryType === "Point") {
+      const coords = featureData.coordinates as [number, number];
+      setConsumerConnectCoords(coords);
+      if (realFeatureId) {
+        setConsumerConnectFeatureRef({ layerId: feature.layerId, featureId: realFeatureId });
+      }
+      setShowConsumerConnectDialog(true);
+    }
+  }, [selectedFeatures, drawing.features]);
 
   const handleConsumerTraceResult = useCallback((result: any) => {
     if (result.success && result.route?.coordinates) {
@@ -395,47 +410,28 @@ export default function Home() {
   }, []);
 
   const handleConsumerConfirm = useCallback(async (result: any, consumerData: ConsumerFormData) => {
-    if (!currentSceneId) return;
+    if (result.route?.coordinates) {
+      setTraceRouteCoords(result.route.coordinates);
+    }
 
-    const coords = result.consumerCoords || consumerConnectCoords;
-    if (!coords) return;
+    if (!consumerConnectFeatureRef) return;
 
     try {
-      let consumerLayerId: number | null = null;
-      for (const layer of drawing.editableLayers) {
-        if (layer.geometryType === "Point") {
-          const features = await apiRequest("GET", `/api/editable-layers/${layer.id}/features`).then(r => r.json());
-          if (features.length > 0) {
-            const props = features[0].properties as Record<string, unknown>;
-            if (props.Adres || props.Dom || props.Ylitsa || props.Hzdan) {
-              consumerLayerId = layer.id;
-              break;
-            }
-          }
-        }
-      }
-
-      if (consumerLayerId) {
-        await apiRequest("POST", `/api/editable-layers/${consumerLayerId}/features`, {
-          geometryType: "Point",
-          coordinates: coords,
-          properties: {
-            Name: consumerData.name,
-            Adres: consumerData.address,
-            Hzdan: consumerData.floors,
-            Qo_r: consumerData.qo,
-            Qgv_r: consumerData.qgv,
-            Qsv_r: consumerData.qsv,
-          },
-        });
-        queryClient.invalidateQueries({ queryKey: [`/api/editable-layers/${consumerLayerId}/features`] });
-      }
-
-      setTraceRouteCoords(result.route?.coordinates || null);
+      await apiRequest("PATCH", `/api/editable-layers/${consumerConnectFeatureRef.layerId}/features/${consumerConnectFeatureRef.featureId}`, {
+        properties: {
+          Name: consumerData.name,
+          Adres: consumerData.address,
+          Hzdan: consumerData.floors,
+          Qo_r: consumerData.qo,
+          Qgv_r: consumerData.qgv,
+          Qsv_r: consumerData.qsv,
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/editable-layers/${consumerConnectFeatureRef.layerId}/features`] });
     } catch (error) {
-      console.error("Error creating consumer:", error);
+      console.error("Error updating consumer:", error);
     }
-  }, [currentSceneId, drawing.editableLayers, consumerConnectCoords]);
+  }, [consumerConnectFeatureRef]);
 
   // Handle undo - during drawing mode, remove last point; otherwise use normal undo
   const handleUndo = useCallback(() => {
@@ -948,7 +944,13 @@ export default function Home() {
 
             <ConsumerConnectDialog
               open={showConsumerConnectDialog}
-              onOpenChange={setShowConsumerConnectDialog}
+              onOpenChange={(open) => {
+                setShowConsumerConnectDialog(open);
+                if (!open) {
+                  setConsumerConnectCoords(null);
+                  setConsumerConnectFeatureRef(null);
+                }
+              }}
               consumerCoords={consumerConnectCoords}
               sceneId={currentSceneId || 0}
               onTraceResult={handleConsumerTraceResult}
