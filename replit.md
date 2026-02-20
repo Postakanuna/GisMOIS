@@ -84,7 +84,15 @@ The application includes an AI chat panel integrated into the left sidebar. User
 - Message history with user/assistant bubbles
 - Text input with Enter-to-send
 - Loading animation during AI responses
-- Currently a stub (no real AI backend) — Yandex Studio AI integration planned
+- Dual AI provider support with in-chat model switcher dropdown
+
+**AI Providers** (user-selectable via dropdown in chat header):
+- **OpenAI (GPT)**: Uses Replit AI Integrations (`AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`), model `gpt-4o-mini`. Default provider.
+- **Yandex GPT**: Uses `YANDEX_STUDIO_API_KEY` + `YANDEX_FOLDER_ID`, model `yandexgpt-lite/latest`.
+
+Backend endpoints:
+- `GET /api/ai/providers` — returns available providers with availability status
+- `POST /api/ai/chat` — accepts `{ messages, provider }`, routes to selected AI backend
 
 The sidebar view state (`sidebarView`) supports three modes: `"layers"` (default), `"featureInfo"` (object attributes), and `"ai-chat"` (AI assistant). Both desktop Sidebar and mobile Sheet support the toggle.
 
