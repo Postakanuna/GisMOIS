@@ -19,6 +19,7 @@ import {
   Table2,
   Route,
   Zap,
+  Building2,
 } from "lucide-react";
 import type { EditableLayer } from "@shared/schema";
 import type { SnapSettings } from "@/hooks/use-drawing";
@@ -46,6 +47,7 @@ interface DrawingToolbarProps {
   featureCount?: number;
   onTraceRoute?: () => void;
   onSimulation?: () => void;
+  onConsumerConnect?: () => void;
   // Snap props
   snapSettings?: SnapSettings;
   onUpdateSnapSettings?: (updates: Partial<SnapSettings>) => void;
@@ -82,6 +84,7 @@ export function DrawingToolbar({
   featureCount = 0,
   onTraceRoute,
   onSimulation,
+  onConsumerConnect,
   snapSettings,
   onUpdateSnapSettings,
   onToggleSnap,
@@ -220,6 +223,24 @@ export function DrawingToolbar({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Симуляция отключения</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Consumer Connect */}
+          {onConsumerConnect && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={onConsumerConnect}
+                  data-testid="button-consumer-connect"
+                >
+                  <Building2 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Подключить потребителя</TooltipContent>
             </Tooltip>
           )}
 

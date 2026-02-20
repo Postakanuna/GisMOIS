@@ -918,6 +918,182 @@ export async function registerRoutes(
     }
   });
 
+  const autoTraceSchema = z.object({
+    consumerCoords: z.tuple([z.number(), z.number()]),
+    sceneId: z.number(),
+    consumer: z.object({
+      name: z.string(),
+      address: z.string().optional(),
+      buildingType: z.string().optional(),
+      floors: z.number().optional(),
+      qo: z.number().optional(),
+      qgv: z.number().optional(),
+      qsv: z.number().optional(),
+    }),
+  });
+
+  app.post("/api/auto-trace", async (req: Request, res: Response) => {
+    try {
+      const parseResult = autoTraceSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Invalid request data", errors: parseResult.error.errors });
+      }
+
+      const { consumerCoords, sceneId, consumer } = parseResult.data;
+
+      console.log(`[AutoTrace] Starting auto-trace for consumer "${consumer.name}" at [${consumerCoords}] in scene ${sceneId}`);
+
+      const { findNearestConnectionPoint, buildAutoTraceRoute, placeHeatChambers } = await import("./network-graph");
+
+      const { connectionPoint, graph } = await findNearestConnectionPoint(consumerCoords, sceneId);
+
+      if (!connectionPoint) {
+        return res.json({
+          success: false,
+          message: "Не найдена тепловая сеть в данной сцене. Убедитесь, что загружены слои с участками тепловой сети.",
+        });
+      }
+
+      console.log(`[AutoTrace] Found connection point: "${connectionPoint.name}" (${connectionPoint.type}) at distance ${Math.round(connectionPoint.distance)}m`);
+
+      const route = buildAutoTraceRoute(consumerCoords, connectionPoint, graph);
+
+      const heatChambers = placeHeatChambers(route);
+
+      console.log(`[AutoTrace] Route: ${Math.round(route.totalLength)}m, ${route.segments.length} segments, ${route.turningAngles.length} turns, ${heatChambers.length} heat chambers`);
+
+      let aiParams = null;
+      const totalLoad = (consumer.qo || 0) + (consumer.qgv || 0) + (consumer.qsv || 0);
+
+      if (totalLoad > 0) {
+        try {
+          const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+          const openaiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+
+          if (openaiKey && openaiBaseUrl) {
+            const OpenAI = (await import("openai")).default;
+            const openai = new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl });
+
+            const prompt = `Ты инженер-теплотехник. Рассчитай параметры трубопровода для подключения нового потребителя к тепловой сети.
+
+Исходные данные:
+- Тепловая нагрузка на отопление (Qо): ${consumer.qo || 0} Гкал/ч
+- Тепловая нагрузка на ГВС (Qгв): ${consumer.qgv || 0} Гкал/ч
+- Тепловая нагрузка на вентиляцию (Qсв): ${consumer.qsv || 0} Гкал/ч
+- Суммарная нагрузка: ${totalLoad.toFixed(3)} Гкал/ч
+- Протяжённость трассы: ${Math.round(route.totalLength)} м
+- Количество поворотов: ${route.turningAngles.length}
+- Тип здания: ${consumer.buildingType || "жилой дом"}
+- Этажность: ${consumer.floors || 5}
+- Температурный график: 95/70°С
+
+Ответь СТРОГО в формате JSON (без markdown, без комментариев):
+{
+  "pipeDiameterSupply": "Ду XX (например Ду 50, Ду 76, Ду 89, Ду 108, Ду 159)",
+  "pipeDiameterReturn": "Ду XX",
+  "pipeType": "тип трубы (стальная ВГП, ППУ и т.д.)",
+  "layingMethod": "способ прокладки (подземная бесканальная, канальная, надземная)",
+  "flowRate": расход_теплоносителя_т_ч_число,
+  "velocity": скорость_м_с_число,
+  "pressureLoss": потери_давления_м_в_ст_число,
+  "compensators": количество_компенсаторов_число,
+  "valves": количество_задвижек_число,
+  "recommendations": ["рекомендация 1", "рекомендация 2"]
+}`;
+
+            console.log("[AutoTrace] Requesting AI calculation...");
+
+            const completion = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              messages: [
+                { role: "system", content: "Ты опытный инженер-теплотехник. Отвечай только валидным JSON." },
+                { role: "user", content: prompt },
+              ],
+              temperature: 0.2,
+              max_tokens: 1000,
+            });
+
+            const aiText = completion.choices?.[0]?.message?.content || "";
+            console.log("[AutoTrace] AI response received");
+
+            try {
+              const cleaned = aiText.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+              aiParams = JSON.parse(cleaned);
+            } catch (parseErr) {
+              console.error("[AutoTrace] Failed to parse AI response:", aiText.substring(0, 200));
+            }
+          } else {
+            console.log("[AutoTrace] AI not configured, using heuristic calculation");
+            aiParams = calculateHeuristicParams(totalLoad, route.totalLength, route.turningAngles.length);
+          }
+        } catch (aiError: any) {
+          console.error("[AutoTrace] AI calculation error:", aiError.message);
+          aiParams = calculateHeuristicParams(totalLoad, route.totalLength, route.turningAngles.length);
+        }
+      }
+
+      return res.json({
+        success: true,
+        consumerCoords,
+        connectionPoint: {
+          name: connectionPoint.name,
+          type: connectionPoint.type,
+          coordinates: connectionPoint.coordinates,
+          distance: connectionPoint.distance,
+          featureId: connectionPoint.featureId,
+          layerId: connectionPoint.layerId,
+        },
+        route: {
+          coordinates: route.coordinates,
+          totalLength: route.totalLength,
+          turningAngles: route.turningAngles,
+          segments: route.segments,
+        },
+        heatChambers,
+        aiParams,
+      });
+    } catch (error: any) {
+      console.error("Auto-trace error:", error);
+      return res.status(500).json({ message: error.message || "Internal server error" });
+    }
+  });
+
+  function calculateHeuristicParams(totalLoad: number, routeLength: number, turnsCount: number) {
+    let diameter = "Ду 50";
+    if (totalLoad > 5) diameter = "Ду 200";
+    else if (totalLoad > 2) diameter = "Ду 159";
+    else if (totalLoad > 1) diameter = "Ду 108";
+    else if (totalLoad > 0.5) diameter = "Ду 89";
+    else if (totalLoad > 0.2) diameter = "Ду 76";
+    else if (totalLoad > 0.05) diameter = "Ду 57";
+
+    const flowRate = totalLoad * 1000 / (1 * (95 - 70));
+    const velocity = 0.8 + totalLoad * 0.3;
+    const pressureLoss = routeLength * 0.05;
+    const compensators = Math.max(0, Math.floor(routeLength / 60) - 1);
+    const valves = Math.max(2, Math.ceil(routeLength / 200) + 1);
+
+    const recommendations: string[] = [];
+    if (routeLength > 500) recommendations.push("Рекомендуется установка дополнительных компенсаторов");
+    if (totalLoad > 1) recommendations.push("Рекомендуется установка ИТП с автоматическим регулированием");
+    if (turnsCount > 3) recommendations.push("Наличие множества поворотов — предусмотреть П-образные компенсаторы");
+    recommendations.push("Предусмотреть теплоизоляцию из пенополиуретана (ППУ)");
+
+    return {
+      pipeDiameterSupply: diameter,
+      pipeDiameterReturn: diameter,
+      pipeType: "Стальная в ППУ изоляции",
+      layingMethod: "Подземная бесканальная",
+      flowRate: Math.round(flowRate * 100) / 100,
+      velocity: Math.round(velocity * 100) / 100,
+      pressureLoss: Math.round(pressureLoss * 10) / 10,
+      compensators,
+      valves,
+      heatChambers: [],
+      recommendations,
+    };
+  }
+
   app.get("/api/zulu/wfs", async (req: Request, res: Response) => {
     try {
       const { host, port, ...wfsParams } = req.query;

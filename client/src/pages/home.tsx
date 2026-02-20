@@ -30,6 +30,7 @@ import { DataManager } from "@/components/data-manager";
 import { LayerAttributeTableWrapper } from "@/components/layer-attribute-table-wrapper";
 import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
+import { ConsumerConnectDialog, type ConsumerFormData } from "@/components/consumer-connect-dialog";
 import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeocodeDialog } from "@/components/geocode-dialog";
@@ -245,6 +246,9 @@ export default function Home() {
   const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
   const [showSubsystemsDialog, setShowSubsystemsDialog] = useState(false);
+  const [showConsumerConnectDialog, setShowConsumerConnectDialog] = useState(false);
+  const [consumerConnectCoords, setConsumerConnectCoords] = useState<[number, number] | null>(null);
+  const [consumerConnectMode, setConsumerConnectMode] = useState(false);
 
   const updateDatasetFeatureMutation = useMutation({
     mutationFn: async ({ datasetId, featureId, geometry }: { datasetId: number; featureId: number; geometry: { type: string; coordinates: unknown } }) => {
@@ -379,6 +383,59 @@ export default function Home() {
     });
     setShowSimulationDialog(true);
   }, [selectedFeatures]);
+
+  const handleConsumerConnect = useCallback(() => {
+    setShowConsumerConnectDialog(true);
+  }, []);
+
+  const handleConsumerTraceResult = useCallback((result: any) => {
+    if (result.success && result.route?.coordinates) {
+      setTraceRouteCoords(result.route.coordinates);
+    }
+  }, []);
+
+  const handleConsumerConfirm = useCallback(async (result: any, consumerData: ConsumerFormData) => {
+    if (!currentSceneId) return;
+
+    const coords = result.consumerCoords || consumerConnectCoords;
+    if (!coords) return;
+
+    try {
+      let consumerLayerId: number | null = null;
+      for (const layer of drawing.editableLayers) {
+        if (layer.geometryType === "Point") {
+          const features = await apiRequest("GET", `/api/editable-layers/${layer.id}/features`).then(r => r.json());
+          if (features.length > 0) {
+            const props = features[0].properties as Record<string, unknown>;
+            if (props.Adres || props.Dom || props.Ylitsa || props.Hzdan) {
+              consumerLayerId = layer.id;
+              break;
+            }
+          }
+        }
+      }
+
+      if (consumerLayerId) {
+        await apiRequest("POST", `/api/editable-layers/${consumerLayerId}/features`, {
+          geometryType: "Point",
+          coordinates: coords,
+          properties: {
+            Name: consumerData.name,
+            Adres: consumerData.address,
+            Hzdan: consumerData.floors,
+            Qo_r: consumerData.qo,
+            Qgv_r: consumerData.qgv,
+            Qsv_r: consumerData.qsv,
+          },
+        });
+        queryClient.invalidateQueries({ queryKey: [`/api/editable-layers/${consumerLayerId}/features`] });
+      }
+
+      setTraceRouteCoords(result.route?.coordinates || null);
+    } catch (error) {
+      console.error("Error creating consumer:", error);
+    }
+  }, [currentSceneId, drawing.editableLayers, consumerConnectCoords]);
 
   // Handle undo - during drawing mode, remove last point; otherwise use normal undo
   const handleUndo = useCallback(() => {
@@ -654,6 +711,7 @@ export default function Home() {
                 featureCount={drawing.features.length}
                 onTraceRoute={handleOpenTraceDialog}
                 onSimulation={handleOpenSimulationDialog}
+                onConsumerConnect={handleConsumerConnect}
                 snapSettings={drawing.snapSettings}
                 onUpdateSnapSettings={drawing.updateSnapSettings}
                 onToggleSnap={drawing.toggleSnap}
@@ -886,6 +944,15 @@ export default function Home() {
                   },
                 });
               }}
+            />
+
+            <ConsumerConnectDialog
+              open={showConsumerConnectDialog}
+              onOpenChange={setShowConsumerConnectDialog}
+              consumerCoords={consumerConnectCoords}
+              sceneId={currentSceneId || 0}
+              onTraceResult={handleConsumerTraceResult}
+              onConfirm={handleConsumerConfirm}
             />
 
             <TopologyValidationDialog

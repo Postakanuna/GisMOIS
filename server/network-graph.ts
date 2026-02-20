@@ -1411,3 +1411,330 @@ export async function simulateSpatialDisconnection(
     },
   };
 }
+
+export interface ConnectionPointResult {
+  name: string;
+  type: string;
+  coordinates: [number, number];
+  distance: number;
+  featureId: number;
+  layerId: number;
+  nodeKey: string;
+}
+
+export interface AutoTraceRoute {
+  coordinates: [number, number][];
+  totalLength: number;
+  turningAngles: Array<{
+    angle: number;
+    coordinates: [number, number];
+  }>;
+  segments: Array<{
+    from: [number, number];
+    to: [number, number];
+    length: number;
+    name: string;
+  }>;
+}
+
+export interface HeatChamberPlacement {
+  coordinates: [number, number];
+  name: string;
+  reason: string;
+}
+
+export async function findNearestConnectionPoint(
+  consumerCoords: [number, number],
+  sceneId: number
+): Promise<{ connectionPoint: ConnectionPointResult | null; graph: SpatialGraph }> {
+  const graph = await buildSpatialNetworkGraph(sceneId);
+
+  if (graph.nodes.size === 0) {
+    return { connectionPoint: null, graph };
+  }
+
+  const allLayerIds = Array.from(new Set(
+    Array.from(graph.nodes.values())
+      .filter(n => n.featureId > 0)
+      .map(n => n.layerId)
+  ));
+
+  let useHaversine = true;
+  if (allLayerIds.length > 0) {
+    const layerCrsRows = await db
+      .select({ crs: editableLayers.crs })
+      .from(editableLayers)
+      .where(inArray(editableLayers.id, allLayerIds));
+    const hasProjected = layerCrsRows.some(r => !isGeographicCRS(r.crs));
+    if (hasProjected) useHaversine = false;
+  }
+
+  let bestNode: ConnectionPointResult | null = null;
+  let bestDist = Infinity;
+
+  const preferredTypes = new Set(["node", "ctp", "valve", "source"]);
+
+  for (const [key, node] of graph.nodes) {
+    if (node.featureId === 0) continue;
+
+    const neighbors = graph.adjacency.get(key);
+    if (!neighbors || neighbors.size === 0) continue;
+
+    const dist = distanceBetweenPoints(consumerCoords, node.coordinates, useHaversine);
+
+    let priority = 1;
+    if (preferredTypes.has(node.type)) priority = 0.8;
+    if (node.type === "node") priority = 0.7;
+
+    const weightedDist = dist * priority;
+
+    if (weightedDist < bestDist) {
+      bestDist = weightedDist;
+      bestNode = {
+        name: node.name || key,
+        type: node.type,
+        coordinates: node.coordinates,
+        distance: dist,
+        featureId: node.featureId,
+        layerId: node.layerId,
+        nodeKey: key,
+      };
+    }
+  }
+
+  let bestEdgePoint: ConnectionPointResult | null = null;
+  let bestEdgeDist = Infinity;
+
+  for (const edge of graph.edges) {
+    const endpoints = extractEndpoints(edge.coordinates);
+    if (!endpoints) continue;
+
+    const projResult = projectPointOnSegment(
+      consumerCoords,
+      endpoints.start,
+      endpoints.end,
+      useHaversine
+    );
+
+    if (projResult.distance < bestEdgeDist) {
+      bestEdgeDist = projResult.distance;
+      bestEdgePoint = {
+        name: edge.name || `Участок`,
+        type: "segment_projection",
+        coordinates: projResult.point,
+        distance: projResult.distance,
+        featureId: edge.featureId,
+        layerId: edge.layerId,
+        nodeKey: projResult.nearerKey === "from" ? edge.fromKey : edge.toKey,
+      };
+    }
+  }
+
+  if (bestEdgePoint && bestEdgeDist < (bestDist * 0.7)) {
+    const nearerNode = graph.nodes.get(bestEdgePoint.nodeKey);
+    if (nearerNode && nearerNode.featureId > 0) {
+      bestEdgePoint.name = nearerNode.name || bestEdgePoint.name;
+      bestEdgePoint.type = nearerNode.type;
+      bestEdgePoint.featureId = nearerNode.featureId;
+      bestEdgePoint.layerId = nearerNode.layerId;
+      bestEdgePoint.coordinates = nearerNode.coordinates;
+    }
+    return { connectionPoint: bestEdgePoint, graph };
+  }
+
+  return { connectionPoint: bestNode, graph };
+}
+
+function projectPointOnSegment(
+  point: [number, number],
+  segStart: [number, number],
+  segEnd: [number, number],
+  useHaversine: boolean
+): { point: [number, number]; distance: number; nearerKey: "from" | "to" } {
+  const dx = segEnd[0] - segStart[0];
+  const dy = segEnd[1] - segStart[1];
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) {
+    return {
+      point: segStart,
+      distance: distanceBetweenPoints(point, segStart, useHaversine),
+      nearerKey: "from",
+    };
+  }
+
+  let t = ((point[0] - segStart[0]) * dx + (point[1] - segStart[1]) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const projected: [number, number] = [
+    segStart[0] + t * dx,
+    segStart[1] + t * dy,
+  ];
+
+  return {
+    point: projected,
+    distance: distanceBetweenPoints(point, projected, useHaversine),
+    nearerKey: t < 0.5 ? "from" : "to",
+  };
+}
+
+export function buildAutoTraceRoute(
+  consumerCoords: [number, number],
+  connectionPoint: ConnectionPointResult,
+  graph: SpatialGraph,
+  useHaversine = true
+): AutoTraceRoute {
+  const routeCoords: [number, number][] = [consumerCoords, connectionPoint.coordinates];
+
+  const segments: AutoTraceRoute["segments"] = [];
+  const totalLength = distanceBetweenPoints(consumerCoords, connectionPoint.coordinates, useHaversine);
+
+  if (totalLength > 50) {
+    const midPoints = generateIntermediatePoints(consumerCoords, connectionPoint.coordinates, totalLength);
+    routeCoords.splice(1, 0, ...midPoints);
+  }
+
+  for (let i = 0; i < routeCoords.length - 1; i++) {
+    const segLen = distanceBetweenPoints(routeCoords[i], routeCoords[i + 1], useHaversine);
+    segments.push({
+      from: routeCoords[i],
+      to: routeCoords[i + 1],
+      length: segLen,
+      name: i === 0 ? "Отвод от потребителя" : `Участок ${i + 1}`,
+    });
+  }
+
+  const turningAngles: AutoTraceRoute["turningAngles"] = [];
+  for (let i = 1; i < routeCoords.length - 1; i++) {
+    const angle = calculateTurningAngle(
+      routeCoords[i - 1],
+      routeCoords[i],
+      routeCoords[i + 1]
+    );
+    if (Math.abs(angle) > 5) {
+      turningAngles.push({
+        angle: Math.round(angle * 10) / 10,
+        coordinates: routeCoords[i],
+      });
+    }
+  }
+
+  return {
+    coordinates: routeCoords,
+    totalLength,
+    turningAngles,
+    segments,
+  };
+}
+
+function generateIntermediatePoints(
+  from: [number, number],
+  to: [number, number],
+  totalLength: number
+): [number, number][] {
+  const points: [number, number][] = [];
+  if (totalLength <= 100) return points;
+
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const perpX = -dy * 0.15;
+  const perpY = dx * 0.15;
+
+  if (totalLength > 300) {
+    points.push([
+      from[0] + 0.33 * dx + perpX * 0.0001,
+      from[1] + 0.33 * dy + perpY * 0.0001,
+    ]);
+    points.push([
+      from[0] + 0.66 * dx,
+      from[1] + 0.66 * dy,
+    ]);
+  } else {
+    points.push([
+      from[0] + 0.5 * dx,
+      from[1] + 0.5 * dy,
+    ]);
+  }
+  return points;
+}
+
+function calculateTurningAngle(
+  p1: [number, number],
+  p2: [number, number],
+  p3: [number, number]
+): number {
+  const dx1 = p2[0] - p1[0];
+  const dy1 = p2[1] - p1[1];
+  const dx2 = p3[0] - p2[0];
+  const dy2 = p3[1] - p2[1];
+
+  const angle1 = Math.atan2(dy1, dx1);
+  const angle2 = Math.atan2(dy2, dx2);
+
+  let diff = (angle2 - angle1) * 180 / Math.PI;
+  while (diff > 180) diff -= 360;
+  while (diff < -180) diff += 360;
+  return diff;
+}
+
+export function placeHeatChambers(
+  route: AutoTraceRoute,
+  useHaversine = true
+): HeatChamberPlacement[] {
+  const chambers: HeatChamberPlacement[] = [];
+  const CHAMBER_INTERVAL = 120;
+  let chamberIndex = 1;
+
+  let accumulatedLength = 0;
+
+  for (let i = 0; i < route.coordinates.length - 1; i++) {
+    const segLen = distanceBetweenPoints(
+      route.coordinates[i],
+      route.coordinates[i + 1],
+      useHaversine
+    );
+
+    accumulatedLength += segLen;
+
+    while (accumulatedLength >= CHAMBER_INTERVAL) {
+      const overshoot = accumulatedLength - CHAMBER_INTERVAL;
+      const ratio = overshoot / segLen;
+      const chamberCoords: [number, number] = [
+        route.coordinates[i + 1][0] - ratio * (route.coordinates[i + 1][0] - route.coordinates[i][0]),
+        route.coordinates[i + 1][1] - ratio * (route.coordinates[i + 1][1] - route.coordinates[i][1]),
+      ];
+      chambers.push({
+        coordinates: chamberCoords,
+        name: `ТК-Н${chamberIndex}`,
+        reason: `Через ${CHAMBER_INTERVAL} м`,
+      });
+      chamberIndex++;
+      accumulatedLength = overshoot;
+    }
+  }
+
+  for (const turn of route.turningAngles) {
+    if (Math.abs(turn.angle) >= 30) {
+      const alreadyPlaced = chambers.some(
+        (c) =>
+          distanceBetweenPoints(c.coordinates, turn.coordinates, useHaversine) < 15
+      );
+      if (!alreadyPlaced) {
+        chambers.push({
+          coordinates: turn.coordinates,
+          name: `ТК-Н${chamberIndex}`,
+          reason: `Поворот ${Math.abs(Math.round(turn.angle))}°`,
+        });
+        chamberIndex++;
+      }
+    }
+  }
+
+  chambers.push({
+    coordinates: route.coordinates[route.coordinates.length - 1],
+    name: `ТК-Н${chamberIndex}`,
+    reason: "Точка подключения",
+  });
+
+  return chambers;
+}
