@@ -98,6 +98,21 @@ Backend endpoints:
 
 The sidebar view state (`sidebarView`) supports three modes: `"layers"` (default), `"featureInfo"` (object attributes), and `"ai-chat"` (AI assistant). Both desktop Sidebar and mobile Sheet support the toggle.
 
+### Automatic Consumer Connection (Автоматическое подключение потребителя)
+
+This feature enables automatic connection of new heat consumers to the existing network. Triggered via the Building2 icon button in the drawing toolbar (`client/src/components/drawing-toolbar.tsx`), it opens a dialog (`client/src/components/consumer-connect-dialog.tsx`) where the user inputs:
+- Consumer name, address, building type, floors
+- Thermal loads: Qo (heating), Qgv (hot water), Qsv (ventilation)
+- Consumer coordinates (manual lon/lat input or from external source)
+
+The system then performs automatic tracing via `POST /api/auto-trace`:
+1. **Find nearest connection point** (`findNearestConnectionPoint` in `server/network-graph.ts`) — searches the spatial graph for nodes, CTPs, and valves with type-based priority weighting
+2. **Build route** (`buildAutoTraceRoute`) — generates a deterministic route from consumer to connection point with intermediate waypoints
+3. **Place heat chambers** (`placeHeatChambers`) — places chambers every 120m (with residual distance carryover) and at turning angles >30°
+4. **AI parameter calculation** — uses OpenAI (gpt-4o-mini) to calculate pipe diameters, flow rates, velocities, pressure losses, compensators, and valves; falls back to heuristic calculation (`calculateHeuristicParams`) if AI is unavailable
+
+Results are displayed in collapsible sections showing route details, AI-calculated parameters with visual cards and badges, and heat chamber placements. User can confirm to create the consumer feature in the database.
+
 ### Attribute Join
 
 The attribute join feature allows enriching layer data from XLSX files without geocoding, using key-based matching (similar to QGIS/ArcGIS table join). Users select a key field from the layer and a key column from the XLSX file; matching rows have their selected columns added as new attributes. The workflow includes: file upload, key field + column selection, preview with match statistics (matched/unmatched counts), and execution. Backend endpoints: `/api/parse-excel-for-join`, `/api/editable-layers/:id/join-preview`, `/api/editable-layers/:id/join-excel`.
