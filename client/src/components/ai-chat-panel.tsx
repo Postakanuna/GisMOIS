@@ -1,13 +1,25 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, ArrowLeft } from "lucide-react";
+import { Send, Bot, User, ArrowLeft, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+}
+
+interface AiProvider {
+  id: string;
+  name: string;
+  available: boolean;
 }
 
 interface AiChatPanelProps {
@@ -25,8 +37,20 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [providers, setProviders] = useState<AiProvider[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState("openai");
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    fetch("/api/ai/providers")
+      .then(r => r.json())
+      .then(data => {
+        if (data.providers) setProviders(data.providers);
+        if (data.default) setSelectedProvider(data.default);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -55,7 +79,7 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({ messages: apiMessages, provider: selectedProvider }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -89,6 +113,8 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
     }
   };
 
+  const currentProvider = providers.find(p => p.id === selectedProvider);
+
   return (
     <div className="flex flex-col h-full min-h-0 flex-1">
       <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
@@ -97,6 +123,31 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
         </Button>
         <Bot className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold">ИИ-ассистент</span>
+        <div className="ml-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
+                {currentProvider?.name || "Модель"}
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {providers.map(p => (
+                <DropdownMenuItem
+                  key={p.id}
+                  onClick={() => setSelectedProvider(p.id)}
+                  disabled={!p.available}
+                  data-testid={`provider-option-${p.id}`}
+                >
+                  <span className={selectedProvider === p.id ? "font-semibold" : ""}>
+                    {p.name}
+                  </span>
+                  {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">

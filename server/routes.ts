@@ -5915,17 +5915,29 @@ export async function registerRoutes(
     }
   });
 
-  // ===== AI Chat (Yandex Studio AI) =====
+  app.get("/api/ai/providers", (_req: Request, res: Response) => {
+    const providers = [];
+    const hasYandex = !!(process.env.YANDEX_STUDIO_API_KEY && process.env.YANDEX_FOLDER_ID);
+    const hasOpenAI = !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
+
+    if (hasOpenAI) {
+      providers.push({ id: "openai", name: "OpenAI (GPT)", available: true });
+    }
+    if (hasYandex) {
+      providers.push({ id: "yandex", name: "Yandex GPT", available: true });
+    }
+    if (providers.length === 0) {
+      providers.push({ id: "openai", name: "OpenAI (GPT)", available: false });
+      providers.push({ id: "yandex", name: "Yandex GPT", available: false });
+    }
+
+    return res.json({ providers, default: providers.find(p => p.available)?.id || "openai" });
+  });
+
+  // ===== AI Chat (Multi-provider: OpenAI + Yandex) =====
   app.post("/api/ai/chat", async (req: Request, res: Response) => {
     try {
-      const apiKey = process.env.YANDEX_STUDIO_API_KEY;
-      const folderId = process.env.YANDEX_FOLDER_ID;
-
-      if (!apiKey || !folderId) {
-        return res.status(500).json({ error: "Yandex Studio AI не настроен: отсутствует API-ключ или Folder ID" });
-      }
-
-      const { messages } = req.body;
+      const { messages, provider } = req.body;
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         return res.status(400).json({ error: "messages is required and must be a non-empty array" });
       }
@@ -5940,46 +5952,81 @@ export async function registerRoutes(
         content: m.content,
       }))];
 
-      const requestBody = {
-        model: `gpt://${folderId}/yandexgpt-lite/latest`,
-        messages: apiMessages.map(m => ({
-          role: m.role,
-          content: m.content,
-        })),
-        temperature: 0.4,
-        max_tokens: 1500,
-      };
+      const selectedProvider = provider || "openai";
 
-      console.log("Yandex AI request:", JSON.stringify({ model: requestBody.model, messageCount: requestBody.messages.length }));
+      if (selectedProvider === "openai") {
+        const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+        const openaiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
 
-      const response = await fetch("https://llm.api.cloud.yandex.net/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-          "x-folder-id": folderId,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Yandex Studio AI error:", response.status, errorText);
-        
-        if (response.status === 401) {
-          return res.status(502).json({ 
-            error: "Ошибка авторизации Yandex AI. API-ключ и Folder ID не совпадают. Убедитесь, что API-ключ создан в том же каталоге (folder), который указан в YANDEX_FOLDER_ID.",
-            details: errorText.substring(0, 300)
-          });
+        if (!openaiKey || !openaiBaseUrl) {
+          return res.status(500).json({ error: "OpenAI не настроен" });
         }
-        return res.status(502).json({ error: `Ошибка Yandex AI: ${response.status} - ${errorText.substring(0, 200)}` });
+
+        const OpenAI = (await import("openai")).default;
+        const openai = new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl });
+
+        console.log("OpenAI request:", JSON.stringify({ provider: "openai", messageCount: apiMessages.length }));
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: apiMessages as any,
+          temperature: 0.4,
+          max_tokens: 1500,
+        });
+
+        const aiText = completion.choices?.[0]?.message?.content || "Нет ответа от модели";
+        console.log("OpenAI response received successfully");
+        return res.json({ content: aiText, provider: "openai" });
+
+      } else if (selectedProvider === "yandex") {
+        const apiKey = process.env.YANDEX_STUDIO_API_KEY;
+        const folderId = process.env.YANDEX_FOLDER_ID;
+
+        if (!apiKey || !folderId) {
+          return res.status(500).json({ error: "Yandex Studio AI не настроен: отсутствует API-ключ или Folder ID" });
+        }
+
+        const requestBody = {
+          model: `gpt://${folderId}/yandexgpt-lite/latest`,
+          messages: apiMessages.map(m => ({ role: m.role, content: m.content })),
+          temperature: 0.4,
+          max_tokens: 1500,
+        };
+
+        console.log("Yandex AI request:", JSON.stringify({ model: requestBody.model, messageCount: requestBody.messages.length }));
+
+        const response = await fetch("https://llm.api.cloud.yandex.net/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+            "x-folder-id": folderId,
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Yandex Studio AI error:", response.status, errorText);
+
+          if (response.status === 401) {
+            return res.status(502).json({
+              error: "Ошибка авторизации Yandex AI. API-ключ и Folder ID не совпадают.",
+              details: errorText.substring(0, 300),
+            });
+          }
+          return res.status(502).json({ error: `Ошибка Yandex AI: ${response.status} - ${errorText.substring(0, 200)}` });
+        }
+
+        const data = await response.json() as any;
+        console.log("Yandex AI response received successfully");
+        const aiText = data?.choices?.[0]?.message?.content || "Нет ответа от модели";
+
+        return res.json({ content: aiText, provider: "yandex" });
+
+      } else {
+        return res.status(400).json({ error: `Неизвестный провайдер: ${selectedProvider}` });
       }
-
-      const data = await response.json() as any;
-      console.log("Yandex AI response received successfully");
-      const aiText = data?.choices?.[0]?.message?.content || "Нет ответа от модели";
-
-      return res.json({ content: aiText });
     } catch (error: any) {
       console.error("AI chat error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
