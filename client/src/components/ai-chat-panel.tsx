@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, ArrowLeft, ChevronDown } from "lucide-react";
+import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-interface ChatMessage {
+export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -22,19 +22,20 @@ interface AiProvider {
   available: boolean;
 }
 
+const WELCOME_MESSAGE: ChatMessage = {
+  id: "welcome",
+  role: "assistant",
+  content: "Здравствуйте! Я ИИ-ассистент ГИС теплосетей. Задайте вопрос о сетях, объектах или аналитике.",
+  timestamp: new Date(),
+};
+
 interface AiChatPanelProps {
   onBack: () => void;
+  messages: ChatMessage[];
+  onMessagesChange: (messages: ChatMessage[]) => void;
 }
 
-export function AiChatPanel({ onBack }: AiChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "Здравствуйте! Я ИИ-ассистент ГИС теплосетей. Задайте вопрос о сетях, объектах или аналитике.",
-      timestamp: new Date(),
-    },
-  ]);
+export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [providers, setProviders] = useState<AiProvider[]>([]);
@@ -68,12 +69,13 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
       content: text,
       timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    onMessagesChange(updatedMessages);
     setInput("");
     setIsLoading(true);
 
     try {
-      const allMessages = [...messages.filter(m => m.id !== "welcome"), userMsg];
+      const allMessages = updatedMessages.filter(m => m.id !== "welcome");
       const apiMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
 
       const response = await fetch("/api/ai/chat", {
@@ -92,7 +94,7 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
         content: data.content || "Нет ответа от модели",
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, aiMsg]);
+      onMessagesChange([...updatedMessages, aiMsg]);
     } catch (error: any) {
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
@@ -100,10 +102,14 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
         content: `Ошибка: ${error.message || "Не удалось получить ответ от ИИ"}`,
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMsg]);
+      onMessagesChange([...updatedMessages, errorMsg]);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleClearChat = () => {
+    onMessagesChange([WELCOME_MESSAGE]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -114,6 +120,7 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
   };
 
   const currentProvider = providers.find(p => p.id === selectedProvider);
+  const hasHistory = messages.some(m => m.id !== "welcome");
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1">
@@ -123,7 +130,19 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
         </Button>
         <Bot className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold">ИИ-ассистент</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          {hasHistory && (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={handleClearChat}
+              className="h-7 w-7"
+              title="Очистить чат"
+              data-testid="button-clear-chat"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
@@ -163,7 +182,7 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
               </div>
             )}
             <div
-              className={`rounded-md px-3 py-2 text-sm max-w-[85%] ${
+              className={`rounded-md px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap ${
                 msg.role === "user"
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted"
@@ -220,3 +239,5 @@ export function AiChatPanel({ onBack }: AiChatPanelProps) {
     </div>
   );
 }
+
+export { WELCOME_MESSAGE };

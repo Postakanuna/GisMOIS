@@ -33,7 +33,7 @@ import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/compone
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
-import { AiChatPanel } from "@/components/ai-chat-panel";
+import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage } from "@/components/ai-chat-panel";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -201,6 +201,7 @@ export default function Home() {
   const { currentScene, currentSceneId } = useScene();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo" | "ai-chat">("layers");
+  const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
@@ -417,7 +418,7 @@ export default function Home() {
             <SidebarGroup className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
               <SidebarGroupContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
                 {sidebarView === "ai-chat" ? (
-                  <AiChatPanel onBack={handleBackToLayers} />
+                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} />
                 ) : sidebarView === "layers" ? (
                   <SidebarContentPanel
                     layers={zuluConnection.layers}
@@ -482,7 +483,7 @@ export default function Home() {
                     </div>
                   </div>
                   {sidebarView === "ai-chat" ? (
-                    <AiChatPanel onBack={handleBackToLayers} />
+                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} />
                   ) : (
                     <SidebarContentPanel
                       layers={zuluConnection.layers}
