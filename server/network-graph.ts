@@ -1578,84 +1578,83 @@ function projectPointOnSegment(
   };
 }
 
-export function buildAutoTraceRoute(
-  consumerCoords: [number, number],
-  connectionPoint: ConnectionPointResult,
-  graph: SpatialGraph,
+export function analyzeRouteGeometry(
+  routeCoords: [number, number][],
+  totalDistance: number,
   useHaversine = true
 ): AutoTraceRoute {
-  const routeCoords: [number, number][] = [consumerCoords, connectionPoint.coordinates];
-
-  const segments: AutoTraceRoute["segments"] = [];
-  const totalLength = distanceBetweenPoints(consumerCoords, connectionPoint.coordinates, useHaversine);
-
-  if (totalLength > 50) {
-    const midPoints = generateIntermediatePoints(consumerCoords, connectionPoint.coordinates, totalLength);
-    routeCoords.splice(1, 0, ...midPoints);
+  if (routeCoords.length < 2) {
+    return { coordinates: routeCoords, totalLength: 0, turningAngles: [], segments: [] };
   }
 
-  for (let i = 0; i < routeCoords.length - 1; i++) {
-    const segLen = distanceBetweenPoints(routeCoords[i], routeCoords[i + 1], useHaversine);
+  const simplifiedCoords = simplifyRoute(routeCoords, 5);
+
+  const segments: AutoTraceRoute["segments"] = [];
+  let computedLength = 0;
+
+  for (let i = 0; i < simplifiedCoords.length - 1; i++) {
+    const segLen = distanceBetweenPoints(simplifiedCoords[i], simplifiedCoords[i + 1], useHaversine);
+    computedLength += segLen;
     segments.push({
-      from: routeCoords[i],
-      to: routeCoords[i + 1],
+      from: simplifiedCoords[i],
+      to: simplifiedCoords[i + 1],
       length: segLen,
       name: i === 0 ? "Отвод от потребителя" : `Участок ${i + 1}`,
     });
   }
 
+  const finalLength = totalDistance > 0 ? totalDistance : computedLength;
+
   const turningAngles: AutoTraceRoute["turningAngles"] = [];
-  for (let i = 1; i < routeCoords.length - 1; i++) {
+  for (let i = 1; i < simplifiedCoords.length - 1; i++) {
     const angle = calculateTurningAngle(
-      routeCoords[i - 1],
-      routeCoords[i],
-      routeCoords[i + 1]
+      simplifiedCoords[i - 1],
+      simplifiedCoords[i],
+      simplifiedCoords[i + 1]
     );
-    if (Math.abs(angle) > 5) {
+    if (Math.abs(angle) > 15) {
       turningAngles.push({
         angle: Math.round(angle * 10) / 10,
-        coordinates: routeCoords[i],
+        coordinates: simplifiedCoords[i],
       });
     }
   }
 
   return {
-    coordinates: routeCoords,
-    totalLength,
+    coordinates: simplifiedCoords,
+    totalLength: finalLength,
     turningAngles,
     segments,
   };
 }
 
-function generateIntermediatePoints(
-  from: [number, number],
-  to: [number, number],
-  totalLength: number
+function simplifyRoute(
+  coords: [number, number][],
+  toleranceMeters: number
 ): [number, number][] {
-  const points: [number, number][] = [];
-  if (totalLength <= 100) return points;
+  if (coords.length <= 3) return coords;
 
-  const dx = to[0] - from[0];
-  const dy = to[1] - from[1];
-  const perpX = -dy * 0.15;
-  const perpY = dx * 0.15;
+  const result: [number, number][] = [coords[0]];
+  let lastKept = coords[0];
 
-  if (totalLength > 300) {
-    points.push([
-      from[0] + 0.33 * dx + perpX * 0.0001,
-      from[1] + 0.33 * dy + perpY * 0.0001,
-    ]);
-    points.push([
-      from[0] + 0.66 * dx,
-      from[1] + 0.66 * dy,
-    ]);
-  } else {
-    points.push([
-      from[0] + 0.5 * dx,
-      from[1] + 0.5 * dy,
-    ]);
+  for (let i = 1; i < coords.length - 1; i++) {
+    const dist = distanceBetweenPoints(lastKept, coords[i], true);
+    if (dist >= toleranceMeters) {
+      const prevIdx = result.length - 1;
+      const angle = calculateTurningAngle(
+        result[prevIdx],
+        coords[i],
+        coords[Math.min(i + 1, coords.length - 1)]
+      );
+      if (Math.abs(angle) > 8 || dist > 50) {
+        result.push(coords[i]);
+        lastKept = coords[i];
+      }
+    }
   }
-  return points;
+
+  result.push(coords[coords.length - 1]);
+  return result;
 }
 
 function calculateTurningAngle(

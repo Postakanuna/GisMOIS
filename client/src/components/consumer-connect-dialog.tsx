@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Pipette,
+  Save,
 } from "lucide-react";
 import {
   Collapsible,
@@ -132,6 +134,9 @@ export function ConsumerConnectDialog({
   const [traceResult, setTraceResult] = useState<AutoTraceResult | null>(null);
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
+  const [layerName, setLayerName] = useState("");
+  const [showSaveLayer, setShowSaveLayer] = useState(false);
+  const { toast } = useToast();
 
   const traceMutation = useMutation({
     mutationFn: async (data: {
@@ -148,11 +153,50 @@ export function ConsumerConnectDialog({
     },
   });
 
+  const saveMutation = useMutation({
+    mutationFn: async (data: {
+      sceneId: number;
+      layerName: string;
+      route: AutoTraceResult["route"];
+      heatChambers: AutoTraceResult["heatChambers"];
+      consumerCoords: [number, number];
+      connectionPoint: AutoTraceResult["connectionPoint"];
+      aiParams: AutoTraceResult["aiParams"];
+      consumer: ConsumerFormData;
+    }) => {
+      const response = await apiRequest("POST", "/api/auto-trace/save-layer", data);
+      return response.json();
+    },
+    onSuccess: (result) => {
+      toast({ title: "Слои созданы", description: result.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/editable-layers`] });
+      setShowSaveLayer(false);
+    },
+    onError: () => {
+      toast({ title: "Ошибка", description: "Не удалось сохранить слой", variant: "destructive" });
+    },
+  });
+
   const handleTrace = () => {
     if (!consumerCoords) return;
     traceMutation.mutate({
       consumerCoords,
       sceneId,
+      consumer: formData,
+    });
+  };
+
+  const handleSaveLayer = () => {
+    if (!traceResult || !consumerCoords || !layerName.trim()) return;
+    saveMutation.mutate({
+      sceneId,
+      layerName: layerName.trim(),
+      route: traceResult.route,
+      heatChambers: traceResult.heatChambers,
+      consumerCoords,
+      connectionPoint: traceResult.connectionPoint,
+      aiParams: traceResult.aiParams,
       consumer: formData,
     });
   };
@@ -168,6 +212,8 @@ export function ConsumerConnectDialog({
   const handleClose = () => {
     onOpenChange(false);
     setTraceResult(null);
+    setShowSaveLayer(false);
+    setLayerName("");
     traceMutation.reset();
   };
 
@@ -461,6 +507,62 @@ export function ConsumerConnectDialog({
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
+                )}
+
+                <Separator />
+
+                {!showSaveLayer ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      setLayerName(formData.name || "Новая трасса");
+                      setShowSaveLayer(true);
+                    }}
+                    data-testid="button-show-save-layer"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Сохранить в новый слой
+                  </Button>
+                ) : (
+                  <div className="space-y-2 p-3 border rounded-md bg-muted/50">
+                    <Label htmlFor="layer-name" className="text-sm font-medium">
+                      Название слоя
+                    </Label>
+                    <Input
+                      id="layer-name"
+                      value={layerName}
+                      onChange={(e) => setLayerName(e.target.value)}
+                      placeholder="Подключение ..."
+                      data-testid="input-layer-name"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleSaveLayer}
+                        disabled={!layerName.trim() || saveMutation.isPending}
+                        data-testid="button-save-layer"
+                      >
+                        {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                        {saveMutation.isPending ? "Сохранение..." : "Сохранить"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowSaveLayer(false)}
+                        data-testid="button-cancel-save-layer"
+                      >
+                        Отмена
+                      </Button>
+                    </div>
+                    {saveMutation.isSuccess && (
+                      <p className="text-xs text-green-600 flex items-center gap-1">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Слои успешно созданы
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             </>

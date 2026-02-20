@@ -100,18 +100,20 @@ The sidebar view state (`sidebarView`) supports three modes: `"layers"` (default
 
 ### Automatic Consumer Connection (Автоматическое подключение потребителя)
 
-This feature enables automatic connection of new heat consumers to the existing network. Triggered via the Building2 icon button in the drawing toolbar (`client/src/components/drawing-toolbar.tsx`), it opens a dialog (`client/src/components/consumer-connect-dialog.tsx`) where the user inputs:
+This feature enables automatic connection of new heat consumers to the existing network. Workflow: user places a point on the map, selects it, and clicks the Building2 icon button in the drawing toolbar. The dialog (`client/src/components/consumer-connect-dialog.tsx`) opens with coordinates from the selected point. User inputs:
 - Consumer name, address, building type, floors
 - Thermal loads: Qo (heating), Qgv (hot water), Qsv (ventilation)
-- Consumer coordinates (manual lon/lat input or from external source)
 
 The system then performs automatic tracing via `POST /api/auto-trace`:
 1. **Find nearest connection point** (`findNearestConnectionPoint` in `server/network-graph.ts`) — searches the spatial graph for nodes, CTPs, and valves with type-based priority weighting
-2. **Build route** (`buildAutoTraceRoute`) — generates a deterministic route from consumer to connection point with intermediate waypoints
-3. **Place heat chambers** (`placeHeatChambers`) — places chambers every 120m (with residual distance carryover) and at turning angles >30°
-4. **AI parameter calculation** — uses OpenAI (gpt-4o-mini) to calculate pipe diameters, flow rates, velocities, pressure losses, compensators, and valves; falls back to heuristic calculation (`calculateHeuristicParams`) if AI is unavailable
+2. **Route along roads (OSRM)** — builds a real route along roads using OSRM routing service (`router.project-osrm.org`), with straight-line fallback if OSRM is unavailable
+3. **Analyze route geometry** (`analyzeRouteGeometry`) — simplifies the OSRM polyline, detects real turning angles (>15°), computes segment lengths
+4. **Place heat chambers** (`placeHeatChambers`) — places chambers every 120m along the real road route (with residual distance carryover) and at turning angles >30°
+5. **AI parameter calculation** — uses OpenAI (gpt-4o-mini) with detailed route data (real segment lengths, turning angles, heat chamber count) to calculate pipe diameters, flow rates, velocities, pressure losses, compensators, and valves; falls back to heuristic calculation if AI is unavailable
 
-Results are displayed in collapsible sections showing route details, AI-calculated parameters with visual cards and badges, and heat chamber placements. User can confirm to create the consumer feature in the database.
+Results are displayed in collapsible sections showing route details, AI-calculated parameters with visual cards and badges, and heat chamber placements. User can:
+- **Confirm and create** — updates the selected point feature's properties with consumer data
+- **Save to new layer** (`POST /api/auto-trace/save-layer`) — creates two new layers: a LineString layer with the route (including AI-calculated pipe parameters as attributes) and a Point layer with heat chambers and consumer point
 
 ### Attribute Join
 

@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, drawnFeatures, type AttributeField } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, drawnFeatures, editableLayers, type AttributeField } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -943,9 +943,9 @@ export async function registerRoutes(
 
       console.log(`[AutoTrace] Starting auto-trace for consumer "${consumer.name}" at [${consumerCoords}] in scene ${sceneId}`);
 
-      const { findNearestConnectionPoint, buildAutoTraceRoute, placeHeatChambers } = await import("./network-graph");
+      const { findNearestConnectionPoint, analyzeRouteGeometry, placeHeatChambers } = await import("./network-graph");
 
-      const { connectionPoint, graph } = await findNearestConnectionPoint(consumerCoords, sceneId);
+      const { connectionPoint } = await findNearestConnectionPoint(consumerCoords, sceneId);
 
       if (!connectionPoint) {
         return res.json({
@@ -956,16 +956,48 @@ export async function registerRoutes(
 
       console.log(`[AutoTrace] Found connection point: "${connectionPoint.name}" (${connectionPoint.type}) at distance ${Math.round(connectionPoint.distance)}m`);
 
-      const route = buildAutoTraceRoute(consumerCoords, connectionPoint, graph);
+      let routeCoords: [number, number][] = [consumerCoords, connectionPoint.coordinates];
+      let routeDistance = connectionPoint.distance;
+      let usedOsrm = false;
+
+      try {
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${consumerCoords[0]},${consumerCoords[1]};${connectionPoint.coordinates[0]},${connectionPoint.coordinates[1]}?overview=full&geometries=geojson`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const osrmResponse = await fetch(osrmUrl, {
+          signal: controller.signal,
+          headers: { "User-Agent": "GIS-Application/1.0" },
+        });
+        clearTimeout(timeoutId);
+
+        if (osrmResponse.ok) {
+          const osrmData = await osrmResponse.json();
+          if (osrmData.code === "Ok" && osrmData.routes && osrmData.routes.length > 0) {
+            const osrmRoute = osrmData.routes[0];
+            routeCoords = osrmRoute.geometry.coordinates as [number, number][];
+            routeDistance = osrmRoute.distance;
+            usedOsrm = true;
+            console.log(`[AutoTrace] OSRM route: ${Math.round(routeDistance)}m, ${routeCoords.length} points`);
+          }
+        }
+      } catch (osrmErr: any) {
+        console.warn(`[AutoTrace] OSRM unavailable (${osrmErr.name === "AbortError" ? "timeout" : osrmErr.message}), using straight line`);
+      }
+
+      const route = analyzeRouteGeometry(routeCoords, routeDistance);
 
       const heatChambers = placeHeatChambers(route);
 
-      console.log(`[AutoTrace] Route: ${Math.round(route.totalLength)}m, ${route.segments.length} segments, ${route.turningAngles.length} turns, ${heatChambers.length} heat chambers`);
+      console.log(`[AutoTrace] Route: ${Math.round(route.totalLength)}m, ${route.segments.length} segments, ${route.turningAngles.length} turns, ${heatChambers.length} heat chambers, OSRM=${usedOsrm}`);
 
       let aiParams = null;
       const totalLoad = (consumer.qo || 0) + (consumer.qgv || 0) + (consumer.qsv || 0);
 
       if (totalLoad > 0) {
+        const turnsDetail = route.turningAngles.map(t => `${Math.abs(Math.round(t.angle))}°`).join(", ") || "нет";
+        const segmentsDetail = route.segments.map((s, i) => `${i + 1}: ${Math.round(s.length)}м`).join("; ");
+
         try {
           const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
           const openaiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
@@ -975,17 +1007,23 @@ export async function registerRoutes(
             const openai = new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl });
 
             const prompt = `Ты инженер-теплотехник. Рассчитай параметры трубопровода для подключения нового потребителя к тепловой сети.
+Трасса проложена вдоль дорог (маршрутизация OSRM: ${usedOsrm ? "да" : "нет, прямая линия"}).
 
 Исходные данные:
 - Тепловая нагрузка на отопление (Qо): ${consumer.qo || 0} Гкал/ч
 - Тепловая нагрузка на ГВС (Qгв): ${consumer.qgv || 0} Гкал/ч
 - Тепловая нагрузка на вентиляцию (Qсв): ${consumer.qsv || 0} Гкал/ч
 - Суммарная нагрузка: ${totalLoad.toFixed(3)} Гкал/ч
-- Протяжённость трассы: ${Math.round(route.totalLength)} м
+- Протяжённость трассы (по дорогам): ${Math.round(route.totalLength)} м
+- Количество участков: ${route.segments.length}
+- Детали участков: ${segmentsDetail}
 - Количество поворотов: ${route.turningAngles.length}
+- Углы поворотов: ${turnsDetail}
+- Количество тепловых камер: ${heatChambers.length}
 - Тип здания: ${consumer.buildingType || "жилой дом"}
 - Этажность: ${consumer.floors || 5}
 - Температурный график: 95/70°С
+- Точка подключения: ${connectionPoint.name} (${connectionPoint.type})
 
 Ответь СТРОГО в формате JSON (без markdown, без комментариев):
 {
@@ -1051,9 +1089,148 @@ export async function registerRoutes(
         },
         heatChambers,
         aiParams,
+        usedOsrm,
       });
     } catch (error: any) {
       console.error("Auto-trace error:", error);
+      return res.status(500).json({ message: error.message || "Internal server error" });
+    }
+  });
+
+  const saveTraceSchema = z.object({
+    sceneId: z.number(),
+    layerName: z.string().min(1),
+    route: z.object({
+      coordinates: z.array(z.tuple([z.number(), z.number()])),
+      totalLength: z.number(),
+    }),
+    heatChambers: z.array(z.object({
+      coordinates: z.tuple([z.number(), z.number()]),
+      name: z.string(),
+      reason: z.string(),
+    })),
+    consumerCoords: z.tuple([z.number(), z.number()]),
+    connectionPoint: z.object({
+      name: z.string(),
+      type: z.string(),
+      coordinates: z.tuple([z.number(), z.number()]),
+    }),
+    aiParams: z.any().optional(),
+    consumer: z.object({
+      name: z.string(),
+      address: z.string().optional(),
+      buildingType: z.string().optional(),
+      floors: z.number().optional(),
+      qo: z.number().optional(),
+      qgv: z.number().optional(),
+      qsv: z.number().optional(),
+    }).optional(),
+  });
+
+  app.post("/api/auto-trace/save-layer", async (req: Request, res: Response) => {
+    try {
+      const parseResult = saveTraceSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Invalid request data", errors: parseResult.error.errors });
+      }
+
+      const { sceneId, layerName, route, heatChambers, consumerCoords, connectionPoint, aiParams, consumer } = parseResult.data;
+
+      const maxOrder = await db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(${editableLayers.displayOrder}), 0)` })
+        .from(editableLayers)
+        .where(eq(editableLayers.sceneId, sceneId));
+      const nextOrder = (maxOrder[0]?.maxOrder || 0) + 1;
+
+      const lineLayer = await storage.createEditableLayer({
+        name: `${layerName} — Трасса`,
+        sceneId,
+        geometryType: "LineString",
+        color: "#e53e3e",
+        pointStyle: "circle",
+        lineStyle: "solid",
+        visible: true,
+        opacity: 1,
+        source: "user",
+        crs: "EPSG:4326",
+        displayOrder: nextOrder,
+      });
+
+      await storage.createDrawnFeature({
+        layerId: lineLayer.id,
+        geometryType: "LineString",
+        coordinates: route.coordinates,
+        properties: {
+          Name: layerName,
+          Length: Math.round(route.totalLength),
+          Begin_uch: consumer?.name || "Потребитель",
+          End_uch: connectionPoint.name,
+          Diam_pod: aiParams?.pipeDiameterSupply || "",
+          Diam_obr: aiParams?.pipeDiameterReturn || "",
+          Tip_prok: aiParams?.layingMethod || "",
+          Tip_trub: aiParams?.pipeType || "",
+          Rashod: aiParams?.flowRate || 0,
+          Skorost: aiParams?.velocity || 0,
+          Poteri: aiParams?.pressureLoss || 0,
+        },
+      });
+
+      if (heatChambers.length > 0) {
+        const pointLayer = await storage.createEditableLayer({
+          name: `${layerName} — ТК`,
+          sceneId,
+          geometryType: "Point",
+          color: "#3182ce",
+          pointStyle: "heat-chamber",
+          lineStyle: "solid",
+          visible: true,
+          opacity: 1,
+          source: "user",
+          crs: "EPSG:4326",
+          displayOrder: nextOrder + 1,
+        });
+
+        for (const chamber of heatChambers) {
+          await storage.createDrawnFeature({
+            layerId: pointLayer.id,
+            geometryType: "Point",
+            coordinates: chamber.coordinates,
+            properties: {
+              Name: chamber.name,
+              Reason: chamber.reason,
+            },
+          });
+        }
+
+        await storage.createDrawnFeature({
+          layerId: pointLayer.id,
+          geometryType: "Point",
+          coordinates: consumerCoords,
+          properties: {
+            Name: consumer?.name || "Потребитель",
+            Adres: consumer?.address || "",
+            Tip: "consumer",
+            Qo_r: consumer?.qo || 0,
+            Qgv_r: consumer?.qgv || 0,
+            Qsv_r: consumer?.qsv || 0,
+          },
+        });
+
+        return res.json({
+          success: true,
+          lineLayerId: lineLayer.id,
+          pointLayerId: pointLayer.id,
+          message: `Создано 2 слоя: "${lineLayer.name}" и "${pointLayer.name}"`,
+        });
+      }
+
+      return res.json({
+        success: true,
+        lineLayerId: lineLayer.id,
+        message: `Создан слой: "${lineLayer.name}"`,
+      });
+    } catch (error: any) {
+      console.error("Save trace layer error:", error);
       return res.status(500).json({ message: error.message || "Internal server error" });
     }
   });
