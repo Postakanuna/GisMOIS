@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, Plus, Trash2, Key, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Key, Loader2, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -29,10 +29,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/models/auth";
+import { ApiKeysManager } from "@/components/api-keys-manager";
 
 type AdminUser = SafeUser;
 
@@ -56,6 +58,24 @@ export default function AdminUsers() {
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
     enabled: isAdmin,
+  });
+
+  const { data: providerData, isLoading: providerLoading } = useQuery<{ provider: string }>({
+    queryKey: ["/api/settings/geocode-provider"],
+    enabled: isAdmin,
+  });
+
+  const updateProvider = useMutation({
+    mutationFn: async (provider: string) => {
+      await apiRequest("PUT", "/api/settings/geocode-provider", { provider });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/geocode-provider"] });
+      toast({ title: "Сохранено", description: "Провайдер геокодирования обновлён" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Ошибка", description: err.message || "Не удалось обновить настройку", variant: "destructive" });
+    },
   });
 
   const createUserMutation = useMutation({
@@ -118,90 +138,152 @@ export default function AdminUsers() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="container mx-auto p-6">
       <div className="flex items-center gap-4 mb-6">
-        <Link href="/app">
+        <Link href="/scenes">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-semibold">Управление пользователями</h1>
+        <h1 className="text-2xl font-semibold">Администрирование</h1>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
-          <CardTitle>Пользователи системы</CardTitle>
-          <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-user">
-            <Plus className="mr-2 h-4 w-4" />
-            Добавить
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Логин</TableHead>
-                  <TableHead>Имя</TableHead>
-                  <TableHead>Роль</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead className="text-right">Действия</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users?.map((u) => (
-                  <TableRow key={u.id} data-testid={`row-user-${u.id}`}>
-                    <TableCell className="font-medium" data-testid={`text-username-${u.id}`}>
-                      {u.username}
-                    </TableCell>
-                    <TableCell data-testid={`text-name-${u.id}`}>
-                      {u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={u.role === "admin" ? "default" : "secondary"} data-testid={`badge-role-${u.id}`}>
-                        {u.role === "admin" ? "Админ" : "Пользователь"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={u.isActive === "true" ? "outline" : "destructive"} data-testid={`badge-status-${u.id}`}>
-                        {u.isActive === "true" ? "Активен" : "Неактивен"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setSelectedUserId(u.id);
-                            setResetPasswordDialogOpen(true);
-                          }}
-                          data-testid={`button-reset-password-${u.id}`}
-                        >
-                          <Key className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteUserMutation.mutate(u.id)}
-                          disabled={u.id === user?.id || deleteUserMutation.isPending}
-                          data-testid={`button-delete-user-${u.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="users" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3" data-testid="admin-tabs">
+          <TabsTrigger value="users" data-testid="tab-users">Пользователи</TabsTrigger>
+          <TabsTrigger value="geocoding" data-testid="tab-geocoding">Геокодирование</TabsTrigger>
+          <TabsTrigger value="connections" data-testid="tab-connections">Внешние подключения</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <CardTitle>Пользователи системы</CardTitle>
+              <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-user">
+                <Plus className="mr-2 h-4 w-4" />
+                Добавить
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Логин</TableHead>
+                      <TableHead>Имя</TableHead>
+                      <TableHead>Роль</TableHead>
+                      <TableHead>Статус</TableHead>
+                      <TableHead className="text-right">Действия</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {users?.map((u) => (
+                      <TableRow key={u.id} data-testid={`row-user-${u.id}`}>
+                        <TableCell className="font-medium" data-testid={`text-username-${u.id}`}>
+                          {u.username}
+                        </TableCell>
+                        <TableCell data-testid={`text-name-${u.id}`}>
+                          {u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={u.role === "admin" ? "default" : "secondary"} data-testid={`badge-role-${u.id}`}>
+                            {u.role === "admin" ? "Админ" : "Пользователь"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={u.isActive === "true" ? "outline" : "destructive"} data-testid={`badge-status-${u.id}`}>
+                            {u.isActive === "true" ? "Активен" : "Неактивен"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedUserId(u.id);
+                                setResetPasswordDialogOpen(true);
+                              }}
+                              data-testid={`button-reset-password-${u.id}`}
+                            >
+                              <Key className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteUserMutation.mutate(u.id)}
+                              disabled={u.id === user?.id || deleteUserMutation.isPending}
+                              data-testid={`button-delete-user-${u.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="geocoding">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                Геокодирование
+              </CardTitle>
+              <CardDescription>
+                Выбор API-провайдера для обратного геокодирования (определение адреса по координатам)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="geocode-provider">Провайдер геокодирования</Label>
+                  {providerLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Загрузка...</span>
+                    </div>
+                  ) : (
+                    <Select
+                      value={providerData?.provider || "yandex"}
+                      onValueChange={(value) => updateProvider.mutate(value)}
+                      disabled={updateProvider.isPending}
+                    >
+                      <SelectTrigger id="geocode-provider" className="max-w-sm" data-testid="select-geocode-provider">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yandex">Яндекс Геокодер</SelectItem>
+                        <SelectItem value="dadata">DaData</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  {(providerData?.provider || "yandex") === "yandex" ? (
+                    <p>Яндекс Геокодер определяет адрес по координатам. Поддерживает до 40 запросов/сек.</p>
+                  ) : (
+                    <p>DaData определяет адрес и ФИАС ID по координатам. Поддерживает до 10 запросов/сек.</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="connections">
+          <ApiKeysManager />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
