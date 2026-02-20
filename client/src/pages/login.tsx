@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2, LogIn, ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
@@ -58,7 +60,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
+        <Link href="/">
+          <Button variant="ghost" size="sm" data-testid="button-back-to-landing">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            На главную
+          </Button>
+        </Link>
+        <ThemeToggle />
+      </header>
+      <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl" data-testid="text-login-title">
@@ -117,6 +129,7 @@ export default function LoginPage() {
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
