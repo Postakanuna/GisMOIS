@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck, Bot } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,6 +33,7 @@ import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/compone
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
+import { AiChatPanel } from "@/components/ai-chat-panel";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -196,7 +197,7 @@ export default function Home() {
   const zuluConnection = useZuluConnectionContext();
   const { currentScene, currentSceneId } = useScene();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo">("layers");
+  const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo" | "ai-chat">("layers");
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
@@ -407,12 +408,27 @@ export default function Home() {
                 <p className="text-xs text-muted-foreground">Инженерные сети</p>
               </div>
             </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant={sidebarView === "ai-chat" ? "default" : "ghost"}
+                  onClick={() => setSidebarView(sidebarView === "ai-chat" ? "layers" : "ai-chat")}
+                  data-testid="button-toggle-ai-chat"
+                >
+                  {sidebarView === "ai-chat" ? <Layers className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{sidebarView === "ai-chat" ? "Показать слои" : "ИИ-ассистент"}</TooltipContent>
+            </Tooltip>
           </SidebarHeader>
 
           <SidebarContent className="min-w-0 overflow-hidden">
             <SidebarGroup className="min-w-0 overflow-hidden">
               <SidebarGroupContent className="min-w-0 overflow-hidden">
-                {sidebarView === "layers" ? (
+                {sidebarView === "ai-chat" ? (
+                  <AiChatPanel onBack={handleBackToLayers} />
+                ) : sidebarView === "layers" ? (
                   <SidebarContentPanel
                     layers={zuluConnection.layers}
                     toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
@@ -463,37 +479,51 @@ export default function Home() {
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-80 p-0">
-                  <div className="flex items-center gap-2 border-b px-4 py-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                      <Map className="h-4 w-4 text-primary-foreground" />
+                  <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                        <Map className="h-4 w-4 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h1 className="text-sm font-semibold">ГИС МО</h1>
+                        <p className="text-xs text-muted-foreground">Инженерные сети</p>
+                      </div>
                     </div>
-                    <div>
-                      <h1 className="text-sm font-semibold">ГИС МО</h1>
-                      <p className="text-xs text-muted-foreground">Инженерные сети</p>
-                    </div>
+                    <Button
+                      size="icon"
+                      variant={sidebarView === "ai-chat" ? "default" : "ghost"}
+                      onClick={() => setSidebarView(sidebarView === "ai-chat" ? "layers" : "ai-chat")}
+                      data-testid="button-toggle-ai-chat-mobile"
+                    >
+                      {sidebarView === "ai-chat" ? <Layers className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                    </Button>
                   </div>
-                  <SidebarContentPanel
-                    layers={zuluConnection.layers}
-                    toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
-                    setLayerOpacity={zuluConnection.setLayerOpacity}
-                    layerFilters={zuluConnection.layerFilters}
-                    activeFilters={zuluConnection.activeFilters}
-                    toggleFilter={zuluConnection.toggleFilter}
-                    editableLayers={drawing.editableLayers}
-                    activeEditableLayer={drawing.activeLayer}
-                    onSelectEditableLayer={drawing.selectLayer}
-                    onCreateEditableLayer={handleCreateEditableLayer}
-                    onDeleteEditableLayer={drawing.deleteLayer}
-                    editMode={editMode}
-                    onToggleEditMode={toggleEditMode}
-                    activeSceneDataset={activeSceneDataset}
-                    onSelectSceneDataset={handleSelectSceneDataset}
-                    onOpenAttributeTable={(layerId, layerName) => {
-                      setImportedLayerTable({ layerId, layerName });
-                    }}
-                    onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
-                    onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
-                  />
+                  {sidebarView === "ai-chat" ? (
+                    <AiChatPanel onBack={handleBackToLayers} />
+                  ) : (
+                    <SidebarContentPanel
+                      layers={zuluConnection.layers}
+                      toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
+                      setLayerOpacity={zuluConnection.setLayerOpacity}
+                      layerFilters={zuluConnection.layerFilters}
+                      activeFilters={zuluConnection.activeFilters}
+                      toggleFilter={zuluConnection.toggleFilter}
+                      editableLayers={drawing.editableLayers}
+                      activeEditableLayer={drawing.activeLayer}
+                      onSelectEditableLayer={drawing.selectLayer}
+                      onCreateEditableLayer={handleCreateEditableLayer}
+                      onDeleteEditableLayer={drawing.deleteLayer}
+                      editMode={editMode}
+                      onToggleEditMode={toggleEditMode}
+                      activeSceneDataset={activeSceneDataset}
+                      onSelectSceneDataset={handleSelectSceneDataset}
+                      onOpenAttributeTable={(layerId, layerName) => {
+                        setImportedLayerTable({ layerId, layerName });
+                      }}
+                      onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
+                      onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
+                    />
+                  )}
                 </SheetContent>
               </Sheet>
 

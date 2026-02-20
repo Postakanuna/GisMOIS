@@ -78,6 +78,16 @@ This feature enriches layer attributes with address information based on coordin
 - **shpjs**: Parses Shapefile data, including support for various encodings.
 - **ExcelJS**: Reads and parses XLSX files for geocoding import and attribute join features.
 
+### AI Assistant (ИИ-ассистент)
+
+The application includes an AI chat panel integrated into the left sidebar. Users can toggle between the layers view and the AI chat using a button in the sidebar header (Bot/Layers icons). The chat panel component (`client/src/components/ai-chat-panel.tsx`) provides:
+- Message history with user/assistant bubbles
+- Text input with Enter-to-send
+- Loading animation during AI responses
+- Currently a stub (no real AI backend) — Yandex Studio AI integration planned
+
+The sidebar view state (`sidebarView`) supports three modes: `"layers"` (default), `"featureInfo"` (object attributes), and `"ai-chat"` (AI assistant). Both desktop Sidebar and mobile Sheet support the toggle.
+
 ### Attribute Join
 
 The attribute join feature allows enriching layer data from XLSX files without geocoding, using key-based matching (similar to QGIS/ArcGIS table join). Users select a key field from the layer and a key column from the XLSX file; matching rows have their selected columns added as new attributes. The workflow includes: file upload, key field + column selection, preview with match statistics (matched/unmatched counts), and execution. Backend endpoints: `/api/parse-excel-for-join`, `/api/editable-layers/:id/join-preview`, `/api/editable-layers/:id/join-excel`.
