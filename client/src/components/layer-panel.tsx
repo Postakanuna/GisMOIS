@@ -1,12 +1,11 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Upload, Trash2, FileArchive, BarChart3, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, BarChart3, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot } from "lucide-react";
 import { useScene } from "@/contexts/scene-context";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -50,19 +49,12 @@ import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
 import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 
 const truncateName = (name: string, maxLength: number = 30): string => {
   if (name.length <= maxLength) return name;
   return name.substring(0, maxLength - 3) + "...";
 };
-
-const LAYER_COLORS = [
-  "#1976D2", "#D32F2F", "#388E3C", "#7B1FA2",
-  "#F57C00", "#0097A7", "#C2185B", "#512DA8",
-];
-
 
 type LayerGeometryType = "point" | "line" | "polygon" | "unknown";
 
@@ -148,8 +140,6 @@ export function LayerPanel({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { currentSceneId } = useScene();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [geoAnalysisOpen, setGeoAnalysisOpen] = useState(false);
   const [newLayerDialogOpen, setNewLayerDialogOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
@@ -203,31 +193,6 @@ export function LayerPanel({
   // Use scene-scoped query key for all editable layers operations
   const editableLayersQueryKey = ["/api/scenes", currentSceneId, "editable-layers"];
 
-  const importLayerMutation = useMutation({
-    mutationFn: async (data: { 
-      name: string; 
-      geometryType: string; 
-      geojson: any; 
-      sourceFileName: string;
-      color: string;
-      pointStyle: string;
-      lineStyle: string;
-    }) => {
-      const res = await apiRequest("POST", "/api/editable-layers/import", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
-    },
-    onError: () => {
-      toast({
-        title: "Ошибка загрузки",
-        description: "Не удалось загрузить слой",
-        variant: "destructive",
-      });
-    },
-  });
-
   const updateLayerMutation = useMutation({
     mutationFn: async ({ id, ...data }: { id: number } & Partial<EditableLayer>) => {
       const res = await apiRequest("PATCH", `/api/editable-layers/${id}`, data);
@@ -273,62 +238,6 @@ export function LayerPanel({
       });
     },
   });
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const parsedLayers = await parseShapefileWithEncoding(arrayBuffer, file.name);
-
-      if (parsedLayers.length === 0) {
-        throw new Error("Не найдено слоёв в архиве");
-      }
-
-      // Import each layer using the new endpoint
-      let importedCount = 0;
-      for (const layer of parsedLayers) {
-        const geomType = layer.geojson.features?.[0]?.geometry?.type;
-        let geometryType: GeometryType = "Point";
-        if (geomType === "LineString" || geomType === "MultiLineString") {
-          geometryType = "LineString";
-        } else if (geomType === "Polygon" || geomType === "MultiPolygon") {
-          geometryType = "Polygon";
-        }
-        
-        await importLayerMutation.mutateAsync({
-          name: layer.name,
-          geometryType,
-          geojson: layer.geojson,
-          sourceFileName: file.name,
-          color: LAYER_COLORS[importedCount % LAYER_COLORS.length],
-          pointStyle: "circle",
-          lineStyle: "solid",
-        });
-        importedCount++;
-      }
-      
-      toast({
-        title: "Слои загружены",
-        description: `Добавлено ${importedCount} слоёв из архива`,
-      });
-    } catch (error) {
-      console.error("Error parsing shapefile:", error);
-      toast({
-        title: "Ошибка обработки",
-        description: error instanceof Error ? error.message : "Не удалось прочитать shapefile",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
 
   const baseLayers = layers.filter((l) => l.type === "base");
   const wmsLayers = layers.filter((l) => l.type === "wms");
@@ -472,14 +381,6 @@ export function LayerPanel({
         )}
       </div>
       <div className="flex items-center gap-1">
-        <Input
-          ref={fileInputRef}
-          type="file"
-          accept=".zip"
-          onChange={handleFileSelect}
-          className="hidden"
-          data-testid="input-shapefile-upload"
-        />
         <Dialog open={newLayerDialogOpen} onOpenChange={setNewLayerDialogOpen}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -547,26 +448,6 @@ export function LayerPanel({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading || importLayerMutation.isPending}
-              data-testid="button-upload-shapefile"
-            >
-              {isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Upload className="h-4 w-4" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Загрузить Shapefile (ZIP)</p>
-          </TooltipContent>
-        </Tooltip>
         {editableLayers.length >= 2 && (
           <>
             <Tooltip>
