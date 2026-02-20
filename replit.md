@@ -90,6 +90,8 @@ The application includes an AI chat panel integrated into the left sidebar. User
 - **OpenAI (GPT)**: Uses Replit AI Integrations (`AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`), model `gpt-4o-mini`. Default provider.
 - **Yandex GPT**: Uses `YANDEX_STUDIO_API_KEY` + `YANDEX_FOLDER_ID`, model `yandexgpt-lite/latest`.
 
+**RAG (Retrieval-Augmented Generation)**: Before sending a query to the AI, the system automatically searches the database (`drawn_features` + `editable_layers`) for relevant objects by name, address, city, and layer type. Found objects with their properties are injected into the system prompt as context, enabling the AI to answer with real data from the GIS database. The search module is in `server/ai-rag.ts`. Layers summary is cached for 5 minutes.
+
 Backend endpoints:
 - `GET /api/ai/providers` — returns available providers with availability status
 - `POST /api/ai/chat` — accepts `{ messages, provider }`, routes to selected AI backend
