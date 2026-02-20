@@ -77,6 +77,7 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   onOpenStyleConfig?: (layerId: number) => void;
   onOpenGeocodeDialog?: (layerId: number) => void;
   onToggleAiChat?: () => void;
+  connectionStatus: ConnectionStatus;
 }
 
 function SidebarContentPanel({
@@ -99,10 +100,14 @@ function SidebarContentPanel({
   onOpenStyleConfig,
   onOpenGeocodeDialog,
   onToggleAiChat,
+  connectionStatus,
 }: SidebarContentPanelProps) {
   return (
     <ScrollArea className="h-full w-full min-w-0">
       <div className="p-4 min-w-0 max-w-full overflow-hidden">
+        <div className="mb-3">
+          <ConnectionStatusBadge status={connectionStatus} />
+        </div>
         <LayerPanel
           layers={layers}
           onToggleVisibility={toggleLayerVisibility}
@@ -188,7 +193,7 @@ function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
   return (
     <div className="flex items-center gap-2" data-testid="connection-status-badge">
       <div className={`h-2 w-2 rounded-full ${config.color}`} />
-      <span className="text-xs text-muted-foreground hidden sm:inline">
+      <span className="text-xs text-muted-foreground">
         {config.text}
       </span>
     </div>
@@ -444,6 +449,7 @@ export default function Home() {
                     onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                     onToggleAiChat={() => setSidebarView("ai-chat")}
+                    connectionStatus={zuluConnection.status}
                   />
                 ) : (
                   <FeatureInfoSidebarPanel
@@ -509,6 +515,7 @@ export default function Home() {
                       onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                       onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                       onToggleAiChat={() => setSidebarView("ai-chat")}
+                      connectionStatus={zuluConnection.status}
                     />
                   )}
                 </SheetContent>
@@ -538,8 +545,6 @@ export default function Home() {
                   <TooltipContent>Сменить сцену</TooltipContent>
                 </Tooltip>
               )}
-              <ConnectionStatusBadge status={zuluConnection.status} />
-              <div className="h-4 w-px bg-border" />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
