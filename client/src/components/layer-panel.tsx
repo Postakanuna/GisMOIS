@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, BarChart3, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot } from "lucide-react";
 import { useScene } from "@/contexts/scene-context";
+import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -149,6 +150,8 @@ export function LayerPanel({
   const [popoverLayerId, setPopoverLayerId] = useState<number | null>(null);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(new Set());
 
+  const { baseLayers: baseLayerOptions, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
+
   const { data: folders = [] } = useQuery<FolderData[]>({
     queryKey: ["/api/scenes", currentSceneId, "folders"],
     enabled: !!currentSceneId,
@@ -240,7 +243,6 @@ export function LayerPanel({
     },
   });
 
-  const baseLayers = layers.filter((l) => l.type === "base");
   const wmsLayers = layers.filter((l) => l.type === "wms");
   const wfsLayers = layers.filter((l) => l.type === "wfs");
 
@@ -793,22 +795,38 @@ export function LayerPanel({
           </AccordionContent>
         </AccordionItem>
 
-        {baseLayers.length > 0 && (
-          <AccordionItem value="base" className="border-none min-w-0">
-            <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-base-layers">
-              <div className="flex items-center gap-2 min-w-0">
-                <Map className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-xs font-medium truncate">Базовые слои</span>
-                <span className="text-[10px] text-muted-foreground shrink-0">
-                  ({baseLayers.length})
-                </span>
+        <AccordionItem value="base" className="border-none min-w-0">
+          <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-base-layers">
+            <div className="flex items-center gap-2 min-w-0">
+              <Map className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium truncate">Базовые слои</span>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="space-y-1 pt-1 min-w-0">
+            {baseLayerOptions.map((bl) => (
+              <div
+                key={bl.id}
+                className={`flex items-center gap-1 rounded-md border px-2 py-1 min-w-0 overflow-hidden cursor-pointer transition-colors ${
+                  activeBaseLayer === bl.id
+                    ? "border-primary bg-primary/10"
+                    : "border-sidebar-border hover:bg-accent/50"
+                }`}
+                onClick={() => setActiveBaseLayer(bl.id)}
+                data-testid={`base-layer-item-${bl.id}`}
+              >
+                <Map className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-medium">{bl.name}</span>
+                </div>
+                {activeBaseLayer === bl.id ? (
+                  <Eye className="h-3 w-3 shrink-0 text-primary" />
+                ) : (
+                  <EyeOff className="h-3 w-3 shrink-0 text-muted-foreground" />
+                )}
               </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-1 pt-1 min-w-0">
-              {baseLayers.map(renderLayerItem)}
-            </AccordionContent>
-          </AccordionItem>
-        )}
+            ))}
+          </AccordionContent>
+        </AccordionItem>
 
         {wmsLayers.length > 0 && (
           <AccordionItem value="wms" className="border-none min-w-0">
