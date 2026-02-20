@@ -3280,7 +3280,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/settings/geocode-provider", async (req: Request, res: Response) => {
+  app.put("/api/settings/geocode-provider", isAuthenticated, async (req: AuthRequest, res: Response) => {
     try {
       const parsed = geocodeProviderSchema.safeParse(req.body?.provider);
       if (!parsed.success) {
@@ -3311,9 +3311,9 @@ export async function registerRoutes(
     return "****" + value.slice(-4);
   }
 
-  app.get("/api/settings/keys", async (req: Request, res: Response) => {
+  app.get("/api/settings/keys", isAuthenticated, async (req: AuthRequest, res: Response) => {
     try {
-      if ((req as any).user?.role !== "admin") {
+      if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const result: Record<string, { masked: string; isSet: boolean }> = {};
@@ -3332,9 +3332,9 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/settings/keys", async (req: Request, res: Response) => {
+  app.put("/api/settings/keys", isAuthenticated, async (req: AuthRequest, res: Response) => {
     try {
-      if ((req as any).user?.role !== "admin") {
+      if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const { key, value } = req.body;
@@ -3355,9 +3355,9 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/settings/keys/:key", async (req: Request, res: Response) => {
+  app.delete("/api/settings/keys/:key", isAuthenticated, async (req: AuthRequest, res: Response) => {
     try {
-      if ((req as any).user?.role !== "admin") {
+      if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const key = req.params.key;
@@ -3382,9 +3382,9 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/settings/ai-provider", async (req: Request, res: Response) => {
+  app.put("/api/settings/ai-provider", isAuthenticated, async (req: AuthRequest, res: Response) => {
     try {
-      if ((req as any).user?.role !== "admin") {
+      if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const provider = req.body?.provider;
