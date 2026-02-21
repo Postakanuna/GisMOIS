@@ -118,12 +118,15 @@ Results are displayed in collapsible sections showing route details, AI-calculat
 #### Capacity Analysis (Анализ мощности)
 
 The auto-trace system includes intelligent capacity analysis (`analyzeCapacity` in `server/network-graph.ts`):
-1. **Find upstream CTP/source** — BFS traversal from connection point upstream through the spatial graph to find the nearest CTP or heat source node. Extracts installed capacity from properties (`Ust_moshn`, `Qist`, `Q_ust`, `Moshn`).
-2. **Calculate downstream load** — BFS from the found CTP to sum all connected consumer loads (`Qo_r + Qgv_sred + Qsv`) downstream, identifying each consumer with their individual load.
-3. **Check pipe capacity** — Validates each pipe segment along the path from consumer to CTP, comparing existing diameters (`Dpod`/`Dobr`) against the required diameter for the total load. Uses a lookup table mapping Gcal/h to standard pipe diameters (32mm–630mm).
-4. **Capacity result** — Returns surplus/deficit, consumer list, and pipe issues (segments needing reconstruction with current vs required diameters).
+1. **Find upstream CTP/source** — BFS traversal from connection point upstream through the spatial graph to find the nearest CTP or heat source node.
+2. **Extract capacity data** — Uses ZuluThermo field mappings:
+   - **Source (Источник)**: Installed capacity from `Qmax`, `Ust_moshn`, `Qist`, `Q_ust`, `Moshn` or fallback to `Qsum`. Connected load from `Qsum` or `Qo_r+Qsv_r+Qgv_r` / `Qo_t+Qsv_t+Qgv_t`.
+   - **CTP**: Connected/designed load from `Qo_t+Qsv_t+Qgv_t` (or `Qo_r+Qsv_r+Qgv_r`, `Qgv_sred` fallbacks). CTPs don't have a dedicated installed capacity field per ZuluThermo docs.
+3. **Calculate downstream load** — BFS from the found CTP/source to sum all connected node loads (checks heat properties `Qo_r`, `Nagr_otop`, `Qgv_sred`, `Qo`, `Q_otop`, `Q_gvs`, `Q_vent` on all non-CTP/source nodes). Returns both `currentLoadFromConsumers` (graph sum) and `connectedLoadFromAttributes` (from CTP/source attributes).
+4. **Check pipe capacity** — Validates each pipe segment along the path, comparing existing diameters (`Dpod`/`Dobr`) against the required diameter for the total load. Uses a unified lookup table mapping Gcal/h to standard pipe diameters (32mm–630mm).
+5. **Capacity result** — Returns `installedCapacity`, `connectedLoadFromAttributes`, `currentLoadFromConsumers`, `surplus`, `capacityUnknown` flag, consumer list, and pipe issues. When capacity data is missing from attributes, `capacityUnknown=true` and `hasSufficientCapacity=false` (conservative approach — warns user instead of silently assuming surplus).
 
-The dialog displays: CTP info, load cards (current/requested/surplus with color coding), insufficiency warnings, and per-pipe reconstruction issues. Users can save reconstruction segments to a new layer (`POST /api/auto-trace/save-reconstruction`) with dashed red styling and attributes including current/required diameters, length, and reference to original features.
+The dialog displays: CTP/source info with installed capacity or connected load, two factual load cards (from attributes and from consumer sum), total load, requested load, surplus/deficit with color coding. Yellow warning when capacity is unknown, red panel with reconstruction recommendation when deficit exists. Per-pipe reconstruction issues with save-to-layer functionality.
 
 ### Attribute Join
 

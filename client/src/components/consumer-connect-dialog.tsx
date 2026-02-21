@@ -76,11 +76,14 @@ interface CapacityAnalysis {
     featureId: number;
     layerId: number;
     installedCapacity: number | null;
+    connectedLoadFromAttributes: number | null;
     pathFromConnection: string[];
   } | null;
   currentLoad: number;
+  currentLoadFromConsumers: number;
   requestedLoad: number;
   surplus: number;
+  capacityUnknown: boolean;
   consumers: Array<{
     name: string;
     load: number;
@@ -503,13 +506,16 @@ export function ConsumerConnectDialog({
                       {showCapacityDetails ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                       <Zap className="h-3.5 w-3.5" />
                       Анализ мощности
-                      {!ca.hasSufficientCapacity && (
+                      {ca.capacityUnknown && (
+                        <Badge className="ml-2 text-xs bg-amber-500">Мощность не определена</Badge>
+                      )}
+                      {!ca.capacityUnknown && !ca.hasSufficientCapacity && (
                         <Badge variant="destructive" className="ml-2 text-xs">Дефицит</Badge>
                       )}
                       {!ca.hasAdequatePipes && (
                         <Badge variant="destructive" className="ml-1 text-xs">Реконструкция</Badge>
                       )}
-                      {ca.hasSufficientCapacity && ca.hasAdequatePipes && (
+                      {!ca.capacityUnknown && ca.hasSufficientCapacity && ca.hasAdequatePipes && (
                         <Badge className="ml-2 text-xs bg-green-600">Достаточно</Badge>
                       )}
                     </CollapsibleTrigger>
@@ -523,17 +529,45 @@ export function ConsumerConnectDialog({
                             </span>
                           </div>
                           <p className="text-sm font-medium truncate" title={ca.ctp.name}>{ca.ctp.name}</p>
-                          {ca.ctp.installedCapacity !== null && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Установленная мощность: <strong>{ca.ctp.installedCapacity}</strong> Гкал/ч
-                            </p>
-                          )}
+                          <div className="mt-1 space-y-0.5">
+                            {ca.ctp.installedCapacity !== null ? (
+                              <p className="text-xs text-muted-foreground">
+                                {ca.ctp.type === "source" ? "Установленная мощность" : "Подключённая нагрузка"}: <strong>{ca.ctp.installedCapacity.toFixed(3)}</strong> Гкал/ч
+                              </p>
+                            ) : (
+                              <p className="text-xs text-amber-600 dark:text-amber-400">
+                                {ca.ctp.type === "source" ? "Установленная мощность" : "Подключённая нагрузка"}: не указана в атрибутах
+                              </p>
+                            )}
+                            {ca.ctp.connectedLoadFromAttributes !== null && ca.ctp.type === "source" && (
+                              <p className="text-xs text-muted-foreground">
+                                Подключённая нагрузка (из атрибутов): <strong>{ca.ctp.connectedLoadFromAttributes.toFixed(3)}</strong> Гкал/ч
+                              </p>
+                            )}
+                          </div>
                         </Card>
                       )}
 
+                      <div className="grid grid-cols-2 gap-2">
+                        <Card className="p-2 text-center">
+                          <p className="text-xs text-muted-foreground">Факт. нагрузка (из атрибутов)</p>
+                          <p className="text-sm font-semibold">
+                            {ca.ctp?.connectedLoadFromAttributes !== null && ca.ctp?.connectedLoadFromAttributes !== undefined
+                              ? ca.ctp.connectedLoadFromAttributes.toFixed(3)
+                              : "—"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Гкал/ч</p>
+                        </Card>
+                        <Card className="p-2 text-center">
+                          <p className="text-xs text-muted-foreground">Факт. нагрузка (сумма потреб.)</p>
+                          <p className="text-sm font-semibold">{ca.currentLoadFromConsumers.toFixed(3)}</p>
+                          <p className="text-xs text-muted-foreground">Гкал/ч</p>
+                        </Card>
+                      </div>
+
                       <div className="grid grid-cols-3 gap-2">
                         <Card className="p-2 text-center">
-                          <p className="text-xs text-muted-foreground">Факт. нагрузка</p>
+                          <p className="text-xs text-muted-foreground">Итого нагрузка</p>
                           <p className="text-sm font-semibold">{ca.currentLoad.toFixed(3)}</p>
                           <p className="text-xs text-muted-foreground">Гкал/ч</p>
                         </Card>
@@ -542,23 +576,45 @@ export function ConsumerConnectDialog({
                           <p className="text-sm font-semibold">{ca.requestedLoad.toFixed(3)}</p>
                           <p className="text-xs text-muted-foreground">Гкал/ч</p>
                         </Card>
-                        <Card className={`p-2 text-center ${ca.surplus >= 0 ? "bg-green-50 dark:bg-green-950" : "bg-red-50 dark:bg-red-950"}`}>
-                          <p className="text-xs text-muted-foreground">Профицит</p>
-                          <div className="flex items-center justify-center gap-1">
-                            {ca.surplus >= 0 ? (
-                              <TrendingUp className="h-3 w-3 text-green-600" />
-                            ) : (
-                              <TrendingDown className="h-3 w-3 text-red-600" />
-                            )}
-                            <p className={`text-sm font-semibold ${ca.surplus >= 0 ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
-                              {ca.surplus >= 0 ? "+" : ""}{ca.surplus.toFixed(3)}
-                            </p>
-                          </div>
-                          <p className="text-xs text-muted-foreground">Гкал/ч</p>
-                        </Card>
+                        {!ca.capacityUnknown ? (
+                          <Card className={`p-2 text-center ${ca.surplus >= 0 ? "bg-green-50 dark:bg-green-950" : "bg-red-50 dark:bg-red-950"}`}>
+                            <p className="text-xs text-muted-foreground">{ca.surplus >= 0 ? "Профицит" : "Дефицит"}</p>
+                            <div className="flex items-center justify-center gap-1">
+                              {ca.surplus >= 0 ? (
+                                <TrendingUp className="h-3 w-3 text-green-600" />
+                              ) : (
+                                <TrendingDown className="h-3 w-3 text-red-600" />
+                              )}
+                              <p className={`text-sm font-semibold ${ca.surplus >= 0 ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
+                                {ca.surplus >= 0 ? "+" : ""}{ca.surplus.toFixed(3)}
+                              </p>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Гкал/ч</p>
+                          </Card>
+                        ) : (
+                          <Card className="p-2 text-center bg-amber-50 dark:bg-amber-950">
+                            <p className="text-xs text-muted-foreground">Профицит</p>
+                            <p className="text-sm font-semibold text-amber-600">?</p>
+                            <p className="text-xs text-amber-600">не определён</p>
+                          </Card>
+                        )}
                       </div>
 
-                      {!ca.hasSufficientCapacity && ca.ctp && (
+                      {ca.capacityUnknown && ca.ctp && (
+                        <div className="p-2.5 bg-amber-50 dark:bg-amber-950 rounded-md flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                              Мощность {ca.ctp.type === "source" ? "источника" : "ЦТП"} не определена
+                            </p>
+                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                              В атрибутах «{ca.ctp.name}» не найдены данные об установленной мощности и подключённой нагрузке. Невозможно определить профицит/дефицит. Проверьте заполненность полей Qmax, Qo_t, Qgv_t, Qsv_t.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {!ca.hasSufficientCapacity && !ca.capacityUnknown && ca.ctp && (
                         <div className="p-2.5 bg-red-50 dark:bg-red-950 rounded-md flex items-start gap-2">
                           <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
                           <div>
@@ -566,7 +622,11 @@ export function ConsumerConnectDialog({
                               Недостаточная мощность {ca.ctp.type === "source" ? "источника" : "ЦТП"}
                             </p>
                             <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                              Дефицит: {Math.abs(ca.surplus).toFixed(3)} Гкал/ч. Требуется увеличение мощности {ca.ctp.type === "source" ? "источника" : "ЦТП"} «{ca.ctp.name}».
+                              Дефицит: {Math.abs(ca.surplus).toFixed(3)} Гкал/ч. Требуется увеличение мощности {ca.ctp.type === "source" ? "источника" : "ЦТП"} «{ca.ctp.name}»
+                              {ca.ctp.installedCapacity !== null 
+                                ? ` с ${ca.ctp.installedCapacity.toFixed(3)} до ${(ca.ctp.installedCapacity + Math.abs(ca.surplus)).toFixed(3)} Гкал/ч.`
+                                : `. Рекомендуется реконструкция ${ca.ctp.type === "source" ? "источника" : "ЦТП"}.`
+                              }
                             </p>
                           </div>
                         </div>

@@ -73,7 +73,7 @@ function classifyLayerByContentSync(propKeys: string[], geometryType: string, sa
   }
 
   if (geometryType === "Point") {
-    if (propKeys.includes("Ust_moshn") || propKeys.includes("Naim_tepl") || propKeys.includes("Nomer_tep") || propKeys.includes("Otpusk_TE") || propKeys.includes("Qist") || propKeys.includes("Gist")) {
+    if (propKeys.includes("Ust_moshn") || propKeys.includes("Naim_tepl") || propKeys.includes("Nomer_tep") || propKeys.includes("Otpusk_TE") || propKeys.includes("Qist") || propKeys.includes("Gist") || propKeys.includes("Qmax") || propKeys.includes("Qsum") || propKeys.includes("Name_pred") || propKeys.includes("Gmax")) {
       return "source";
     }
 
@@ -96,7 +96,11 @@ function classifyLayerByContentSync(propKeys: string[], geometryType: string, sa
       if (lower.includes("цтп") || lower.includes("итп") || lower.includes("бойлер")) return "ctp";
     }
 
-    if (propKeys.includes("Hnz_obr") && !propKeys.includes("Hzdan") && !propKeys.includes("Njil")) {
+    if ((propKeys.includes("Hnz_obr") || propKeys.includes("N_schem") || propKeys.includes("Hnz_ras")) && !propKeys.includes("Hzdan") && !propKeys.includes("Njil")) {
+      return "ctp";
+    }
+
+    if (propKeys.includes("Qo_t") && propKeys.includes("Qgv_t") && propKeys.includes("Gsum_pod")) {
       return "ctp";
     }
 
@@ -1746,11 +1750,14 @@ export interface CapacityAnalysisResult {
     featureId: number;
     layerId: number;
     installedCapacity: number | null;
+    connectedLoadFromAttributes: number | null;
     pathFromConnection: string[];
   } | null;
   currentLoad: number;
+  currentLoadFromConsumers: number;
   requestedLoad: number;
   surplus: number;
+  capacityUnknown: boolean;
   consumers: Array<{
     name: string;
     load: number;
@@ -1957,6 +1964,44 @@ function checkPipeCapacity(
   return issues;
 }
 
+function extractInstalledCapacity(props: Record<string, unknown>, nodeType: string): number | null {
+  if (nodeType === "source") {
+    const qmax = extractNumericProp(props, "Qmax", "Ust_moshn", "Qist", "Q_ust", "Moshn", "capacity");
+    if (qmax !== null) return qmax;
+    const qsum = extractNumericProp(props, "Qsum");
+    if (qsum !== null) return qsum;
+    return null;
+  }
+  if (nodeType === "ctp") {
+    const qo = extractNumericProp(props, "Qo_t", "Qo_r") || 0;
+    const qsv = extractNumericProp(props, "Qsv_t", "Qsv_r") || 0;
+    const qgv = extractNumericProp(props, "Qgv_t", "Qgv_r", "Qgv_sred") || 0;
+    const sum = qo + qsv + qgv;
+    return sum > 0 ? sum : null;
+  }
+  return null;
+}
+
+function extractConnectedLoadFromAttributes(props: Record<string, unknown>, nodeType: string): number | null {
+  if (nodeType === "source") {
+    const qsum = extractNumericProp(props, "Qsum");
+    if (qsum !== null) return qsum;
+    const qo = extractNumericProp(props, "Qo_r", "Qo_t") || 0;
+    const qsv = extractNumericProp(props, "Qsv_r", "Qsv_t") || 0;
+    const qgv = extractNumericProp(props, "Qgv_r", "Qgv_t") || 0;
+    const sum = qo + qsv + qgv;
+    return sum > 0 ? sum : null;
+  }
+  if (nodeType === "ctp") {
+    const qo = extractNumericProp(props, "Qo_t", "Qo_r") || 0;
+    const qsv = extractNumericProp(props, "Qsv_t", "Qsv_r") || 0;
+    const qgv = extractNumericProp(props, "Qgv_t", "Qgv_r", "Qgv_sred") || 0;
+    const sum = qo + qsv + qgv;
+    return sum > 0 ? sum : null;
+  }
+  return null;
+}
+
 export async function analyzeCapacity(
   graph: SpatialGraph,
   connectionNodeKey: string,
@@ -1965,28 +2010,59 @@ export async function analyzeCapacity(
   const { ctpNode, path } = findUpstreamCTP(graph, connectionNodeKey);
 
   let installedCapacity: number | null = null;
-  let currentLoad = 0;
+  let connectedLoadFromAttributes: number | null = null;
+  let currentLoadFromConsumers = 0;
   let consumers: Array<{ name: string; load: number; featureId: number; layerId: number }> = [];
 
   if (ctpNode) {
-    installedCapacity = extractNumericProp(ctpNode.properties, "Ust_moshn", "Qist", "Q_ust", "Moshn", "capacity");
+    console.log(`[CapacityAnalysis] Found ${ctpNode.type}: "${ctpNode.name}", featureId=${ctpNode.featureId}, layerId=${ctpNode.layerId}`);
+    const propKeys = Object.keys(ctpNode.properties);
+    console.log(`[CapacityAnalysis] Properties keys: ${propKeys.join(", ")}`);
+    const relevantProps: Record<string, unknown> = {};
+    for (const k of propKeys) {
+      const v = ctpNode.properties[k];
+      if (v !== null && v !== undefined && v !== "" && String(k).match(/^(Q|G|Ust|Moshn|capacity|Nagr|Rashod)/i)) {
+        relevantProps[k] = v;
+      }
+    }
+    console.log(`[CapacityAnalysis] Relevant properties: ${JSON.stringify(relevantProps)}`);
+
+    installedCapacity = extractInstalledCapacity(ctpNode.properties, ctpNode.type);
+    connectedLoadFromAttributes = extractConnectedLoadFromAttributes(ctpNode.properties, ctpNode.type);
 
     const downstream = calculateDownstreamLoad(graph, ctpNode.coordKey);
-    currentLoad = downstream.totalLoad;
+    currentLoadFromConsumers = downstream.totalLoad;
     consumers = downstream.consumers;
 
-    console.log(`[CapacityAnalysis] CTP: "${ctpNode.name}" (${ctpNode.type}), installed: ${installedCapacity ?? "unknown"} Гкал/ч, current load: ${currentLoad.toFixed(3)} Гкал/ч, consumers: ${consumers.length}`);
+    console.log(`[CapacityAnalysis] CTP: "${ctpNode.name}" (${ctpNode.type}), installed: ${installedCapacity ?? "NOT FOUND"} Гкал/ч, loadFromAttributes: ${connectedLoadFromAttributes ?? "NOT FOUND"} Гкал/ч, loadFromConsumers: ${currentLoadFromConsumers.toFixed(3)} Гкал/ч, consumers: ${consumers.length}`);
   } else {
     console.log(`[CapacityAnalysis] No CTP/source found upstream from connection point`);
   }
 
-  const surplus = installedCapacity !== null ? (installedCapacity - currentLoad - requestedLoad) : 0;
-  const hasSufficientCapacity = installedCapacity === null || surplus >= 0;
+  const currentLoad = connectedLoadFromAttributes !== null
+    ? Math.max(connectedLoadFromAttributes, currentLoadFromConsumers)
+    : currentLoadFromConsumers;
+
+  const capacityUnknown = installedCapacity === null && connectedLoadFromAttributes === null;
+
+  let surplus: number;
+  let hasSufficientCapacity: boolean;
+
+  if (installedCapacity !== null) {
+    surplus = installedCapacity - currentLoad - requestedLoad;
+    hasSufficientCapacity = surplus >= 0;
+  } else if (connectedLoadFromAttributes !== null) {
+    surplus = -(currentLoad + requestedLoad);
+    hasSufficientCapacity = false;
+  } else {
+    surplus = 0;
+    hasSufficientCapacity = false;
+  }
 
   const totalLoadAfterConnection = currentLoad + requestedLoad;
   const pipeIssues = checkPipeCapacity(graph, path, totalLoadAfterConnection);
 
-  console.log(`[CapacityAnalysis] Requested: ${requestedLoad.toFixed(3)} Гкал/ч, surplus: ${surplus.toFixed(3)} Гкал/ч, pipe issues: ${pipeIssues.length}`);
+  console.log(`[CapacityAnalysis] Requested: ${requestedLoad.toFixed(3)} Гкал/ч, currentLoad: ${currentLoad.toFixed(3)}, surplus: ${surplus.toFixed(3)} Гкал/ч, capacityUnknown: ${capacityUnknown}, pipe issues: ${pipeIssues.length}`);
 
   return {
     ctp: ctpNode ? {
@@ -1996,11 +2072,14 @@ export async function analyzeCapacity(
       featureId: ctpNode.featureId,
       layerId: ctpNode.layerId,
       installedCapacity,
+      connectedLoadFromAttributes,
       pathFromConnection: path,
     } : null,
     currentLoad,
+    currentLoadFromConsumers,
     requestedLoad,
     surplus,
+    capacityUnknown,
     consumers,
     pipeIssues,
     hasSufficientCapacity,
