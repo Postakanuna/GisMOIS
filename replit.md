@@ -115,6 +115,16 @@ Results are displayed in collapsible sections showing route details, AI-calculat
 - **Confirm and create** — updates the selected point feature's properties with consumer data; the dialog stays open showing a success banner
 - **Save to new layer** (appears only after confirmation) — via `POST /api/auto-trace/save-layer`, creates two new layers: a LineString layer with the route (including AI-calculated pipe parameters as attributes) and a Point layer with heat chambers and consumer point. This two-step flow lets the user first see the created object on the map before deciding to save layers.
 
+#### Capacity Analysis (Анализ мощности)
+
+The auto-trace system includes intelligent capacity analysis (`analyzeCapacity` in `server/network-graph.ts`):
+1. **Find upstream CTP/source** — BFS traversal from connection point upstream through the spatial graph to find the nearest CTP or heat source node. Extracts installed capacity from properties (`Ust_moshn`, `Qist`, `Q_ust`, `Moshn`).
+2. **Calculate downstream load** — BFS from the found CTP to sum all connected consumer loads (`Qo_r + Qgv_sred + Qsv`) downstream, identifying each consumer with their individual load.
+3. **Check pipe capacity** — Validates each pipe segment along the path from consumer to CTP, comparing existing diameters (`Dpod`/`Dobr`) against the required diameter for the total load. Uses a lookup table mapping Gcal/h to standard pipe diameters (32mm–630mm).
+4. **Capacity result** — Returns surplus/deficit, consumer list, and pipe issues (segments needing reconstruction with current vs required diameters).
+
+The dialog displays: CTP info, load cards (current/requested/surplus with color coding), insufficiency warnings, and per-pipe reconstruction issues. Users can save reconstruction segments to a new layer (`POST /api/auto-trace/save-reconstruction`) with dashed red styling and attributes including current/required diameters, length, and reference to original features.
+
 ### Attribute Join
 
 The attribute join feature allows enriching layer data from XLSX files without geocoding, using key-based matching (similar to QGIS/ArcGIS table join). Users select a key field from the layer and a key column from the XLSX file; matching rows have their selected columns added as new attributes. The workflow includes: file upload, key field + column selection, preview with match statistics (matched/unmatched counts), and execution. Backend endpoints: `/api/parse-excel-for-join`, `/api/editable-layers/:id/join-preview`, `/api/editable-layers/:id/join-excel`.
