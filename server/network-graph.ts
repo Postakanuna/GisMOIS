@@ -1737,3 +1737,273 @@ export function placeHeatChambers(
 
   return chambers;
 }
+
+export interface CapacityAnalysisResult {
+  ctp: {
+    name: string;
+    type: string;
+    coordinates: [number, number];
+    featureId: number;
+    layerId: number;
+    installedCapacity: number | null;
+    pathFromConnection: string[];
+  } | null;
+  currentLoad: number;
+  requestedLoad: number;
+  surplus: number;
+  consumers: Array<{
+    name: string;
+    load: number;
+    featureId: number;
+    layerId: number;
+  }>;
+  pipeIssues: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    coordinates: any;
+    currentDpod: number;
+    currentDobr: number;
+    requiredDiameter: number;
+    length: number;
+  }>;
+  hasSufficientCapacity: boolean;
+  hasAdequatePipes: boolean;
+}
+
+const STANDARD_DIAMETERS = [32, 40, 50, 57, 76, 89, 108, 133, 159, 194, 219, 273, 325, 377, 426, 530, 630, 720, 820, 1020];
+
+function requiredDiameterForLoad(loadGcal: number): number {
+  if (loadGcal <= 0.02) return 32;
+  if (loadGcal <= 0.05) return 40;
+  if (loadGcal <= 0.1) return 50;
+  if (loadGcal <= 0.2) return 57;
+  if (loadGcal <= 0.5) return 76;
+  if (loadGcal <= 1.0) return 89;
+  if (loadGcal <= 2.0) return 108;
+  if (loadGcal <= 3.5) return 133;
+  if (loadGcal <= 5.0) return 159;
+  if (loadGcal <= 8.0) return 194;
+  if (loadGcal <= 12.0) return 219;
+  if (loadGcal <= 20.0) return 273;
+  if (loadGcal <= 35.0) return 325;
+  if (loadGcal <= 50.0) return 377;
+  if (loadGcal <= 80.0) return 426;
+  if (loadGcal <= 120.0) return 530;
+  return 630;
+}
+
+function nextStandardDiameter(current: number): number {
+  for (const d of STANDARD_DIAMETERS) {
+    if (d > current) return d;
+  }
+  return STANDARD_DIAMETERS[STANDARD_DIAMETERS.length - 1];
+}
+
+function extractNumericProp(props: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const val = props[key];
+    if (val !== undefined && val !== null && val !== "") {
+      const num = parseFloat(String(val));
+      if (!isNaN(num)) return num;
+    }
+  }
+  return null;
+}
+
+function findUpstreamCTP(
+  graph: SpatialGraph,
+  startNodeKey: string,
+): { ctpNode: SpatialGraphNode | null; path: string[] } {
+  const visited = new Set<string>();
+  const queue: Array<{ key: string; path: string[] }> = [{ key: startNodeKey, path: [startNodeKey] }];
+  visited.add(startNodeKey);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const node = graph.nodes.get(current.key);
+
+    if (node && (node.type === "ctp" || node.type === "source")) {
+      return { ctpNode: node, path: current.path };
+    }
+
+    const neighbors = graph.adjacency.get(current.key);
+    if (neighbors) {
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push({ key: neighbor, path: [...current.path, neighbor] });
+        }
+      }
+    }
+  }
+
+  return { ctpNode: null, path: [] };
+}
+
+function calculateDownstreamLoad(
+  graph: SpatialGraph,
+  ctpNodeKey: string,
+): { totalLoad: number; consumers: Array<{ name: string; load: number; featureId: number; layerId: number }> } {
+  const visited = new Set<string>();
+  const queue: string[] = [ctpNodeKey];
+  visited.add(ctpNodeKey);
+  const consumers: Array<{ name: string; load: number; featureId: number; layerId: number }> = [];
+  let totalLoad = 0;
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const node = graph.nodes.get(current);
+
+    if (node && node.type === "consumer") {
+      const qo = extractNumericProp(node.properties, "Qo_r", "Nagr_otop", "qo") || 0;
+      const qgv = extractNumericProp(node.properties, "Qgv_sred", "Rashod_go", "qgv") || 0;
+      const qsv = extractNumericProp(node.properties, "Qsv", "qsv") || 0;
+      const load = qo + qgv + qsv;
+      if (load > 0) {
+        totalLoad += load;
+        consumers.push({
+          name: node.name || `Потребитель #${node.featureId}`,
+          load,
+          featureId: node.featureId,
+          layerId: node.layerId,
+        });
+      }
+    }
+
+    const neighbors = graph.adjacency.get(current);
+    if (neighbors) {
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          const neighborNode = graph.nodes.get(neighbor);
+          if (neighborNode && (neighborNode.type === "ctp" || neighborNode.type === "source") && neighbor !== ctpNodeKey) {
+            continue;
+          }
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+  }
+
+  return { totalLoad, consumers };
+}
+
+function getEdgeBetween(graph: SpatialGraph, fromKey: string, toKey: string): SpatialGraphEdge | null {
+  const edges = graph.edgesByNode.get(fromKey);
+  if (!edges) return null;
+  return edges.find(e =>
+    (e.fromKey === fromKey && e.toKey === toKey) ||
+    (e.fromKey === toKey && e.toKey === fromKey)
+  ) || null;
+}
+
+function checkPipeCapacity(
+  graph: SpatialGraph,
+  pathKeys: string[],
+  totalLoadAtPoint: number,
+): Array<{
+  featureId: number;
+  layerId: number;
+  name: string;
+  coordinates: any;
+  currentDpod: number;
+  currentDobr: number;
+  requiredDiameter: number;
+  length: number;
+}> {
+  const issues: Array<{
+    featureId: number;
+    layerId: number;
+    name: string;
+    coordinates: any;
+    currentDpod: number;
+    currentDobr: number;
+    requiredDiameter: number;
+    length: number;
+  }> = [];
+
+  const reqDiam = requiredDiameterForLoad(totalLoadAtPoint);
+
+  for (let i = 0; i < pathKeys.length - 1; i++) {
+    const edge = getEdgeBetween(graph, pathKeys[i], pathKeys[i + 1]);
+    if (!edge) continue;
+
+    const props = edge.properties;
+    const dpod = extractNumericProp(props, "Dpod", "dpod", "Dnar", "dnar") || 0;
+    const dobr = extractNumericProp(props, "Dobr", "dobr") || dpod;
+    const length = edge.length || 0;
+
+    const minDiam = Math.min(dpod || Infinity, dobr || Infinity);
+
+    if (minDiam > 0 && minDiam < reqDiam) {
+      const beginName = (props.Begin_uch as string) || "";
+      const endName = (props.End_uch as string) || "";
+      const edgeName = beginName && endName ? `${beginName} → ${endName}` : edge.name || `Участок #${edge.featureId}`;
+
+      issues.push({
+        featureId: edge.featureId,
+        layerId: edge.layerId,
+        name: edgeName,
+        coordinates: edge.coordinates,
+        currentDpod: dpod,
+        currentDobr: dobr,
+        requiredDiameter: reqDiam,
+        length,
+      });
+    }
+  }
+
+  return issues;
+}
+
+export async function analyzeCapacity(
+  graph: SpatialGraph,
+  connectionNodeKey: string,
+  requestedLoad: number,
+): Promise<CapacityAnalysisResult> {
+  const { ctpNode, path } = findUpstreamCTP(graph, connectionNodeKey);
+
+  let installedCapacity: number | null = null;
+  let currentLoad = 0;
+  let consumers: Array<{ name: string; load: number; featureId: number; layerId: number }> = [];
+
+  if (ctpNode) {
+    installedCapacity = extractNumericProp(ctpNode.properties, "Ust_moshn", "Qist", "Q_ust", "Moshn", "capacity");
+
+    const downstream = calculateDownstreamLoad(graph, ctpNode.coordKey);
+    currentLoad = downstream.totalLoad;
+    consumers = downstream.consumers;
+
+    console.log(`[CapacityAnalysis] CTP: "${ctpNode.name}" (${ctpNode.type}), installed: ${installedCapacity ?? "unknown"} Гкал/ч, current load: ${currentLoad.toFixed(3)} Гкал/ч, consumers: ${consumers.length}`);
+  } else {
+    console.log(`[CapacityAnalysis] No CTP/source found upstream from connection point`);
+  }
+
+  const surplus = installedCapacity !== null ? (installedCapacity - currentLoad - requestedLoad) : 0;
+  const hasSufficientCapacity = installedCapacity === null || surplus >= 0;
+
+  const totalLoadAfterConnection = currentLoad + requestedLoad;
+  const pipeIssues = checkPipeCapacity(graph, path, totalLoadAfterConnection);
+
+  console.log(`[CapacityAnalysis] Requested: ${requestedLoad.toFixed(3)} Гкал/ч, surplus: ${surplus.toFixed(3)} Гкал/ч, pipe issues: ${pipeIssues.length}`);
+
+  return {
+    ctp: ctpNode ? {
+      name: ctpNode.name,
+      type: ctpNode.type,
+      coordinates: ctpNode.coordinates,
+      featureId: ctpNode.featureId,
+      layerId: ctpNode.layerId,
+      installedCapacity,
+      pathFromConnection: path,
+    } : null,
+    currentLoad,
+    requestedLoad,
+    surplus,
+    consumers,
+    pipeIssues,
+    hasSufficientCapacity,
+    hasAdequatePipes: pipeIssues.length === 0,
+  };
+}

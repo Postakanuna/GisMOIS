@@ -28,6 +28,9 @@ import {
   AlertTriangle,
   Pipette,
   Save,
+  TrendingDown,
+  TrendingUp,
+  Wrench,
 } from "lucide-react";
 import {
   Collapsible,
@@ -52,6 +55,41 @@ interface AiTraceParams {
     reason: string;
   }>;
   recommendations: string[];
+}
+
+interface PipeIssue {
+  featureId: number;
+  layerId: number;
+  name: string;
+  coordinates: any;
+  currentDpod: number;
+  currentDobr: number;
+  requiredDiameter: number;
+  length: number;
+}
+
+interface CapacityAnalysis {
+  ctp: {
+    name: string;
+    type: string;
+    coordinates: [number, number];
+    featureId: number;
+    layerId: number;
+    installedCapacity: number | null;
+    pathFromConnection: string[];
+  } | null;
+  currentLoad: number;
+  requestedLoad: number;
+  surplus: number;
+  consumers: Array<{
+    name: string;
+    load: number;
+    featureId: number;
+    layerId: number;
+  }>;
+  pipeIssues: PipeIssue[];
+  hasSufficientCapacity: boolean;
+  hasAdequatePipes: boolean;
 }
 
 interface AutoTraceResult {
@@ -84,6 +122,7 @@ interface AutoTraceResult {
     reason: string;
   }>;
   aiParams: AiTraceParams | null;
+  capacityAnalysis: CapacityAnalysis | null;
   message?: string;
 }
 
@@ -127,9 +166,13 @@ export function ConsumerConnectDialog({
   const [traceResult, setTraceResult] = useState<AutoTraceResult | null>(null);
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
+  const [showCapacityDetails, setShowCapacityDetails] = useState(true);
+  const [showConsumers, setShowConsumers] = useState(false);
   const [layerName, setLayerName] = useState("");
   const [showSaveLayer, setShowSaveLayer] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [reconLayerName, setReconLayerName] = useState("");
+  const [showSaveRecon, setShowSaveRecon] = useState(false);
   const { toast } = useToast();
 
   const traceMutation = useMutation({
@@ -172,6 +215,27 @@ export function ConsumerConnectDialog({
     },
   });
 
+  const reconMutation = useMutation({
+    mutationFn: async (data: {
+      sceneId: number;
+      layerName: string;
+      pipeIssues: PipeIssue[];
+      consumerName: string;
+    }) => {
+      const response = await apiRequest("POST", "/api/auto-trace/save-reconstruction", data);
+      return response.json();
+    },
+    onSuccess: (result) => {
+      toast({ title: "Слой реконструкции создан", description: result.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/editable-layers`] });
+      setShowSaveRecon(false);
+    },
+    onError: () => {
+      toast({ title: "Ошибка", description: "Не удалось сохранить слой реконструкции", variant: "destructive" });
+    },
+  });
+
   const handleTrace = () => {
     if (!consumerCoords) return;
     traceMutation.mutate({
@@ -195,11 +259,22 @@ export function ConsumerConnectDialog({
     });
   };
 
+  const handleSaveReconstruction = () => {
+    if (!traceResult?.capacityAnalysis?.pipeIssues?.length || !reconLayerName.trim()) return;
+    reconMutation.mutate({
+      sceneId,
+      layerName: reconLayerName.trim(),
+      pipeIssues: traceResult.capacityAnalysis.pipeIssues,
+      consumerName: formData.name,
+    });
+  };
+
   const handleConfirm = () => {
     if (traceResult) {
       onConfirm(traceResult, formData);
       setConfirmed(true);
       setLayerName(formData.name || "Новая трасса");
+      setReconLayerName(`Реконструкция — ${formData.name || "Новая трасса"}`);
       toast({ title: "Объект создан", description: "Потребитель добавлен на карту. Можете сохранить маршрут в отдельный слой." });
     }
   };
@@ -210,8 +285,11 @@ export function ConsumerConnectDialog({
     setShowSaveLayer(false);
     setConfirmed(false);
     setLayerName("");
+    setReconLayerName("");
+    setShowSaveRecon(false);
     traceMutation.reset();
     saveMutation.reset();
+    reconMutation.reset();
   };
 
   const updateField = (field: keyof ConsumerFormData, value: string | number) => {
@@ -219,6 +297,7 @@ export function ConsumerConnectDialog({
   };
 
   const totalLoad = formData.qo + formData.qgv + formData.qsv;
+  const ca = traceResult?.capacityAnalysis;
 
   return (
     <DraggableModal
@@ -418,6 +497,142 @@ export function ConsumerConnectDialog({
                   </Card>
                 </div>
 
+                {ca && (
+                  <Collapsible open={showCapacityDetails} onOpenChange={setShowCapacityDetails}>
+                    <CollapsibleTrigger className="flex items-center gap-1 text-sm text-primary hover:underline cursor-pointer">
+                      {showCapacityDetails ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      <Zap className="h-3.5 w-3.5" />
+                      Анализ мощности
+                      {!ca.hasSufficientCapacity && (
+                        <Badge variant="destructive" className="ml-2 text-xs">Дефицит</Badge>
+                      )}
+                      {!ca.hasAdequatePipes && (
+                        <Badge variant="destructive" className="ml-1 text-xs">Реконструкция</Badge>
+                      )}
+                      {ca.hasSufficientCapacity && ca.hasAdequatePipes && (
+                        <Badge className="ml-2 text-xs bg-green-600">Достаточно</Badge>
+                      )}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-2 space-y-2">
+                      {ca.ctp && (
+                        <Card className="p-2.5">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Building2 className="h-3.5 w-3.5 text-primary" />
+                            <span className="text-xs text-muted-foreground">
+                              {ca.ctp.type === "source" ? "Источник" : "ЦТП"}
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium truncate" title={ca.ctp.name}>{ca.ctp.name}</p>
+                          {ca.ctp.installedCapacity !== null && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Установленная мощность: <strong>{ca.ctp.installedCapacity}</strong> Гкал/ч
+                            </p>
+                          )}
+                        </Card>
+                      )}
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <Card className="p-2 text-center">
+                          <p className="text-xs text-muted-foreground">Факт. нагрузка</p>
+                          <p className="text-sm font-semibold">{ca.currentLoad.toFixed(3)}</p>
+                          <p className="text-xs text-muted-foreground">Гкал/ч</p>
+                        </Card>
+                        <Card className="p-2 text-center">
+                          <p className="text-xs text-muted-foreground">Запрашиваемая</p>
+                          <p className="text-sm font-semibold">{ca.requestedLoad.toFixed(3)}</p>
+                          <p className="text-xs text-muted-foreground">Гкал/ч</p>
+                        </Card>
+                        <Card className={`p-2 text-center ${ca.surplus >= 0 ? "bg-green-50 dark:bg-green-950" : "bg-red-50 dark:bg-red-950"}`}>
+                          <p className="text-xs text-muted-foreground">Профицит</p>
+                          <div className="flex items-center justify-center gap-1">
+                            {ca.surplus >= 0 ? (
+                              <TrendingUp className="h-3 w-3 text-green-600" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3 text-red-600" />
+                            )}
+                            <p className={`text-sm font-semibold ${ca.surplus >= 0 ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
+                              {ca.surplus >= 0 ? "+" : ""}{ca.surplus.toFixed(3)}
+                            </p>
+                          </div>
+                          <p className="text-xs text-muted-foreground">Гкал/ч</p>
+                        </Card>
+                      </div>
+
+                      {!ca.hasSufficientCapacity && ca.ctp && (
+                        <div className="p-2.5 bg-red-50 dark:bg-red-950 rounded-md flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-red-700 dark:text-red-300">
+                              Недостаточная мощность {ca.ctp.type === "source" ? "источника" : "ЦТП"}
+                            </p>
+                            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                              Дефицит: {Math.abs(ca.surplus).toFixed(3)} Гкал/ч. Требуется увеличение мощности {ca.ctp.type === "source" ? "источника" : "ЦТП"} «{ca.ctp.name}».
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {ca.consumers.length > 0 && (
+                        <Collapsible open={showConsumers} onOpenChange={setShowConsumers}>
+                          <CollapsibleTrigger className="flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer">
+                            {showConsumers ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                            Подключённые потребители ({ca.consumers.length})
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-1">
+                            <div className="space-y-1 max-h-24 overflow-y-auto">
+                              {ca.consumers.map((c, i) => (
+                                <div key={i} className="flex justify-between text-xs p-1.5 bg-muted rounded">
+                                  <span className="truncate mr-2">{c.name}</span>
+                                  <span className="text-muted-foreground whitespace-nowrap">{c.load.toFixed(3)} Гкал/ч</span>
+                                </div>
+                              ))}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
+
+                      {ca.pipeIssues.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="p-2.5 bg-amber-50 dark:bg-amber-950 rounded-md flex items-start gap-2">
+                            <Wrench className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                            <div>
+                              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                                Требуется реконструкция трубопровода
+                              </p>
+                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                {ca.pipeIssues.length} {ca.pipeIssues.length === 1 ? "участок" : ca.pipeIssues.length < 5 ? "участка" : "участков"} с недостаточным диаметром
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                            {ca.pipeIssues.map((issue, i) => (
+                              <Card key={i} className="p-2 bg-amber-50/50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800">
+                                <p className="text-xs font-medium truncate" title={issue.name}>{issue.name}</p>
+                                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                  <span>Подача: <strong className="text-red-600">{issue.currentDpod || "?"} мм</strong></span>
+                                  <span>→</span>
+                                  <span>Треб.: <strong className="text-green-600">{issue.requiredDiameter} мм</strong></span>
+                                </div>
+                                {issue.currentDobr > 0 && issue.currentDobr !== issue.currentDpod && (
+                                  <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                                    <span>Обратка: <strong className="text-red-600">{issue.currentDobr} мм</strong></span>
+                                    <span>→</span>
+                                    <span>Треб.: <strong className="text-green-600">{issue.requiredDiameter} мм</strong></span>
+                                  </div>
+                                )}
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Длина: {issue.length > 0 ? `${Math.round(issue.length)} м` : "н/д"}
+                                </p>
+                              </Card>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
                 <Collapsible open={showRouteDetails} onOpenChange={setShowRouteDetails}>
                   <CollapsibleTrigger className="flex items-center gap-1 text-sm text-primary hover:underline cursor-pointer">
                     {showRouteDetails ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -575,7 +790,65 @@ export function ConsumerConnectDialog({
                   <div className="p-3 bg-green-50 dark:bg-green-950 rounded-md flex items-start gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
                     <p className="text-sm text-green-700 dark:text-green-300">
-                      Слои успешно созданы
+                      Слои маршрута успешно созданы
+                    </p>
+                  </div>
+                )}
+
+                {confirmed && ca && ca.pipeIssues.length > 0 && !reconMutation.isSuccess && (
+                  !showSaveRecon ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
+                      onClick={() => setShowSaveRecon(true)}
+                      data-testid="button-show-save-reconstruction"
+                    >
+                      <Wrench className="h-4 w-4 mr-2" />
+                      Сохранить участки реконструкции в слой
+                    </Button>
+                  ) : (
+                    <div className="space-y-2 p-3 border border-amber-200 dark:border-amber-800 rounded-md bg-amber-50/50 dark:bg-amber-950/50">
+                      <Label htmlFor="recon-layer-name" className="text-sm font-medium">
+                        Название слоя реконструкции
+                      </Label>
+                      <Input
+                        id="recon-layer-name"
+                        value={reconLayerName}
+                        onChange={(e) => setReconLayerName(e.target.value)}
+                        placeholder="Реконструкция ..."
+                        data-testid="input-recon-layer-name"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
+                          onClick={handleSaveReconstruction}
+                          disabled={!reconLayerName.trim() || reconMutation.isPending}
+                          data-testid="button-save-reconstruction"
+                        >
+                          {reconMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          {reconMutation.isPending ? "Сохранение..." : "Сохранить"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowSaveRecon(false)}
+                          data-testid="button-cancel-save-recon"
+                        >
+                          Отмена
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {reconMutation.isSuccess && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-md flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                      Слой реконструкции создан
                     </p>
                   </div>
                 )}

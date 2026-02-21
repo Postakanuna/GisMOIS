@@ -943,9 +943,9 @@ export async function registerRoutes(
 
       console.log(`[AutoTrace] Starting auto-trace for consumer "${consumer.name}" at [${consumerCoords}] in scene ${sceneId}`);
 
-      const { findNearestConnectionPoint, analyzeRouteGeometry, placeHeatChambers } = await import("./network-graph");
+      const { findNearestConnectionPoint, analyzeRouteGeometry, placeHeatChambers, analyzeCapacity } = await import("./network-graph");
 
-      const { connectionPoint } = await findNearestConnectionPoint(consumerCoords, sceneId);
+      const { connectionPoint, graph } = await findNearestConnectionPoint(consumerCoords, sceneId);
 
       if (!connectionPoint) {
         return res.json({
@@ -991,8 +991,18 @@ export async function registerRoutes(
 
       console.log(`[AutoTrace] Route: ${Math.round(route.totalLength)}m, ${route.segments.length} segments, ${route.turningAngles.length} turns, ${heatChambers.length} heat chambers, OSRM=${usedOsrm}`);
 
-      let aiParams = null;
+      let capacityAnalysis = null;
       const totalLoad = (consumer.qo || 0) + (consumer.qgv || 0) + (consumer.qsv || 0);
+
+      if (connectionPoint.nodeKey && totalLoad > 0) {
+        try {
+          capacityAnalysis = await analyzeCapacity(graph, connectionPoint.nodeKey, totalLoad);
+        } catch (capErr: any) {
+          console.warn(`[AutoTrace] Capacity analysis failed: ${capErr.message}`);
+        }
+      }
+
+      let aiParams = null;
 
       if (totalLoad > 0) {
         const turnsDetail = route.turningAngles.map(t => `${Math.abs(Math.round(t.angle))}°`).join(", ") || "нет";
@@ -1089,6 +1099,7 @@ export async function registerRoutes(
         },
         heatChambers,
         aiParams,
+        capacityAnalysis,
         usedOsrm,
       });
     } catch (error: any) {
@@ -1238,6 +1249,96 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       console.error("Save trace layer error:", error);
+      return res.status(500).json({ message: error.message || "Internal server error" });
+    }
+  });
+
+  const saveReconSchema = z.object({
+    sceneId: z.number(),
+    layerName: z.string().min(1),
+    pipeIssues: z.array(z.object({
+      featureId: z.number(),
+      layerId: z.number(),
+      name: z.string(),
+      coordinates: z.any(),
+      currentDpod: z.number(),
+      currentDobr: z.number(),
+      requiredDiameter: z.number(),
+      length: z.number(),
+    })),
+    consumerName: z.string(),
+  });
+
+  app.post("/api/auto-trace/save-reconstruction", async (req: Request, res: Response) => {
+    try {
+      const parseResult = saveReconSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Invalid request data", errors: parseResult.error.errors });
+      }
+
+      const { sceneId, layerName, pipeIssues, consumerName } = parseResult.data;
+
+      const maxOrder = await db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(${editableLayers.displayOrder}), 0)` })
+        .from(editableLayers)
+        .where(eq(editableLayers.sceneId, sceneId));
+      const nextOrder = (maxOrder[0]?.maxOrder || 0) + 1;
+
+      const reconLayer = await storage.createEditableLayer({
+        name: layerName,
+        sceneId,
+        geometryType: "LineString",
+        color: "#e53935",
+        pointStyle: "circle",
+        lineStyle: "dashed",
+        visible: true,
+        opacity: 0.8,
+        source: "user",
+        crs: "EPSG:4326",
+        displayOrder: nextOrder,
+      });
+
+      for (const issue of pipeIssues) {
+        const coords = issue.coordinates;
+        let featureCoords: any;
+        if (Array.isArray(coords) && coords.length > 0) {
+          if (Array.isArray(coords[0]) && typeof coords[0][0] === "number") {
+            featureCoords = coords;
+          } else if (typeof coords[0] === "number") {
+            featureCoords = [coords, coords];
+          } else {
+            featureCoords = coords;
+          }
+        } else {
+          featureCoords = [[0, 0], [0, 0]];
+        }
+
+        await storage.createDrawnFeature({
+          layerId: reconLayer.id,
+          geometryType: "LineString",
+          coordinates: featureCoords,
+          properties: {
+            Name: issue.name,
+            Dpod_tek: issue.currentDpod,
+            Dobr_tek: issue.currentDobr,
+            Dpod_treb: issue.requiredDiameter,
+            Dobr_treb: issue.requiredDiameter,
+            Dlina: Math.round(issue.length),
+            Prichina: `Подключение: ${consumerName}`,
+            Tip: "reconstruction",
+            FeatureRef: issue.featureId,
+            LayerRef: issue.layerId,
+          },
+        });
+      }
+
+      return res.json({
+        success: true,
+        layerId: reconLayer.id,
+        message: `Создан слой реконструкции: "${reconLayer.name}" (${pipeIssues.length} участков)`,
+      });
+    } catch (error: any) {
+      console.error("Save reconstruction layer error:", error);
       return res.status(500).json({ message: error.message || "Internal server error" });
     }
   });
