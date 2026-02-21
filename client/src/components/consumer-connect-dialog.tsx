@@ -2,14 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,8 +88,8 @@ interface AutoTraceResult {
 }
 
 interface ConsumerConnectDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  isOpen: boolean;
+  onClose: () => void;
   consumerCoords: [number, number] | null;
   sceneId: number;
   onTraceResult: (result: AutoTraceResult) => void;
@@ -114,8 +107,8 @@ export interface ConsumerFormData {
 }
 
 export function ConsumerConnectDialog({
-  open,
-  onOpenChange,
+  isOpen,
+  onClose,
   consumerCoords,
   sceneId,
   onTraceResult,
@@ -212,7 +205,7 @@ export function ConsumerConnectDialog({
   };
 
   const handleClose = () => {
-    onOpenChange(false);
+    onClose();
     setTraceResult(null);
     setShowSaveLayer(false);
     setConfirmed(false);
@@ -228,19 +221,21 @@ export function ConsumerConnectDialog({
   const totalLoad = formData.qo + formData.qgv + formData.qsv;
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) handleClose(); }}>
-      <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto" data-testid="consumer-connect-dialog">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Подключение потребителя
-          </DialogTitle>
-          <DialogDescription>
+    <DraggableModal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="Подключение потребителя"
+      defaultWidth={560}
+      defaultHeight={520}
+      minWidth={380}
+      minHeight={300}
+    >
+      <div className="h-full flex flex-col overflow-hidden" data-testid="consumer-connect-dialog">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <p className="text-sm text-muted-foreground">
             Создание нового потребителя с автоматической трассировкой тепловой сети
-          </DialogDescription>
-        </DialogHeader>
+          </p>
 
-        <div className="space-y-4 py-2">
           {consumerCoords && (
             <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
               <MapPin className="h-4 w-4 text-primary" />
@@ -611,13 +606,14 @@ export function ConsumerConnectDialog({
           )}
         </div>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={handleClose} data-testid="button-cancel-consumer">
+        <div className="border-t p-3 flex justify-end gap-2 shrink-0 bg-background">
+          <Button variant="outline" size="sm" onClick={handleClose} data-testid="button-cancel-consumer">
             {confirmed ? "Закрыть" : "Отмена"}
           </Button>
 
           {!traceResult ? (
             <Button
+              size="sm"
               onClick={handleTrace}
               disabled={!consumerCoords || traceMutation.isPending || !formData.name}
               data-testid="button-run-trace"
@@ -627,14 +623,14 @@ export function ConsumerConnectDialog({
             </Button>
           ) : (
             traceResult.success && !confirmed && (
-              <Button onClick={handleConfirm} data-testid="button-confirm-consumer">
+              <Button size="sm" onClick={handleConfirm} data-testid="button-confirm-consumer">
                 <CheckCircle2 className="h-4 w-4 mr-2" />
                 Подтвердить и создать
               </Button>
             )
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </DraggableModal>
   );
 }

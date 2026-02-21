@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { X, GripHorizontal, Minimize2, Maximize2 } from "lucide-react";
+import { X, GripHorizontal, Minimize2, Maximize2, Minus } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 interface DraggableModalProps {
@@ -34,6 +34,8 @@ export function DraggableModal({
   const [isResizing, setIsResizing] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [preMinimizeSize, setPreMinimizeSize] = useState(size);
   const [preMaximizeState, setPreMaximizeState] = useState({ position, size });
   
   const modalRef = useRef<HTMLDivElement>(null);
@@ -41,13 +43,15 @@ export function DraggableModal({
   const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
 
   useEffect(() => {
-    if (isOpen && !isMaximized && !isMobile) {
+    if (isOpen && !isMobile) {
+      setIsMinimized(false);
+      setIsMaximized(false);
       const x = Math.max(50, (window.innerWidth - defaultWidth) / 2);
       const y = Math.max(50, (window.innerHeight - defaultHeight) / 2);
       setPosition({ x, y });
       setSize({ width: defaultWidth, height: defaultHeight });
     }
-  }, [isOpen, defaultWidth, defaultHeight, isMaximized, isMobile]);
+  }, [isOpen, defaultWidth, defaultHeight, isMobile]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isMaximized || isMobile) return;
@@ -134,8 +138,33 @@ export function DraggableModal({
     }
   }, [isDragging, isResizing, resizeDirection, minWidth, minHeight]);
 
+  const toggleMinimize = useCallback(() => {
+    if (isMobile) return;
+    if (isMinimized) {
+      setSize(preMinimizeSize);
+      setIsMinimized(false);
+    } else {
+      if (isMaximized) {
+        setPosition(preMaximizeState.position);
+        setIsMaximized(false);
+        setPreMinimizeSize(preMaximizeState.size);
+      } else {
+        setPreMinimizeSize(size);
+      }
+      setIsMinimized(true);
+    }
+  }, [isMinimized, isMaximized, size, preMinimizeSize, preMaximizeState, isMobile]);
+
   const toggleMaximize = useCallback(() => {
     if (isMobile) return;
+    if (isMinimized) {
+      setIsMinimized(false);
+      setPreMaximizeState({ position, size: preMinimizeSize });
+      setPosition({ x: 10, y: 10 });
+      setSize({ width: window.innerWidth - 20, height: window.innerHeight - 20 });
+      setIsMaximized(true);
+      return;
+    }
     if (isMaximized) {
       setPosition(preMaximizeState.position);
       setSize(preMaximizeState.size);
@@ -146,7 +175,7 @@ export function DraggableModal({
       setSize({ width: window.innerWidth - 20, height: window.innerHeight - 20 });
       setIsMaximized(true);
     }
-  }, [isMaximized, position, size, preMaximizeState, isMobile]);
+  }, [isMaximized, isMinimized, position, size, preMaximizeState, preMinimizeSize, isMobile]);
 
   const handleClose = useCallback(() => {
     if (onBeforeClose) {
@@ -196,8 +225,8 @@ export function DraggableModal({
         style={{
           left: position.x,
           top: position.y,
-          width: size.width,
-          height: size.height,
+          width: isMinimized ? Math.min(size.width, 320) : size.width,
+          height: isMinimized ? 'auto' : size.height,
         }}
         data-testid="draggable-modal"
       >
@@ -205,20 +234,32 @@ export function DraggableModal({
           className="py-2 px-3 flex flex-row items-center justify-between gap-2 cursor-move border-b shrink-0"
           onMouseDown={handleMouseDown}
         >
-          <div className="flex items-center gap-2">
-            <GripHorizontal className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <div className="flex items-center gap-2 min-w-0">
+            <GripHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />
+            <CardTitle className="text-sm font-medium truncate">{title}</CardTitle>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Button
               size="icon"
               variant="ghost"
               className="h-6 w-6"
-              onClick={toggleMaximize}
-              data-testid="button-toggle-maximize"
+              onClick={toggleMinimize}
+              data-testid="button-toggle-minimize"
+              title={isMinimized ? "Развернуть" : "Свернуть"}
             >
-              {isMaximized ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+              {isMinimized ? <Maximize2 className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
             </Button>
+            {!isMinimized && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={toggleMaximize}
+                data-testid="button-toggle-maximize"
+              >
+                {isMaximized ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+              </Button>
+            )}
             <Button
               size="icon"
               variant="ghost"
@@ -231,11 +272,13 @@ export function DraggableModal({
           </div>
         </CardHeader>
         
-        <CardContent className="p-0 flex-1 overflow-hidden">
-          {children}
-        </CardContent>
+        {!isMinimized && (
+          <CardContent className="p-0 flex-1 overflow-hidden">
+            {children}
+          </CardContent>
+        )}
 
-        {!isMaximized && (
+        {!isMaximized && !isMinimized && (
           <>
             <div
               className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"

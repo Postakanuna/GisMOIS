@@ -943,13 +943,11 @@ export default function Home() {
             />
 
             <ConsumerConnectDialog
-              open={showConsumerConnectDialog}
-              onOpenChange={(open) => {
-                setShowConsumerConnectDialog(open);
-                if (!open) {
-                  setConsumerConnectCoords(null);
-                  setConsumerConnectFeatureRef(null);
-                }
+              isOpen={showConsumerConnectDialog}
+              onClose={() => {
+                setShowConsumerConnectDialog(false);
+                setConsumerConnectCoords(null);
+                setConsumerConnectFeatureRef(null);
               }}
               consumerCoords={consumerConnectCoords}
               sceneId={currentSceneId || 0}
