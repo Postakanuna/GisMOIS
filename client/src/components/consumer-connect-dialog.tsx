@@ -532,11 +532,11 @@ export function ConsumerConnectDialog({
                           <div className="mt-1 space-y-0.5">
                             {ca.ctp.installedCapacity !== null ? (
                               <p className="text-xs text-muted-foreground">
-                                {ca.ctp.type === "source" ? "Установленная мощность" : "Подключённая нагрузка"}: <strong>{ca.ctp.installedCapacity.toFixed(3)}</strong> Гкал/ч
+                                {ca.ctp.type === "source" ? "Установленная мощность" : "Проектная мощность ЦТП"}: <strong>{ca.ctp.installedCapacity.toFixed(3)}</strong> Гкал/ч
                               </p>
                             ) : (
                               <p className="text-xs text-amber-600 dark:text-amber-400">
-                                {ca.ctp.type === "source" ? "Установленная мощность" : "Подключённая нагрузка"}: не указана в атрибутах
+                                {ca.ctp.type === "source" ? "Установленная мощность" : "Проектная мощность ЦТП"}: не указана в атрибутах
                               </p>
                             )}
                             {ca.ctp.connectedLoadFromAttributes !== null && ca.ctp.type === "source" && (

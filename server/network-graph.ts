@@ -104,7 +104,7 @@ function classifyLayerByContentSync(propKeys: string[], geometryType: string, sa
       return "ctp";
     }
 
-    if (propKeys.includes("Qo_r") || propKeys.includes("Nagr_otop") || propKeys.includes("Rashod_go") || propKeys.includes("Qgv_sred")) {
+    if (propKeys.includes("Qo_r") || propKeys.includes("Nagr_otop") || propKeys.includes("Rashod_go") || propKeys.includes("Qgv_sred") || propKeys.includes("Qsv_r")) {
       if (propKeys.includes("Dom") || propKeys.includes("Adres") || propKeys.includes("Ylitsa") || propKeys.includes("Hzdan") || propKeys.includes("N_schem")) {
         return "consumer";
       }
@@ -1865,7 +1865,7 @@ function calculateDownstreamLoad(
     if (node && node.type !== "ctp" && node.type !== "source") {
       const qo = extractNumericProp(node.properties, "Qo_r", "Nagr_otop", "qo", "Qo", "Q_otop") || 0;
       const qgv = extractNumericProp(node.properties, "Qgv_sred", "Rashod_go", "qgv", "Qgv", "Q_gvs", "Qgv_r") || 0;
-      const qsv = extractNumericProp(node.properties, "Qsv", "qsv", "Q_vent") || 0;
+      const qsv = extractNumericProp(node.properties, "Qsv_r", "Qsv", "qsv", "Q_vent") || 0;
       const load = qo + qgv + qsv;
       if (load > 0) {
         totalLoad += load;
