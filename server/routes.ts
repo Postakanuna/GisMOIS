@@ -1016,6 +1016,7 @@ export async function registerRoutes(
             const OpenAI = (await import("openai")).default;
             const openai = new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl });
 
+            const refDiam = heuristicDiameter(totalLoad);
             const prompt = `Ты инженер-теплотехник. Рассчитай параметры трубопровода для подключения нового потребителя к тепловой сети.
 Трасса проложена вдоль дорог (маршрутизация OSRM: ${usedOsrm ? "да" : "нет, прямая линия"}).
 
@@ -1023,7 +1024,7 @@ export async function registerRoutes(
 - Тепловая нагрузка на отопление (Qо): ${consumer.qo || 0} Гкал/ч
 - Тепловая нагрузка на ГВС (Qгв): ${consumer.qgv || 0} Гкал/ч
 - Тепловая нагрузка на вентиляцию (Qсв): ${consumer.qsv || 0} Гкал/ч
-- Суммарная нагрузка: ${totalLoad.toFixed(3)} Гкал/ч
+- СУММАРНАЯ НАГРУЗКА: ${totalLoad.toFixed(3)} Гкал/ч
 - Протяжённость трассы (по дорогам): ${Math.round(route.totalLength)} м
 - Количество участков: ${route.segments.length}
 - Детали участков: ${segmentsDetail}
@@ -1035,17 +1036,23 @@ export async function registerRoutes(
 - Температурный график: 95/70°С
 - Точка подключения: ${connectionPoint.name} (${connectionPoint.type})
 
+ВАЖНО — таблица соответствия нагрузка → диаметр (стандартный ряд):
+≤0.02 Гкал/ч → Ду 32, ≤0.05 → Ду 40, ≤0.1 → Ду 50, ≤0.2 → Ду 57, ≤0.5 → Ду 76, ≤1.0 → Ду 89, ≤2.0 → Ду 108, ≤3.5 → Ду 133, ≤5.0 → Ду 159, ≤8.0 → Ду 194, ≤12.0 → Ду 219, ≤20.0 → Ду 273, ≤35.0 → Ду 325, ≤50.0 → Ду 377, ≤80.0 → Ду 426, ≤120.0 → Ду 530, >120 → Ду 630.
+При суммарной нагрузке ${totalLoad.toFixed(3)} Гкал/ч рекомендуемый диаметр = ${refDiam}.
+Диаметр подающей и обратной трубы ДОЛЖЕН быть ОДИНАКОВЫМ и соответствовать таблице выше.
+Расход = Q × 1000 / (1 × ΔT), где ΔT = 95-70 = 25°С.
+
 Ответь СТРОГО в формате JSON (без markdown, без комментариев):
 {
-  "pipeDiameterSupply": "Ду XX (например Ду 50, Ду 76, Ду 89, Ду 108, Ду 159)",
-  "pipeDiameterReturn": "Ду XX",
-  "pipeType": "тип трубы (стальная ВГП, ППУ и т.д.)",
-  "layingMethod": "способ прокладки (подземная бесканальная, канальная, надземная)",
-  "flowRate": расход_теплоносителя_т_ч_число,
-  "velocity": скорость_м_с_число,
-  "pressureLoss": потери_давления_м_в_ст_число,
-  "compensators": количество_компенсаторов_число,
-  "valves": количество_задвижек_число,
+  "pipeDiameterSupply": "${refDiam}",
+  "pipeDiameterReturn": "${refDiam}",
+  "pipeType": "тип трубы",
+  "layingMethod": "способ прокладки",
+  "flowRate": расход_т_ч,
+  "velocity": скорость_м_с,
+  "pressureLoss": потери_давления_м_в_ст,
+  "compensators": количество_компенсаторов,
+  "valves": количество_задвижек,
   "recommendations": ["рекомендация 1", "рекомендация 2"]
 }`;
 
@@ -1343,17 +1350,33 @@ export async function registerRoutes(
     }
   });
 
+  function heuristicDiameter(loadGcal: number): string {
+    if (loadGcal <= 0.02) return "Ду 32";
+    if (loadGcal <= 0.05) return "Ду 40";
+    if (loadGcal <= 0.1) return "Ду 50";
+    if (loadGcal <= 0.2) return "Ду 57";
+    if (loadGcal <= 0.5) return "Ду 76";
+    if (loadGcal <= 1.0) return "Ду 89";
+    if (loadGcal <= 2.0) return "Ду 108";
+    if (loadGcal <= 3.5) return "Ду 133";
+    if (loadGcal <= 5.0) return "Ду 159";
+    if (loadGcal <= 8.0) return "Ду 194";
+    if (loadGcal <= 12.0) return "Ду 219";
+    if (loadGcal <= 20.0) return "Ду 273";
+    if (loadGcal <= 35.0) return "Ду 325";
+    if (loadGcal <= 50.0) return "Ду 377";
+    if (loadGcal <= 80.0) return "Ду 426";
+    if (loadGcal <= 120.0) return "Ду 530";
+    return "Ду 630";
+  }
+
   function calculateHeuristicParams(totalLoad: number, routeLength: number, turnsCount: number) {
-    let diameter = "Ду 50";
-    if (totalLoad > 5) diameter = "Ду 200";
-    else if (totalLoad > 2) diameter = "Ду 159";
-    else if (totalLoad > 1) diameter = "Ду 108";
-    else if (totalLoad > 0.5) diameter = "Ду 89";
-    else if (totalLoad > 0.2) diameter = "Ду 76";
-    else if (totalLoad > 0.05) diameter = "Ду 57";
+    const diameter = heuristicDiameter(totalLoad);
 
     const flowRate = totalLoad * 1000 / (1 * (95 - 70));
-    const velocity = 0.8 + totalLoad * 0.3;
+    const diamNum = parseInt(diameter.replace("Ду ", "")) || 100;
+    const areaSqM = Math.PI * Math.pow(diamNum / 2000, 2);
+    const velocity = areaSqM > 0 ? (flowRate / 3600 / 1000) / areaSqM : 1.0;
     const pressureLoss = routeLength * 0.05;
     const compensators = Math.max(0, Math.floor(routeLength / 60) - 1);
     const valves = Math.max(2, Math.ceil(routeLength / 200) + 1);
@@ -1370,7 +1393,7 @@ export async function registerRoutes(
       pipeType: "Стальная в ППУ изоляции",
       layingMethod: "Подземная бесканальная",
       flowRate: Math.round(flowRate * 100) / 100,
-      velocity: Math.round(velocity * 100) / 100,
+      velocity: Math.round(Math.min(Math.max(velocity, 0.3), 3.5) * 100) / 100,
       pressureLoss: Math.round(pressureLoss * 10) / 10,
       compensators,
       valves,

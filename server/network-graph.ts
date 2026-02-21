@@ -1855,10 +1855,10 @@ function calculateDownstreamLoad(
     const current = queue.shift()!;
     const node = graph.nodes.get(current);
 
-    if (node && node.type === "consumer") {
-      const qo = extractNumericProp(node.properties, "Qo_r", "Nagr_otop", "qo") || 0;
-      const qgv = extractNumericProp(node.properties, "Qgv_sred", "Rashod_go", "qgv") || 0;
-      const qsv = extractNumericProp(node.properties, "Qsv", "qsv") || 0;
+    if (node && node.type !== "ctp" && node.type !== "source") {
+      const qo = extractNumericProp(node.properties, "Qo_r", "Nagr_otop", "qo", "Qo", "Q_otop") || 0;
+      const qgv = extractNumericProp(node.properties, "Qgv_sred", "Rashod_go", "qgv", "Qgv", "Q_gvs", "Qgv_r") || 0;
+      const qsv = extractNumericProp(node.properties, "Qsv", "qsv", "Q_vent") || 0;
       const load = qo + qgv + qsv;
       if (load > 0) {
         totalLoad += load;
