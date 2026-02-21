@@ -227,6 +227,7 @@ export default function Home() {
     layerId: number;
   } | null>(null);
   const [traceRouteCoords, setTraceRouteCoords] = useState<[number, number][] | null>(null);
+  const [reconstructionCoords, setReconstructionCoords] = useState<Array<{ coordinates: any; name: string; currentDiameter: number; requiredDiameter: number }> | null>(null);
   const [showSimulationDialog, setShowSimulationDialog] = useState(false);
   const [simulationFeatureInfo, setSimulationFeatureInfo] = useState<{
     featureId: number;
@@ -406,6 +407,18 @@ export default function Home() {
   const handleConsumerTraceResult = useCallback((result: any) => {
     if (result.success && result.route?.coordinates) {
       setTraceRouteCoords(result.route.coordinates);
+    }
+    if (result.capacityAnalysis?.pipeIssues?.length > 0) {
+      setReconstructionCoords(
+        result.capacityAnalysis.pipeIssues.map((issue: any) => ({
+          coordinates: issue.coordinates,
+          name: issue.name,
+          currentDiameter: Math.min(issue.currentDpod || 0, issue.currentDobr || Infinity),
+          requiredDiameter: issue.requiredDiameter,
+        }))
+      );
+    } else {
+      setReconstructionCoords(null);
     }
   }, []);
 
@@ -756,6 +769,7 @@ export default function Home() {
               activeSceneDataset={activeSceneDataset}
               onDatasetFeatureUpdated={handleDatasetFeatureUpdated}
               traceRouteCoordinates={traceRouteCoords}
+              reconstructionHighlight={reconstructionCoords}
               simulationHighlightData={simulationHighlightData}
               snapSettings={drawing.snapSettings}
               mapActionsRef={mapActionsRef}
@@ -948,6 +962,8 @@ export default function Home() {
                 setShowConsumerConnectDialog(false);
                 setConsumerConnectCoords(null);
                 setConsumerConnectFeatureRef(null);
+                setTraceRouteCoords(null);
+                setReconstructionCoords(null);
               }}
               consumerCoords={consumerConnectCoords}
               sceneId={currentSceneId || 0}

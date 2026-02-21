@@ -125,6 +125,8 @@ interface MapViewerProps {
   onDatasetFeatureUpdated?: (datasetId: number, featureId: number, geometry: { type: string; coordinates: unknown }) => void;
   // Trace route visualization
   traceRouteCoordinates?: [number, number][] | null;
+  // Reconstruction segments highlight (pipe issues from capacity analysis)
+  reconstructionHighlight?: Array<{ coordinates: any; name: string; currentDiameter: number; requiredDiameter: number }> | null;
   // Simulation highlight data
   simulationHighlightData?: {
     segments: Array<{ coordinates: any }>;
@@ -901,6 +903,7 @@ export function MapViewer({
   onDatasetFeatureCreated,
   onDatasetFeatureUpdated,
   traceRouteCoordinates,
+  reconstructionHighlight,
   simulationHighlightData,
   snapSettings,
   mapActionsRef,
@@ -912,6 +915,7 @@ export function MapViewer({
   const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const allEditableLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const traceRouteLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const reconstructionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const simulationHighlightLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const { toast } = useToast();
   const { activeBaseLayer } = useBaseLayers();
@@ -3194,6 +3198,65 @@ export function MapViewer({
       map.getView().fit(extent, { padding: [50, 50, 50, 50], duration: 500 });
     }
   }, [traceRouteCoordinates]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (reconstructionLayerRef.current) {
+      map.removeLayer(reconstructionLayerRef.current);
+      reconstructionLayerRef.current = null;
+    }
+
+    if (reconstructionHighlight && reconstructionHighlight.length > 0) {
+      const reconSource = new VectorSource();
+
+      for (const issue of reconstructionHighlight) {
+        if (!issue.coordinates || !Array.isArray(issue.coordinates)) continue;
+
+        let lineCoords: any[];
+        if (Array.isArray(issue.coordinates[0]) && typeof issue.coordinates[0][0] === "number") {
+          lineCoords = issue.coordinates.map((c: [number, number]) => fromLonLat(c, currentProjectionRef.current));
+        } else if (typeof issue.coordinates[0] === "number") {
+          continue;
+        } else {
+          continue;
+        }
+
+        if (lineCoords.length < 2) continue;
+
+        const lineFeature = new Feature({
+          geometry: new LineString(lineCoords),
+          name: issue.name,
+        });
+        lineFeature.setStyle([
+          new Style({
+            stroke: new Stroke({
+              color: "rgba(239, 68, 68, 0.3)",
+              width: 12,
+            }),
+          }),
+          new Style({
+            stroke: new Stroke({
+              color: "#ef4444",
+              width: 5,
+              lineDash: [12, 8],
+            }),
+          }),
+        ]);
+        reconSource.addFeature(lineFeature);
+      }
+
+      if (reconSource.getFeatures().length > 0) {
+        const reconLayer = new VectorLayer({
+          source: reconSource,
+          zIndex: 9998,
+        });
+        map.addLayer(reconLayer);
+        reconstructionLayerRef.current = reconLayer;
+      }
+    }
+  }, [reconstructionHighlight]);
 
   useEffect(() => {
     const map = mapRef.current;
