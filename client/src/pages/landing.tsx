@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { Map, Calculator, BarChart3, HelpCircle, ExternalLink, CheckCircle2, Link2, Shield, Smartphone, Globe, Cpu, Puzzle, Settings2, Plug, Flame, Droplets, Waves, Wind, Thermometer } from "lucide-react";
+import coatOfArms from "@assets/Coat_of_arms_of_Moscow_Oblast.svg_1762498635678-BuEFViNI_1771751459252.png";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -163,10 +164,16 @@ export default function LandingPage() {
         <div className="w-full max-w-4xl space-y-8">
           <div className="text-center space-y-3">
             <div className="flex justify-center mb-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary">
-                <Map className="h-8 w-8 text-primary-foreground" />
-              </div>
+              <img
+                src={coatOfArms}
+                alt="Герб Московской области"
+                className="h-28 w-auto"
+                data-testid="img-coat-of-arms"
+              />
             </div>
+            <p className="text-sm md:text-base font-semibold uppercase tracking-wide text-muted-foreground">
+              Министерство энергетики Московской области
+            </p>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
               ГИС Московской области
             </h1>
