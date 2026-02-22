@@ -353,7 +353,7 @@ export default function ScenesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 md:px-8">
         <div className="flex items-center gap-2">
           <div
             className="flex h-8 w-8 items-center justify-center rounded-md bg-primary cursor-pointer"
