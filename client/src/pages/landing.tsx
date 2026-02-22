@@ -173,7 +173,8 @@ export default function LandingPage() {
             <p className="text-sm md:text-base font-semibold uppercase tracking-wide text-muted-foreground">
               Министерство энергетики Московской области
             </p>
-            <h1 className="md:text-3xl tracking-tight font-semibold text-[#5e5555] text-[16px]">Государственная информационная система Московской области «Инженерные сети»</h1>
+            <h1 className="md:text-3xl tracking-tight font-semibold text-[#5e5555] text-[16px]">Государственная информационная система 
+            Московской области «Инженерные сети»</h1>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
