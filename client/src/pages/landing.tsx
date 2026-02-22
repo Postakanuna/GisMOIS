@@ -180,9 +180,6 @@ export default function LandingPage() {
             <p className="text-lg md:text-xl text-muted-foreground">
               «Инженерные сети»
             </p>
-            <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-              Государственная информационная система для управления инженерной инфраструктурой Московской области
-            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
