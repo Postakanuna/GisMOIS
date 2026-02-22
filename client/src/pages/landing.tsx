@@ -177,9 +177,6 @@ export default function LandingPage() {
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
               ГИС Московской области
             </h1>
-            <p className="text-lg md:text-xl text-muted-foreground">
-              «Инженерные сети»
-            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
