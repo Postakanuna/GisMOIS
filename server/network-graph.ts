@@ -1807,6 +1807,21 @@ function nextStandardDiameter(current: number): number {
   return STANDARD_DIAMETERS[STANDARD_DIAMETERS.length - 1];
 }
 
+function toMmAndSnapDN(rawValue: number): number {
+  if (rawValue <= 0) return 0;
+  const mm = rawValue < 2 ? rawValue * 1000 : rawValue;
+  let closest = STANDARD_DIAMETERS[0];
+  let minDiff = Math.abs(mm - closest);
+  for (const d of STANDARD_DIAMETERS) {
+    const diff = Math.abs(mm - d);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = d;
+    }
+  }
+  return closest;
+}
+
 function extractNumericProp(props: Record<string, unknown>, ...keys: string[]): number | null {
   for (const key of keys) {
     const val = props[key];
@@ -1937,11 +1952,14 @@ function checkPipeCapacity(
     if (!edge) continue;
 
     const props = edge.properties;
-    const dpod = extractNumericProp(props, "Dpod", "dpod", "Dnar", "dnar") || 0;
-    const dobr = extractNumericProp(props, "Dobr", "dobr") || dpod;
+    const rawDpod = extractNumericProp(props, "Dpod", "dpod", "Dnar", "dnar") || 0;
+    const rawDobr = extractNumericProp(props, "Dobr", "dobr") || rawDpod;
     const length = edge.length || 0;
 
-    const minDiam = Math.min(dpod || Infinity, dobr || Infinity);
+    const dpodMm = toMmAndSnapDN(rawDpod);
+    const dobrMm = toMmAndSnapDN(rawDobr);
+
+    const minDiam = Math.min(dpodMm || Infinity, dobrMm || Infinity);
 
     if (minDiam > 0 && minDiam < reqDiam) {
       const beginName = (props.Begin_uch as string) || "";
@@ -1953,8 +1971,8 @@ function checkPipeCapacity(
         layerId: edge.layerId,
         name: edgeName,
         coordinates: edge.coordinates,
-        currentDpod: dpod,
-        currentDobr: dobr,
+        currentDpod: dpodMm,
+        currentDobr: dobrMm,
         requiredDiameter: reqDiam,
         length,
       });
