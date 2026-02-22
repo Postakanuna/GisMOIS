@@ -275,25 +275,23 @@ export default function AdminLayerManager() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="border-b bg-card">
-        <div className="max-w-full mx-auto px-6 py-4 flex items-center gap-4">
-          <Link href="/scenes">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <Layers className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-semibold" data-testid="text-page-title">Менеджер слоёв</h1>
-          </div>
-          <Badge variant="secondary" data-testid="badge-layer-count">
-            {filteredMatrix.length} слоёв
-          </Badge>
-          <Badge variant="outline" data-testid="badge-scene-count">
-            {scenes.length} сцен
-          </Badge>
+      <header className="flex h-14 shrink-0 items-center gap-4 border-b px-4">
+        <Link href="/scenes">
+          <Button variant="ghost" size="icon" data-testid="button-back">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <div className="flex items-center gap-2">
+          <Layers className="h-5 w-5 text-primary" />
+          <h1 className="text-sm font-semibold" data-testid="text-page-title">Менеджер слоёв</h1>
         </div>
-      </div>
+        <Badge variant="secondary" data-testid="badge-layer-count">
+          {filteredMatrix.length} слоёв
+        </Badge>
+        <Badge variant="outline" data-testid="badge-scene-count">
+          {scenes.length} сцен
+        </Badge>
+      </header>
 
       <div className="max-w-full mx-auto px-6 py-4 space-y-4">
         <div className="flex items-center gap-4 flex-wrap">

@@ -281,15 +281,16 @@ export default function AdminUsers() {
   const yandexStatus = aiProvidersStatus?.providers?.find(p => p.id === "yandex");
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center gap-4 mb-6">
+    <div className="min-h-screen bg-background">
+      <header className="flex h-14 shrink-0 items-center gap-4 border-b px-4">
         <Link href="/scenes">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-semibold">Администрирование</h1>
-      </div>
+        <h1 className="text-sm font-semibold">Администрирование</h1>
+      </header>
+      <div className="container mx-auto p-6">
 
       <Tabs defaultValue="users" className="space-y-4">
         <TabsList className="grid w-full grid-cols-4" data-testid="admin-tabs">
@@ -667,6 +668,7 @@ export default function AdminUsers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

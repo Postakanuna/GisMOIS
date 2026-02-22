@@ -353,57 +353,55 @@ export default function ScenesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLocation("/")}
-              data-testid="button-home"
-              title="На главную"
-            >
-              <Home className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-semibold">ГИС МО «Инженерные сети»</h1>
-              <p className="text-sm text-muted-foreground">Выберите сцену для работы</p>
-            </div>
+      <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation("/")}
+            data-testid="button-home"
+            title="На главную"
+          >
+            <Home className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-sm font-semibold">ГИС МО «Инженерные сети»</h1>
+            <p className="text-xs text-muted-foreground">Выберите сцену для работы</p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              {user?.firstName || user?.username}
-            </span>
-            {user?.role === "admin" && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setLocation("/admin/layers")}
-                  data-testid="button-layer-manager"
-                  title="Менеджер слоёв"
-                >
-                  <Layers className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setLocation("/admin/users")}
-                  data-testid="button-admin"
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              data-testid="button-logout"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">
+            {user?.firstName || user?.username}
+          </span>
+          {user?.role === "admin" && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setLocation("/admin/layers")}
+                data-testid="button-layer-manager"
+                title="Менеджер слоёв"
+              >
+                <Layers className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setLocation("/admin/users")}
+                data-testid="button-admin"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleLogout}
+            data-testid="button-logout"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
         </div>
       </header>
 
