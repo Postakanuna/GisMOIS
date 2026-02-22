@@ -41,7 +41,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, LogOut, Settings, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Layers } from "lucide-react";
+import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, LogOut, Settings, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Layers, Home } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { SceneAccessDialog } from "@/components/scene-access-dialog";
@@ -355,9 +355,20 @@ export default function ScenesPage() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">ГИС МО "Инженерные сети"</h1>
-            <p className="text-sm text-muted-foreground">Выберите сцену для работы</p>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setLocation("/")}
+              data-testid="button-home"
+              title="На главную"
+            >
+              <Home className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-semibold">ГИС МО «Инженерные сети»</h1>
+              <p className="text-sm text-muted-foreground">Выберите сцену для работы</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
