@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck, Home as HomeIcon } from "lucide-react";
+import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -476,12 +476,12 @@ export default function Home() {
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar className="hidden md:flex border-r border-sidebar-border">
           <SidebarHeader className="flex flex-row items-center gap-2 border-b border-sidebar-border px-8 h-14 shrink-0">
-            <div className="flex items-center gap-2">
+            <Link href="/" className="flex items-center gap-2 cursor-pointer" data-testid="button-home-sidebar">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
                 <Map className="h-4 w-4 text-primary-foreground" />
               </div>
               <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
-            </div>
+            </Link>
           </SidebarHeader>
 
           <SidebarContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex flex-col" : "overflow-hidden"}`}>
@@ -542,12 +542,12 @@ export default function Home() {
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-80 p-0 flex flex-col">
-                  <div className="flex items-center gap-2 border-b px-4 h-14 shrink-0">
+                  <Link href="/" className="flex items-center gap-2 border-b px-4 h-14 shrink-0" data-testid="button-home-mobile-sheet">
                     <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
                       <Map className="h-4 w-4 text-primary-foreground" />
                     </div>
                     <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
-                  </div>
+                  </Link>
                   {sidebarView === "ai-chat" ? (
                     <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} />
                   ) : (
@@ -579,12 +579,12 @@ export default function Home() {
                 </SheetContent>
               </Sheet>
 
-              <div className="flex items-center gap-2 md:hidden">
+              <Link href="/" className="flex items-center gap-2 md:hidden" data-testid="button-home-mobile">
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
                   <Map className="h-4 w-4 text-primary-foreground" />
                 </div>
                 <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
-              </div>
+              </Link>
             </div>
 
             <div className="flex items-center gap-2">
@@ -654,16 +654,6 @@ export default function Home() {
                 <Pencil className="h-4 w-4" />
                 <span className="hidden sm:inline">Редактор</span>
               </Button>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link href="/">
-                    <Button variant="ghost" size="icon" data-testid="button-back-landing">
-                      <HomeIcon className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent>На главную</TooltipContent>
-              </Tooltip>
               <Link href="/settings">
                 <Button variant="ghost" size="icon" data-testid="button-open-settings">
                   <Settings className="h-4 w-4" />
