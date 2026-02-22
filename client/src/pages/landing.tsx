@@ -159,7 +159,6 @@ export default function LandingPage() {
           <ThemeToggle />
         </div>
       </header>
-
       <main className="flex-1 flex items-center justify-center p-4 md:p-8">
         <div className="w-full max-w-4xl space-y-8">
           <div className="text-center space-y-3">
@@ -174,9 +173,7 @@ export default function LandingPage() {
             <p className="text-sm md:text-base font-semibold uppercase tracking-wide text-muted-foreground">
               Министерство энергетики Московской области
             </p>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-              ГИС Московской области
-            </h1>
+            <h1 className="md:text-3xl tracking-tight text-[16px] font-semibold">Государственная информационная система Московской области «Инженерные сети»</h1>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
@@ -231,7 +228,6 @@ export default function LandingPage() {
           </p>
         </div>
       </main>
-
       <Dialog open={showHelp} onOpenChange={setShowHelp}>
         <DialogContent className="max-w-4xl max-h-[85vh]">
           <DialogHeader>
