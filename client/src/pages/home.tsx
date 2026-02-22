@@ -475,7 +475,7 @@ export default function Home() {
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar className="hidden md:flex border-r border-sidebar-border">
-          <SidebarHeader className="flex flex-row items-center gap-2 border-b border-sidebar-border px-4 h-14 shrink-0">
+          <SidebarHeader className="flex flex-row items-center gap-2 border-b border-sidebar-border px-8 h-14 shrink-0">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
                 <Map className="h-4 w-4 text-primary-foreground" />
