@@ -135,6 +135,9 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [dragFolderId, setDragFolderId] = useState<number | null>(null);
   const [dropInsertIndex, setDropInsertIndex] = useState<{ scope: number | "ungrouped"; index: number } | null>(null);
   const currentFlatOrderRef = useRef<FlatItem[]>([]);
+  const isSavingRef = useRef(false);
+  const pendingSaveRef = useRef<{ flatItems: FlatItem[]; movedLayerId?: number; sourceFolderId?: number | null; targetFolderId?: number | null } | null>(null);
+  const dropHandledRef = useRef(false);
 
   const foldersQueryKey = ["/api/scenes", currentSceneId, "folders"];
 
@@ -582,6 +585,10 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   };
 
   const handleDragEnd = () => {
+    if (dropHandledRef.current) {
+      dropHandledRef.current = false;
+      return;
+    }
     setDragLayerId(null);
     setDragFolderId(null);
     setDragType(null);
@@ -636,7 +643,57 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     return result;
   };
 
-  const persistFlatOrder = async (flatItems: FlatItem[], movedLayerId?: number, sourceFolderId?: number | null, targetFolderId?: number | null) => {
+  const applyOptimisticUpdate = (flatItems: FlatItem[], movedLayerId?: number, sourceFolderId?: number | null, targetFolderId?: number | null) => {
+    const layerUpdates: Record<number, { displayOrder: number; folderId: number | null }> = {};
+    for (let flatIdx = 0; flatIdx < flatItems.length; flatIdx++) {
+      const item = flatItems[flatIdx];
+      const baseOrder = flatIdx * 1000;
+      if (item.type === "folder") {
+        for (let j = 0; j < item.layers.length; j++) {
+          layerUpdates[item.layers[j]] = { displayOrder: baseOrder + j, folderId: item.folderId };
+        }
+      } else {
+        layerUpdates[item.layerId] = { displayOrder: baseOrder, folderId: null };
+      }
+    }
+    if (movedLayerId !== undefined && targetFolderId !== undefined) {
+      const existing = layerUpdates[movedLayerId];
+      if (existing) {
+        existing.folderId = targetFolderId;
+      }
+    }
+    queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => {
+      if (!old) return old;
+      return old.map(layer => {
+        const update = layerUpdates[layer.id];
+        if (update) {
+          return { ...layer, displayOrder: update.displayOrder, folderId: update.folderId };
+        }
+        return layer;
+      });
+    });
+    const folderUpdates: Record<number, number> = {};
+    for (let flatIdx = 0; flatIdx < flatItems.length; flatIdx++) {
+      const item = flatItems[flatIdx];
+      if (item.type === "folder") {
+        folderUpdates[item.folderId] = flatIdx * 1000;
+      }
+    }
+    if (Object.keys(folderUpdates).length > 0) {
+      queryClient.setQueryData<Folder[]>(foldersQueryKey, (old) => {
+        if (!old) return old;
+        return old.map(f => {
+          const newOrder = folderUpdates[f.id];
+          if (newOrder !== undefined) {
+            return { ...f, displayOrder: newOrder };
+          }
+          return f;
+        });
+      });
+    }
+  };
+
+  const executeSave = async (flatItems: FlatItem[], movedLayerId?: number, sourceFolderId?: number | null, targetFolderId?: number | null) => {
     const folderIds: number[] = [];
     const folderDisplayOrders: number[] = [];
     const layerIds: number[] = [];
@@ -656,23 +713,47 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         layerDisplayOrders.push(baseOrder);
       }
     }
-    console.log("[DnD] persistFlatOrder: folders=", folderIds, "folderOrders=", folderDisplayOrders, "layers=", layerIds, "layerOrders=", layerDisplayOrders);
+    console.log("[DnD] executeSave: folders=", folderIds, "folderOrders=", folderDisplayOrders, "layers=", layerIds, "layerOrders=", layerDisplayOrders);
+    if (folderIds.length > 0) {
+      await reorderFoldersMutation.mutateAsync({ folderIds, displayOrders: folderDisplayOrders });
+    }
+    if (movedLayerId !== undefined && sourceFolderId !== targetFolderId) {
+      await moveLayerToFolderMutation.mutateAsync({ layerId: movedLayerId, folderId: targetFolderId ?? null });
+    }
+    if (layerIds.length > 0) {
+      await reorderLayersMutation.mutateAsync({ layerIds, displayOrders: layerDisplayOrders });
+    }
+  };
+
+  const persistFlatOrder = async (flatItems: FlatItem[], movedLayerId?: number, sourceFolderId?: number | null, targetFolderId?: number | null) => {
+    currentFlatOrderRef.current = flatItems;
+    applyOptimisticUpdate(flatItems, movedLayerId, sourceFolderId, targetFolderId);
+
+    if (isSavingRef.current) {
+      pendingSaveRef.current = { flatItems, movedLayerId, sourceFolderId, targetFolderId };
+      return;
+    }
+    isSavingRef.current = true;
+
     try {
-      if (folderIds.length > 0) {
-        await reorderFoldersMutation.mutateAsync({ folderIds, displayOrders: folderDisplayOrders });
-      }
-      if (movedLayerId !== undefined && sourceFolderId !== targetFolderId) {
-        await moveLayerToFolderMutation.mutateAsync({ layerId: movedLayerId, folderId: targetFolderId ?? null });
-      }
-      if (layerIds.length > 0) {
-        await reorderLayersMutation.mutateAsync({ layerIds, displayOrders: layerDisplayOrders });
-      }
+      await executeSave(flatItems, movedLayerId, sourceFolderId, targetFolderId);
     } catch (err) {
       console.error("[DnD] persistFlatOrder error:", err);
-    } finally {
-      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
-      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     }
+
+    while (pendingSaveRef.current) {
+      const pending = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      try {
+        await executeSave(pending.flatItems, pending.movedLayerId, pending.sourceFolderId, pending.targetFolderId);
+      } catch (err) {
+        console.error("[DnD] persistFlatOrder pending error:", err);
+      }
+    }
+
+    isSavingRef.current = false;
+    queryClient.invalidateQueries({ queryKey: foldersQueryKey });
+    queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
   };
 
   const handleDropAtIndex = (e: React.DragEvent, scope: number | "ungrouped", index: number) => {
@@ -703,7 +784,12 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       const layer = sceneLayers.find(l => l.id === movedLayerId);
       if (!layer) {
         console.log("[DnD] Layer not found:", movedLayerId);
-        handleDragEnd();
+        dropHandledRef.current = true;
+        setDragLayerId(null);
+        setDragFolderId(null);
+        setDragType(null);
+        setDropTargetFolderId(null);
+        setDropInsertIndex(null);
         return;
       }
       
@@ -759,11 +845,17 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       console.log("[DnD] No valid data for drop:", { layerIdStr, folderIdStr, dragType });
     }
     
-    handleDragEnd();
+    dropHandledRef.current = true;
+    setDragLayerId(null);
+    setDragFolderId(null);
+    setDragType(null);
+    setDropTargetFolderId(null);
+    setDropInsertIndex(null);
   };
 
   const handleFolderDrop = (e: React.DragEvent, targetFolderId: number) => {
     e.preventDefault();
+    e.stopPropagation();
     const layerIdStr = e.dataTransfer.getData("text/layer");
     console.log("[DnD] Folder body drop:", { targetFolderId, layerIdStr, dragType });
     if (layerIdStr && dragType === "layer") {
@@ -790,7 +882,12 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
       }
     }
-    handleDragEnd();
+    dropHandledRef.current = true;
+    setDragLayerId(null);
+    setDragFolderId(null);
+    setDragType(null);
+    setDropTargetFolderId(null);
+    setDropInsertIndex(null);
   };
 
   const handleFolderDragOver = (e: React.DragEvent, targetId: number) => {
