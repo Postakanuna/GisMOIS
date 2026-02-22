@@ -192,9 +192,6 @@ export default function LandingPage() {
                     Геоинформационная платформа: карты, слои, анализ данных, мониторинг
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1 justify-center">
-                  <Badge variant="secondary" className="text-xs">Подсистемы 1–6</Badge>
-                </div>
               </CardContent>
             </Card>
 
