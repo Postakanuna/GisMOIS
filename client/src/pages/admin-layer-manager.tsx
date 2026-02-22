@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -169,6 +169,21 @@ export default function AdminLayerManager() {
   const mainScrollRef = useRef<HTMLDivElement>(null);
   const isSyncing = useRef(false);
 
+  const [scrollbarHeight, setScrollbarHeight] = useState(0);
+
+  useEffect(() => {
+    const el = topScrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = el.offsetHeight - el.clientHeight;
+      setScrollbarHeight(h);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [scenes.length]);
+
   const syncScroll = useCallback((source: "top" | "main") => {
     if (isSyncing.current) return;
     isSyncing.current = true;
@@ -311,7 +326,7 @@ export default function AdminLayerManager() {
         <Card>
           <CardContent className="p-0">
             <div className="flex">
-              <div className="flex-shrink-0 z-10 border-r">
+              <div className="flex-shrink-0 z-10 border-r flex flex-col">
                 <table className="border-collapse text-sm">
                   <thead>
                     <tr className="border-b bg-muted/50" style={{ height: "48px" }}>
@@ -323,10 +338,15 @@ export default function AdminLayerManager() {
                       </th>
                     </tr>
                   </thead>
+                </table>
+                {scrollbarHeight > 0 && (
+                  <div className="border-b bg-muted/50" style={{ height: `${scrollbarHeight}px` }} />
+                )}
+                <table className="border-collapse text-sm">
                   <tbody>
                     {filteredMatrix.length === 0 ? (
                       <tr>
-                        <td colSpan={2} className="text-center py-12 text-muted-foreground">
+                        <td colSpan={2} className="text-center py-12 text-muted-foreground min-w-[380px]">
                           {searchFilter || geometryFilter !== "all"
                             ? "Нет слоёв, подходящих под фильтр"
                             : "Нет загруженных слоёв"}
@@ -341,7 +361,7 @@ export default function AdminLayerManager() {
                             className={`border-b hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
                             style={{ height: "52px" }}
                           >
-                            <td className="px-4 py-0 border-r" style={{ height: "52px" }}>
+                            <td className="px-4 py-0 border-r min-w-[300px] w-[300px]" style={{ height: "52px" }}>
                               <div className="flex items-center gap-2 h-full">
                                 <div
                                   className="w-3 h-3 rounded-full flex-shrink-0 border"
@@ -362,7 +382,7 @@ export default function AdminLayerManager() {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-1 py-0" style={{ height: "52px" }}>
+                            <td className="px-1 py-0 w-[80px]" style={{ height: "52px" }}>
                               <div className="flex items-center gap-0.5 justify-center">
                                 <Tooltip>
                                   <TooltipTrigger asChild>
