@@ -2,7 +2,7 @@
 
 ## Overview
 
-ГИС МО "Инженерные сети" is a web application for managing engineering infrastructure using a multi-scene architecture. It is designed for visualizing cartographic data via WMS/WFS APIs, layer management, object information display, and shapefile layer uploads. The application centers around an interactive map with control elements on a sidebar, aiming to be a powerful and user-friendly tool for geospatial data, supporting GOST standards for icons and thermal network styles. It integrates business vision for market potential and project ambitions to provide a comprehensive GIS solution.
+ГИС МО "Инженерные сети" is a web application for managing engineering infrastructure using a multi-scene architecture. It provides tools for visualizing cartographic data (WMS/WFS), layer management, object information display, and shapefile uploads. The application features an interactive map with a sidebar for control elements, aiming to be a powerful and user-friendly tool for geospatial data, supporting GOST standards for icons and thermal network styles. It integrates business vision for market potential and project ambitions to provide a comprehensive GIS solution.
 
 ## User Preferences
 
@@ -12,122 +12,63 @@ Preferred communication style: Simple, everyday language.
 
 ### Frontend
 
-The frontend is built with React 18 and TypeScript, using Vite. It's a single-page application with Wouter for routing. State management relies on React Query for server-side data and React Hooks for local state. UI components are built with shadcn/ui (based on Radix UI) and styled using Tailwind CSS, supporting light/dark themes. The design adheres to Material Design 3 principles, optimized for data-intensive applications. A `SceneContext` manages the current scene's state.
+The frontend is a React 18, TypeScript, and Vite-based single-page application using Wouter for routing. State management relies on React Query and React Hooks. UI components are built with shadcn/ui (Radix UI) and styled with Tailwind CSS, supporting light/dark themes and Material Design 3 principles. Map rendering is handled by OpenLayers, supporting WMS/WFS layers from ZuluServer and OpenStreetMap. It includes features like zoom, coordinate display, GeoJSON rendering with viewport optimization, and "properties-on-demand." Attribute styling (single, categorized, graduated renderers) is configurable via `StyleConfigDialog`.
 
-Map rendering is handled by OpenLayers (ol) library, supporting WMS/WFS layers from ZuluServer and OpenStreetMap as a base. Key features include zoom control, coordinate display, and object information on click. It renders GeoJSON data, optimizes feature loading by viewport with geometry simplification and clustering, and supports "properties-on-demand." Attribute styling (QGIS/ArcGIS-like) includes single, categorized, and graduated renderers, configurable via `StyleConfigDialog`, with `MapLegend` displaying active styles.
-
-Key frontend components include `MapViewer` for the map, `DataManager` for dataset management, and `ScenesPage` for scene selection.
+Key components include `MapViewer`, `DataManager`, `ScenesPage`, and `AdminLayerManager` for cross-scene layer management. The `AdminLayerManager` provides a matrix view to manage layers across scenes, allowing quick cloning, bulk cloning, removal, and unified style palette configuration.
 
 ### Backend
 
-The backend uses Node.js with Express and TypeScript. It provides a REST API (`/api/`) supporting multi-scene architecture with role-based access. Features include universal tracing (`/api/trace-route`), optimized shapefile uploads with CP1251 encoding, and an external API with key management for integrations (e.g., Telegram bot, ARM ARKI). Cross-scene search and geospatial analytics (`/api/analytics/geospatial`) are supported, offering configurable reports. Layer attributes can be easily accessed (`/api/editable-layers/:id/attributes`), with Russian localization for GIS Zulu fields. Attribute value endpoints (`/api/editable-layers/:id/attribute-values`) provide unique values for filtering, and filtered object counts are available (`/api/editable-layers/:id/count-filtered`). Layer export supports GeoJSON and Shapefile formats.
+The backend uses Node.js with Express and TypeScript, providing a REST API (`/api/`) that supports multi-scene architecture and role-based access. It features universal tracing, optimized shapefile uploads (CP1251 encoding), an external API with key management, cross-scene search, and geospatial analytics. It handles layer attribute access, unique attribute values for filtering, and filtered object counts. Layer export supports GeoJSON and Shapefile formats.
 
 ### Storage
 
-Data is stored in PostgreSQL, managed by Drizzle ORM. Schemas are defined for users, scenes, scene members, datasets, and API keys, with Zod for schema validation. Indexing is used for query optimization.
+Data is stored in PostgreSQL, managed by Drizzle ORM, with schemas for users, scenes, datasets, and API keys, validated using Zod.
 
-### Build System
+### Geocoding
 
-Development uses Vite dev server with HMR and Express proxy. Production builds frontend with Vite and backend with esbuild.
-
-### Project Structure
-
-The project is organized into `client/` (React app), `server/` (Express backend), `shared/` (common types/schemas), and `migrations/` (database migrations).
-
-### Database Schema
-
-Key tables include `users`, `scenes`, `scene_members`, `datasets`, `scene_datasets`, `dataset_features`, and `api_keys` (with permissions like `create_point`, `read_layers`, `read_scenes`, `spatial_query`).
+The system supports multi-provider geocoding (Yandex Geocoder and DaData) for converting addresses to coordinates and vice-versa, enriching layer attributes with address information, including FIAS IDs from DaData. All coordinates are normalized to EPSG:4326 (WGS84).
 
 ### Advanced Styling
 
-The application offers extensive styling options:
-- **Point Styles**: Basic shapes (circle, square) and GOST-compliant thermal network icons (heat-source, ctp, itp). Custom SVG icons are supported.
-- **Line Styles**: Basic patterns (solid, dashed) and GOST-compliant thermal network styles (relaying, bypass).
-- **Per-class Styling**: Categorized and graduated renderers allow assigning specific point and line styles to individual classes. `IconPicker` and `LinePicker` components facilitate this, and `MapLegend` accurately displays per-class symbols.
+Extensive styling options are available for points (basic shapes, GOST-compliant thermal network icons, custom SVGs) and lines (basic patterns, GOST-compliant thermal network styles). Per-class styling with categorized and graduated renderers allows assigning specific styles, facilitated by `IconPicker` and `LinePicker` components.
 
-### Geocoding (Multi-Provider)
+### Automatic Consumer Connection
 
-Two geocoding providers are supported: Yandex Geocoder and DaData, configurable in settings.
-- **Yandex Geocoder**: High request rate, requires `YANDEX_GEOCODER_API_KEY`.
-- **DaData**: Returns FIAS ID in addition to coordinates, requires `DADATA_API_KEY`.
-The chosen provider influences both Excel import (address to coordinates) and reverse geocoding (coordinates to address), adding specific attributes like `fias_id`. The geocoding service ensures all coordinates are in EPSG:4326 (WGS84).
+This feature automates connecting new heat consumers to the network. Users place a point, input consumer data (name, address, building type, thermal loads), and the system automatically traces the nearest connection point, routes along roads using OSRM, places heat chambers, and calculates pipe parameters using an AI model (OpenAI gpt-4o-mini) or heuristic fallback. Results include route details, AI-calculated parameters, heat chamber placements, and capacity analysis. Users can confirm and update the point or save the route and chambers as new layers.
 
-### Reverse Geocoding
+#### Capacity Analysis
 
-This feature enriches layer attributes with address information based on coordinates. It can be initiated from the data manager, showing a progress bar and allowing cancellation. For linear objects, `addr_begin` and `addr_end` fields are populated, while point objects get `addr_point`. DaData integration also adds `fias_begin`/`fias_end`/`fias_point`. Field names are compatible with Shapefile constraints (≤10 characters, Latin alphabet), with Russian descriptions provided via `shared/field-labels.ts`. The process intelligently skips objects with already filled address fields.
+The system includes intelligent capacity analysis to find upstream CTP/source, extract capacity data, calculate downstream load, and check pipe capacity against existing diameters. It provides `installedCapacity`, `connectedLoadFromAttributes`, `currentLoadFromConsumers`, `surplus`, `capacityUnknown` flags, and pipe issue warnings.
+
+### Attribute Join
+
+This feature allows enriching layer data from XLSX files by matching key fields from the layer with key columns from the Excel file, similar to a database table join.
+
+### AI Assistant
+
+An integrated AI chat panel allows users to interact with an AI assistant. It supports message history, text input, and dual AI providers (OpenAI GPT-4o-mini and Yandex GPT-Lite) with an in-chat model switcher. A Retrieval-Augmented Generation (RAG) system automatically injects relevant GIS object data from `drawn_features` and `editable_layers` into the AI's system prompt, enabling data-aware responses.
 
 ## External Dependencies
 
 ### Third-Party Services
 
-- **ZuluServer**: External GIS server providing WMS/WFS cartographic services, proxied by the backend to handle CORS and authentication.
-- **Yandex Geocoder**: Optional geocoding service.
-- **DaData**: Optional geocoding service, offering additional FIAS ID.
+-   **ZuluServer**: External GIS server for WMS/WFS services.
+-   **Yandex Geocoder**: Optional geocoding service.
+-   **DaData**: Optional geocoding service, providing FIAS IDs.
+-   **OSRM (router.project-osrm.org)**: Routing service for automatic consumer connection.
+-   **OpenAI**: AI provider for automatic consumer connection parameter calculation and the AI Assistant.
+-   **Yandex GPT**: AI provider for the AI Assistant.
 
 ### Database
 
-- **PostgreSQL**: Used for all persistent data storage, configured via Drizzle ORM.
+-   **PostgreSQL**: Primary database for all persistent data storage.
 
 ### Key Libraries
 
-- **OpenLayers**: Core library for interactive map rendering and GIS functionalities.
-- **React Query**: Manages server state and caching for the frontend.
-- **Radix UI**: Provides accessible UI primitives, foundational for shadcn/ui components.
-- **Zod**: Used for robust type validation of API requests and database schemas.
-- **Drizzle ORM**: Enables type-safe database queries and schema management.
-- **shpjs**: Parses Shapefile data, including support for various encodings.
-- **ExcelJS**: Reads and parses XLSX files for geocoding import and attribute join features.
-
-### AI Assistant (ИИ-ассистент)
-
-The application includes an AI chat panel integrated into the left sidebar. Users can toggle between the layers view and the AI chat using a button in the sidebar header (Bot/Layers icons). The chat panel component (`client/src/components/ai-chat-panel.tsx`) provides:
-- Message history with user/assistant bubbles
-- Text input with Enter-to-send
-- Loading animation during AI responses
-- Dual AI provider support with in-chat model switcher dropdown
-
-**AI Providers** (user-selectable via dropdown in chat header):
-- **OpenAI (GPT)**: Uses Replit AI Integrations (`AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`), model `gpt-4o-mini`. Default provider.
-- **Yandex GPT**: Uses `YANDEX_STUDIO_API_KEY` + `YANDEX_FOLDER_ID`, model `yandexgpt-lite/latest`.
-
-**RAG (Retrieval-Augmented Generation)**: Before sending a query to the AI, the system automatically searches the database (`drawn_features` + `editable_layers`) for relevant objects by name, address, city, and layer type. Found objects with their properties are injected into the system prompt as context, enabling the AI to answer with real data from the GIS database. The search module is in `server/ai-rag.ts`. Layers summary is cached for 5 minutes.
-
-Backend endpoints:
-- `GET /api/ai/providers` — returns available providers with availability status
-- `POST /api/ai/chat` — accepts `{ messages, provider }`, routes to selected AI backend
-
-The sidebar view state (`sidebarView`) supports three modes: `"layers"` (default), `"featureInfo"` (object attributes), and `"ai-chat"` (AI assistant). Both desktop Sidebar and mobile Sheet support the toggle.
-
-### Automatic Consumer Connection (Автоматическое подключение потребителя)
-
-This feature enables automatic connection of new heat consumers to the existing network. Workflow: user places a point on the map, selects it, and clicks the Building2 icon button in the drawing toolbar. The dialog (`client/src/components/consumer-connect-dialog.tsx`) opens with coordinates from the selected point. User inputs:
-- Consumer name, address, building type, floors
-- Thermal loads: Qo (heating), Qgv (hot water), Qsv (ventilation)
-
-The system then performs automatic tracing via `POST /api/auto-trace`:
-1. **Find nearest connection point** (`findNearestConnectionPoint` in `server/network-graph.ts`) — searches the spatial graph for nodes, CTPs, and valves with type-based priority weighting
-2. **Route along roads (OSRM)** — builds a real route along roads using OSRM routing service (`router.project-osrm.org`), with straight-line fallback if OSRM is unavailable
-3. **Analyze route geometry** (`analyzeRouteGeometry`) — simplifies the OSRM polyline, detects real turning angles (>15°), computes segment lengths
-4. **Place heat chambers** (`placeHeatChambers`) — places chambers every 120m along the real road route (with residual distance carryover) and at turning angles >30°
-5. **AI parameter calculation** — uses OpenAI (gpt-4o-mini) with detailed route data (real segment lengths, turning angles, heat chamber count) to calculate pipe diameters, flow rates, velocities, pressure losses, compensators, and valves; falls back to heuristic calculation if AI is unavailable
-
-Results are displayed in collapsible sections showing route details, AI-calculated parameters with visual cards and badges, and heat chamber placements. User can:
-- **Confirm and create** — updates the selected point feature's properties with consumer data; the dialog stays open showing a success banner
-- **Save to new layer** (appears only after confirmation) — via `POST /api/auto-trace/save-layer`, creates two new layers: a LineString layer with the route (including AI-calculated pipe parameters as attributes) and a Point layer with heat chambers and consumer point. This two-step flow lets the user first see the created object on the map before deciding to save layers.
-
-#### Capacity Analysis (Анализ мощности)
-
-The auto-trace system includes intelligent capacity analysis (`analyzeCapacity` in `server/network-graph.ts`):
-1. **Find upstream CTP/source** — BFS traversal from connection point upstream through the spatial graph to find the nearest CTP or heat source node.
-2. **Extract capacity data** — Uses ZuluThermo field mappings:
-   - **Source (Источник)**: Installed capacity from `Qmax`, `Ust_moshn`, `Qist`, `Q_ust`, `Moshn` or fallback to `Qsum`. Connected load from `Qsum` or `Qo_r+Qsv_r+Qgv_r` / `Qo_t+Qsv_t+Qgv_t`.
-   - **CTP**: Connected/designed load from `Qo_t+Qsv_t+Qgv_t` (or `Qo_r+Qsv_r+Qgv_r`, `Qgv_sred` fallbacks). CTPs don't have a dedicated installed capacity field per ZuluThermo docs.
-3. **Calculate downstream load** — BFS from the found CTP/source to sum all connected node loads (checks heat properties `Qo_r`, `Nagr_otop`, `Qgv_sred`, `Qsv_r`, `Qo`, `Q_otop`, `Q_gvs`, `Q_vent` on all non-CTP/source nodes). Returns both `currentLoadFromConsumers` (graph sum) and `connectedLoadFromAttributes` (from CTP/source attributes).
-4. **Check pipe capacity** — Validates each pipe segment along the path, comparing existing diameters (`Dpod`/`Dobr`) against the required diameter for the total load. Database stores diameters in meters; `toMmAndSnapDN()` converts to mm and snaps to the nearest standard DN (32, 40, 50, 57, 76, 89, 108, 133, 159, 194, 219, 273, 325, 377, 426, 530, 630). Uses a unified lookup table mapping Gcal/h to standard pipe diameters.
-5. **Capacity result** — Returns `installedCapacity`, `connectedLoadFromAttributes`, `currentLoadFromConsumers`, `surplus`, `capacityUnknown` flag, consumer list, and pipe issues. When capacity data is missing from attributes, `capacityUnknown=true` and `hasSufficientCapacity=false` (conservative approach — warns user instead of silently assuming surplus).
-
-The dialog displays: CTP/source info with installed capacity or connected load, two factual load cards (from attributes and from consumer sum), total load, requested load, surplus/deficit with color coding. Yellow warning when capacity is unknown, red panel with reconstruction recommendation when deficit exists. Per-pipe reconstruction issues with save-to-layer functionality.
-
-### Attribute Join
-
-The attribute join feature allows enriching layer data from XLSX files without geocoding, using key-based matching (similar to QGIS/ArcGIS table join). Users select a key field from the layer and a key column from the XLSX file; matching rows have their selected columns added as new attributes. The workflow includes: file upload, key field + column selection, preview with match statistics (matched/unmatched counts), and execution. Backend endpoints: `/api/parse-excel-for-join`, `/api/editable-layers/:id/join-preview`, `/api/editable-layers/:id/join-excel`.
+-   **OpenLayers**: Core map rendering and GIS functionality.
+-   **React Query**: Frontend server state management.
+-   **Radix UI**: Accessible UI primitives.
+-   **Zod**: Type validation for APIs and schemas.
+-   **Drizzle ORM**: Type-safe database queries.
+-   **shpjs**: Shapefile parsing.
+-   **ExcelJS**: XLSX file parsing.

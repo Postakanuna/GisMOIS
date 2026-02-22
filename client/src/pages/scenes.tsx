@@ -41,7 +41,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, LogOut, Settings, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft } from "lucide-react";
+import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, LogOut, Settings, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Layers } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { SceneAccessDialog } from "@/components/scene-access-dialog";
@@ -364,14 +364,25 @@ export default function ScenesPage() {
               {user?.firstName || user?.username}
             </span>
             {user?.role === "admin" && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setLocation("/admin/users")}
-                data-testid="button-admin"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setLocation("/admin/layers")}
+                  data-testid="button-layer-manager"
+                  title="Менеджер слоёв"
+                >
+                  <Layers className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setLocation("/admin/users")}
+                  data-testid="button-admin"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </>
             )}
             <Button
               variant="ghost"

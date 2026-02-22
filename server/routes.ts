@@ -6733,6 +6733,211 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // ADMIN LAYER MANAGER API
+  // ============================================
+
+  app.get("/api/admin/layer-matrix", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const allLayers = await storage.getEditableLayers();
+      const allScenes = await storage.getScenes();
+
+      const layerGroups = new Map<string, {
+        name: string;
+        geometryType: string;
+        source: string;
+        sourceFileName?: string;
+        instances: Array<{
+          layerId: number;
+          sceneId: number | null;
+          sceneName: string | null;
+          color: string;
+          pointStyle: string;
+          lineStyle: string;
+          opacity: number;
+          visible: boolean;
+          featureCount: number;
+          styleConfig?: any;
+        }>;
+      }>();
+
+      for (const layer of allLayers) {
+        const groupKey = `${layer.name}__${layer.geometryType}`;
+        if (!layerGroups.has(groupKey)) {
+          layerGroups.set(groupKey, {
+            name: layer.name,
+            geometryType: layer.geometryType,
+            source: layer.source,
+            sourceFileName: layer.sourceFileName,
+            instances: [],
+          });
+        }
+        const scene = layer.sceneId ? allScenes.find(s => s.id === layer.sceneId) : null;
+        layerGroups.get(groupKey)!.instances.push({
+          layerId: layer.id,
+          sceneId: layer.sceneId ?? null,
+          sceneName: scene?.name ?? null,
+          color: layer.color,
+          pointStyle: layer.pointStyle,
+          lineStyle: layer.lineStyle,
+          opacity: layer.opacity,
+          visible: layer.visible,
+          featureCount: layer.featureCount,
+          styleConfig: layer.styleConfig,
+        });
+      }
+
+      const matrix = Array.from(layerGroups.values());
+      const scenes = allScenes.map(s => ({ id: s.id, name: s.name }));
+
+      return res.json({ matrix, scenes });
+    } catch (error) {
+      console.error("Error getting layer matrix:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/clone-layer-to-scenes", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { sourceLayerId, targetSceneIds, palette } = req.body;
+      if (!sourceLayerId || !targetSceneIds || !Array.isArray(targetSceneIds) || targetSceneIds.length === 0) {
+        return res.status(400).json({ message: "sourceLayerId and targetSceneIds[] are required" });
+      }
+
+      const sourceLayer = await storage.getEditableLayer(sourceLayerId);
+      if (!sourceLayer) {
+        return res.status(404).json({ message: "Source layer not found" });
+      }
+
+      const sourceFeatures = await storage.getDrawnFeatures(sourceLayerId);
+      const sourceSchema = await storage.getLayerSchema(sourceLayerId);
+
+      const created: any[] = [];
+      for (const sceneId of targetSceneIds) {
+        const newLayer = await storage.createEditableLayer({
+          sceneId,
+          name: sourceLayer.name,
+          geometryType: sourceLayer.geometryType,
+          color: palette?.color ?? sourceLayer.color,
+          pointStyle: palette?.pointStyle ?? sourceLayer.pointStyle,
+          lineStyle: palette?.lineStyle ?? sourceLayer.lineStyle,
+          visible: true,
+          opacity: palette?.opacity ?? sourceLayer.opacity,
+          source: sourceLayer.source,
+          sourceFileName: sourceLayer.sourceFileName,
+          sourceFiles: sourceLayer.sourceFiles,
+          crs: sourceLayer.crs,
+          styleConfig: palette?.styleConfig ?? sourceLayer.styleConfig,
+          metadata: sourceLayer.metadata as any,
+        });
+
+        if (sourceSchema) {
+          await storage.createLayerSchema({
+            layerId: newLayer.id,
+            fields: sourceSchema.fields as any,
+          });
+        }
+
+        if (sourceFeatures.length > 0) {
+          const batchSize = 500;
+          for (let i = 0; i < sourceFeatures.length; i += batchSize) {
+            const batch = sourceFeatures.slice(i, i + batchSize).map(f => ({
+              layerId: newLayer.id,
+              geometryType: f.geometryType as any,
+              coordinates: f.coordinates,
+              properties: f.properties,
+            }));
+            await storage.createDrawnFeaturesBatch(batch);
+          }
+        }
+
+        created.push({
+          layerId: newLayer.id,
+          sceneId,
+          name: newLayer.name,
+          featureCount: sourceFeatures.length,
+        });
+      }
+
+      return res.json({ success: true, created });
+    } catch (error) {
+      console.error("Error cloning layer to scenes:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/remove-layer-from-scene", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { layerId } = req.body;
+      if (!layerId) {
+        return res.status(400).json({ message: "layerId is required" });
+      }
+
+      const layer = await storage.getEditableLayer(layerId);
+      if (!layer) {
+        return res.status(404).json({ message: "Layer not found" });
+      }
+
+      await storage.deleteEditableLayer(layerId);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing layer from scene:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/apply-palette", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { layerIds, palette } = req.body;
+      if (!layerIds || !Array.isArray(layerIds) || layerIds.length === 0) {
+        return res.status(400).json({ message: "layerIds[] is required" });
+      }
+      if (!palette || typeof palette !== "object") {
+        return res.status(400).json({ message: "palette object is required" });
+      }
+
+      const updated: any[] = [];
+      for (const id of layerIds) {
+        const updates: Partial<any> = {};
+        if (palette.color !== undefined) updates.color = palette.color;
+        if (palette.pointStyle !== undefined) updates.pointStyle = palette.pointStyle;
+        if (palette.lineStyle !== undefined) updates.lineStyle = palette.lineStyle;
+        if (palette.opacity !== undefined) updates.opacity = palette.opacity;
+        if (palette.styleConfig !== undefined) updates.styleConfig = palette.styleConfig;
+
+        const layer = await storage.updateEditableLayer(id, updates);
+        if (layer) {
+          updated.push({ layerId: layer.id, sceneId: layer.sceneId });
+        }
+      }
+
+      return res.json({ success: true, updated });
+    } catch (error) {
+      console.error("Error applying palette:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
 

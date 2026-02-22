@@ -13,6 +13,7 @@ import LandingPage from "@/pages/landing";
 import Home from "@/pages/home";
 import Settings from "@/pages/settings";
 import AdminUsers from "@/pages/admin-users";
+import AdminLayerManager from "@/pages/admin-layer-manager";
 import LoginPage from "@/pages/login";
 import ScenesPage from "@/pages/scenes";
 
@@ -39,6 +40,11 @@ function Router() {
       <Route path="/admin/users">
         <ProtectedRoute requireAdmin>
           <AdminUsers />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/layers">
+        <ProtectedRoute requireAdmin>
+          <AdminLayerManager />
         </ProtectedRoute>
       </Route>
       <Route path="/admin">
