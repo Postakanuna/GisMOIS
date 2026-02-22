@@ -299,10 +299,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       const res = await apiRequest("PATCH", `/api/editable-layers/${layerId}/folder`, { folderId });
       return res.json();
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
-      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
-    },
   });
 
   const reorderLayersMutation = useMutation({
@@ -310,18 +306,12 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       const res = await apiRequest("POST", "/api/editable-layers/reorder", data);
       return res.json();
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
-    },
   });
 
   const reorderFoldersMutation = useMutation({
     mutationFn: async (data: { folderIds: number[]; displayOrders?: number[] }) => {
       const res = await apiRequest("POST", "/api/layer-folders/reorder", data);
       return res.json();
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
     },
   });
 
@@ -646,7 +636,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     return result;
   };
 
-  const persistFlatOrder = (flatItems: FlatItem[], movedLayerId?: number, sourceFolderId?: number | null, targetFolderId?: number | null) => {
+  const persistFlatOrder = async (flatItems: FlatItem[], movedLayerId?: number, sourceFolderId?: number | null, targetFolderId?: number | null) => {
     const folderIds: number[] = [];
     const folderDisplayOrders: number[] = [];
     const layerIds: number[] = [];
@@ -667,16 +657,21 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       }
     }
     console.log("[DnD] persistFlatOrder: folders=", folderIds, "folderOrders=", folderDisplayOrders, "layers=", layerIds, "layerOrders=", layerDisplayOrders);
-    reorderFoldersMutation.mutate({ folderIds, displayOrders: folderDisplayOrders });
-    
-    const doReorder = () => {
-      if (layerIds.length > 0) reorderLayersMutation.mutate({ layerIds, displayOrders: layerDisplayOrders });
-    };
-    
-    if (movedLayerId !== undefined && sourceFolderId !== targetFolderId) {
-      moveLayerToFolderMutation.mutateAsync({ layerId: movedLayerId, folderId: targetFolderId ?? null }).then(doReorder);
-    } else {
-      doReorder();
+    try {
+      if (folderIds.length > 0) {
+        await reorderFoldersMutation.mutateAsync({ folderIds, displayOrders: folderDisplayOrders });
+      }
+      if (movedLayerId !== undefined && sourceFolderId !== targetFolderId) {
+        await moveLayerToFolderMutation.mutateAsync({ layerId: movedLayerId, folderId: targetFolderId ?? null });
+      }
+      if (layerIds.length > 0) {
+        await reorderLayersMutation.mutateAsync({ layerIds, displayOrders: layerDisplayOrders });
+      }
+    } catch (err) {
+      console.error("[DnD] persistFlatOrder error:", err);
+    } finally {
+      queryClient.invalidateQueries({ queryKey: foldersQueryKey });
+      queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
     }
   };
 
@@ -799,11 +794,13 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   };
 
   const handleFolderDragOver = (e: React.DragEvent, targetId: number) => {
-    if (dragType === "layer") {
+    if (dragType === "layer" || dragType === "folder") {
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
-      setDropTargetFolderId(targetId);
-      setDropInsertIndex(null);
+      if (dragType === "layer") {
+        setDropTargetFolderId(targetId);
+        setDropInsertIndex(null);
+      }
     }
   };
 
@@ -1376,34 +1373,38 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
               ) : (
                 <div className="space-y-1">
                   {(() => {
-                    const flatOrder = buildFlatItems(folders, sceneLayers);
-                    currentFlatOrderRef.current = flatOrder;
-                    
-                    type RenderItem = { type: "folder"; folder: Folder; layers: EditableLayer[] } | { type: "layer"; layer: EditableLayer };
+                    const rawFlatOrder = buildFlatItems(folders, sceneLayers);
+                    const validFlatOrder: FlatItem[] = [];
+                    type RenderItem = { type: "folder"; folder: Folder; layers: EditableLayer[]; flatIndex: number } | { type: "layer"; layer: EditableLayer; flatIndex: number };
                     const renderItems: RenderItem[] = [];
-                    for (const fi of flatOrder) {
+                    for (const fi of rawFlatOrder) {
                       if (fi.type === "folder") {
                         const folder = folders.find(f => f.id === fi.folderId);
                         if (!folder) continue;
+                        const idx = validFlatOrder.length;
+                        validFlatOrder.push(fi);
                         const folderLayers = fi.layers.map(lid => sceneLayers.find(l => l.id === lid)).filter((l): l is EditableLayer => !!l);
-                        renderItems.push({ type: "folder" as const, folder, layers: folderLayers });
+                        renderItems.push({ type: "folder" as const, folder, layers: folderLayers, flatIndex: idx });
                       } else {
                         const layer = sceneLayers.find(l => l.id === fi.layerId);
                         if (!layer) continue;
-                        renderItems.push({ type: "layer" as const, layer });
+                        const idx = validFlatOrder.length;
+                        validFlatOrder.push(fi);
+                        renderItems.push({ type: "layer" as const, layer, flatIndex: idx });
                       }
                     }
+                    currentFlatOrderRef.current = validFlatOrder;
 
                     return (
                       <>
-                        {renderItems.map((item, flatIdx) => {
+                        {renderItems.map((item, _renderIdx) => {
                           if (item.type === "folder") {
-                            const { folder, layers: folderLayers } = item;
+                            const { folder, layers: folderLayers, flatIndex } = item;
                             const isExpanded = expandedFolderIds.has(folder.id);
                             const isDragTarget = dropTargetFolderId === folder.id && dragLayerId !== null;
                             return (
                               <Fragment key={`folder-${folder.id}`}>
-                                {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", flatIdx)}
+                                {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", flatIndex)}
                                 <Collapsible
                                   open={isExpanded}
                                   onOpenChange={() => toggleFolderExpanded(folder.id)}
@@ -1419,6 +1420,9 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                             onDrop={(e) => handleFolderDrop(e, folder.id)}
                           >
                           <div className="flex items-center gap-1.5 px-2 py-1">
+                            {canEdit && (
+                              <GripVertical className="h-3 w-3 text-muted-foreground/50 shrink-0 cursor-grab" />
+                            )}
                             <CollapsibleTrigger asChild>
                               <button className="shrink-0 hover:bg-muted rounded p-0.5" data-testid={`button-toggle-folder-${folder.id}`}>
                                 {isExpanded ? (
@@ -1550,13 +1554,13 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                           } else {
                             return (
                               <Fragment key={`layer-${item.layer.id}`}>
-                                {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", flatIdx)}
+                                {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", item.flatIndex)}
                                 {renderLayerRow(item.layer)}
                               </Fragment>
                             );
                           }
                         })}
-                        {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", renderItems.length)}
+                        {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", currentFlatOrderRef.current.length)}
                       </>
                     );
                   })()}
