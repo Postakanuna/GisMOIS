@@ -4238,6 +4238,90 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // SCENE FOLDERS API
+  // ============================================
+
+  app.get("/api/scene-folders", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const folders = await storage.getSceneFolders();
+      return res.json(folders);
+    } catch (error) {
+      console.error("Error getting scene folders:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/scene-folders", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const { name, parentId } = req.body;
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      const folder = await storage.createSceneFolder({ name, parentId: parentId ?? null, createdBy: user.id });
+      return res.status(201).json(folder);
+    } catch (error) {
+      console.error("Error creating scene folder:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/scene-folders/:id", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const folderId = parseInt(req.params.id);
+      const existingFolder = await storage.getSceneFolder(folderId);
+      if (!existingFolder) {
+        return res.status(404).json({ message: "Folder not found" });
+      }
+      if (existingFolder.createdBy !== user.id && user.role !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const { name, parentId } = req.body;
+      const updates: Partial<{ name: string; parentId: number | null }> = {};
+      if (name !== undefined) updates.name = name;
+      if (parentId !== undefined) updates.parentId = parentId;
+      const folder = await storage.updateSceneFolder(folderId, updates);
+      return res.json(folder);
+    } catch (error) {
+      console.error("Error updating scene folder:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/scene-folders/:id", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const folderId = parseInt(req.params.id);
+      const existingFolder = await storage.getSceneFolder(folderId);
+      if (!existingFolder) {
+        return res.status(404).json({ message: "Folder not found" });
+      }
+      if (existingFolder.createdBy !== user.id && user.role !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      await storage.deleteSceneFolder(folderId);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting scene folder:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
   // SCENES API
   // ============================================
 
@@ -4300,13 +4384,13 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const { name, description } = req.body;
+      const { name, description, folderId } = req.body;
       
       if (!name || typeof name !== "string") {
         return res.status(400).json({ message: "Name is required" });
       }
       
-      const scene = await storage.createScene({ name, description, createdBy: user.id });
+      const scene = await storage.createScene({ name, description, folderId: folderId ?? null, createdBy: user.id });
       return res.status(201).json({ ...scene, role: "owner" });
     } catch (error) {
       console.error("Error creating scene:", error);
@@ -4331,8 +4415,12 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Viewers cannot edit scenes" });
       }
       
-      const { name, description } = req.body;
-      const scene = await storage.updateScene(sceneId, { name, description });
+      const { name, description, folderId } = req.body;
+      const updates: Partial<{ name: string; description: string; folderId: number | null }> = {};
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (folderId !== undefined) updates.folderId = folderId;
+      const scene = await storage.updateScene(sceneId, updates);
       return res.json(scene);
     } catch (error) {
       console.error("Error updating scene:", error);

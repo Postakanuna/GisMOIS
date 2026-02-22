@@ -379,11 +379,30 @@ export const layerSchemas = pgTable("layer_schemas", {
 export const sceneRoleSchema = z.enum(["owner", "editor", "viewer"]);
 export type SceneRole = z.infer<typeof sceneRoleSchema>;
 
+// Scene folders for grouping scenes
+export const sceneFolders = pgTable("scene_folders", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  parentId: integer("parent_id"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type SceneFolder = typeof sceneFolders.$inferSelect;
+export type InsertSceneFolder = typeof sceneFolders.$inferInsert;
+
+export const insertSceneFolderSchema = z.object({
+  name: z.string().min(1),
+  parentId: z.number().nullable().optional(),
+  createdBy: z.string(),
+});
+
 // Scenes table - project containers
 export const scenes = pgTable("scenes", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
   description: text("description"),
+  folderId: integer("folder_id"),
   createdBy: varchar("created_by").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -395,6 +414,7 @@ export type InsertScene = typeof scenes.$inferInsert;
 export const insertSceneSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
+  folderId: z.number().nullable().optional(),
   createdBy: z.string(),
 });
 

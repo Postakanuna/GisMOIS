@@ -6,6 +6,7 @@ import {
   type AttributeField,
   type Scene, type InsertScene,
   type SceneMember, type InsertSceneMember,
+  type SceneFolder, type InsertSceneFolder,
   type Dataset, type InsertDataset,
   type DatasetFeature, type InsertDatasetFeature,
   type SceneDataset, type InsertSceneDataset,
@@ -15,7 +16,7 @@ import {
   type CustomIcon, type InsertCustomIcon,
   type LayerFolder,
   editableLayers, drawnFeatures, layerSchemas,
-  scenes, sceneMembers, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
+  scenes, sceneMembers, sceneFolders, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
   appSettings
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
@@ -47,12 +48,19 @@ export interface IStorage {
   createLayerSchema(schema: InsertLayerSchemaDefinition): Promise<LayerSchemaDefinition>;
   updateLayerSchema(layerId: number, fields: AttributeField[]): Promise<LayerSchemaDefinition | undefined>;
   
+  // Scene folder methods
+  getSceneFolders(parentId?: number | null): Promise<SceneFolder[]>;
+  getSceneFolder(id: number): Promise<SceneFolder | undefined>;
+  createSceneFolder(folder: { name: string; parentId?: number | null; createdBy: string }): Promise<SceneFolder>;
+  updateSceneFolder(id: number, updates: Partial<{ name: string; parentId: number | null }>): Promise<SceneFolder | undefined>;
+  deleteSceneFolder(id: number): Promise<boolean>;
+
   // Scene methods
   getScenes(): Promise<Scene[]>;
   getScenesForUser(userId: string): Promise<(Scene & { role: SceneRole })[]>;
   getScene(id: number): Promise<Scene | undefined>;
-  createScene(scene: { name: string; description?: string; createdBy: string }): Promise<Scene>;
-  updateScene(id: number, updates: Partial<{ name: string; description: string }>): Promise<Scene | undefined>;
+  createScene(scene: { name: string; description?: string; folderId?: number | null; createdBy: string }): Promise<Scene>;
+  updateScene(id: number, updates: Partial<{ name: string; description: string; folderId: number | null }>): Promise<Scene | undefined>;
   deleteScene(id: number): Promise<boolean>;
   
   // Scene members methods
@@ -503,6 +511,46 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Scene methods
+  // Scene folder methods
+  async getSceneFolders(parentId?: number | null): Promise<SceneFolder[]> {
+    if (parentId === undefined) {
+      return await db.select().from(sceneFolders);
+    }
+    if (parentId === null) {
+      return await db.select().from(sceneFolders).where(isNull(sceneFolders.parentId));
+    }
+    return await db.select().from(sceneFolders).where(eq(sceneFolders.parentId, parentId));
+  }
+
+  async getSceneFolder(id: number): Promise<SceneFolder | undefined> {
+    const [row] = await db.select().from(sceneFolders).where(eq(sceneFolders.id, id));
+    return row;
+  }
+
+  async createSceneFolder(folder: { name: string; parentId?: number | null; createdBy: string }): Promise<SceneFolder> {
+    const [row] = await db.insert(sceneFolders).values({
+      name: folder.name,
+      parentId: folder.parentId ?? null,
+      createdBy: folder.createdBy,
+    }).returning();
+    return row;
+  }
+
+  async updateSceneFolder(id: number, updates: Partial<{ name: string; parentId: number | null }>): Promise<SceneFolder | undefined> {
+    const updateData: Record<string, unknown> = {};
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.parentId !== undefined) updateData.parentId = updates.parentId;
+    const [row] = await db.update(sceneFolders).set(updateData).where(eq(sceneFolders.id, id)).returning();
+    return row;
+  }
+
+  async deleteSceneFolder(id: number): Promise<boolean> {
+    await db.update(scenes).set({ folderId: null }).where(eq(scenes.folderId, id));
+    await db.update(sceneFolders).set({ parentId: null }).where(eq(sceneFolders.parentId, id));
+    const result = await db.delete(sceneFolders).where(eq(sceneFolders.id, id)).returning();
+    return result.length > 0;
+  }
+
   async getScenes(): Promise<Scene[]> {
     return await db.select().from(scenes);
   }
@@ -525,10 +573,11 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async createScene(scene: { name: string; description?: string; createdBy: string }): Promise<Scene> {
+  async createScene(scene: { name: string; description?: string; folderId?: number | null; createdBy: string }): Promise<Scene> {
     const [row] = await db.insert(scenes).values({
       name: scene.name,
       description: scene.description || null,
+      folderId: scene.folderId ?? null,
       createdBy: scene.createdBy,
     }).returning();
     
@@ -542,10 +591,11 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async updateScene(id: number, updates: Partial<{ name: string; description: string }>): Promise<Scene | undefined> {
+  async updateScene(id: number, updates: Partial<{ name: string; description: string; folderId: number | null }>): Promise<Scene | undefined> {
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
     if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.description !== undefined) updateData.description = updates.description;
+    if (updates.folderId !== undefined) updateData.folderId = updates.folderId;
     
     const [row] = await db.update(scenes).set(updateData).where(eq(scenes.id, id)).returning();
     return row;
