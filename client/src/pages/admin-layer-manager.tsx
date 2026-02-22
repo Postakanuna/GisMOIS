@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
@@ -41,10 +40,8 @@ import {
   Palette,
   Copy,
   Trash2,
-  Check,
   Loader2,
   Search,
-  MapPin,
   Minus,
   Filter,
 } from "lucide-react";
@@ -54,6 +51,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { LayerStylePanel } from "@/components/layer-style-panel";
+import type { StyleConfig } from "@shared/schema";
 
 interface LayerInstance {
   layerId: number;
@@ -86,34 +85,11 @@ interface MatrixData {
   scenes: SceneInfo[];
 }
 
-const POINT_STYLES = [
-  { value: "circle", label: "Круг" },
-  { value: "square", label: "Квадрат" },
-  { value: "triangle", label: "Треугольник" },
-  { value: "heat-source", label: "Источник (ГОСТ)" },
-  { value: "ctp", label: "ЦТП (ГОСТ)" },
-  { value: "itp", label: "ИТП (ГОСТ)" },
-];
-
-const LINE_STYLES = [
-  { value: "solid", label: "Сплошная" },
-  { value: "dashed", label: "Пунктир" },
-  { value: "dotted", label: "Точки" },
-  { value: "relaying", label: "Перекладка (ГОСТ)" },
-  { value: "bypass", label: "Обход (ГОСТ)" },
-];
-
 const GEOMETRY_LABELS: Record<string, string> = {
   Point: "Точки",
   LineString: "Линии",
   Polygon: "Полигоны",
 };
-
-const PRESET_COLORS = [
-  "#1976D2", "#D32F2F", "#388E3C", "#7B1FA2",
-  "#F57C00", "#0097A7", "#C2185B", "#512DA8",
-  "#00796B", "#E64A19", "#5D4037", "#455A64",
-];
 
 export default function AdminLayerManager() {
   const { toast } = useToast();
@@ -123,11 +99,6 @@ export default function AdminLayerManager() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState<{ layerId: number; sceneName: string } | null>(null);
-
-  const [paletteColor, setPaletteColor] = useState("#1976D2");
-  const [palettePointStyle, setPalettePointStyle] = useState("circle");
-  const [paletteLineStyle, setPaletteLineStyle] = useState("solid");
-  const [paletteOpacity, setPaletteOpacity] = useState(1);
   const [cloneTargetScenes, setCloneTargetScenes] = useState<number[]>([]);
 
   const { data: matrixData, isLoading } = useQuery<MatrixData>({
@@ -219,11 +190,6 @@ export default function AdminLayerManager() {
       if (source) {
         setSelectedGroup(group);
         setCloneTargetScenes([sceneId]);
-
-        setPaletteColor(source.color);
-        setPalettePointStyle(source.pointStyle);
-        setPaletteLineStyle(source.lineStyle);
-        setPaletteOpacity(source.opacity);
         setCloneDialogOpen(true);
       }
     }
@@ -231,27 +197,21 @@ export default function AdminLayerManager() {
 
   const handleOpenPalette = (group: LayerGroup) => {
     setSelectedGroup(group);
-    const source = getAnySourceInstance(group);
-    if (source) {
-      setPaletteColor(source.color);
-      setPalettePointStyle(source.pointStyle);
-      setPaletteLineStyle(source.lineStyle);
-      setPaletteOpacity(source.opacity);
-    }
     setPaletteOpen(true);
   };
 
-  const handleApplyPalette = () => {
+  const handlePaletteSave = (updates: {
+    color?: string;
+    pointStyle?: string;
+    lineStyle?: string;
+    opacity?: number;
+    styleConfig?: StyleConfig;
+  }) => {
     if (!selectedGroup) return;
     const layerIds = selectedGroup.instances.map((i) => i.layerId);
     applyPaletteMutation.mutate({
       layerIds,
-      palette: {
-        color: paletteColor,
-        pointStyle: palettePointStyle,
-        lineStyle: paletteLineStyle,
-        opacity: paletteOpacity,
-      },
+      palette: updates,
     });
   };
 
@@ -262,24 +222,11 @@ export default function AdminLayerManager() {
     cloneMutation.mutate({
       sourceLayerId: source.layerId,
       targetSceneIds: cloneTargetScenes,
-      palette: {
-        color: paletteColor,
-        pointStyle: palettePointStyle,
-        lineStyle: paletteLineStyle,
-        opacity: paletteOpacity,
-      },
     });
   };
 
   const handleBulkClone = (group: LayerGroup) => {
     setSelectedGroup(group);
-    const source = getAnySourceInstance(group);
-    if (source) {
-      setPaletteColor(source.color);
-      setPalettePointStyle(source.pointStyle);
-      setPaletteLineStyle(source.lineStyle);
-      setPaletteOpacity(source.opacity);
-    }
     const existingSceneIds = new Set(group.instances.filter(i => i.sceneId).map(i => i.sceneId));
     const available = scenes.filter(s => !existingSceneIds.has(s.id));
     setCloneTargetScenes(available.map(s => s.id));
@@ -544,17 +491,9 @@ export default function AdminLayerManager() {
               </div>
             </div>
 
-            <PaletteEditor
-              color={paletteColor}
-              setColor={setPaletteColor}
-              pointStyle={palettePointStyle}
-              setPointStyle={setPalettePointStyle}
-              lineStyle={paletteLineStyle}
-              setLineStyle={setPaletteLineStyle}
-              opacity={paletteOpacity}
-              setOpacity={setPaletteOpacity}
-              geometryType={selectedGroup?.geometryType || "Point"}
-            />
+            <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
+              Слой будет скопирован с текущим оформлением. Чтобы изменить стиль для всех экземпляров, используйте кнопку «Палитра» после клонирования.
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCloneDialogOpen(false)}>
@@ -576,56 +515,27 @@ export default function AdminLayerManager() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={paletteOpen} onOpenChange={setPaletteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Единая палитра слоя</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label className="text-sm font-medium">Слой</Label>
-              <p className="text-sm text-muted-foreground mt-1" data-testid="text-palette-layer-name">
-                {selectedGroup?.name}
-              </p>
-            </div>
-
-            <div className="text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
-              Палитра будет применена ко всем экземплярам слоя во всех сценах
-              ({selectedGroup?.instances.length || 0} экз.).
-              В конкретной сцене пользователь всё равно сможет изменить оформление.
-            </div>
-
-            <PaletteEditor
-              color={paletteColor}
-              setColor={setPaletteColor}
-              pointStyle={palettePointStyle}
-              setPointStyle={setPalettePointStyle}
-              lineStyle={paletteLineStyle}
-              setLineStyle={setPaletteLineStyle}
-              opacity={paletteOpacity}
-              setOpacity={setPaletteOpacity}
-              geometryType={selectedGroup?.geometryType || "Point"}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPaletteOpen(false)}>
-              Отмена
-            </Button>
-            <Button
-              onClick={handleApplyPalette}
-              disabled={applyPaletteMutation.isPending}
-              data-testid="button-apply-palette"
-            >
-              {applyPaletteMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Palette className="h-4 w-4 mr-2" />
-              )}
-              Применить ко всем
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {selectedGroup && (() => {
+        const source = getAnySourceInstance(selectedGroup);
+        if (!source) return null;
+        return (
+          <LayerStylePanel
+            open={paletteOpen}
+            onOpenChange={setPaletteOpen}
+            layer={{
+              id: source.layerId,
+              name: `${selectedGroup.name} (все сцены: ${selectedGroup.instances.length} экз.)`,
+              geometryType: selectedGroup.geometryType,
+              color: source.color,
+              pointStyle: source.pointStyle,
+              lineStyle: source.lineStyle,
+              opacity: source.opacity,
+              styleConfig: source.styleConfig,
+            }}
+            onSave={handlePaletteSave}
+          />
+        );
+      })()}
 
       <AlertDialog open={!!removeConfirm} onOpenChange={(open) => !open && setRemoveConfirm(null)}>
         <AlertDialogContent>
@@ -657,104 +567,3 @@ export default function AdminLayerManager() {
   );
 }
 
-function PaletteEditor({
-  color,
-  setColor,
-  pointStyle,
-  setPointStyle,
-  lineStyle,
-  setLineStyle,
-  opacity,
-  setOpacity,
-  geometryType,
-}: {
-  color: string;
-  setColor: (c: string) => void;
-  pointStyle: string;
-  setPointStyle: (s: string) => void;
-  lineStyle: string;
-  setLineStyle: (s: string) => void;
-  opacity: number;
-  setOpacity: (o: number) => void;
-  geometryType: string;
-}) {
-  return (
-    <div className="space-y-3 border rounded-md p-3 bg-muted/30">
-      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-        Настройки палитры
-      </Label>
-
-      <div className="space-y-2">
-        <Label className="text-sm">Цвет</Label>
-        <div className="flex items-center gap-2 flex-wrap">
-          {PRESET_COLORS.map((c) => (
-            <button
-              key={c}
-              className={`w-6 h-6 rounded-full border-2 transition-all ${
-                color === c ? "border-primary scale-110" : "border-transparent hover:scale-105"
-              }`}
-              style={{ backgroundColor: c }}
-              onClick={() => setColor(c)}
-              data-testid={`button-color-${c.replace("#", "")}`}
-            />
-          ))}
-          <Input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="w-8 h-8 p-0 border-0 cursor-pointer"
-            data-testid="input-custom-color"
-          />
-        </div>
-      </div>
-
-      {geometryType === "Point" && (
-        <div className="space-y-2">
-          <Label className="text-sm">Стиль точки</Label>
-          <Select value={pointStyle} onValueChange={setPointStyle}>
-            <SelectTrigger className="w-full" data-testid="select-point-style">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {POINT_STYLES.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {geometryType === "LineString" && (
-        <div className="space-y-2">
-          <Label className="text-sm">Стиль линии</Label>
-          <Select value={lineStyle} onValueChange={setLineStyle}>
-            <SelectTrigger className="w-full" data-testid="select-line-style">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {LINE_STYLES.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <Label className="text-sm">Прозрачность: {Math.round(opacity * 100)}%</Label>
-        <Slider
-          value={[opacity]}
-          onValueChange={([val]) => setOpacity(val)}
-          min={0}
-          max={1}
-          step={0.05}
-          data-testid="slider-opacity"
-        />
-      </div>
-    </div>
-  );
-}
