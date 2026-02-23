@@ -37,7 +37,7 @@ export function getSession() {
     tableName: "sessions",
   });
   return session({
-    secret: process.env.SESSION_SECRET || "gis-mo-secret-key-change-in-production",
+    secret: process.env.SESSION_SECRET || (() => { console.warn("[SECURITY] SESSION_SECRET not set! Using auto-generated key. Set SESSION_SECRET env variable for production."); return require("crypto").randomBytes(32).toString("hex"); })(),
     store: sessionStore,
     resave: false,
     saveUninitialized: false,

@@ -4,3 +4,20 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Sensitive files
+.env
+.env.*
+cookies.txt
+*.pem
+*.key
+*.cert
+docker-compose.override.yml
+
+# Uploaded files
+uploads/
+server/uploads/
+
+# Logs
+*.log
+/tmp/

@@ -5,7 +5,7 @@ import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, in
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, seedAdminUser, isAuthenticated, type AuthRequest } from "./auth";
+import { setupAuth, registerAuthRoutes, seedAdminUser, isAuthenticated, isAdmin, type AuthRequest } from "./auth";
 import { isApiAuthenticated, generateApiToken, hashApiToken, type ApiAuthenticatedRequest } from "./auth/api-auth";
 import { externalCreatePointSchema, apiKeys, geocodeProviderSchema, auditLog, type GeocodeProvider, bugReportStatusEnum } from "@shared/schema";
 import { db } from "./db";
@@ -239,7 +239,7 @@ export async function registerRoutes(
 
   backfillBboxColumns();
 
-  app.post("/api/zulu/zws/layers", async (_req: Request, res: Response) => {
+  app.post("/api/zulu/zws/layers", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
       const layers = [
         { name: "ZR_VS_MO", title: "Водоснабжение" },
@@ -259,7 +259,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/zulu/zws/custom/layers", async (req: Request, res: Response) => {
+  app.post("/api/zulu/zws/custom/layers", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { baseUrl, layerNames } = req.body;
 
@@ -301,7 +301,7 @@ export async function registerRoutes(
     "ZR_TS_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, modename, Адрес, Geometry.AsText()",
   };
 
-  app.post("/api/zulu/zws/query", async (req: Request, res: Response) => {
+  app.post("/api/zulu/zws/query", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { layer, query, crs } = req.body;
 
@@ -316,9 +316,9 @@ export async function registerRoutes(
 <zulu-server service="zws" version="1.0.0">
   <Command>
     <LayerExecSql>
-      <Layer>LAYTERS:${layer}</Layer>
-      <Query>${sqlQuery}</Query>
-      <CRS>${projection}</CRS>
+      <Layer>LAYERS:${layer.replace(/[<>&"']/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] || c))}</Layer>
+      <Query>${sqlQuery.replace(/[<>&"']/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] || c))}</Query>
+      <CRS>${projection.replace(/[<>&"']/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] || c))}</CRS>
     </LayerExecSql>
   </Command>
 </zulu-server>`;
@@ -369,7 +369,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/zulu/zws/status", async (_req: Request, res: Response) => {
+  app.get("/api/zulu/zws/status", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
       const hasCredentials = ZULU_USERNAME && ZULU_PASSWORD;
       
@@ -391,7 +391,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/zulu/zws/tile/:z/:x/:y", async (req: Request, res: Response) => {
+  app.get("/api/zulu/zws/tile/:z/:x/:y", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { z, x, y } = req.params;
       const { layer } = req.query;
@@ -450,7 +450,7 @@ export async function registerRoutes(
     }
   });
   
-  app.post("/api/zulu/capabilities", async (req: Request, res: Response) => {
+  app.post("/api/zulu/capabilities", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parseResult = zuluConnectionSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -528,7 +528,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/zulu/wms", async (req: Request, res: Response) => {
+  app.get("/api/zulu/wms", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { host, port, ...wmsParams } = req.query;
 
@@ -583,7 +583,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/zulu/feature-info", async (req: Request, res: Response) => {
+  app.post("/api/zulu/feature-info", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { connection, coordinate, resolution, projection, layers } = req.body;
 
@@ -677,7 +677,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/tickets", async (_req: Request, res: Response) => {
+  app.get("/api/tickets", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
       const tickets = await storage.getTickets();
       return res.json(tickets);
@@ -687,7 +687,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tickets", async (req: Request, res: Response) => {
+  app.post("/api/tickets", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parseResult = insertTicketSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -704,7 +704,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/tickets/:id", async (req: Request, res: Response) => {
+  app.delete("/api/tickets/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);
       if (isNaN(id)) {
@@ -722,7 +722,7 @@ export async function registerRoutes(
   });
 
   // OSRM routing proxy
-  app.post("/api/routing", async (req: Request, res: Response) => {
+  app.post("/api/routing", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { start, end } = req.body;
       
@@ -808,7 +808,7 @@ export async function registerRoutes(
     sysAttributeName: z.string().optional(),
   });
 
-  app.post("/api/trace-route", async (req: Request, res: Response) => {
+  app.post("/api/trace-route", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parseResult = traceRouteSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -952,7 +952,7 @@ export async function registerRoutes(
     }),
   });
 
-  app.post("/api/auto-trace", async (req: Request, res: Response) => {
+  app.post("/api/auto-trace", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parseResult = autoTraceSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -1172,7 +1172,7 @@ export async function registerRoutes(
     }).optional(),
   });
 
-  app.post("/api/auto-trace/save-layer", async (req: Request, res: Response) => {
+  app.post("/api/auto-trace/save-layer", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parseResult = saveTraceSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -1296,7 +1296,7 @@ export async function registerRoutes(
     consumerName: z.string(),
   });
 
-  app.post("/api/auto-trace/save-reconstruction", async (req: Request, res: Response) => {
+  app.post("/api/auto-trace/save-reconstruction", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parseResult = saveReconSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -1422,7 +1422,7 @@ export async function registerRoutes(
     };
   }
 
-  app.get("/api/zulu/wfs", async (req: Request, res: Response) => {
+  app.get("/api/zulu/wfs", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { host, port, ...wfsParams } = req.query;
 
@@ -1486,7 +1486,7 @@ export async function registerRoutes(
   });
 
   // Import shapefile as editable layer with features
-  app.post("/api/editable-layers/import", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/import", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { name, geometryType, geojson, sourceFileName, color, pointStyle, lineStyle } = req.body;
       
@@ -1556,7 +1556,7 @@ export async function registerRoutes(
   // ============================================
 
   // Parse Excel file and return columns/preview data
-  app.post("/api/parse-excel", excelUpload.single("file"), async (req: Request, res: Response) => {
+  app.post("/api/parse-excel", isAuthenticated as any, excelUpload.single("file"), async (req: AuthRequest, res: Response) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -1678,7 +1678,7 @@ export async function registerRoutes(
     pointStyle: z.string().optional(),
   });
 
-  app.post("/api/editable-layers/import-excel", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/import-excel", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parseResult = excelImportSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -1882,7 +1882,7 @@ export async function registerRoutes(
   // ATTRIBUTE JOIN FROM EXCEL (Enrich layer with XLSX data)
   // ============================================
 
-  app.post("/api/parse-excel-for-join", excelUpload.single("file"), async (req: Request, res: Response) => {
+  app.post("/api/parse-excel-for-join", isAuthenticated as any, excelUpload.single("file"), async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -1968,7 +1968,7 @@ export async function registerRoutes(
     rows: z.array(z.record(z.string(), z.unknown())).min(1),
   });
 
-  app.post("/api/editable-layers/:layerId/join-preview", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/:layerId/join-preview", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -2046,7 +2046,7 @@ export async function registerRoutes(
     })).min(1),
   });
 
-  app.post("/api/editable-layers/:layerId/join-excel", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/:layerId/join-excel", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -2128,7 +2128,7 @@ export async function registerRoutes(
   });
 
   // Batch create features endpoint
-  app.post("/api/editable-layers/:id/features/batch", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/:id/features/batch", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10);
       if (isNaN(id)) {
@@ -2159,7 +2159,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/analytics/accident-pipeline", async (req: Request, res: Response) => {
+  app.post("/api/analytics/accident-pipeline", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { accidentLayerId, pipelineLayerId, maxDistanceMeters = 15 } = req.body;
 
@@ -2548,7 +2548,7 @@ export async function registerRoutes(
     }
   }
 
-  app.post("/api/analytics/geospatial", async (req: Request, res: Response) => {
+  app.post("/api/analytics/geospatial", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const {
         sourceLayerIds = [],
@@ -3126,7 +3126,7 @@ export async function registerRoutes(
   // EDITABLE LAYERS API (User-created layers for drawing)
   // ============================================
 
-  app.get("/api/editable-layers", async (_req: Request, res: Response) => {
+  app.get("/api/editable-layers", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
       const layers = await storage.getEditableLayers();
       return res.json(layers);
@@ -3137,7 +3137,7 @@ export async function registerRoutes(
   });
 
   // Get editable layers for a scene
-  app.get("/api/scenes/:sceneId/editable-layers", async (req: Request, res: Response) => {
+  app.get("/api/scenes/:sceneId/editable-layers", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -3158,7 +3158,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/scenes/:sceneId/extent", async (req: Request, res: Response) => {
+  app.get("/api/scenes/:sceneId/extent", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -3208,7 +3208,7 @@ export async function registerRoutes(
   });
 
   // Layer folders endpoints
-  app.get("/api/scenes/:sceneId/folders", async (req: Request, res: Response) => {
+  app.get("/api/scenes/:sceneId/folders", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -3221,7 +3221,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/scenes/:sceneId/folders", async (req: Request, res: Response) => {
+  app.post("/api/scenes/:sceneId/folders", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -3238,7 +3238,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/folders/:folderId", async (req: Request, res: Response) => {
+  app.patch("/api/folders/:folderId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -3256,7 +3256,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/folders/:folderId", async (req: Request, res: Response) => {
+  app.delete("/api/folders/:folderId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -3270,7 +3270,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/folders/:folderId/toggle-visibility", async (req: Request, res: Response) => {
+  app.post("/api/folders/:folderId/toggle-visibility", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -3284,7 +3284,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/editable-layers/:id/folder", async (req: Request, res: Response) => {
+  app.patch("/api/editable-layers/:id/folder", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -3299,7 +3299,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/editable-layers/reorder", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/reorder", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -3316,7 +3316,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/layer-folders/reorder", async (req: Request, res: Response) => {
+  app.post("/api/layer-folders/reorder", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -3333,7 +3333,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/editable-layers/viewport-batch", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/viewport-batch", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -3393,7 +3393,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/editable-layers/:id/field-stats", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:id/field-stats", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const field = req.query.field as string;
@@ -3424,7 +3424,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/editable-layers/:id/unique-values", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:id/unique-values", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const field = req.query.field as string;
@@ -3447,7 +3447,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/editable-layers/:id", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const layer = await storage.getEditableLayer(id);
@@ -3461,7 +3461,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/editable-layers", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parsed = insertEditableLayerSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3476,7 +3476,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/editable-layers/:id", async (req: Request, res: Response) => {
+  app.patch("/api/editable-layers/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (req.body.styleConfig !== undefined) {
@@ -3497,7 +3497,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/editable-layers/:id", async (req: Request, res: Response) => {
+  app.delete("/api/editable-layers/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteEditableLayer(id);
@@ -3516,7 +3516,7 @@ export async function registerRoutes(
   // DRAWN FEATURES API (Features within editable layers)
   // ============================================
 
-  app.get("/api/editable-layers/:layerId/features", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:layerId/features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const features = await storage.getDrawnFeatures(layerId);
@@ -3527,7 +3527,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/editable-layers/:layerId/attributes", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:layerId/attributes", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const features = await storage.getDrawnFeatures(layerId);
@@ -3545,7 +3545,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/editable-layers/:layerId/attribute-values", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:layerId/attribute-values", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const features = await storage.getDrawnFeatures(layerId);
@@ -3581,7 +3581,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/editable-layers/:layerId/count-filtered", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/:layerId/count-filtered", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const { filters = [] } = req.body;
@@ -3598,7 +3598,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/features/:id", async (req: Request, res: Response) => {
+  app.get("/api/features/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const source = req.query.source as string | undefined;
@@ -3619,7 +3619,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/editable-layers/:layerId/features", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/:layerId/features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const parsed = insertDrawnFeatureSchema.safeParse({ ...req.body, layerId });
@@ -3636,7 +3636,7 @@ export async function registerRoutes(
   });
 
   // Batch routes must be defined BEFORE routes with :id parameter to avoid matching "batch" as id
-  app.post("/api/features/batch-delete", async (req: Request, res: Response) => {
+  app.post("/api/features/batch-delete", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -3651,7 +3651,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/features/batch", async (req: Request, res: Response) => {
+  app.patch("/api/features/batch", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { updates } = req.body;
       if (!Array.isArray(updates) || updates.length === 0) {
@@ -3673,7 +3673,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/features/:id", async (req: Request, res: Response) => {
+  app.patch("/api/features/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const feature = await storage.updateDrawnFeature(id, req.body);
@@ -3688,7 +3688,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/features/:id", async (req: Request, res: Response) => {
+  app.delete("/api/features/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteDrawnFeature(id);
@@ -3704,7 +3704,7 @@ export async function registerRoutes(
   });
 
   // Delete feature by layerId and featureId (alternative endpoint for map-viewer)
-  app.delete("/api/editable-layers/:layerId/features/:featureId", async (req: Request, res: Response) => {
+  app.delete("/api/editable-layers/:layerId/features/:featureId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const featureId = parseInt(req.params.featureId);
@@ -3728,7 +3728,7 @@ export async function registerRoutes(
   // LAYER SCHEMA API (Attribute definitions for layers)
   // ============================================
 
-  app.get("/api/editable-layers/:layerId/schema", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:layerId/schema", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const schema = await storage.getLayerSchema(layerId);
@@ -3743,7 +3743,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/editable-layers/:layerId/schema", async (req: Request, res: Response) => {
+  app.put("/api/editable-layers/:layerId/schema", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const fieldsSchema = z.array(attributeFieldSchema);
@@ -3771,7 +3771,7 @@ export async function registerRoutes(
   // EXPORT API (Export layers to various formats)
   // ============================================
 
-  app.get("/api/editable-layers/:layerId/export/:format", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:layerId/export/:format", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const format = req.params.format.toLowerCase();
@@ -3827,7 +3827,7 @@ export async function registerRoutes(
   // APP SETTINGS API
   // ============================================
 
-  app.get("/api/settings/geocode-provider", async (req: Request, res: Response) => {
+  app.get("/api/settings/geocode-provider", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const value = await storage.getAppSetting("geocode_provider");
       return res.json({ provider: value || "yandex" });
@@ -3837,7 +3837,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/settings/geocode-provider", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.put("/api/settings/geocode-provider", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const parsed = geocodeProviderSchema.safeParse(req.body?.provider);
       if (!parsed.success) {
@@ -3868,7 +3868,7 @@ export async function registerRoutes(
     return "****" + value.slice(-4);
   }
 
-  app.get("/api/settings/keys", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.get("/api/settings/keys", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
@@ -3889,7 +3889,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/settings/keys", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.put("/api/settings/keys", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
@@ -3912,7 +3912,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/settings/keys/:key", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.delete("/api/settings/keys/:key", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
@@ -3929,7 +3929,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/settings/ai-provider", async (req: Request, res: Response) => {
+  app.get("/api/settings/ai-provider", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const value = await storage.getAppSetting("ai_provider");
       return res.json({ provider: value || "openai" });
@@ -3939,7 +3939,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/settings/ai-provider", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.put("/api/settings/ai-provider", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
@@ -3960,7 +3960,7 @@ export async function registerRoutes(
   // AUDIT LOG API (Admin only)
   // ============================================
 
-  app.get("/api/admin/audit-log", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.get("/api/admin/audit-log", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
@@ -4018,7 +4018,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/audit-log/actions", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.get("/api/admin/audit-log/actions", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
@@ -4038,7 +4038,7 @@ export async function registerRoutes(
   // REVERSE GEOCODING API (Address landmarks)
   // ============================================
 
-  app.post("/api/editable-layers/:layerId/geocode", async (req: Request, res: Response) => {
+  app.post("/api/editable-layers/:layerId/geocode", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const forceOverwrite = req.body?.forceOverwrite === true;
@@ -4314,7 +4314,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/editable-layers/:layerId/geocode-info", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:layerId/geocode-info", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseInt(req.params.layerId);
       const layer = await storage.getEditableLayer(layerId);
@@ -4392,7 +4392,7 @@ export async function registerRoutes(
   // SCENE FOLDERS API
   // ============================================
 
-  app.get("/api/scene-folders", async (req: Request, res: Response) => {
+  app.get("/api/scene-folders", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4406,7 +4406,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/scene-folders", async (req: Request, res: Response) => {
+  app.post("/api/scene-folders", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4424,7 +4424,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/scene-folders/:id", async (req: Request, res: Response) => {
+  app.patch("/api/scene-folders/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4450,7 +4450,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/scene-folders/:id", async (req: Request, res: Response) => {
+  app.delete("/api/scene-folders/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4477,7 +4477,7 @@ export async function registerRoutes(
   // ============================================
 
   // Get scenes for current user
-  app.get("/api/scenes", async (req: Request, res: Response) => {
+  app.get("/api/scenes", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4503,7 +4503,7 @@ export async function registerRoutes(
   });
 
   // Get single scene
-  app.get("/api/scenes/:id", async (req: Request, res: Response) => {
+  app.get("/api/scenes/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4529,7 +4529,7 @@ export async function registerRoutes(
   });
 
   // Create scene
-  app.post("/api/scenes", async (req: Request, res: Response) => {
+  app.post("/api/scenes", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4551,7 +4551,7 @@ export async function registerRoutes(
   });
 
   // Update scene
-  app.patch("/api/scenes/:id", async (req: Request, res: Response) => {
+  app.patch("/api/scenes/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4581,7 +4581,7 @@ export async function registerRoutes(
   });
 
   // Delete scene
-  app.delete("/api/scenes/:id", async (req: Request, res: Response) => {
+  app.delete("/api/scenes/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4608,7 +4608,7 @@ export async function registerRoutes(
   // ============================================
 
   // Get scene members
-  app.get("/api/scenes/:sceneId/members", async (req: Request, res: Response) => {
+  app.get("/api/scenes/:sceneId/members", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4630,7 +4630,7 @@ export async function registerRoutes(
   });
 
   // Add scene member
-  app.post("/api/scenes/:sceneId/members", async (req: Request, res: Response) => {
+  app.post("/api/scenes/:sceneId/members", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4663,7 +4663,7 @@ export async function registerRoutes(
   });
 
   // Update member role
-  app.patch("/api/scenes/:sceneId/members/:memberId", async (req: Request, res: Response) => {
+  app.patch("/api/scenes/:sceneId/members/:memberId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4687,7 +4687,7 @@ export async function registerRoutes(
   });
 
   // Remove member
-  app.delete("/api/scenes/:sceneId/members/:memberId", async (req: Request, res: Response) => {
+  app.delete("/api/scenes/:sceneId/members/:memberId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4715,7 +4715,7 @@ export async function registerRoutes(
   // ============================================
 
   // Get all datasets
-  app.get("/api/datasets", async (req: Request, res: Response) => {
+  app.get("/api/datasets", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4730,7 +4730,7 @@ export async function registerRoutes(
   });
 
   // Import shapefile as editable layer (unified with drawing layers)
-  app.post("/api/datasets/import", async (req: Request, res: Response) => {
+  app.post("/api/datasets/import", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4804,7 +4804,7 @@ export async function registerRoutes(
   });
 
   // Server-side shapefile upload and parsing (for large files)
-  app.post("/api/datasets/upload", upload.single("file"), async (req: Request, res: Response) => {
+  app.post("/api/datasets/upload", isAuthenticated as any, upload.single("file"), async (req: AuthRequest, res: Response) => {
     let filePath: string | null = null;
     try {
       const user = await getUserFromSession(req);
@@ -4895,7 +4895,7 @@ export async function registerRoutes(
   });
 
   // Get features by viewport (bbox) with geometry simplification
-  app.get("/api/editable-layers/:id/features/viewport", async (req: Request, res: Response) => {
+  app.get("/api/editable-layers/:id/features/viewport", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -4981,7 +4981,7 @@ export async function registerRoutes(
   });
 
   // Get dataset
-  app.get("/api/datasets/:id", async (req: Request, res: Response) => {
+  app.get("/api/datasets/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5000,7 +5000,7 @@ export async function registerRoutes(
   });
 
   // Delete dataset
-  app.delete("/api/datasets/:id", async (req: Request, res: Response) => {
+  app.delete("/api/datasets/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5016,7 +5016,7 @@ export async function registerRoutes(
   });
 
   // Get dataset features
-  app.get("/api/datasets/:id/features", async (req: Request, res: Response) => {
+  app.get("/api/datasets/:id/features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5032,7 +5032,7 @@ export async function registerRoutes(
   });
 
   // Get dataset features by viewport (bbox) with geometry simplification
-  app.get("/api/datasets/:id/features/viewport", async (req: Request, res: Response) => {
+  app.get("/api/datasets/:id/features/viewport", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5116,7 +5116,7 @@ export async function registerRoutes(
   });
 
   // Create dataset feature
-  app.post("/api/datasets/:id/features", async (req: Request, res: Response) => {
+  app.post("/api/datasets/:id/features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5143,7 +5143,7 @@ export async function registerRoutes(
   });
 
   // Update dataset feature
-  app.patch("/api/datasets/:datasetId/features/:featureId", async (req: Request, res: Response) => {
+  app.patch("/api/datasets/:datasetId/features/:featureId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5169,7 +5169,7 @@ export async function registerRoutes(
   });
 
   // Delete dataset feature
-  app.delete("/api/datasets/:datasetId/features/:featureId", async (req: Request, res: Response) => {
+  app.delete("/api/datasets/:datasetId/features/:featureId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5193,7 +5193,7 @@ export async function registerRoutes(
   // ============================================
 
   // Get datasets for a scene
-  app.get("/api/scenes/:sceneId/datasets", async (req: Request, res: Response) => {
+  app.get("/api/scenes/:sceneId/datasets", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5215,7 +5215,7 @@ export async function registerRoutes(
   });
 
   // Add dataset to scene
-  app.post("/api/scenes/:sceneId/datasets", async (req: Request, res: Response) => {
+  app.post("/api/scenes/:sceneId/datasets", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5245,7 +5245,7 @@ export async function registerRoutes(
   });
 
   // Update scene dataset
-  app.patch("/api/scenes/:sceneId/datasets/:id", async (req: Request, res: Response) => {
+  app.patch("/api/scenes/:sceneId/datasets/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5271,7 +5271,7 @@ export async function registerRoutes(
   });
 
   // Remove dataset from scene
-  app.delete("/api/scenes/:sceneId/datasets/:id", async (req: Request, res: Response) => {
+  app.delete("/api/scenes/:sceneId/datasets/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5301,7 +5301,7 @@ export async function registerRoutes(
   // ============================================
 
   // Get uploads
-  app.get("/api/uploads", async (req: Request, res: Response) => {
+  app.get("/api/uploads", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user) {
@@ -5323,7 +5323,7 @@ export async function registerRoutes(
   // ============================================
 
   // Get user's API keys
-  app.get("/api/api-keys", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.get("/api/api-keys", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
       const keys = await storage.getApiKeys(user.id);
@@ -5344,7 +5344,7 @@ export async function registerRoutes(
   });
 
   // Create new API key
-  app.post("/api/api-keys", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.post("/api/api-keys", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
       const { name, sceneId, permissions } = req.body;
@@ -5380,7 +5380,7 @@ export async function registerRoutes(
   });
 
   // Revoke API key
-  app.delete("/api/api-keys/:id", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.delete("/api/api-keys/:id", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
       const id = parseInt(req.params.id);
@@ -5405,7 +5405,7 @@ export async function registerRoutes(
   // CUSTOM ICONS API
   // ============================================
 
-  app.get("/api/custom-icons", async (_req: Request, res: Response) => {
+  app.get("/api/custom-icons", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
       const icons = await storage.getCustomIcons();
       return res.json(icons);
@@ -5415,7 +5415,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/custom-icons/:id", async (req: Request, res: Response) => {
+  app.get("/api/custom-icons/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const icon = await storage.getCustomIcon(id);
@@ -5429,7 +5429,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/custom-icons/:id/svg", async (req: Request, res: Response) => {
+  app.get("/api/custom-icons/:id/svg", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const color = (req.query.color as string) || "#000000";
@@ -5448,7 +5448,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/custom-icons", async (req: Request, res: Response) => {
+  app.post("/api/custom-icons", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { name, svgContent, category } = req.body;
       if (!name || !svgContent) {
@@ -5470,7 +5470,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/custom-icons/:id", async (req: Request, res: Response) => {
+  app.delete("/api/custom-icons/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteCustomIcon(id);
@@ -6000,7 +6000,7 @@ export async function registerRoutes(
     return res.json({ status: "ok", version: "1.0.0" });
   });
 
-  app.post("/api/network-graph/validate-topology", async (req: Request, res: Response) => {
+  app.post("/api/network-graph/validate-topology", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { sceneId } = req.body;
       if (!sceneId) return res.status(400).json({ error: "sceneId is required" });
@@ -6013,7 +6013,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/network-graph/fix-topology", async (req: Request, res: Response) => {
+  app.post("/api/network-graph/fix-topology", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { fixes } = req.body;
       if (!fixes || !Array.isArray(fixes) || fixes.length === 0) {
@@ -6028,7 +6028,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/network-graph/recalculate-bindings", async (req: Request, res: Response) => {
+  app.post("/api/network-graph/recalculate-bindings", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { sceneId } = req.body;
       if (!sceneId) return res.status(400).json({ error: "sceneId is required" });
@@ -6041,7 +6041,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/network-graph/apply-recalculated-bindings", async (req: Request, res: Response) => {
+  app.post("/api/network-graph/apply-recalculated-bindings", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { fixes } = req.body;
       if (!fixes || !Array.isArray(fixes) || fixes.length === 0) {
@@ -6056,7 +6056,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/network-graph/simulate-spatial", async (req: Request, res: Response) => {
+  app.post("/api/network-graph/simulate-spatial", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { featureId, layerId, sceneId } = req.body;
 
@@ -6078,7 +6078,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/network-graph/simulate/export", async (req: Request, res: Response) => {
+  app.post("/api/network-graph/simulate/export", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { featureId, layerId, sceneId } = req.body;
 
@@ -6238,7 +6238,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/complaint-analysis", async (req: Request, res: Response) => {
+  app.post("/api/complaint-analysis", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, mode } = req.body;
 
@@ -6277,7 +6277,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/complaint-analysis/export", async (req: Request, res: Response) => {
+  app.post("/api/complaint-analysis/export", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius } = req.body;
 
@@ -6446,7 +6446,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/complaint-analysis/save-as-layer", async (req: Request, res: Response) => {
+  app.post("/api/complaint-analysis/save-as-layer", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { mode, sceneId, layerName, topologyResult, noTopologyResult, analysisParams } = req.body;
 
@@ -6716,7 +6716,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/ai/providers", async (_req: Request, res: Response) => {
+  app.get("/api/ai/providers", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     const providers = [];
     const dbYandexKey = await storage.getAppSetting("ai_yandex_api_key");
     const dbYandexFolder = await storage.getAppSetting("ai_yandex_folder_id");
@@ -6738,7 +6738,7 @@ export async function registerRoutes(
   });
 
   // ===== AI Chat (Multi-provider: OpenAI + Yandex) with RAG =====
-  app.post("/api/ai/chat", async (req: Request, res: Response) => {
+  app.post("/api/ai/chat", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { messages, provider } = req.body;
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -6851,7 +6851,7 @@ export async function registerRoutes(
   // ADMIN LAYER MANAGER API
   // ============================================
 
-  app.get("/api/admin/layer-matrix", async (req: Request, res: Response) => {
+  app.get("/api/admin/layer-matrix", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user || user.role !== "admin") {
@@ -6916,7 +6916,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/clone-layer-to-scenes", async (req: Request, res: Response) => {
+  app.post("/api/admin/clone-layer-to-scenes", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user || user.role !== "admin") {
@@ -6990,7 +6990,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/remove-layer-from-scene", async (req: Request, res: Response) => {
+  app.delete("/api/admin/remove-layer-from-scene", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user || user.role !== "admin") {
@@ -7015,7 +7015,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/apply-palette", async (req: Request, res: Response) => {
+  app.post("/api/admin/apply-palette", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = await getUserFromSession(req);
       if (!user || user.role !== "admin") {
@@ -7052,7 +7052,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/geocode/search", async (req: Request, res: Response) => {
+  app.get("/api/geocode/search", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const query = (req.query.q as string || "").trim();
       if (!query) {
@@ -7121,7 +7121,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bug-reports", isAuthenticated, screenshotUpload.single("screenshot"), async (req: AuthRequest, res: Response) => {
+  app.post("/api/bug-reports", isAuthenticated as any, screenshotUpload.single("screenshot"), async (req: AuthRequest, res: Response) => {
     try {
       const { message } = req.body;
       if (!message || typeof message !== "string" || !message.trim()) {
@@ -7147,7 +7147,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bug-reports", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.get("/api/bug-reports", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user!.role !== "admin") {
         return res.status(403).json({ message: "Доступ запрещён" });
@@ -7160,7 +7160,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/bug-reports/:id/status", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.patch("/api/bug-reports/:id/status", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user!.role !== "admin") {
         return res.status(403).json({ message: "Доступ запрещён" });
@@ -7181,7 +7181,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bug-reports/:id/screenshot", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  app.get("/api/bug-reports/:id/screenshot", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user!.role !== "admin") {
         return res.status(403).json({ message: "Доступ запрещён" });

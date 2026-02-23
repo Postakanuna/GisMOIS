@@ -217,15 +217,7 @@ export async function getSceneNetworkLayers(sceneId: number) {
     }
   }
 
-  console.log(`[NetworkGraph] Classification:`, JSON.stringify({
-    segments: result.segmentLayerIds,
-    nodes: result.nodeLayerIds,
-    consumers: result.consumerLayerIds,
-    ctps: result.ctpLayerIds,
-    sources: result.sourceLayerIds,
-    valves: result.valveLayerIds,
-    pumps: result.pumpLayerIds,
-  }));
+  console.log(`[NetworkGraph] Classification: segments=${result.segmentLayerIds.length}, nodes=${result.nodeLayerIds.length}, consumers=${result.consumerLayerIds.length}, ctps=${result.ctpLayerIds.length}, sources=${result.sourceLayerIds.length}, valves=${result.valveLayerIds.length}, pumps=${result.pumpLayerIds.length}`);
 
   return result;
 }
@@ -2043,7 +2035,7 @@ export async function analyzeCapacity(
         relevantProps[k] = v;
       }
     }
-    console.log(`[CapacityAnalysis] Relevant properties: ${JSON.stringify(relevantProps)}`);
+    console.log(`[CapacityAnalysis] Relevant properties: ${Object.keys(relevantProps).join(", ")}`);
 
     installedCapacity = extractInstalledCapacity(ctpNode.properties, ctpNode.type);
     connectedLoadFromAttributes = extractConnectedLoadFromAttributes(ctpNode.properties, ctpNode.type);
