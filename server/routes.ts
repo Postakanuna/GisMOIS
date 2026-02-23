@@ -7047,21 +7047,25 @@ export async function registerRoutes(
       }
 
       if (apiKey) {
-        const results = await geocodeBatch(
-          [{ index: 0, address: query }],
-          apiKey,
-          undefined,
-          provider
-        );
-        if (results.length > 0 && results[0].result) {
-          const r = results[0].result;
-          return res.json({
-            found: true,
-            lat: r.lat,
-            lon: r.lon,
-            address: r.formattedAddress,
-            provider,
-          });
+        try {
+          const results = await geocodeBatch(
+            [{ index: 0, address: query }],
+            apiKey,
+            undefined,
+            provider
+          );
+          if (results.length > 0 && results[0].result) {
+            const r = results[0].result;
+            return res.json({
+              found: true,
+              lat: r.lat,
+              lon: r.lon,
+              address: r.formattedAddress,
+              provider,
+            });
+          }
+        } catch (geoErr) {
+          console.warn("Configured geocoder failed, falling back to Nominatim:", (geoErr as Error).message);
         }
       }
 
