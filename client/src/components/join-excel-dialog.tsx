@@ -147,6 +147,7 @@ export function JoinExcelDialog({ layerId, layerName, open, onOpenChange }: Join
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       queryClient.invalidateQueries({ queryKey: [`/api/editable-layers/${layerId}/attributes`] });
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", layerId] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       toast({ title: "Готово", description: `Обогащено ${data.enrichedCount} объектов` });
     },
     onError: (err: any) => {

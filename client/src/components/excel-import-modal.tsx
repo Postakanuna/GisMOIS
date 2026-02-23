@@ -179,6 +179,7 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       const geocodeInfo = data.geocoded ? " (через геокодирование)" : "";
       toast({
         title: "Импорт завершён",

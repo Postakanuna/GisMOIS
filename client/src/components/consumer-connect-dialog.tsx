@@ -211,6 +211,7 @@ export function ConsumerConnectDialog({
       toast({ title: "Слои созданы", description: result.message });
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/editable-layers`] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       setShowSaveLayer(false);
     },
     onError: () => {
@@ -232,6 +233,7 @@ export function ConsumerConnectDialog({
       toast({ title: "Слой реконструкции создан", description: result.message });
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/editable-layers`] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       setShowSaveRecon(false);
     },
     onError: () => {

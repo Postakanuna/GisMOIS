@@ -630,10 +630,8 @@ function getLayerZIndex(rank: number, totalLayers: number, layerFeatures: Array<
 
 // Viewport buffer ratio for hysteresis (50% buffer = request 1.5x visible area)
 const VIEWPORT_BUFFER_RATIO = 0.5;
-// Viewport debounce time in ms (increased for less frequent updates)
-const VIEWPORT_DEBOUNCE_MS = 500;
-// Viewport coordinate precision (3 decimals = ~111m at equator)
-const VIEWPORT_PRECISION = 3;
+const VIEWPORT_DEBOUNCE_MS = 300;
+const VIEWPORT_PRECISION = 2;
 
 // Parse hex color to RGB components
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -1197,7 +1195,9 @@ export function MapViewer({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+      featureCacheRef.current.clear();
+      lastFetchKeyRef.current = null;
+      setFeatureVersion(v => v + 1);
       setSelectedMapFeatures([]);
       toast({
         title: "Объекты удалены",
@@ -1213,65 +1213,137 @@ export function MapViewer({
     },
   });
 
-  // Create a stable viewport key for query caching (coarser rounding for less cache misses)
-  const viewportKey = useMemo(() => {
-    if (!fetchViewport) return null;
-    // Use coarser rounding (3 decimals = ~111m) to reduce cache invalidation
-    return `${fetchViewport.minX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.minY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxX.toFixed(VIEWPORT_PRECISION)},${fetchViewport.maxY.toFixed(VIEWPORT_PRECISION)},${fetchViewport.zoom}`;
-  }, [fetchViewport]);
-
-  // Track point sampling info for the sampling indicator
   const [pointSamplingInfo, setPointSamplingInfo] = useState<{
     totalPoints: number;
     sampledPoints: number;
     isFullData: boolean;
   } | null>(null);
 
-  // Stable layer IDs for query key (prevents cache invalidation on layer reference changes)
   const layerIdsKey = useMemo(() => 
     allEditableLayers.map(l => l.id).sort((a, b) => a - b).join(","),
     [allEditableLayers]
   );
 
-  const { data: allLayerFeatures = {}, isFetching: isFetchingFeatures } = useQuery<Record<number, DrawnFeature[]>>({
-    queryKey: ["/api/editable-layers/viewport-features", layerIdsKey, viewportKey],
-    queryFn: async () => {
-      if (!fetchViewport || allEditableLayers.length === 0) return {};
+  const featureCacheRef = useRef<Map<string, DrawnFeature>>(new Map());
+  const lastFetchZoomRef = useRef<number | null>(null);
+  const [allLayerFeatures, setAllLayerFeatures] = useState<Record<number, DrawnFeature[]>>({});
+  const [isFetchingFeatures, setIsFetchingFeatures] = useState(false);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const lastFetchKeyRef = useRef<string | null>(null);
+  const [featureVersion, setFeatureVersion] = useState(0);
 
-      const layerIds = allEditableLayers.map(l => l.id).join(",");
-      const params = new URLSearchParams({
-        layerIds,
-        minX: fetchViewport.minX.toString(),
-        minY: fetchViewport.minY.toString(),
-        maxX: fetchViewport.maxX.toString(),
-        maxY: fetchViewport.maxY.toString(),
-        zoom: fetchViewport.zoom.toString(),
+  useEffect(() => {
+    const handler = () => {
+      featureCacheRef.current.clear();
+      lastFetchKeyRef.current = null;
+      setFeatureVersion(v => v + 1);
+    };
+    window.addEventListener("viewport-features-invalidate", handler);
+    return () => window.removeEventListener("viewport-features-invalidate", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!fetchViewport || allEditableLayers.length === 0) {
+      setAllLayerFeatures({});
+      return;
+    }
+
+    const currentZoom = Math.round(fetchViewport.zoom);
+    const prevZoom = lastFetchZoomRef.current;
+    if (prevZoom !== null && currentZoom !== prevZoom) {
+      featureCacheRef.current.clear();
+    }
+    lastFetchZoomRef.current = currentZoom;
+
+    const vp = fetchViewport;
+    const fetchKey = `${layerIdsKey}_${vp.minX.toFixed(VIEWPORT_PRECISION)}_${vp.minY.toFixed(VIEWPORT_PRECISION)}_${vp.maxX.toFixed(VIEWPORT_PRECISION)}_${vp.maxY.toFixed(VIEWPORT_PRECISION)}_${currentZoom}`;
+
+    if (fetchKey === lastFetchKeyRef.current) return;
+    lastFetchKeyRef.current = fetchKey;
+
+    if (fetchAbortRef.current) {
+      fetchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
+    const layerIds = allEditableLayers.map(l => l.id);
+    const visibleBbox = {
+      minX: vp.minX,
+      minY: vp.minY,
+      maxX: vp.maxX,
+      maxY: vp.maxY,
+    };
+
+    const buildResult = () => {
+      const result: Record<number, DrawnFeature[]> = {};
+      for (const id of layerIds) result[id] = [];
+      featureCacheRef.current.forEach(f => {
+        if (result[f.layerId] &&
+            f.coordinates !== undefined) {
+          result[f.layerId].push(f);
+        }
+      });
+      return result;
+    };
+
+    setIsFetchingFeatures(true);
+
+    const params = new URLSearchParams({
+      layerIds: layerIds.join(","),
+      minX: vp.minX.toString(),
+      minY: vp.minY.toString(),
+      maxX: vp.maxX.toString(),
+      maxY: vp.maxY.toString(),
+      zoom: currentZoom.toString(),
+    });
+
+    fetch(`/api/editable-layers/viewport-batch?${params.toString()}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        if (controller.signal.aborted) return;
+
+        const receivedIds = new Set<number>();
+        if (data.layers) {
+          for (const [idStr, layerData] of Object.entries(data.layers) as [string, any][]) {
+            const lid = parseInt(idStr);
+            const features: DrawnFeature[] = layerData.features || [];
+            for (const f of features) {
+              const key = `${f.layerId}_${f.id}`;
+              featureCacheRef.current.set(key, f);
+              receivedIds.add(f.id);
+            }
+          }
+        }
+
+        const staleKeys: string[] = [];
+        featureCacheRef.current.forEach((f, key) => {
+          if (!layerIds.includes(f.layerId)) {
+            staleKeys.push(key);
+          }
+        });
+        staleKeys.forEach(k => featureCacheRef.current.delete(k));
+
+        setAllLayerFeatures(buildResult());
+        setIsFetchingFeatures(false);
+      })
+      .catch(err => {
+        if (err.name === "AbortError") return;
+        console.warn("Viewport fetch failed:", err);
+        setAllLayerFeatures(buildResult());
+        setIsFetchingFeatures(false);
       });
 
-      const response = await fetch(`/api/editable-layers/viewport-batch?${params.toString()}`);
-      if (!response.ok) {
-        console.warn("Batch viewport fetch failed:", response.status);
-        return {};
-      }
-
-      const data = await response.json();
-      const featuresByLayer: Record<number, DrawnFeature[]> = {};
-
-      if (data.layers) {
-        for (const [idStr, layerData] of Object.entries(data.layers) as [string, any][]) {
-          const id = parseInt(idStr);
-          featuresByLayer[id] = layerData.features || [];
-        }
-      }
-
-      return featuresByLayer;
-    },
-    enabled: allEditableLayers.length > 0 && fetchViewport !== null,
-    refetchOnWindowFocus: false,
-    staleTime: 1000 * 30,
-    gcTime: 1000 * 60 * 2,
-    placeholderData: (previousData) => previousData,
-  });
+    return () => {
+      controller.abort();
+    };
+  }, [fetchViewport, layerIdsKey, allEditableLayers, featureVersion]);
   
 
   useEffect(() => {

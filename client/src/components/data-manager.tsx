@@ -172,6 +172,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     },
     onSuccess: () => {
       toast({ title: "Слой удалён" });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
     onError: (_err, _layerId, context) => {
       if (context?.previousLayers) {
@@ -495,6 +496,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
 
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       toast({ title: "Файл загружен успешно" });
     } catch (error) {
       console.error("Shapefile import error:", error);
@@ -1772,6 +1774,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           onClose={() => setExcelParseResult(null)}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+            window.dispatchEvent(new Event("viewport-features-invalidate"));
           }}
         />
       )}

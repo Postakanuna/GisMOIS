@@ -40,6 +40,7 @@ export function LayerAttributeTableWrapper({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", layerId, "features"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
   });
 
@@ -50,6 +51,7 @@ export function LayerAttributeTableWrapper({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", layerId, "features"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
   });
 
@@ -61,6 +63,7 @@ export function LayerAttributeTableWrapper({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", layerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       setSelectedFeatureIds([]);
     },
   });

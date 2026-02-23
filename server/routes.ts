@@ -20,6 +20,44 @@ import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, sa
 import { transformPropertyKeys } from "@shared/field-labels";
 import { searchObjectsForRAG, getLayersSummaryForContext } from "./ai-rag";
 import { logAction } from "./audit";
+import crypto from "crypto";
+
+const VIEWPORT_CACHE_MAX = 200;
+const VIEWPORT_CACHE_TTL_MS = 30_000;
+
+interface ViewportCacheEntry {
+  data: any;
+  etag: string;
+  createdAt: number;
+}
+
+const viewportCache = new Map<string, ViewportCacheEntry>();
+
+function viewportCacheGet(key: string): ViewportCacheEntry | undefined {
+  const entry = viewportCache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.createdAt > VIEWPORT_CACHE_TTL_MS) {
+    viewportCache.delete(key);
+    return undefined;
+  }
+  return entry;
+}
+
+function viewportCacheSet(key: string, data: any): ViewportCacheEntry {
+  if (viewportCache.size >= VIEWPORT_CACHE_MAX) {
+    const oldest = viewportCache.keys().next().value;
+    if (oldest) viewportCache.delete(oldest);
+  }
+  const json = JSON.stringify(data);
+  const etag = crypto.createHash("md5").update(json).digest("hex").slice(0, 16);
+  const entry: ViewportCacheEntry = { data, etag, createdAt: Date.now() };
+  viewportCache.set(key, entry);
+  return entry;
+}
+
+function invalidateViewportCache() {
+  viewportCache.clear();
+}
 
 function normalizeSvgForColorSupport(svgContent: string): string {
   let svg = svgContent;
@@ -3352,6 +3390,27 @@ export async function registerRoutes(
 
       const featureLimit = limit ? parseInt(limit as string) : 10000;
       const zoomLevel = zoom ? parseInt(zoom as string) : 10;
+
+      const roundedBbox = {
+        minX: Math.floor(parseFloat(minX as string) * 100) / 100,
+        minY: Math.floor(parseFloat(minY as string) * 100) / 100,
+        maxX: Math.ceil(parseFloat(maxX as string) * 100) / 100,
+        maxY: Math.ceil(parseFloat(maxY as string) * 100) / 100,
+      };
+
+      const cacheKey = `${ids.sort().join(",")}_${roundedBbox.minX}_${roundedBbox.minY}_${roundedBbox.maxX}_${roundedBbox.maxY}_${zoomLevel}_${featureLimit}`;
+
+      const cached = viewportCacheGet(cacheKey);
+      if (cached) {
+        const clientEtag = req.headers["if-none-match"];
+        if (clientEtag === `"${cached.etag}"`) {
+          return res.status(304).end();
+        }
+        res.set("ETag", `"${cached.etag}"`);
+        res.set("Cache-Control", "private, max-age=15");
+        return res.json(cached.data);
+      }
+
       const tolerance = getSimplifyTolerance(zoomLevel);
 
       const bbox = {
@@ -3386,7 +3445,11 @@ export async function registerRoutes(
         };
       }
 
-      return res.json({ layers: result, zoom: zoomLevel });
+      const responseData = { layers: result, zoom: zoomLevel };
+      const entry = viewportCacheSet(cacheKey, responseData);
+      res.set("ETag", `"${entry.etag}"`);
+      res.set("Cache-Control", "private, max-age=15");
+      return res.json(responseData);
     } catch (error) {
       console.error("Batch viewport features error:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -3627,6 +3690,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid feature data", errors: parsed.error.errors });
       }
       const feature = await storage.createDrawnFeature(parsed.data);
+      invalidateViewportCache();
       logAction({ action: "feature_create", entityType: "feature", entityId: feature.id, details: { layerId } });
       return res.status(201).json(feature);
     } catch (error) {
@@ -3643,6 +3707,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request: ids must be a non-empty array" });
       }
       const result = await storage.deleteDrawnFeaturesBatch(ids);
+      invalidateViewportCache();
       logAction({ action: "feature_batch_delete", entityType: "feature", details: { count: ids.length } });
       return res.json(result);
     } catch (error) {
@@ -3665,6 +3730,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "No valid updates provided" });
       }
       const result = await storage.updateDrawnFeaturesBatch(validUpdates);
+      invalidateViewportCache();
       logAction({ action: "feature_batch_update", entityType: "feature", details: { count: validUpdates.length } });
       return res.json(result);
     } catch (error) {
@@ -3680,6 +3746,7 @@ export async function registerRoutes(
       if (!feature) {
         return res.status(404).json({ message: "Feature not found" });
       }
+      invalidateViewportCache();
       logAction({ action: "feature_update", entityType: "feature", entityId: id });
       return res.json(feature);
     } catch (error) {
@@ -3695,6 +3762,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Feature not found" });
       }
+      invalidateViewportCache();
       logAction({ action: "feature_delete", entityType: "feature", entityId: id });
       return res.status(204).send();
     } catch (error) {
@@ -3717,6 +3785,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Feature not found" });
       }
+      invalidateViewportCache();
       return res.status(204).send();
     } catch (error) {
       console.error("Error deleting feature from layer:", error);

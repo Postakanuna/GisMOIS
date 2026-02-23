@@ -238,6 +238,7 @@ export function LayerPanel({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       toast({
         title: "Слой удалён",
         description: "Shapefile удалён с карты",

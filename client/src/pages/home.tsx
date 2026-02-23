@@ -247,6 +247,7 @@ export default function Home() {
     },
     onSuccess: (_, { datasetId }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/datasets", datasetId, "features"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
   });
 
@@ -427,6 +428,7 @@ export default function Home() {
         },
       });
       queryClient.invalidateQueries({ queryKey: [`/api/editable-layers/${consumerConnectFeatureRef.layerId}/features`] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     } catch (error) {
       console.error("Error updating consumer:", error);
     }
@@ -813,7 +815,7 @@ export default function Home() {
                   onSave={async (updates) => {
                     await apiRequest("PATCH", `/api/editable-layers/${layer.id}`, updates);
                     queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
-                    queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+                    window.dispatchEvent(new Event("viewport-features-invalidate"));
                     setLayerPanelStyleConfigId(null);
                   }}
                 />

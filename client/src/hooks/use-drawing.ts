@@ -132,6 +132,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       if (activeLayerId === activeLayerId) {
         setActiveLayerId(null);
       }
@@ -149,7 +150,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     onSuccess: (newFeature: DrawnFeature) => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
       
       // Add to undo stack
       undoStack.current.push({
@@ -176,7 +177,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
   });
 
@@ -187,7 +188,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
   });
 
@@ -199,7 +200,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
   });
 
@@ -210,7 +211,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-features"] });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
   });
 
