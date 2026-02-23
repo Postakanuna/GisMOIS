@@ -340,7 +340,8 @@ export function LayerPanel({
     return (
       <div
         key={layer.id}
-        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 min-w-0 overflow-hidden"
+        className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 min-w-0 overflow-hidden cursor-pointer transition-colors hover:bg-accent/50"
+        onClick={() => onToggleVisibility(layer.id)}
         data-testid={`layer-item-${layer.id}`}
       >
         <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -352,19 +353,11 @@ export function LayerPanel({
             {truncateName(layer.name)}
           </span>
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-6 w-6 shrink-0"
-          onClick={() => onToggleVisibility(layer.id)}
-          data-testid={`button-toggle-layer-${layer.id}`}
-        >
-          {layer.visible ? (
-            <Eye className="h-3 w-3" />
-          ) : (
-            <EyeOff className="h-3 w-3 text-muted-foreground" />
-          )}
-        </Button>
+        {layer.visible ? (
+          <Eye className="h-3 w-3 shrink-0 text-primary" data-testid={`button-toggle-layer-${layer.id}`} />
+        ) : (
+          <EyeOff className="h-3 w-3 shrink-0 text-muted-foreground" data-testid={`button-toggle-layer-${layer.id}`} />
+        )}
       </div>
     );
   };
