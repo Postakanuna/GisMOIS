@@ -85,7 +85,7 @@ export function BugReportButton() {
             data-testid="button-bug-report"
             variant="outline"
             size="icon"
-            className="fixed bottom-4 right-4 z-50 h-10 w-10 rounded-full shadow-lg bg-background border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
+            className="fixed top-4 right-4 z-[9999] h-10 w-10 rounded-full shadow-lg bg-background border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
             onClick={() => setOpen(true)}
           >
             <Bug className="h-5 w-5 text-destructive" />
@@ -95,7 +95,7 @@ export function BugReportButton() {
       </Tooltip>
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); setOpen(v); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Bug className="h-5 w-5 text-destructive" />
@@ -139,12 +139,12 @@ export function BugReportButton() {
                   Прикрепить изображение
                 </Button>
               ) : (
-                <div className="relative rounded-md border overflow-hidden">
+                <div className="relative rounded-md border overflow-hidden max-w-full">
                   {preview && (
                     <img
                       src={preview}
                       alt="Предпросмотр"
-                      className="w-full max-h-48 object-contain bg-muted"
+                      className="w-full max-h-40 object-contain bg-muted"
                       data-testid="img-bug-preview"
                     />
                   )}
