@@ -154,8 +154,12 @@ export default function AdminUsers() {
     username: "",
     password: "",
     role: "user",
-    firstName: "",
     lastName: "",
+    firstName: "",
+    middleName: "",
+    position: "",
+    organization: "",
+    phone: "",
     email: "",
   });
   const [newPassword, setNewPassword] = useState("");
@@ -224,7 +228,7 @@ export default function AdminUsers() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       setCreateDialogOpen(false);
-      setNewUser({ username: "", password: "", role: "user", firstName: "", lastName: "", email: "" });
+      setNewUser({ username: "", password: "", role: "user", lastName: "", firstName: "", middleName: "", position: "", organization: "", phone: "", email: "" });
       toast({ title: "Пользователь создан" });
     },
     onError: (error: any) => {
@@ -319,7 +323,9 @@ export default function AdminUsers() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Логин</TableHead>
-                      <TableHead>Имя</TableHead>
+                      <TableHead>ФИО</TableHead>
+                      <TableHead>Должность / Организация</TableHead>
+                      <TableHead>Контакты</TableHead>
                       <TableHead>Роль</TableHead>
                       <TableHead>Статус</TableHead>
                       <TableHead className="text-right">Действия</TableHead>
@@ -332,7 +338,15 @@ export default function AdminUsers() {
                           {u.username}
                         </TableCell>
                         <TableCell data-testid={`text-name-${u.id}`}>
-                          {u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : "-"}
+                          {[u.lastName, u.firstName, u.middleName].filter(Boolean).join(" ") || "-"}
+                        </TableCell>
+                        <TableCell data-testid={`text-position-${u.id}`}>
+                          <div>{u.position || "-"}</div>
+                          {u.organization && <div className="text-xs text-muted-foreground">{u.organization}</div>}
+                        </TableCell>
+                        <TableCell data-testid={`text-contacts-${u.id}`}>
+                          <div>{u.phone || "-"}</div>
+                          {u.email && <div className="text-xs text-muted-foreground">{u.email}</div>}
                         </TableCell>
                         <TableCell>
                           <Badge variant={u.role === "admin" ? "default" : "secondary"} data-testid={`badge-role-${u.id}`}>
@@ -577,7 +591,16 @@ export default function AdminUsers() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-lastname">Фамилия</Label>
+                <Input
+                  id="new-lastname"
+                  value={newUser.lastName}
+                  onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
+                  data-testid="input-new-lastname"
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="new-firstname">Имя</Label>
                 <Input
@@ -588,18 +611,48 @@ export default function AdminUsers() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-lastname">Фамилия</Label>
+                <Label htmlFor="new-middlename">Отчество</Label>
                 <Input
-                  id="new-lastname"
-                  value={newUser.lastName}
-                  onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
-                  data-testid="input-new-lastname"
+                  id="new-middlename"
+                  value={newUser.middleName}
+                  onChange={(e) => setNewUser({ ...newUser, middleName: e.target.value })}
+                  data-testid="input-new-middlename"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="new-email">Email</Label>
+                <Label htmlFor="new-position">Должность</Label>
+                <Input
+                  id="new-position"
+                  value={newUser.position}
+                  onChange={(e) => setNewUser({ ...newUser, position: e.target.value })}
+                  data-testid="input-new-position"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-organization">Организация</Label>
+                <Input
+                  id="new-organization"
+                  value={newUser.organization}
+                  onChange={(e) => setNewUser({ ...newUser, organization: e.target.value })}
+                  data-testid="input-new-organization"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-phone">Номер телефона</Label>
+                <Input
+                  id="new-phone"
+                  type="tel"
+                  value={newUser.phone}
+                  onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                  data-testid="input-new-phone"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-email">Электронная почта</Label>
                 <Input
                   id="new-email"
                   type="email"
@@ -608,18 +661,18 @@ export default function AdminUsers() {
                   data-testid="input-new-email"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-role">Роль</Label>
-                <Select value={newUser.role} onValueChange={(v) => setNewUser({ ...newUser, role: v })}>
-                  <SelectTrigger data-testid="select-new-role">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="user">Пользователь</SelectItem>
-                    <SelectItem value="admin">Администратор</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-role">Роль</Label>
+              <Select value={newUser.role} onValueChange={(v) => setNewUser({ ...newUser, role: v })}>
+                <SelectTrigger data-testid="select-new-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Пользователь</SelectItem>
+                  <SelectItem value="admin">Администратор</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

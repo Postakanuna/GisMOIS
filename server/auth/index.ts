@@ -147,6 +147,10 @@ export function registerAuthRoutes(app: Express): void {
         role: users.role,
         firstName: users.firstName,
         lastName: users.lastName,
+        middleName: users.middleName,
+        position: users.position,
+        organization: users.organization,
+        phone: users.phone,
         email: users.email,
         isActive: users.isActive,
         createdAt: users.createdAt,
@@ -160,7 +164,7 @@ export function registerAuthRoutes(app: Express): void {
 
   app.post("/api/admin/users", isAuthenticated as any, isAdmin as any, async (req: Request, res: Response) => {
     try {
-      const { username, password, role, firstName, lastName, email } = req.body;
+      const { username, password, role, firstName, lastName, middleName, position, organization, phone, email } = req.body;
 
       if (!username || !password) {
         return res.status(400).json({ message: "Username and password required" });
@@ -178,6 +182,10 @@ export function registerAuthRoutes(app: Express): void {
         role: role || "user",
         firstName,
         lastName,
+        middleName,
+        position,
+        organization,
+        phone,
         email,
       }).returning();
 
