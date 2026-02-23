@@ -629,7 +629,8 @@ function getLayerZIndex(rank: number, totalLayers: number, layerFeatures: Array<
 }
 
 const VIEWPORT_BUFFER_RATIO = 1.0;
-const VIEWPORT_DEBOUNCE_MS = 250;
+const VIEWPORT_DEBOUNCE_MS = 100;
+const VIEWPORT_DRAG_DEBOUNCE_MS = 400;
 const VIEWPORT_PRECISION = 2;
 const PREFETCH_BUFFER_RATIO = 2.0;
 const MAX_CACHE_SIZE = 20000;
@@ -960,6 +961,7 @@ export function MapViewer({
     zoom: number;
   } | null>(null);
   const viewportDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const dragDebounceRef = useRef<NodeJS.Timeout | null>(null);
   // Buffered extent for hysteresis - only refetch when viewport exits this area
   const bufferedExtentRef = useRef<{
     minX: number;
@@ -1798,8 +1800,11 @@ export function MapViewer({
       }
     };
 
-    // Update viewport on map move with increased debounce
     map.on("moveend", () => {
+      if (dragDebounceRef.current) {
+        clearTimeout(dragDebounceRef.current);
+        dragDebounceRef.current = null;
+      }
       if (viewportDebounceRef.current) {
         clearTimeout(viewportDebounceRef.current);
       }
@@ -1808,7 +1813,14 @@ export function MapViewer({
       }, VIEWPORT_DEBOUNCE_MS);
     });
 
-    // Initial viewport update
+    map.on("pointerdrag", () => {
+      if (dragDebounceRef.current) return;
+      dragDebounceRef.current = setTimeout(() => {
+        dragDebounceRef.current = null;
+        updateViewport();
+      }, VIEWPORT_DRAG_DEBOUNCE_MS);
+    });
+
     setTimeout(() => updateViewport(), 100);
 
     map.on("singleclick", async (evt) => {
