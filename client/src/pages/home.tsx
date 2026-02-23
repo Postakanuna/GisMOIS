@@ -490,6 +490,11 @@ export default function Home() {
             </Link>
           </SidebarHeader>
 
+          <MapSearchBar
+            onZoomToCoordinates={(lat, lon, zoom) => mapActionsRef.current?.zoomToCoordinates(lat, lon, zoom)}
+            onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
+          />
+
           <SidebarContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex flex-col" : "overflow-hidden"}`}>
             <SidebarGroup className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
               <SidebarGroupContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
@@ -714,11 +719,6 @@ export default function Home() {
               />
             )}
 
-            <MapSearchBar
-              onZoomToCoordinates={(lat, lon, zoom) => mapActionsRef.current?.zoomToCoordinates(lat, lon, zoom)}
-              onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
-            />
-            
             <MapViewer
               layers={zuluConnection.layers}
               connection={zuluConnection.connection}

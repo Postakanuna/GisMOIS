@@ -98,17 +98,17 @@ export function MapSearchBar({ onZoomToCoordinates, onZoomToFeature }: MapSearch
   }, []);
 
   return (
-    <div className="absolute top-3 left-14 z-[1000] flex flex-col gap-1" data-testid="map-search-bar">
-      <div className="flex items-center gap-1 bg-background/95 backdrop-blur border rounded-lg shadow-md p-1">
+    <div className="px-3 py-2 border-b shrink-0" data-testid="map-search-bar">
+      <div className="flex items-center gap-1 rounded-md border bg-muted/30 px-1">
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="h-7 w-7 shrink-0"
           onClick={toggleMode}
           title={mode === "address" ? "Режим: поиск адреса. Нажмите для переключения на поиск по ID" : "Режим: поиск по ID. Нажмите для переключения на поиск адреса"}
           data-testid="button-toggle-search-mode"
         >
-          {mode === "address" ? <MapPin className="h-4 w-4" /> : <Hash className="h-4 w-4" />}
+          {mode === "address" ? <MapPin className="h-3.5 w-3.5" /> : <Hash className="h-3.5 w-3.5" />}
         </Button>
         <Input
           ref={inputRef}
@@ -116,27 +116,27 @@ export function MapSearchBar({ onZoomToCoordinates, onZoomToFeature }: MapSearch
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={mode === "address" ? "Поиск адреса..." : "ID объекта..."}
-          className="h-8 w-48 sm:w-64 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm"
+          className="h-7 flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm px-1"
           data-testid="input-map-search"
         />
         {query && (
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={clearSearch} data-testid="button-clear-search">
-            <X className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={clearSearch} data-testid="button-clear-search">
+            <X className="h-3 w-3" />
           </Button>
         )}
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="h-7 w-7 shrink-0"
           onClick={handleSearch}
           disabled={isSearching || !query.trim()}
           data-testid="button-search"
         >
-          {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          {isSearching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
         </Button>
       </div>
       {resultText && (
-        <div className="bg-background/95 backdrop-blur border rounded-lg shadow-md px-3 py-1.5 text-xs text-muted-foreground max-w-72 truncate" data-testid="text-search-result">
+        <div className="mt-1 text-xs text-muted-foreground truncate" data-testid="text-search-result">
           {resultText}
         </div>
       )}
