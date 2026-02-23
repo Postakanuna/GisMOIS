@@ -41,17 +41,19 @@ export function UserButton() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <div className="flex items-center gap-2 p-2">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-medium truncate" data-testid="text-username">{displayName}</span>
-            <span className="text-xs text-muted-foreground" data-testid="text-role">
-              {user.role === "admin" ? "Администратор" : "Пользователь"}
-            </span>
-          </div>
-        </div>
+        <DropdownMenuItem asChild>
+          <Link href="/profile" className="flex items-center gap-2 cursor-pointer p-2" data-testid="link-profile">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback>{initials}</AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-medium truncate" data-testid="text-username">{displayName}</span>
+              <span className="text-xs text-muted-foreground" data-testid="text-role">
+                {user.role === "admin" ? "Администратор" : "Пользователь"}
+              </span>
+            </div>
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {isAdmin && (
           <>

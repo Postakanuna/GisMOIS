@@ -16,6 +16,7 @@ import AdminUsers from "@/pages/admin-users";
 import AdminLayerManager from "@/pages/admin-layer-manager";
 import LoginPage from "@/pages/login";
 import ScenesPage from "@/pages/scenes";
+import ProfilePage from "@/pages/profile";
 
 function Router() {
   return (
@@ -30,6 +31,11 @@ function Router() {
       <Route path="/app">
         <ProtectedRoute>
           <Home />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute>
+          <ProfilePage />
         </ProtectedRoute>
       </Route>
       <Route path="/settings">

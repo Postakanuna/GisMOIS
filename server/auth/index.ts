@@ -139,6 +139,62 @@ export function registerAuthRoutes(app: Express): void {
     res.json((req as AuthRequest).user);
   });
 
+  app.get("/api/profile", isAuthenticated as any, async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthRequest;
+      const [fullUser] = await db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        middleName: users.middleName,
+        position: users.position,
+        organization: users.organization,
+        phone: users.phone,
+        email: users.email,
+        isActive: users.isActive,
+        createdAt: users.createdAt,
+      }).from(users).where(eq(users.id, authReq.user!.id));
+      res.json(fullUser);
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  app.post("/api/profile/password", isAuthenticated as any, async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthRequest;
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Текущий и новый пароль обязательны" });
+      }
+
+      if (newPassword.length < 4) {
+        return res.status(400).json({ message: "Новый пароль должен быть не менее 4 символов" });
+      }
+
+      const [userRecord] = await db.select().from(users).where(eq(users.id, authReq.user!.id));
+      if (!userRecord) {
+        return res.status(404).json({ message: "Пользователь не найден" });
+      }
+
+      const isValid = await verifyPassword(currentPassword, userRecord.passwordHash);
+      if (!isValid) {
+        return res.status(400).json({ message: "Неверный текущий пароль" });
+      }
+
+      const passwordHash = await hashPassword(newPassword);
+      await db.update(users).set({ passwordHash }).where(eq(users.id, authReq.user!.id));
+      res.json({ message: "Пароль успешно изменён" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ message: "Не удалось изменить пароль" });
+    }
+  });
+
   app.get("/api/admin/users", isAuthenticated as any, isAdmin as any, async (_req: Request, res: Response) => {
     try {
       const allUsers = await db.select({
