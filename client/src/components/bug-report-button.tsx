@@ -85,7 +85,7 @@ export function BugReportButton() {
             data-testid="button-bug-report"
             variant="outline"
             size="icon"
-            className="fixed top-4 right-4 z-[9999] h-10 w-10 rounded-full shadow-lg bg-background border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
+            className="fixed bottom-4 right-4 z-[9999] h-10 w-10 rounded-full shadow-lg bg-background border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
             onClick={() => setOpen(true)}
           >
             <Bug className="h-5 w-5 text-destructive" />
@@ -95,7 +95,7 @@ export function BugReportButton() {
       </Tooltip>
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); setOpen(v); }}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Bug className="h-5 w-5 text-destructive" />
@@ -139,19 +139,20 @@ export function BugReportButton() {
                   Прикрепить изображение
                 </Button>
               ) : (
-                <div className="relative rounded-md border overflow-hidden max-w-full">
+                <div className="relative rounded-md border overflow-hidden">
                   {preview && (
                     <img
                       src={preview}
                       alt="Предпросмотр"
-                      className="w-full max-h-40 object-contain bg-muted"
+                      className="block w-full h-auto max-h-36 object-contain bg-muted"
+                      style={{ maxWidth: '100%' }}
                       data-testid="img-bug-preview"
                     />
                   )}
                   <div className="flex items-center justify-between p-2 bg-muted/50">
-                    <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                      <ImageIcon className="h-3 w-3" />
-                      {file.name}
+                    <span className="text-xs text-muted-foreground truncate flex-1 min-w-0 flex items-center gap-1">
+                      <ImageIcon className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{file.name}</span>
                     </span>
                     <Button
                       type="button"

@@ -479,6 +479,7 @@ export default function Home() {
   } as React.CSSProperties;
 
   return (
+    <>
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar className="hidden md:flex border-r border-sidebar-border">
@@ -968,7 +969,8 @@ export default function Home() {
           </main>
         </div>
       </div>
-      <BugReportButton />
     </SidebarProvider>
+    <BugReportButton />
+    </>
   );
 }
