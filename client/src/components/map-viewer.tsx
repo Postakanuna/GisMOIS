@@ -632,6 +632,7 @@ const VIEWPORT_BUFFER_RATIO = 1.0;
 const VIEWPORT_DEBOUNCE_MS = 250;
 const VIEWPORT_PRECISION = 2;
 const PREFETCH_BUFFER_RATIO = 2.0;
+const MAX_CACHE_SIZE = 20000;
 
 // Parse hex color to RGB components
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -1230,7 +1231,9 @@ export function MapViewer({
   const [isFetchingFeatures, setIsFetchingFeatures] = useState(false);
   const fetchAbortRef = useRef<AbortController | null>(null);
   const prefetchAbortRef = useRef<AbortController | null>(null);
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFetchKeyRef = useRef<string | null>(null);
+  const fetchIdRef = useRef(0);
   const [featureVersion, setFeatureVersion] = useState(0);
 
   const buildResultFromCache = useCallback((layerIds: number[]) => {
@@ -1244,18 +1247,39 @@ export function MapViewer({
     return result;
   }, []);
 
+  const evictCacheIfNeeded = useCallback(() => {
+    const cache = featureCacheRef.current;
+    if (cache.size <= MAX_CACHE_SIZE) return;
+    const excess = cache.size - MAX_CACHE_SIZE;
+    const keys = cache.keys();
+    for (let i = 0; i < excess; i++) {
+      const next = keys.next();
+      if (next.done) break;
+      cache.delete(next.value);
+    }
+  }, []);
+
+  const cancelPrefetch = useCallback(() => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+    if (prefetchAbortRef.current) {
+      prefetchAbortRef.current.abort();
+      prefetchAbortRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     const handler = () => {
       featureCacheRef.current.clear();
       lastFetchKeyRef.current = null;
-      if (prefetchAbortRef.current) {
-        prefetchAbortRef.current.abort();
-      }
+      cancelPrefetch();
       setFeatureVersion(v => v + 1);
     };
     window.addEventListener("viewport-features-invalidate", handler);
     return () => window.removeEventListener("viewport-features-invalidate", handler);
-  }, []);
+  }, [cancelPrefetch]);
 
   useEffect(() => {
     if (!fetchViewport || allEditableLayers.length === 0) {
@@ -1282,11 +1306,14 @@ export function MapViewer({
       setAllLayerFeatures(buildResultFromCache(layerIds));
     }
 
+    cancelPrefetch();
+
     if (fetchAbortRef.current) {
       fetchAbortRef.current.abort();
     }
     const controller = new AbortController();
     fetchAbortRef.current = controller;
+    const currentFetchId = ++fetchIdRef.current;
 
     setIsFetchingFeatures(true);
 
@@ -1308,14 +1335,13 @@ export function MapViewer({
         return res.json();
       })
       .then(data => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || fetchIdRef.current !== currentFetchId) return;
 
         if (data.layers) {
-          for (const [idStr, layerData] of Object.entries(data.layers) as [string, any][]) {
+          for (const [, layerData] of Object.entries(data.layers) as [string, any][]) {
             const features: DrawnFeature[] = layerData.features || [];
             for (const f of features) {
-              const key = `${f.layerId}_${f.id}`;
-              featureCacheRef.current.set(key, f);
+              featureCacheRef.current.set(`${f.layerId}_${f.id}`, f);
             }
           }
         }
@@ -1327,30 +1353,31 @@ export function MapViewer({
           }
         });
         staleKeys.forEach(k => featureCacheRef.current.delete(k));
+        evictCacheIfNeeded();
 
         setAllLayerFeatures(buildResultFromCache(layerIds));
         setIsFetchingFeatures(false);
 
-        doPrefetch(vp, layerIds, currentZoom, controller.signal);
+        doPrefetch(vp, layerIds, currentZoom, currentFetchId);
       })
       .catch(err => {
         if (err.name === "AbortError") return;
         console.warn("Viewport fetch failed:", err);
-        setAllLayerFeatures(buildResultFromCache(layerIds));
-        setIsFetchingFeatures(false);
+        if (fetchIdRef.current === currentFetchId) {
+          setAllLayerFeatures(buildResultFromCache(layerIds));
+          setIsFetchingFeatures(false);
+        }
       });
 
     return () => {
       controller.abort();
+      cancelPrefetch();
     };
-  }, [fetchViewport, layerIdsKey, allEditableLayers, featureVersion, buildResultFromCache]);
+  }, [fetchViewport, layerIdsKey, allEditableLayers, featureVersion, buildResultFromCache, cancelPrefetch, evictCacheIfNeeded]);
 
-  const doPrefetch = useCallback((vp: { minX: number; minY: number; maxX: number; maxY: number }, layerIds: number[], zoom: number, parentSignal: AbortSignal) => {
-    if (parentSignal.aborted) return;
+  const doPrefetch = useCallback((vp: { minX: number; minY: number; maxX: number; maxY: number }, layerIds: number[], zoom: number, originFetchId: number) => {
+    cancelPrefetch();
 
-    if (prefetchAbortRef.current) {
-      prefetchAbortRef.current.abort();
-    }
     const prefetchController = new AbortController();
     prefetchAbortRef.current = prefetchController;
 
@@ -1368,8 +1395,8 @@ export function MapViewer({
       zoom: zoom.toString(),
     });
 
-    setTimeout(() => {
-      if (prefetchController.signal.aborted || parentSignal.aborted) return;
+    prefetchTimerRef.current = setTimeout(() => {
+      if (prefetchController.signal.aborted || fetchIdRef.current !== originFetchId) return;
       
       fetch(`/api/editable-layers/viewport-batch?${prefetchParams.toString()}`, {
         credentials: "include",
@@ -1380,21 +1407,23 @@ export function MapViewer({
           return res.json();
         })
         .then(data => {
-          if (!data || prefetchController.signal.aborted) return;
+          if (!data || prefetchController.signal.aborted || fetchIdRef.current !== originFetchId) return;
           if (data.layers) {
             for (const [, layerData] of Object.entries(data.layers) as [string, any][]) {
               const features: DrawnFeature[] = layerData.features || [];
               for (const f of features) {
-                const key = `${f.layerId}_${f.id}`;
-                featureCacheRef.current.set(key, f);
+                featureCacheRef.current.set(`${f.layerId}_${f.id}`, f);
               }
             }
           }
-          setAllLayerFeatures(buildResultFromCache(layerIds));
+          evictCacheIfNeeded();
+          if (fetchIdRef.current === originFetchId) {
+            setAllLayerFeatures(buildResultFromCache(layerIds));
+          }
         })
         .catch(() => {});
     }, 500);
-  }, [buildResultFromCache]);
+  }, [buildResultFromCache, cancelPrefetch, evictCacheIfNeeded]);
   
 
   useEffect(() => {
