@@ -4,6 +4,23 @@
 
 ГИС МО "Инженерные сети" is a web application for managing engineering infrastructure using a multi-scene architecture. It provides tools for visualizing cartographic data (WMS/WFS), layer management, object information display, and shapefile uploads. The application features an interactive map with a sidebar for control elements, aiming to be a powerful and user-friendly tool for geospatial data, supporting GOST standards for icons and thermal network styles. It integrates business vision for market potential and project ambitions to provide a comprehensive GIS solution.
 
+## Versioning
+
+Current version: 1.0.0-rc.1
+Versioning standard: Semantic Versioning (SemVer) — MAJOR.MINOR.PATCH
+Changelog: CHANGELOG.md — all significant changes are documented with version numbers and dates.
+Version display: shown in the bottom-right corner of the main page (home.tsx).
+After Rospatent registration, version will be updated to 1.0.0.
+
+## Rospatent Registration
+
+Deposited materials are located in `docs/rospatent/`:
+- 01_referat.txt — Program abstract
+- 02_opisanie_programmy.txt — Program description
+- 03_listing_first_25_pages.txt — Source code listing (first 25 pages)
+- 03_listing_last_25_pages.txt — Source code listing (last 25 pages)
+- 04_dannye_dlya_zayavleniya.txt — Application form data
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

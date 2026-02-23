@@ -950,6 +950,12 @@ export default function Home() {
         </div>
       </div>
       <BugReportButton />
+      <div
+        className="fixed bottom-1 left-1 text-[10px] text-muted-foreground/50 select-none pointer-events-none z-10"
+        data-testid="text-app-version"
+      >
+        v1.0.0-rc.1
+      </div>
     </SidebarProvider>
   );
 }
