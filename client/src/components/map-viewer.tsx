@@ -1813,7 +1813,7 @@ export function MapViewer({
       }, VIEWPORT_DEBOUNCE_MS);
     });
 
-    map.on("pointerdrag", () => {
+    map.getView().on("change:center", () => {
       if (dragDebounceRef.current) return;
       dragDebounceRef.current = setTimeout(() => {
         dragDebounceRef.current = null;
