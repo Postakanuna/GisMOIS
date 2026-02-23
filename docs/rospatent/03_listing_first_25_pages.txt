@@ -1,0 +1,1256 @@
+ЛИСТИНГ ИСХОДНОГО КОДА
+ГИС МО «Инженерные сети» (ГИС МО «ИС»)
+Депонируемые материалы — Первые 25 страниц (50 строк на страницу)
+Общий объём: 40 012 строк исходного кода (собственная разработка, подсистемы 1–6)
+
+
+     1	
+     2	// ============================================================
+     3	// Файл: client/src/App.tsx
+     4	// ============================================================
+     5	
+     6	import { Switch, Route } from "wouter";
+     7	import { queryClient } from "./lib/queryClient";
+     8	import { QueryClientProvider } from "@tanstack/react-query";
+     9	import { Toaster } from "@/components/ui/toaster";
+    10	import { TooltipProvider } from "@/components/ui/tooltip";
+    11	import { ZuluConnectionProvider } from "@/contexts/zulu-connection-context";
+    12	import { SceneProvider } from "@/contexts/scene-context";
+    13	import { BaseLayersProvider } from "@/contexts/base-layers-context";
+    14	import { ProjectionProvider } from "@/contexts/projection-context";
+    15	import { ProtectedRoute } from "@/components/protected-route";
+    16	import NotFound from "@/pages/not-found";
+    17	import LandingPage from "@/pages/landing";
+    18	import Home from "@/pages/home";
+    19	import AdminUsers from "@/pages/admin-users";
+    20	import AdminLayerManager from "@/pages/admin-layer-manager";
+    21	import LoginPage from "@/pages/login";
+    22	import ScenesPage from "@/pages/scenes";
+    23	import ProfilePage from "@/pages/profile";
+    24	
+    25	function Router() {
+    26	  return (
+    27	    <Switch>
+    28	      <Route path="/" component={LandingPage} />
+    29	      <Route path="/login" component={LoginPage} />
+    30	      <Route path="/scenes">
+    31	        <ProtectedRoute>
+    32	          <ScenesPage />
+    33	        </ProtectedRoute>
+    34	      </Route>
+    35	      <Route path="/app">
+    36	        <ProtectedRoute>
+    37	          <Home />
+    38	        </ProtectedRoute>
+    39	      </Route>
+    40	      <Route path="/profile">
+    41	        <ProtectedRoute>
+    42	          <ProfilePage />
+    43	        </ProtectedRoute>
+    44	      </Route>
+    45	      <Route path="/admin/settings">
+    46	        <ProtectedRoute requireAdmin>
+    47	          <AdminUsers />
+    48	        </ProtectedRoute>
+    49	      </Route>
+    50	      <Route path="/admin/layers">
+    51	        <ProtectedRoute requireAdmin>
+    52	          <AdminLayerManager />
+    53	        </ProtectedRoute>
+    54	      </Route>
+    55	      <Route path="/admin">
+    56	        <ProtectedRoute requireAdmin>
+    57	          <AdminUsers />
+    58	        </ProtectedRoute>
+    59	      </Route>
+    60	      <Route component={NotFound} />
+    61	    </Switch>
+    62	  );
+    63	}
+    64	
+    65	function App() {
+    66	  return (
+    67	    <QueryClientProvider client={queryClient}>
+    68	      <TooltipProvider>
+    69	        <SceneProvider>
+    70	          <ProjectionProvider>
+    71	            <BaseLayersProvider>
+    72	              <ZuluConnectionProvider>
+    73	              <Toaster />
+    74	              <Router />
+    75	            </ZuluConnectionProvider>
+    76	            </BaseLayersProvider>
+    77	          </ProjectionProvider>
+    78	        </SceneProvider>
+    79	      </TooltipProvider>
+    80	    </QueryClientProvider>
+    81	  );
+    82	}
+    83	
+    84	export default App;
+    85	
+    86	// ============================================================
+    87	// Файл: client/src/components/ai-chat-panel.tsx
+    88	// ============================================================
+    89	
+    90	import { useState, useRef, useEffect } from "react";
+    91	import { Button } from "@/components/ui/button";
+    92	import { Textarea } from "@/components/ui/textarea";
+    93	import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2 } from "lucide-react";
+    94	import {
+    95	  DropdownMenu,
+    96	  DropdownMenuContent,
+    97	  DropdownMenuItem,
+    98	  DropdownMenuTrigger,
+    99	} from "@/components/ui/dropdown-menu";
+   100	
+   101	export interface ChatMessage {
+   102	  id: string;
+   103	  role: "user" | "assistant";
+   104	  content: string;
+   105	  timestamp: Date;
+   106	}
+   107	
+   108	interface AiProvider {
+   109	  id: string;
+   110	  name: string;
+   111	  available: boolean;
+   112	}
+   113	
+   114	const WELCOME_MESSAGE: ChatMessage = {
+   115	  id: "welcome",
+   116	  role: "assistant",
+   117	  content: "Здравствуйте! Я ИИ-ассистент ГИС теплосетей. Задайте вопрос о сетях, объектах или аналитике.",
+   118	  timestamp: new Date(),
+   119	};
+   120	
+   121	interface AiChatPanelProps {
+   122	  onBack: () => void;
+   123	  messages: ChatMessage[];
+   124	  onMessagesChange: (messages: ChatMessage[]) => void;
+   125	}
+   126	
+   127	export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelProps) {
+   128	  const [input, setInput] = useState("");
+   129	  const [isLoading, setIsLoading] = useState(false);
+   130	  const [providers, setProviders] = useState<AiProvider[]>([]);
+   131	  const [selectedProvider, setSelectedProvider] = useState("openai");
+   132	  const scrollRef = useRef<HTMLDivElement>(null);
+   133	  const textareaRef = useRef<HTMLTextAreaElement>(null);
+   134	
+   135	  useEffect(() => {
+   136	    fetch("/api/ai/providers")
+   137	      .then(r => r.json())
+   138	      .then(data => {
+   139	        if (data.providers) setProviders(data.providers);
+   140	        if (data.default) setSelectedProvider(data.default);
+   141	      })
+   142	      .catch(() => {});
+   143	  }, []);
+   144	
+   145	  useEffect(() => {
+   146	    if (scrollRef.current) {
+   147	      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+   148	    }
+   149	  }, [messages]);
+   150	
+   151	  const handleSend = async () => {
+   152	    const text = input.trim();
+   153	    if (!text || isLoading) return;
+   154	
+   155	    const userMsg: ChatMessage = {
+   156	      id: `user-${Date.now()}`,
+   157	      role: "user",
+   158	      content: text,
+   159	      timestamp: new Date(),
+   160	    };
+   161	    const updatedMessages = [...messages, userMsg];
+   162	    onMessagesChange(updatedMessages);
+   163	    setInput("");
+   164	    setIsLoading(true);
+   165	
+   166	    try {
+   167	      const allMessages = updatedMessages.filter(m => m.id !== "welcome");
+   168	      const apiMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
+   169	
+   170	      const response = await fetch("/api/ai/chat", {
+   171	        method: "POST",
+   172	        headers: { "Content-Type": "application/json" },
+   173	        body: JSON.stringify({ messages: apiMessages, provider: selectedProvider }),
+   174	      });
+   175	      const data = await response.json();
+   176	      if (!response.ok) {
+   177	        throw new Error(data.error || `Ошибка сервера: ${response.status}`);
+   178	      }
+   179	
+   180	      const aiMsg: ChatMessage = {
+   181	        id: `ai-${Date.now()}`,
+   182	        role: "assistant",
+   183	        content: data.content || "Нет ответа от модели",
+   184	        timestamp: new Date(),
+   185	      };
+   186	      onMessagesChange([...updatedMessages, aiMsg]);
+   187	    } catch (error: any) {
+   188	      const errorMsg: ChatMessage = {
+   189	        id: `error-${Date.now()}`,
+   190	        role: "assistant",
+   191	        content: `Ошибка: ${error.message || "Не удалось получить ответ от ИИ"}`,
+   192	        timestamp: new Date(),
+   193	      };
+   194	      onMessagesChange([...updatedMessages, errorMsg]);
+   195	    } finally {
+   196	      setIsLoading(false);
+   197	    }
+   198	  };
+   199	
+   200	  const handleClearChat = () => {
+   201	    onMessagesChange([WELCOME_MESSAGE]);
+   202	  };
+   203	
+   204	  const handleKeyDown = (e: React.KeyboardEvent) => {
+   205	    if (e.key === "Enter" && !e.shiftKey) {
+   206	      e.preventDefault();
+   207	      handleSend();
+   208	    }
+   209	  };
+   210	
+   211	  const currentProvider = providers.find(p => p.id === selectedProvider);
+   212	  const hasHistory = messages.some(m => m.id !== "welcome");
+   213	
+   214	  return (
+   215	    <div className="flex flex-col h-full min-h-0 flex-1">
+   216	      <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
+   217	        <Button size="icon" variant="ghost" onClick={onBack} data-testid="button-back-to-layers">
+   218	          <ArrowLeft className="h-4 w-4" />
+   219	        </Button>
+   220	        <Bot className="h-4 w-4 text-primary" />
+   221	        <span className="text-sm font-semibold">ИИ-ассистент</span>
+   222	        <div className="ml-auto flex items-center gap-1">
+   223	          {hasHistory && (
+   224	            <Button
+   225	              size="icon"
+   226	              variant="ghost"
+   227	              onClick={handleClearChat}
+   228	              className="h-7 w-7"
+   229	              title="Очистить чат"
+   230	              data-testid="button-clear-chat"
+   231	            >
+   232	              <Trash2 className="h-3.5 w-3.5" />
+   233	            </Button>
+   234	          )}
+   235	          <DropdownMenu>
+   236	            <DropdownMenuTrigger asChild>
+   237	              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
+   238	                {currentProvider?.name || "Модель"}
+   239	                <ChevronDown className="h-3 w-3" />
+   240	              </Button>
+   241	            </DropdownMenuTrigger>
+   242	            <DropdownMenuContent align="end">
+   243	              {providers.map(p => (
+   244	                <DropdownMenuItem
+   245	                  key={p.id}
+   246	                  onClick={() => setSelectedProvider(p.id)}
+   247	                  disabled={!p.available}
+   248	                  data-testid={`provider-option-${p.id}`}
+   249	                >
+   250	                  <span className={selectedProvider === p.id ? "font-semibold" : ""}>
+   251	                    {p.name}
+   252	                  </span>
+   253	                  {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
+   254	                </DropdownMenuItem>
+   255	              ))}
+   256	            </DropdownMenuContent>
+   257	          </DropdownMenu>
+   258	        </div>
+   259	      </div>
+   260	
+   261	      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+   262	        {messages.map((msg) => (
+   263	          <div
+   264	            key={msg.id}
+   265	            className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+   266	            data-testid={`chat-message-${msg.id}`}
+   267	          >
+   268	            {msg.role === "assistant" && (
+   269	              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
+   270	                <Bot className="h-3.5 w-3.5 text-primary" />
+   271	              </div>
+   272	            )}
+   273	            <div
+   274	              className={`rounded-md px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap ${
+   275	                msg.role === "user"
+   276	                  ? "bg-primary text-primary-foreground"
+   277	                  : "bg-muted"
+   278	              }`}
+   279	            >
+   280	              {msg.content}
+   281	            </div>
+   282	            {msg.role === "user" && (
+   283	              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
+   284	                <User className="h-3.5 w-3.5" />
+   285	              </div>
+   286	            )}
+   287	          </div>
+   288	        ))}
+   289	        {isLoading && (
+   290	          <div className="flex gap-2 justify-start" data-testid="chat-loading">
+   291	            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
+   292	              <Bot className="h-3.5 w-3.5 text-primary" />
+   293	            </div>
+   294	            <div className="rounded-md px-3 py-2 text-sm bg-muted">
+   295	              <span className="inline-flex gap-1">
+   296	                <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
+   297	                <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
+   298	                <span className="animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
+   299	              </span>
+   300	            </div>
+   301	          </div>
+   302	        )}
+   303	      </div>
+   304	
+   305	      <div className="border-t p-3 shrink-0">
+   306	        <div className="flex gap-2">
+   307	          <Textarea
+   308	            ref={textareaRef}
+   309	            value={input}
+   310	            onChange={(e) => setInput(e.target.value)}
+   311	            onKeyDown={handleKeyDown}
+   312	            placeholder="Задайте вопрос..."
+   313	            className="resize-none min-h-[40px] max-h-[120px] text-sm"
+   314	            rows={1}
+   315	            disabled={isLoading}
+   316	            data-testid="input-ai-chat"
+   317	          />
+   318	          <Button
+   319	            size="icon"
+   320	            onClick={handleSend}
+   321	            disabled={!input.trim() || isLoading}
+   322	            data-testid="button-send-ai-chat"
+   323	          >
+   324	            <Send className="h-4 w-4" />
+   325	          </Button>
+   326	        </div>
+   327	      </div>
+   328	    </div>
+   329	  );
+   330	}
+   331	
+   332	export { WELCOME_MESSAGE };
+   333	
+   334	// ============================================================
+   335	// Файл: client/src/components/api-keys-manager.tsx
+   336	// ============================================================
+   337	
+   338	import { useState } from "react";
+   339	import { useQuery, useMutation } from "@tanstack/react-query";
+   340	import { Key, Plus, Trash2, Copy, CheckCircle, AlertCircle } from "lucide-react";
+   341	import { Button } from "@/components/ui/button";
+   342	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+   343	import { Input } from "@/components/ui/input";
+   344	import { Label } from "@/components/ui/label";
+   345	import { Badge } from "@/components/ui/badge";
+   346	import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+   347	import { Checkbox } from "@/components/ui/checkbox";
+   348	import { Alert, AlertDescription } from "@/components/ui/alert";
+   349	import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+   350	import { queryClient, apiRequest } from "@/lib/queryClient";
+   351	import { useToast } from "@/hooks/use-toast";
+   352	
+   353	interface ApiKey {
+   354	  id: number;
+   355	  name: string;
+   356	  sceneId: number | null;
+   357	  permissions: string[];
+   358	  isActive: boolean;
+   359	  lastUsedAt: string | null;
+   360	  createdAt: string;
+   361	}
+   362	
+   363	interface Scene {
+   364	  id: number;
+   365	  name: string;
+   366	}
+   367	
+   368	type Permission = "create_point" | "read_scenes" | "read_layers" | "spatial_query";
+   369	
+   370	const PERMISSIONS: { value: Permission; label: string }[] = [
+   371	  { value: "create_point", label: "Создание точек" },
+   372	  { value: "read_scenes", label: "Чтение сцен" },
+   373	  { value: "read_layers", label: "Чтение слоёв" },
+   374	  { value: "spatial_query", label: "Пространственный запрос" },
+   375	];
+   376	
+   377	export function ApiKeysManager() {
+   378	  const { toast } = useToast();
+   379	  const [isCreateOpen, setIsCreateOpen] = useState(false);
+   380	  const [newKeyName, setNewKeyName] = useState("");
+   381	  const [newKeySceneId, setNewKeySceneId] = useState<string>("");
+   382	  const [selectedPermissions, setSelectedPermissions] = useState<Permission[]>(["create_point", "read_scenes", "read_layers"]);
+   383	  const [createdToken, setCreatedToken] = useState<string | null>(null);
+   384	  const [tokenCopied, setTokenCopied] = useState(false);
+   385	
+   386	  const { data: apiKeys = [], isLoading: isLoadingKeys } = useQuery<ApiKey[]>({
+   387	    queryKey: ["/api/api-keys"],
+   388	  });
+   389	
+   390	  const { data: scenes = [] } = useQuery<Scene[]>({
+   391	    queryKey: ["/api/scenes"],
+   392	  });
+   393	
+   394	  const createMutation = useMutation({
+   395	    mutationFn: async (data: { name: string; sceneId?: number; permissions: string[] }) => {
+   396	      const res = await apiRequest("POST", "/api/api-keys", data);
+   397	      return res.json();
+   398	    },
+   399	    onSuccess: (response) => {
+   400	      setCreatedToken(response.token);
+   401	      setNewKeyName("");
+   402	      setNewKeySceneId("");
+   403	      queryClient.invalidateQueries({ queryKey: ["/api/api-keys"] });
+   404	      toast({
+   405	        title: "API ключ создан",
+   406	        description: "Скопируйте токен, он больше не будет показан!",
+   407	      });
+   408	    },
+   409	    onError: (error: Error) => {
+   410	      toast({
+   411	        title: "Ошибка создания ключа",
+   412	        description: error.message,
+   413	        variant: "destructive",
+   414	      });
+   415	    },
+   416	  });
+   417	
+   418	  const revokeMutation = useMutation({
+   419	    mutationFn: async (id: number) => {
+   420	      const res = await apiRequest("DELETE", `/api/api-keys/${id}`);
+   421	      return res.json();
+   422	    },
+   423	    onSuccess: () => {
+   424	      queryClient.invalidateQueries({ queryKey: ["/api/api-keys"] });
+   425	      toast({
+   426	        title: "API ключ отозван",
+   427	        description: "Ключ больше не может использоваться",
+   428	      });
+   429	    },
+   430	    onError: (error: Error) => {
+   431	      toast({
+   432	        title: "Ошибка отзыва ключа",
+   433	        description: error.message,
+   434	        variant: "destructive",
+   435	      });
+   436	    },
+   437	  });
+   438	
+   439	  const handleCreate = () => {
+   440	    if (!newKeyName.trim()) return;
+   441	    const sceneIdValue = newKeySceneId && newKeySceneId !== "all" ? parseInt(newKeySceneId) : undefined;
+   442	    createMutation.mutate({
+   443	      name: newKeyName.trim(),
+   444	      sceneId: isNaN(sceneIdValue as number) ? undefined : sceneIdValue,
+   445	      permissions: selectedPermissions,
+   446	    });
+   447	  };
+   448	
+   449	  const handleCopyToken = async () => {
+   450	    if (createdToken) {
+   451	      await navigator.clipboard.writeText(createdToken);
+   452	      setTokenCopied(true);
+   453	      setTimeout(() => setTokenCopied(false), 2000);
+   454	    }
+   455	  };
+   456	
+   457	  const handleCloseDialog = () => {
+   458	    setIsCreateOpen(false);
+   459	    setCreatedToken(null);
+   460	    setTokenCopied(false);
+   461	    setSelectedPermissions(["create_point", "read_scenes", "read_layers"]);
+   462	  };
+   463	
+   464	  const togglePermission = (permission: Permission) => {
+   465	    setSelectedPermissions(prev => 
+   466	      prev.includes(permission) 
+   467	        ? prev.filter(p => p !== permission)
+   468	        : [...prev, permission]
+   469	    );
+   470	  };
+   471	
+   472	  const formatDate = (dateStr: string | null) => {
+   473	    if (!dateStr) return "Никогда";
+   474	    return new Date(dateStr).toLocaleString("ru-RU", {
+   475	      day: "2-digit",
+   476	      month: "2-digit",
+   477	      year: "numeric",
+   478	      hour: "2-digit",
+   479	      minute: "2-digit",
+   480	    });
+   481	  };
+   482	
+   483	  return (
+   484	    <Card>
+   485	      <CardHeader>
+   486	        <div className="flex items-center justify-between gap-4 flex-wrap">
+   487	          <div className="flex items-center gap-2">
+   488	            <Key className="h-5 w-5" />
+   489	            <CardTitle>API ключи</CardTitle>
+   490	          </div>
+   491	          <Dialog open={isCreateOpen} onOpenChange={(open) => {
+   492	            if (!open) handleCloseDialog();
+   493	            else setIsCreateOpen(true);
+   494	          }}>
+   495	            <DialogTrigger asChild>
+   496	              <Button size="sm" data-testid="button-create-api-key">
+   497	                <Plus className="h-4 w-4 mr-1" />
+   498	                Создать ключ
+   499	              </Button>
+   500	            </DialogTrigger>
+   501	            <DialogContent className="sm:max-w-md">
+   502	              <DialogHeader>
+   503	                <DialogTitle>Создать API ключ</DialogTitle>
+   504	                <DialogDescription>
+   505	                  API ключ позволяет внешним приложениям (например, Telegram бот) создавать точки на карте.
+   506	                </DialogDescription>
+   507	              </DialogHeader>
+   508	
+   509	              {createdToken ? (
+   510	                <div className="space-y-4">
+   511	                  <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+   512	                    <AlertCircle className="h-4 w-4 text-yellow-600" />
+   513	                    <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+   514	                      Сохраните токен! Он показывается только один раз.
+   515	                    </AlertDescription>
+   516	                  </Alert>
+   517	                  <div className="flex items-center gap-2">
+   518	                    <Input 
+   519	                      value={createdToken} 
+   520	                      readOnly 
+   521	                      className="font-mono text-sm"
+   522	                      data-testid="input-created-token"
+   523	                    />
+   524	                    <Button 
+   525	                      size="icon" 
+   526	                      variant="outline" 
+   527	                      onClick={handleCopyToken}
+   528	                      data-testid="button-copy-token"
+   529	                    >
+   530	                      {tokenCopied ? (
+   531	                        <CheckCircle className="h-4 w-4 text-green-500" />
+   532	                      ) : (
+   533	                        <Copy className="h-4 w-4" />
+   534	                      )}
+   535	                    </Button>
+   536	                  </div>
+   537	                  <DialogFooter>
+   538	                    <Button onClick={handleCloseDialog} data-testid="button-close-token-dialog">
+   539	                      Готово
+   540	                    </Button>
+   541	                  </DialogFooter>
+   542	                </div>
+   543	              ) : (
+   544	                <div className="space-y-4">
+   545	                  <div className="space-y-2">
+   546	                    <Label htmlFor="api-key-name">Название</Label>
+   547	                    <Input
+   548	                      id="api-key-name"
+   549	                      placeholder="Например: Telegram бот"
+   550	                      value={newKeyName}
+   551	                      onChange={(e) => setNewKeyName(e.target.value)}
+   552	                      data-testid="input-api-key-name"
+   553	                    />
+   554	                  </div>
+   555	
+   556	                  <div className="space-y-2">
+   557	                    <Label htmlFor="api-key-scene">Ограничить сценой (опционально)</Label>
+   558	                    <Select value={newKeySceneId} onValueChange={setNewKeySceneId}>
+   559	                      <SelectTrigger data-testid="select-api-key-scene">
+   560	                        <SelectValue placeholder="Все сцены" />
+   561	                      </SelectTrigger>
+   562	                      <SelectContent>
+   563	                        <SelectItem value="all">Все сцены</SelectItem>
+   564	                        {scenes.map((scene) => (
+   565	                          <SelectItem key={scene.id} value={scene.id.toString()}>
+   566	                            {scene.name}
+   567	                          </SelectItem>
+   568	                        ))}
+   569	                      </SelectContent>
+   570	                    </Select>
+   571	                  </div>
+   572	
+   573	                  <div className="space-y-2">
+   574	                    <Label>Разрешения</Label>
+   575	                    <div className="space-y-2">
+   576	                      {PERMISSIONS.map((perm) => (
+   577	                        <div key={perm.value} className="flex items-center space-x-2">
+   578	                          <Checkbox
+   579	                            id={`perm-${perm.value}`}
+   580	                            checked={selectedPermissions.includes(perm.value)}
+   581	                            onCheckedChange={() => togglePermission(perm.value)}
+   582	                            data-testid={`checkbox-permission-${perm.value}`}
+   583	                          />
+   584	                          <label
+   585	                            htmlFor={`perm-${perm.value}`}
+   586	                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+   587	                          >
+   588	                            {perm.label}
+   589	                          </label>
+   590	                        </div>
+   591	                      ))}
+   592	                    </div>
+   593	                  </div>
+   594	
+   595	                  <DialogFooter>
+   596	                    <Button 
+   597	                      variant="outline" 
+   598	                      onClick={() => setIsCreateOpen(false)}
+   599	                      data-testid="button-cancel-create-key"
+   600	                    >
+   601	                      Отмена
+   602	                    </Button>
+   603	                    <Button 
+   604	                      onClick={handleCreate} 
+   605	                      disabled={!newKeyName.trim() || createMutation.isPending || selectedPermissions.length === 0}
+   606	                      data-testid="button-confirm-create-key"
+   607	                    >
+   608	                      Создать
+   609	                    </Button>
+   610	                  </DialogFooter>
+   611	                </div>
+   612	              )}
+   613	            </DialogContent>
+   614	          </Dialog>
+   615	        </div>
+   616	        <CardDescription>
+   617	          Управление токенами доступа для внешних интеграций
+   618	        </CardDescription>
+   619	      </CardHeader>
+   620	      <CardContent>
+   621	        {isLoadingKeys ? (
+   622	          <div className="text-center py-4 text-muted-foreground">Загрузка...</div>
+   623	        ) : apiKeys.length === 0 ? (
+   624	          <div className="text-center py-4 text-muted-foreground">
+   625	            Нет API ключей. Создайте первый ключ для интеграции с внешними сервисами.
+   626	          </div>
+   627	        ) : (
+   628	          <div className="space-y-3">
+   629	            {apiKeys.map((key) => (
+   630	              <div
+   631	                key={key.id}
+   632	                className="flex items-center justify-between gap-4 p-3 border rounded-md bg-card flex-wrap"
+   633	                data-testid={`api-key-item-${key.id}`}
+   634	              >
+   635	                <div className="flex-1 min-w-0">
+   636	                  <div className="flex items-center gap-2 flex-wrap">
+   637	                    <span className="font-medium truncate">{key.name}</span>
+   638	                    {!key.isActive && (
+   639	                      <Badge variant="secondary" className="text-muted-foreground">
+   640	                        Отозван
+   641	                      </Badge>
+   642	                    )}
+   643	                  </div>
+   644	                  <div className="text-sm text-muted-foreground mt-1">
+   645	                    {key.sceneId 
+   646	                      ? `Сцена: ${scenes.find(s => s.id === key.sceneId)?.name || key.sceneId}`
+   647	                      : "Все сцены"
+   648	                    }
+   649	                  </div>
+   650	                  <div className="flex flex-wrap gap-1 mt-1">
+   651	                    {key.permissions.map((perm) => (
+   652	                      <Badge key={perm} variant="outline" className="text-xs">
+   653	                        {PERMISSIONS.find(p => p.value === perm)?.label || perm}
+   654	                      </Badge>
+   655	                    ))}
+   656	                  </div>
+   657	                  <div className="text-xs text-muted-foreground mt-1">
+   658	                    Последнее использование: {formatDate(key.lastUsedAt)}
+   659	                  </div>
+   660	                </div>
+   661	                <div className="flex items-center gap-2">
+   662	                  {key.isActive && (
+   663	                    <Button
+   664	                      size="sm"
+   665	                      variant="ghost"
+   666	                      className="text-destructive hover:text-destructive"
+   667	                      onClick={() => revokeMutation.mutate(key.id)}
+   668	                      disabled={revokeMutation.isPending}
+   669	                      data-testid={`button-revoke-key-${key.id}`}
+   670	                    >
+   671	                      <Trash2 className="h-4 w-4" />
+   672	                    </Button>
+   673	                  )}
+   674	                </div>
+   675	              </div>
+   676	            ))}
+   677	          </div>
+   678	        )}
+   679	      </CardContent>
+   680	    </Card>
+   681	  );
+   682	}
+   683	
+   684	// ============================================================
+   685	// Файл: client/src/components/attribute-table.tsx
+   686	// ============================================================
+   687	
+   688	import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+   689	import { useVirtualizer } from "@tanstack/react-virtual";
+   690	import { getFieldLabel } from "@shared/field-labels";
+   691	import { Button } from "@/components/ui/button";
+   692	import { Input } from "@/components/ui/input";
+   693	import { Label } from "@/components/ui/label";
+   694	import { ScrollArea } from "@/components/ui/scroll-area";
+   695	import { Badge } from "@/components/ui/badge";
+   696	import { Checkbox } from "@/components/ui/checkbox";
+   697	import { DraggableModal } from "@/components/ui/draggable-modal";
+   698	import {
+   699	  Tooltip,
+   700	  TooltipContent,
+   701	  TooltipTrigger,
+   702	} from "@/components/ui/tooltip";
+   703	import {
+   704	  Select,
+   705	  SelectContent,
+   706	  SelectItem,
+   707	  SelectTrigger,
+   708	  SelectValue,
+   709	} from "@/components/ui/select";
+   710	import {
+   711	  Popover,
+   712	  PopoverContent,
+   713	  PopoverTrigger,
+   714	} from "@/components/ui/popover";
+   715	import {
+   716	  AlertDialog,
+   717	  AlertDialogAction,
+   718	  AlertDialogCancel,
+   719	  AlertDialogContent,
+   720	  AlertDialogDescription,
+   721	  AlertDialogFooter,
+   722	  AlertDialogHeader,
+   723	  AlertDialogTitle,
+   724	} from "@/components/ui/alert-dialog";
+   725	import { Switch } from "@/components/ui/switch";
+   726	import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown, ArrowUpDown, ArrowUp, Filter, CheckSquare, Square, Undo2, Crosshair } from "lucide-react";
+   727	import type { DrawnFeature, AttributeField, AttributeFieldType, LayerSchemaDefinition } from "@shared/schema";
+   728	
+   729	interface PendingEdit {
+   730	  featureId: number;
+   731	  originalProperties: Record<string, unknown>;
+   732	  newProperties: Record<string, unknown>;
+   733	}
+   734	
+   735	interface AttributeTableCloseRef {
+   736	  tryClose: () => boolean;
+   737	}
+   738	
+   739	interface AttributeTableProps {
+   740	  features: DrawnFeature[];
+   741	  selectedFeatureIds: number[];
+   742	  layerSchema: LayerSchemaDefinition | null;
+   743	  onFeatureSelect: (featureId: number, multi?: boolean) => void;
+   744	  onFeatureUpdate: (featureId: number, properties: Record<string, unknown>) => void;
+   745	  onBatchUpdate?: (updates: { id: number; properties: Record<string, unknown> }[]) => Promise<void>;
+   746	  onBatchDelete?: (ids: number[]) => void;
+   747	  onSchemaUpdate: (fields: AttributeField[]) => void;
+   748	  onSelectAll?: (featureIds: number[]) => void;
+   749	  onClearSelection?: () => void;
+   750	  onZoomToFeature?: (feature: DrawnFeature) => void;
+   751	  onRequestClose?: (hasUnsavedChanges: boolean) => void;
+   752	  closeRef?: React.MutableRefObject<AttributeTableCloseRef | null>;
+   753	  layerName: string;
+   754	}
+   755	
+   756	type SortDirection = "asc" | "desc" | null;
+   757	type SortConfig = { column: string; direction: SortDirection };
+   758	type ColumnFilters = Record<string, string>;
+   759	
+   760	const FIELD_TYPE_LABELS: Record<AttributeFieldType, string> = {
+   761	  text: "Текст",
+   762	  number: "Число",
+   763	  date: "Дата",
+   764	  boolean: "Да/Нет",
+   765	  select: "Список",
+   766	};
+   767	
+   768	const ROW_HEIGHT = 36;
+   769	
+   770	export function AttributeTable({
+   771	  features,
+   772	  selectedFeatureIds,
+   773	  layerSchema,
+   774	  onFeatureSelect,
+   775	  onFeatureUpdate,
+   776	  onBatchUpdate,
+   777	  onBatchDelete,
+   778	  onSchemaUpdate,
+   779	  onSelectAll,
+   780	  onClearSelection,
+   781	  onZoomToFeature,
+   782	  onRequestClose,
+   783	  closeRef,
+   784	  layerName,
+   785	}: AttributeTableProps) {
+   786	  const [showSchemaDialog, setShowSchemaDialog] = useState(false);
+   787	  const [editingFields, setEditingFields] = useState<AttributeField[]>([]);
+   788	  const [editingCell, setEditingCell] = useState<{ featureId: number; field: string } | null>(null);
+   789	  const [editValue, setEditValue] = useState<string>("");
+   790	  const [searchQuery, setSearchQuery] = useState("");
+   791	  const [hasScrolledToSelected, setHasScrolledToSelected] = useState(false);
+   792	  const [sortConfig, setSortConfig] = useState<SortConfig>({ column: "", direction: null });
+   793	  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
+   794	  
+   795	  const [pendingEdits, setPendingEdits] = useState<Map<number, PendingEdit>>(new Map());
+   796	  const [undoStack, setUndoStack] = useState<PendingEdit[]>([]);
+   797	  const [isSaving, setIsSaving] = useState(false);
+   798	  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+   799	  
+   800	  const hasPendingChanges = pendingEdits.size > 0;
+   801	  const canUndo = undoStack.length > 0;
+   802	  
+   803	  const handleCloseRequest = useCallback(() => {
+   804	    if (hasPendingChanges) {
+   805	      setShowCloseConfirm(true);
+   806	    } else {
+   807	      onRequestClose?.(false);
+   808	    }
+   809	  }, [hasPendingChanges, onRequestClose]);
+   810	  
+   811	  const handleDiscardAndClose = useCallback(() => {
+   812	    setPendingEdits(new Map());
+   813	    setUndoStack([]);
+   814	    setShowCloseConfirm(false);
+   815	    onRequestClose?.(false);
+   816	  }, [onRequestClose]);
+   817	  
+   818	  const handleSaveAndClose = useCallback(async () => {
+   819	    if (onBatchUpdate && pendingEdits.size > 0) {
+   820	      setIsSaving(true);
+   821	      try {
+   822	        const updates = Array.from(pendingEdits.values())
+   823	          .filter(edit => typeof edit.featureId === 'number' && !isNaN(edit.featureId))
+   824	          .map(edit => ({
+   825	            id: edit.featureId,
+   826	            properties: edit.newProperties,
+   827	          }));
+   828	        if (updates.length > 0) {
+   829	          await onBatchUpdate(updates);
+   830	        }
+   831	        setPendingEdits(new Map());
+   832	        setUndoStack([]);
+   833	        setShowCloseConfirm(false);
+   834	        onRequestClose?.(false);
+   835	      } finally {
+   836	        setIsSaving(false);
+   837	      }
+   838	    }
+   839	  }, [onBatchUpdate, pendingEdits, onRequestClose]);
+   840	
+   841	  useEffect(() => {
+   842	    if (closeRef) {
+   843	      closeRef.current = {
+   844	        tryClose: () => {
+   845	          if (hasPendingChanges) {
+   846	            setShowCloseConfirm(true);
+   847	            return true;
+   848	          }
+   849	          return false;
+   850	        },
+   851	      };
+   852	    }
+   853	    return () => {
+   854	      if (closeRef) {
+   855	        closeRef.current = null;
+   856	      }
+   857	    };
+   858	  }, [closeRef, hasPendingChanges]);
+   859	
+   860	  const fields = layerSchema?.fields || [];
+   861	  
+   862	  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+   863	    _checkbox: 40,
+   864	    _id: 60,
+   865	    _type: 80,
+   866	  });
+   867	  const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
+   868	  const parentRef = useRef<HTMLDivElement>(null);
+   869	
+   870	  const filteredAndSortedFeatures = useMemo(() => {
+   871	    let result = [...features];
+   872	    
+   873	    // Apply global search filter
+   874	    if (searchQuery.trim()) {
+   875	      const query = searchQuery.toLowerCase();
+   876	      result = result.filter(feature => {
+   877	        if (feature.id.toString().includes(query)) return true;
+   878	        if (feature.geometryType.toLowerCase().includes(query)) return true;
+   879	        
+   880	        for (const value of Object.values(feature.properties)) {
+   881	          if (value !== null && value !== undefined) {
+   882	            if (value.toString().toLowerCase().includes(query)) {
+   883	              return true;
+   884	            }
+   885	          }
+   886	        }
+   887	        return false;
+   888	      });
+   889	    }
+   890	    
+   891	    // Apply column filters
+   892	    Object.entries(columnFilters).forEach(([column, filterValue]) => {
+   893	      if (!filterValue.trim()) return;
+   894	      
+   895	      const filter = filterValue.toLowerCase();
+   896	      result = result.filter(feature => {
+   897	        if (column === "_id") {
+   898	          return feature.id.toString().includes(filter);
+   899	        }
+   900	        if (column === "_type") {
+   901	          const typeLabel = feature.geometryType === "Point" ? "точка" : 
+   902	                           feature.geometryType === "LineString" ? "линия" : "полигон";
+   903	          return typeLabel.includes(filter) || feature.geometryType.toLowerCase().includes(filter);
+   904	        }
+   905	        const value = feature.properties[column];
+   906	        if (value === null || value === undefined) return false;
+   907	        return value.toString().toLowerCase().includes(filter);
+   908	      });
+   909	    });
+   910	    
+   911	    // Apply sorting
+   912	    if (sortConfig.column && sortConfig.direction) {
+   913	      result.sort((a, b) => {
+   914	        let aVal: unknown;
+   915	        let bVal: unknown;
+   916	        
+   917	        if (sortConfig.column === "_id") {
+   918	          aVal = a.id;
+   919	          bVal = b.id;
+   920	        } else if (sortConfig.column === "_type") {
+   921	          aVal = a.geometryType;
+   922	          bVal = b.geometryType;
+   923	        } else {
+   924	          aVal = a.properties[sortConfig.column];
+   925	          bVal = b.properties[sortConfig.column];
+   926	        }
+   927	        
+   928	        // Handle null/undefined
+   929	        if (aVal === null || aVal === undefined) aVal = "";
+   930	        if (bVal === null || bVal === undefined) bVal = "";
+   931	        
+   932	        // Compare
+   933	        let comparison = 0;
+   934	        if (typeof aVal === "number" && typeof bVal === "number") {
+   935	          comparison = aVal - bVal;
+   936	        } else {
+   937	          comparison = String(aVal).localeCompare(String(bVal), "ru");
+   938	        }
+   939	        
+   940	        return sortConfig.direction === "desc" ? -comparison : comparison;
+   941	      });
+   942	    }
+   943	    
+   944	    return result;
+   945	  }, [features, searchQuery, columnFilters, sortConfig]);
+   946	
+   947	  const filteredFeatures = filteredAndSortedFeatures;
+   948	  
+   949	  const handleSort = useCallback((column: string) => {
+   950	    setSortConfig(prev => {
+   951	      if (prev.column !== column) {
+   952	        return { column, direction: "asc" };
+   953	      }
+   954	      if (prev.direction === "asc") {
+   955	        return { column, direction: "desc" };
+   956	      }
+   957	      return { column: "", direction: null };
+   958	    });
+   959	  }, []);
+   960	  
+   961	  const handleColumnFilterChange = useCallback((column: string, value: string) => {
+   962	    setColumnFilters(prev => ({
+   963	      ...prev,
+   964	      [column]: value
+   965	    }));
+   966	  }, []);
+   967	  
+   968	  const handleSelectAll = useCallback(() => {
+   969	    if (onSelectAll) {
+   970	      const allIds = filteredFeatures.map(f => f.id);
+   971	      onSelectAll(allIds);
+   972	    }
+   973	  }, [filteredFeatures, onSelectAll]);
+   974	  
+   975	  const handleClearSelection = useCallback(() => {
+   976	    if (onClearSelection) {
+   977	      onClearSelection();
+   978	    }
+   979	  }, [onClearSelection]);
+   980	  
+   981	  const handleCheckboxChange = useCallback((featureId: number, checked: boolean) => {
+   982	    // Use multi=true mode for checkbox behavior
+   983	    onFeatureSelect(featureId, true);
+   984	  }, [onFeatureSelect]);
+   985	
+   986	  const rowVirtualizer = useVirtualizer({
+   987	    count: filteredFeatures.length,
+   988	    getScrollElement: () => parentRef.current,
+   989	    estimateSize: () => ROW_HEIGHT,
+   990	    overscan: 10,
+   991	  });
+   992	
+   993	  const [currentSelectedIndex, setCurrentSelectedIndex] = useState(0);
+   994	
+   995	  const scrollToSelectedByIndex = useCallback((indexInSelection: number) => {
+   996	    if (selectedFeatureIds.length === 0) return;
+   997	    
+   998	    const safeIndex = indexInSelection % selectedFeatureIds.length;
+   999	    const targetId = selectedFeatureIds[safeIndex];
+  1000	    const rowIndex = filteredFeatures.findIndex(f => f.id === targetId);
+  1001	    
+  1002	    if (rowIndex !== -1) {
+  1003	      rowVirtualizer.scrollToIndex(rowIndex, { align: "center" });
+  1004	    }
+  1005	  }, [selectedFeatureIds, filteredFeatures, rowVirtualizer]);
+  1006	
+  1007	  const scrollToNextSelected = useCallback(() => {
+  1008	    if (selectedFeatureIds.length === 0) return;
+  1009	    
+  1010	    const nextIndex = (currentSelectedIndex + 1) % selectedFeatureIds.length;
+  1011	    setCurrentSelectedIndex(nextIndex);
+  1012	    scrollToSelectedByIndex(nextIndex);
+  1013	  }, [selectedFeatureIds.length, currentSelectedIndex, scrollToSelectedByIndex]);
+  1014	
+  1015	  const prevSelectedRef = useRef<number[]>([]);
+  1016	  
+  1017	  useEffect(() => {
+  1018	    const selectedChanged = JSON.stringify(prevSelectedRef.current) !== JSON.stringify(selectedFeatureIds);
+  1019	    
+  1020	    if (selectedChanged) {
+  1021	      prevSelectedRef.current = selectedFeatureIds;
+  1022	      setCurrentSelectedIndex(0);
+  1023	      setHasScrolledToSelected(false);
+  1024	    }
+  1025	  }, [selectedFeatureIds]);
+  1026	
+  1027	  useEffect(() => {
+  1028	    if (!hasScrolledToSelected && selectedFeatureIds.length > 0 && filteredFeatures.length > 0) {
+  1029	      const timer = setTimeout(() => {
+  1030	        scrollToSelectedByIndex(0);
+  1031	        setHasScrolledToSelected(true);
+  1032	      }, 100);
+  1033	      return () => clearTimeout(timer);
+  1034	    }
+  1035	  }, [hasScrolledToSelected, selectedFeatureIds, filteredFeatures, scrollToSelectedByIndex]);
+  1036	
+  1037	  useEffect(() => {
+  1038	    const newWidths: Record<string, number> = { _checkbox: 40, _id: 60, _type: 80 };
+  1039	    fields.forEach((field) => {
+  1040	      if (!columnWidths[field.name]) {
+  1041	        newWidths[field.name] = 120;
+  1042	      } else {
+  1043	        newWidths[field.name] = columnWidths[field.name];
+  1044	      }
+  1045	    });
+  1046	    setColumnWidths(newWidths);
+  1047	  }, [fields]);
+  1048	
+  1049	  const handleResizeStart = useCallback((e: React.MouseEvent, column: string) => {
+  1050	    e.preventDefault();
+  1051	    e.stopPropagation();
+  1052	    resizingRef.current = {
+  1053	      column,
+  1054	      startX: e.clientX,
+  1055	      startWidth: columnWidths[column] || 100,
+  1056	    };
+  1057	    
+  1058	    const handleMouseMove = (moveEvent: MouseEvent) => {
+  1059	      if (!resizingRef.current) return;
+  1060	      const delta = moveEvent.clientX - resizingRef.current.startX;
+  1061	      const newWidth = Math.max(40, resizingRef.current.startWidth + delta);
+  1062	      setColumnWidths(prev => ({ ...prev, [resizingRef.current!.column]: newWidth }));
+  1063	    };
+  1064	    
+  1065	    const handleMouseUp = () => {
+  1066	      resizingRef.current = null;
+  1067	      document.removeEventListener("mousemove", handleMouseMove);
+  1068	      document.removeEventListener("mouseup", handleMouseUp);
+  1069	    };
+  1070	    
+  1071	    document.addEventListener("mousemove", handleMouseMove);
+  1072	    document.addEventListener("mouseup", handleMouseUp);
+  1073	  }, [columnWidths]);
+  1074	
+  1075	  useEffect(() => {
+  1076	    if (showSchemaDialog) {
+  1077	      setEditingFields(fields.length > 0 ? [...fields] : []);
+  1078	    }
+  1079	  }, [showSchemaDialog, fields]);
+  1080	
+  1081	  const handleAddField = () => {
+  1082	    setEditingFields([
+  1083	      ...editingFields,
+  1084	      { name: "", type: "text", required: false },
+  1085	    ]);
+  1086	  };
+  1087	
+  1088	  const handleRemoveField = (index: number) => {
+  1089	    setEditingFields(editingFields.filter((_, i) => i !== index));
+  1090	  };
+  1091	
+  1092	  const handleFieldChange = (index: number, updates: Partial<AttributeField>) => {
+  1093	    setEditingFields(editingFields.map((field, i) => 
+  1094	      i === index ? { ...field, ...updates } : field
+  1095	    ));
+  1096	  };
+  1097	
+  1098	  const handleSaveSchema = () => {
+  1099	    const validFields = editingFields.filter(f => f.name.trim() !== "");
+  1100	    onSchemaUpdate(validFields);
+  1101	    setShowSchemaDialog(false);
+  1102	  };
+  1103	
+  1104	  const startEditing = (featureId: number, field: string, currentValue: unknown) => {
+  1105	    setEditingCell({ featureId, field });
+  1106	    setEditValue(currentValue?.toString() || "");
+  1107	  };
+  1108	
+  1109	  const getFeatureProperties = useCallback((featureId: number): Record<string, unknown> => {
+  1110	    const pending = pendingEdits.get(featureId);
+  1111	    if (pending) {
+  1112	      return pending.newProperties;
+  1113	    }
+  1114	    const feature = features.find(f => f.id === featureId);
+  1115	    return feature?.properties || {};
+  1116	  }, [pendingEdits, features]);
+  1117	
+  1118	  const saveEdit = useCallback(() => {
+  1119	    if (!editingCell) return;
+  1120	    if (typeof editingCell.featureId !== 'number' || isNaN(editingCell.featureId)) return;
+  1121	    
+  1122	    const feature = features.find(f => f.id === editingCell.featureId);
+  1123	    if (!feature) return;
+  1124	
+  1125	    const fieldDef = fields.find(f => f.name === editingCell.field);
+  1126	    let parsedValue: unknown = editValue;
+  1127	    
+  1128	    if (fieldDef?.type === "number") {
+  1129	      parsedValue = parseFloat(editValue) || 0;
+  1130	    } else if (fieldDef?.type === "boolean") {
+  1131	      parsedValue = editValue === "true";
+  1132	    }
+  1133	
+  1134	    const currentProps = getFeatureProperties(editingCell.featureId);
+  1135	    const newProperties = {
+  1136	      ...currentProps,
+  1137	      [editingCell.field]: parsedValue,
+  1138	    };
+  1139	
+  1140	    const existingPending = pendingEdits.get(editingCell.featureId);
+  1141	    const originalProperties = existingPending?.originalProperties || feature.properties;
+  1142	    
+  1143	    setPendingEdits(prev => {
+  1144	      const newMap = new Map(prev);
+  1145	      newMap.set(editingCell.featureId, {
+  1146	        featureId: editingCell.featureId,
+  1147	        originalProperties,
+  1148	        newProperties,
+  1149	      });
+  1150	      return newMap;
+  1151	    });
+  1152	    
+  1153	    setUndoStack(prev => [...prev, {
+  1154	      featureId: editingCell.featureId,
+  1155	      originalProperties: currentProps,
+  1156	      newProperties,
+  1157	    }]);
+  1158	    
+  1159	    setEditingCell(null);
+  1160	    setEditValue("");
+  1161	  }, [editingCell, features, fields, editValue, getFeatureProperties, pendingEdits]);
+  1162	
+  1163	  const cancelEdit = () => {
+  1164	    setEditingCell(null);
+  1165	    setEditValue("");
+  1166	  };
+  1167	
+  1168	  const handleSaveAllChanges = useCallback(async () => {
+  1169	    if (!onBatchUpdate || pendingEdits.size === 0) return;
+  1170	    
+  1171	    setIsSaving(true);
+  1172	    try {
+  1173	      const allEdits = Array.from(pendingEdits.values());
+  1174	      
+  1175	      const updates = allEdits
+  1176	        .filter(edit => typeof edit.featureId === 'number' && !isNaN(edit.featureId) && edit.featureId > 0)
+  1177	        .map(edit => ({
+  1178	          id: edit.featureId,
+  1179	          properties: edit.newProperties,
+  1180	        }));
+  1181	      
+  1182	      if (updates.length > 0) {
+  1183	        await onBatchUpdate(updates);
+  1184	      }
+  1185	      setPendingEdits(new Map());
+  1186	      setUndoStack([]);
+  1187	    } finally {
+  1188	      setIsSaving(false);
+  1189	    }
+  1190	  }, [onBatchUpdate, pendingEdits]);
+  1191	
+  1192	  const handleUndo = useCallback(() => {
+  1193	    if (undoStack.length === 0) return;
+  1194	    
+  1195	    const lastAction = undoStack[undoStack.length - 1];
+  1196	    setUndoStack(prev => prev.slice(0, -1));
+  1197	    
+  1198	    setPendingEdits(prev => {
+  1199	      const newMap = new Map(prev);
+  1200	      const existingPending = newMap.get(lastAction.featureId);
+  1201	      
+  1202	      if (existingPending) {
+  1203	        const feature = features.find(f => f.id === lastAction.featureId);
+  1204	        if (JSON.stringify(lastAction.originalProperties) === JSON.stringify(feature?.properties)) {
+  1205	          newMap.delete(lastAction.featureId);
+  1206	        } else {
+  1207	          newMap.set(lastAction.featureId, {
+  1208	            ...existingPending,
+  1209	            newProperties: lastAction.originalProperties,
+  1210	          });
+  1211	        }
+  1212	      }
+  1213	      return newMap;
+  1214	    });
+  1215	  }, [undoStack, features]);
+  1216	
+  1217	  const handleDeleteSelected = useCallback(() => {
+  1218	    if (!onBatchDelete || selectedFeatureIds.length === 0) return;
+  1219	    onBatchDelete(selectedFeatureIds);
+  1220	  }, [onBatchDelete, selectedFeatureIds]);
+  1221	
+  1222	  const handleZoomToSelected = useCallback(() => {
+  1223	    if (!onZoomToFeature || selectedFeatureIds.length === 0) return;
+  1224	    const targetId = selectedFeatureIds[selectedFeatureIds.length > 1 ? currentSelectedIndex : 0];
+  1225	    const feature = features.find(f => f.id === targetId);
+  1226	    if (feature) {
+  1227	      onZoomToFeature(feature);
+  1228	    }
+  1229	  }, [onZoomToFeature, selectedFeatureIds, currentSelectedIndex, features]);
+  1230	
+  1231	  const renderCellValue = (feature: DrawnFeature, field: AttributeField) => {
+  1232	    const pendingEdit = pendingEdits.get(feature.id);
+  1233	    const displayValue = pendingEdit ? pendingEdit.newProperties[field.name] : feature.properties[field.name];
+  1234	    const isEditing = editingCell?.featureId === feature.id && editingCell?.field === field.name;
+  1235	    const hasChange = pendingEdit && pendingEdit.newProperties[field.name] !== pendingEdit.originalProperties[field.name];
+  1236	
+  1237	    if (isEditing) {
+  1238	      if (field.type === "boolean") {
+  1239	        return (
+  1240	          <Switch
+  1241	            checked={editValue === "true"}
+  1242	            onCheckedChange={(checked) => {
+  1243	              setEditValue(checked.toString());
+  1244	              setTimeout(saveEdit, 0);
+  1245	            }}
+  1246	            autoFocus
+  1247	          />
+  1248	        );
+  1249	      }
+  1250	      
