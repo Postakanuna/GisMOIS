@@ -961,7 +961,7 @@ export function MapViewer({
     zoom: number;
   } | null>(null);
   const viewportDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const dragDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const dragIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Buffered extent for hysteresis - only refetch when viewport exits this area
   const bufferedExtentRef = useRef<{
     minX: number;
@@ -1754,9 +1754,10 @@ export function MapViewer({
       setRotation(map.getView().getRotation());
     });
 
-    // Debounced viewport update with hysteresis for optimized feature loading
-    const updateViewport = () => {
-      const extent = map.getView().calculateExtent(map.getSize());
+    const updateViewport = (duringDrag = false) => {
+      const size = map.getSize();
+      if (!size) return;
+      const extent = map.getView().calculateExtent(size);
       const extentWGS84 = transformExtent(extent, currentProjectionRef.current, "EPSG:4326");
       const currentZoom = Math.round(map.getView().getZoom() || DEFAULT_ZOOM);
       
@@ -1770,7 +1771,6 @@ export function MapViewer({
       
       const buffered = bufferedExtentRef.current;
       
-      // Check if we need to refetch (viewport exited buffered area or zoom changed)
       const needsRefetch = !buffered ||
         buffered.zoom !== currentZoom ||
         currentExtent.minX < buffered.minX ||
@@ -1779,7 +1779,6 @@ export function MapViewer({
         currentExtent.maxY > buffered.maxY;
       
       if (needsRefetch) {
-        // Calculate buffered extent (expand by VIEWPORT_BUFFER_RATIO)
         const width = currentExtent.maxX - currentExtent.minX;
         const height = currentExtent.maxY - currentExtent.minY;
         const bufferX = width * VIEWPORT_BUFFER_RATIO;
@@ -1794,34 +1793,40 @@ export function MapViewer({
         };
         
         bufferedExtentRef.current = newBufferedExtent;
-        
-        // Set fetch viewport to the buffered extent for fetching
         setFetchViewport(newBufferedExtent);
+      } else if (duringDrag && featureCacheRef.current.size > 0) {
+        const layerIds = (allEditableLayersDataRef.current || []).map(l => l.id);
+        if (layerIds.length > 0) {
+          setAllLayerFeatures(buildResultFromCache(layerIds));
+        }
       }
     };
 
-    map.on("moveend", () => {
-      if (dragDebounceRef.current) {
-        clearTimeout(dragDebounceRef.current);
-        dragDebounceRef.current = null;
+    const stopDragInterval = () => {
+      if (dragIntervalRef.current) {
+        clearInterval(dragIntervalRef.current);
+        dragIntervalRef.current = null;
       }
+    };
+
+    map.on("movestart", () => {
+      stopDragInterval();
+      dragIntervalRef.current = setInterval(() => {
+        updateViewport(true);
+      }, VIEWPORT_DRAG_DEBOUNCE_MS);
+    });
+
+    map.on("moveend", () => {
+      stopDragInterval();
       if (viewportDebounceRef.current) {
         clearTimeout(viewportDebounceRef.current);
       }
       viewportDebounceRef.current = setTimeout(() => {
-        updateViewport();
+        updateViewport(false);
       }, VIEWPORT_DEBOUNCE_MS);
     });
 
-    map.getView().on("change:center", () => {
-      if (dragDebounceRef.current) return;
-      dragDebounceRef.current = setTimeout(() => {
-        dragDebounceRef.current = null;
-        updateViewport();
-      }, VIEWPORT_DRAG_DEBOUNCE_MS);
-    });
-
-    setTimeout(() => updateViewport(), 100);
+    setTimeout(() => updateViewport(false), 100);
 
     map.on("singleclick", async (evt) => {
       const currentConnection = connectionRef.current;
@@ -2033,6 +2038,10 @@ export function MapViewer({
     mapRef.current = map;
 
     return () => {
+      if (dragIntervalRef.current) {
+        clearInterval(dragIntervalRef.current);
+        dragIntervalRef.current = null;
+      }
       map.setTarget(undefined);
       mapRef.current = null;
     };
