@@ -71,9 +71,7 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl" data-testid="text-login-title">
-            ГИС МО "Инженерные сети"
-          </CardTitle>
+          <CardTitle className="text-2xl" data-testid="text-login-title">Аналитические инструменты</CardTitle>
           <p className="text-sm text-muted-foreground">
             Введите учетные данные для входа в систему
           </p>
