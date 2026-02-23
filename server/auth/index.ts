@@ -299,6 +299,47 @@ export function registerAuthRoutes(app: Express): void {
       res.status(500).json({ message: "Failed to update password" });
     }
   });
+
+  app.patch("/api/admin/users/:id", isAuthenticated as any, isAdmin as any, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { username, role, firstName, lastName, middleName, position, organization, phone, email } = req.body;
+
+      if (!username) {
+        return res.status(400).json({ message: "Username is required" });
+      }
+
+      const [existing] = await db.select().from(users).where(eq(users.username, username));
+      if (existing && existing.id !== id) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const [updated] = await db.update(users).set({
+        username,
+        role: role || "user",
+        firstName: firstName || null,
+        lastName: lastName || null,
+        middleName: middleName || null,
+        position: position || null,
+        organization: organization || null,
+        phone: phone || null,
+        email: email || null,
+        updatedAt: new Date(),
+      }).where(eq(users.id, id)).returning();
+
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { passwordHash: _, ...safeUser } = updated;
+      const authReq = req as AuthRequest;
+      logAction({ userId: authReq.user?.id, username: authReq.user?.username, action: "user_update", entityType: "user", entityId: id, details: { updatedUsername: username } });
+      res.json(safeUser);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
 }
 
 export async function seedAdminUser(): Promise<void> {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, Plus, Trash2, Key, Loader2, MapPin, Bot, Save, Check, Eye, EyeOff, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Key, Loader2, MapPin, Bot, Save, Check, Eye, EyeOff, X, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,12 +148,24 @@ export default function AdminUsers() {
   const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   
   const [newUser, setNewUser] = useState({
     username: "",
     password: "",
+    role: "user",
+    lastName: "",
+    firstName: "",
+    middleName: "",
+    position: "",
+    organization: "",
+    phone: "",
+    email: "",
+  });
+  const [editUser, setEditUser] = useState({
+    username: "",
     role: "user",
     lastName: "",
     firstName: "",
@@ -231,6 +243,22 @@ export default function AdminUsers() {
       setCreateDialogOpen(false);
       setNewUser({ username: "", password: "", role: "user", lastName: "", firstName: "", middleName: "", position: "", organization: "", phone: "", email: "" });
       toast({ title: "Пользователь создан" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: async ({ userId, userData }: { userId: string; userData: typeof editUser }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${userId}`, userData);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setEditDialogOpen(false);
+      setSelectedUserId(null);
+      toast({ title: "Данные пользователя обновлены" });
     },
     onError: (error: any) => {
       toast({ title: "Ошибка", description: error.message, variant: "destructive" });
@@ -362,6 +390,28 @@ export default function AdminUsers() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedUserId(u.id);
+                                setEditUser({
+                                  username: u.username,
+                                  role: u.role,
+                                  lastName: u.lastName || "",
+                                  firstName: u.firstName || "",
+                                  middleName: u.middleName || "",
+                                  position: u.position || "",
+                                  organization: u.organization || "",
+                                  phone: u.phone || "",
+                                  email: u.email || "",
+                                });
+                                setEditDialogOpen(true);
+                              }}
+                              data-testid={`button-edit-user-${u.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -691,6 +741,120 @@ export default function AdminUsers() {
               data-testid="button-confirm-create"
             >
               {createUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Создать"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Редактирование пользователя</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-username">Логин *</Label>
+              <Input
+                id="edit-username"
+                value={editUser.username}
+                onChange={(e) => setEditUser({ ...editUser, username: e.target.value })}
+                data-testid="input-edit-username"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-lastname">Фамилия</Label>
+                <Input
+                  id="edit-lastname"
+                  value={editUser.lastName}
+                  onChange={(e) => setEditUser({ ...editUser, lastName: e.target.value })}
+                  data-testid="input-edit-lastname"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-firstname">Имя</Label>
+                <Input
+                  id="edit-firstname"
+                  value={editUser.firstName}
+                  onChange={(e) => setEditUser({ ...editUser, firstName: e.target.value })}
+                  data-testid="input-edit-firstname"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-middlename">Отчество</Label>
+                <Input
+                  id="edit-middlename"
+                  value={editUser.middleName}
+                  onChange={(e) => setEditUser({ ...editUser, middleName: e.target.value })}
+                  data-testid="input-edit-middlename"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-position">Должность</Label>
+                <Input
+                  id="edit-position"
+                  value={editUser.position}
+                  onChange={(e) => setEditUser({ ...editUser, position: e.target.value })}
+                  data-testid="input-edit-position"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-organization">Организация</Label>
+                <Input
+                  id="edit-organization"
+                  value={editUser.organization}
+                  onChange={(e) => setEditUser({ ...editUser, organization: e.target.value })}
+                  data-testid="input-edit-organization"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Номер телефона</Label>
+                <Input
+                  id="edit-phone"
+                  type="tel"
+                  value={editUser.phone}
+                  onChange={(e) => setEditUser({ ...editUser, phone: e.target.value })}
+                  data-testid="input-edit-phone"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Электронная почта</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editUser.email}
+                  onChange={(e) => setEditUser({ ...editUser, email: e.target.value })}
+                  data-testid="input-edit-email"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-role">Роль</Label>
+              <Select value={editUser.role} onValueChange={(v) => setEditUser({ ...editUser, role: v })}>
+                <SelectTrigger data-testid="select-edit-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Пользователь</SelectItem>
+                  <SelectItem value="admin">Администратор</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} data-testid="button-cancel-edit">
+              Отмена
+            </Button>
+            <Button
+              onClick={() => selectedUserId && updateUserMutation.mutate({ userId: selectedUserId, userData: editUser })}
+              disabled={!editUser.username || updateUserMutation.isPending}
+              data-testid="button-confirm-edit"
+            >
+              {updateUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Сохранить"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -47,6 +47,7 @@ const ACTION_LABELS: Record<string, string> = {
   login: "Вход в систему",
   logout: "Выход из системы",
   user_create: "Создание пользователя",
+  user_update: "Изменение пользователя",
   user_deactivate: "Деактивация пользователя",
   password_change: "Смена пароля",
   password_reset: "Сброс пароля (админ)",
