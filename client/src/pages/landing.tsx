@@ -3,7 +3,6 @@ import { Map, Calculator, BarChart3 } from "lucide-react";
 import coatOfArms from "@assets/Coat_of_arms_of_Moscow_Oblast.svg_1762498635678-BuEFViNI_1771751459252.png";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LandingPage() {
   const [, setLocation] = useLocation();
@@ -15,9 +14,6 @@ export default function LandingPage() {
             <Map className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
         </div>
       </header>
       <main className="flex-1 flex items-center justify-center p-4 md:p-8">
@@ -59,7 +55,7 @@ export default function LandingPage() {
             <Card
               className="cursor-pointer transition-all hover:border-primary/50 hover:shadow-md group"
               onClick={() => {
-                window.open("about:blank", "_blank");
+                window.open("https://is.arki.mosreg.ru/Zuluweb/", "_blank");
               }}
               data-testid="card-engineering"
             >

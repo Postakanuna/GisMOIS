@@ -20,7 +20,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
+
 import { LayerPanel } from "@/components/layer-panel";
 import { MapViewer, type SelectedFeatureData } from "@/components/map-viewer";
 import { DrawingToolbar } from "@/components/drawing-toolbar";
@@ -663,7 +663,6 @@ export default function Home() {
                 <Pencil className="h-4 w-4" />
                 <span className="hidden sm:inline">Редактор</span>
               </Button>
-              <ThemeToggle />
               <UserButton />
             </div>
           </header>

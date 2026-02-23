@@ -1,7 +1,6 @@
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Settings() {
   return (
@@ -18,22 +17,10 @@ export default function Settings() {
             <span className="font-semibold">Настройки</span>
           </div>
         </div>
-
-        <ThemeToggle />
       </header>
 
       <main className="px-6 py-6">
         <div className="space-y-6">
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="text-lg font-medium mb-2">Тема оформления</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Переключайте между светлой и тёмной темой с помощью кнопки в правом верхнем углу.
-            </p>
-            <div className="flex items-center gap-3">
-              <ThemeToggle />
-              <span className="text-sm text-muted-foreground">Переключить тему</span>
-            </div>
-          </div>
 
           <div className="rounded-lg border bg-card p-6">
             <h3 className="text-lg font-medium mb-2">Подсказки</h3>

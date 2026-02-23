@@ -8,7 +8,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, LogIn, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
@@ -68,7 +67,6 @@ export default function LoginPage() {
             На главную
           </Button>
         </Link>
-        <ThemeToggle />
       </header>
       <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
