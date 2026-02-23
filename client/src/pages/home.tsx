@@ -111,9 +111,6 @@ function SidebarContentPanel({
   return (
     <ScrollArea className="h-full w-full min-w-0">
       <div className="p-4 min-w-0 max-w-full overflow-hidden">
-        <div className="mb-3">
-          <ConnectionStatusBadge status={connectionStatus} />
-        </div>
         <LayerPanel
           layers={layers}
           onToggleVisibility={toggleLayerVisibility}
@@ -135,6 +132,7 @@ function SidebarContentPanel({
           onOpenGeocodeDialog={onOpenGeocodeDialog}
           onToggleAiChat={onToggleAiChat}
           onOpenDataManager={onOpenDataManager}
+          connectionStatus={connectionStatus}
         />
       </div>
     </ScrollArea>
@@ -187,25 +185,6 @@ function FeatureInfoSidebarPanel({
   );
 }
 
-function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
-  const statusConfig = {
-    disconnected: { color: "bg-muted-foreground", text: "Не подключено" },
-    connecting: { color: "bg-yellow-500 animate-pulse", text: "Подключение..." },
-    connected: { color: "bg-green-500", text: "Подключено" },
-    error: { color: "bg-destructive", text: "Ошибка" },
-  };
-
-  const config = statusConfig[status];
-
-  return (
-    <div className="flex items-center gap-2" data-testid="connection-status-badge">
-      <div className={`h-2 w-2 rounded-full ${config.color}`} />
-      <span className="text-xs text-muted-foreground">
-        {config.text}
-      </span>
-    </div>
-  );
-}
 
 export default function Home() {
   const [, setLocation] = useLocation();

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe } from "lucide-react";
 import { useScene } from "@/contexts/scene-context";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { Switch } from "@/components/ui/switch";
@@ -46,7 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import type { LayerConfig, EditableLayer, GeometryType } from "@shared/schema";
+import type { LayerConfig, EditableLayer, GeometryType, ConnectionStatus } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -116,6 +116,7 @@ interface LayerPanelProps {
   onOpenGeocodeDialog?: (layerId: number) => void;
   onToggleAiChat?: () => void;
   onOpenDataManager?: () => void;
+  connectionStatus?: ConnectionStatus;
 }
 
 export function LayerPanel({
@@ -139,6 +140,7 @@ export function LayerPanel({
   onOpenGeocodeDialog,
   onToggleAiChat,
   onOpenDataManager,
+  connectionStatus,
 }: LayerPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -476,7 +478,7 @@ export function LayerPanel({
     <div className="space-y-4 min-w-0">
       {headerContent}
 
-      <Accordion type="multiple" defaultValue={["base", "wms", "wfs", "uploaded", "editable"]} className="space-y-1 min-w-0">
+      <Accordion type="multiple" defaultValue={["base", "external", "uploaded", "editable"]} className="space-y-1 min-w-0">
         {/* Editable layers section - includes both created and imported layers */}
         <AccordionItem value="editable" className="border-none min-w-0">
           <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-editable-layers">
@@ -787,6 +789,64 @@ export function LayerPanel({
           </AccordionContent>
         </AccordionItem>
 
+        <AccordionItem value="external" className="border-none min-w-0">
+          <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-external-connection">
+            <div className="flex items-center gap-2 min-w-0">
+              <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium truncate">Внешнее подключение</span>
+              {connectionStatus && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <div className={`h-2 w-2 rounded-full ${
+                    connectionStatus === "connected" ? "bg-green-500" :
+                    connectionStatus === "connecting" ? "bg-yellow-500 animate-pulse" :
+                    connectionStatus === "error" ? "bg-destructive" :
+                    "bg-muted-foreground"
+                  }`} />
+                  <span className="text-[10px] text-muted-foreground">
+                    {connectionStatus === "connected" ? "Подключено" :
+                     connectionStatus === "connecting" ? "Подключение..." :
+                     connectionStatus === "error" ? "Ошибка" :
+                     "Не подключено"}
+                  </span>
+                </div>
+              )}
+              {(wmsLayers.length + wfsLayers.length) > 0 && (
+                <span className="text-[10px] text-muted-foreground shrink-0">
+                  ({wmsLayers.length + wfsLayers.length})
+                </span>
+              )}
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="space-y-1 pt-1 min-w-0">
+            {wmsLayers.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 px-1">
+                  <Layers className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                  <span className="text-[10px] text-muted-foreground font-medium">WMS ({wmsLayers.length})</span>
+                </div>
+                {wmsLayers.map(renderLayerItem)}
+              </div>
+            )}
+            {wfsLayers.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 px-1">
+                  <Database className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                  <span className="text-[10px] text-muted-foreground font-medium">WFS ({wfsLayers.length})</span>
+                </div>
+                {wfsLayers.map(renderLayerItem)}
+              </div>
+            )}
+            {wmsLayers.length === 0 && wfsLayers.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                {connectionStatus === "error" ? "Ошибка подключения к серверу" :
+                 connectionStatus === "connecting" ? "Загрузка слоёв..." :
+                 connectionStatus === "connected" ? "Нет внешних слоёв" :
+                 "Сервер не подключён"}
+              </p>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+
         <AccordionItem value="base" className="border-none min-w-0">
           <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-base-layers">
             <div className="flex items-center gap-2 min-w-0">
@@ -819,40 +879,6 @@ export function LayerPanel({
             ))}
           </AccordionContent>
         </AccordionItem>
-
-        {wmsLayers.length > 0 && (
-          <AccordionItem value="wms" className="border-none min-w-0">
-            <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-wms-layers">
-              <div className="flex items-center gap-2 min-w-0">
-                <Layers className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-xs font-medium truncate">WMS слои</span>
-                <span className="text-[10px] text-muted-foreground shrink-0">
-                  ({wmsLayers.length})
-                </span>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-1 pt-1 min-w-0">
-              {wmsLayers.map(renderLayerItem)}
-            </AccordionContent>
-          </AccordionItem>
-        )}
-
-        {wfsLayers.length > 0 && (
-          <AccordionItem value="wfs" className="border-none min-w-0">
-            <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-wfs-layers">
-              <div className="flex items-center gap-2 min-w-0">
-                <Database className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-xs font-medium truncate">WFS слои</span>
-                <span className="text-[10px] text-muted-foreground shrink-0">
-                  ({wfsLayers.length})
-                </span>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-1 pt-1 min-w-0">
-              {wfsLayers.map(renderLayerItem)}
-            </AccordionContent>
-          </AccordionItem>
-        )}
       </Accordion>
 
       {layers.length === 0 && editableLayers.length === 0 && (
