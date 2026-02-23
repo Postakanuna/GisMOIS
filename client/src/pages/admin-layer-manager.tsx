@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -165,35 +165,7 @@ export default function AdminLayerManager() {
 
   const scenes = matrixData?.scenes || [];
 
-  const topScrollRef = useRef<HTMLDivElement>(null);
   const mainScrollRef = useRef<HTMLDivElement>(null);
-  const isSyncing = useRef(false);
-
-  const [scrollbarHeight, setScrollbarHeight] = useState(0);
-
-  useEffect(() => {
-    const el = topScrollRef.current;
-    if (!el) return;
-    const measure = () => {
-      const h = el.offsetHeight - el.clientHeight;
-      setScrollbarHeight(h);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [scenes.length]);
-
-  const syncScroll = useCallback((source: "top" | "main") => {
-    if (isSyncing.current) return;
-    isSyncing.current = true;
-    const from = source === "top" ? topScrollRef.current : mainScrollRef.current;
-    const to = source === "top" ? mainScrollRef.current : topScrollRef.current;
-    if (from && to) {
-      to.scrollLeft = from.scrollLeft;
-    }
-    requestAnimationFrame(() => { isSyncing.current = false; });
-  }, []);
 
   const getInstanceForScene = (group: LayerGroup, sceneId: number): LayerInstance | undefined => {
     return group.instances.find((inst) => inst.sceneId === sceneId);
@@ -324,7 +296,7 @@ export default function AdminLayerManager() {
         <Card>
           <CardContent className="p-0">
             <div className="flex">
-              <div className="flex-shrink-0 z-10 border-r flex flex-col">
+              <div className="flex-shrink-0 z-10 border-r">
                 <table className="border-collapse text-sm">
                   <thead>
                     <tr className="border-b bg-muted/50" style={{ height: "48px" }}>
@@ -336,11 +308,6 @@ export default function AdminLayerManager() {
                       </th>
                     </tr>
                   </thead>
-                </table>
-                {scrollbarHeight > 0 && (
-                  <div className="border-b bg-muted/50" style={{ height: `${scrollbarHeight}px` }} />
-                )}
-                <table className="border-collapse text-sm">
                   <tbody>
                     {filteredMatrix.length === 0 ? (
                       <tr>
@@ -420,104 +387,91 @@ export default function AdminLayerManager() {
                 </table>
               </div>
 
-              <div className="flex-1 min-w-0 flex flex-col">
-                <div
-                  ref={topScrollRef}
-                  className="overflow-x-auto border-b"
-                  onScroll={() => syncScroll("top")}
-                  style={{ overflowY: "hidden" }}
-                >
-                  <table className="border-collapse text-sm" style={{ minWidth: `${scenes.length * 120}px` }}>
-                    <thead>
-                      <tr className="bg-muted/50" style={{ height: "48px" }}>
-                        {scenes.map((scene) => (
-                          <th
-                            key={scene.id}
-                            className="px-2 py-0 text-center font-medium min-w-[120px] w-[120px] border-r last:border-r-0"
-                            style={{ height: "48px" }}
-                          >
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="block truncate max-w-[110px] mx-auto cursor-default" data-testid={`text-scene-header-${scene.id}`}>
-                                  {scene.name}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>{scene.name}</TooltipContent>
-                            </Tooltip>
-                          </th>
-                        ))}
+              <div
+                ref={mainScrollRef}
+                className="flex-1 min-w-0 overflow-x-auto"
+              >
+                <table className="border-collapse text-sm" style={{ minWidth: `${scenes.length * 120}px` }}>
+                  <thead>
+                    <tr className="border-b bg-muted/50" style={{ height: "48px" }}>
+                      {scenes.map((scene) => (
+                        <th
+                          key={scene.id}
+                          className="px-2 py-0 text-center font-medium min-w-[120px] w-[120px] border-r last:border-r-0"
+                          style={{ height: "48px" }}
+                        >
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="block truncate max-w-[110px] mx-auto cursor-default" data-testid={`text-scene-header-${scene.id}`}>
+                                {scene.name}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>{scene.name}</TooltipContent>
+                          </Tooltip>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMatrix.length === 0 ? (
+                      <tr>
+                        <td colSpan={scenes.length} className="text-center py-12 text-muted-foreground">
+                          &nbsp;
+                        </td>
                       </tr>
-                    </thead>
-                  </table>
-                </div>
-
-                <div
-                  ref={mainScrollRef}
-                  className="overflow-x-auto flex-1"
-                  onScroll={() => syncScroll("main")}
-                >
-                  <table className="border-collapse text-sm" style={{ minWidth: `${scenes.length * 120}px` }}>
-                    <tbody>
-                      {filteredMatrix.length === 0 ? (
-                        <tr>
-                          <td colSpan={scenes.length} className="text-center py-12 text-muted-foreground">
-                            &nbsp;
-                          </td>
+                    ) : (
+                      filteredMatrix.map((group, idx) => (
+                        <tr
+                          key={`${group.name}__${group.geometryType}`}
+                          className={`border-b hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
+                          data-testid={`row-layer-${idx}`}
+                          style={{ height: "52px" }}
+                        >
+                          {scenes.map((scene) => {
+                            const instance = getInstanceForScene(group, scene.id);
+                            return (
+                              <td
+                                key={scene.id}
+                                className="px-2 py-0 text-center min-w-[120px] w-[120px] border-r last:border-r-0"
+                                style={{ height: "52px" }}
+                              >
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className={`w-8 h-8 rounded-md border-2 flex items-center justify-center transition-all mx-auto
+                                        ${instance
+                                          ? "border-primary bg-primary/10 hover:bg-primary/20 cursor-pointer"
+                                          : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
+                                        }`}
+                                      onClick={() => handleCellClick(group, scene.id)}
+                                      data-testid={`cell-layer-${idx}-scene-${scene.id}`}
+                                    >
+                                      {instance ? (
+                                        <div className="flex flex-col items-center">
+                                          <div
+                                            className="w-3 h-3 rounded-full"
+                                            style={{ backgroundColor: instance.color }}
+                                          />
+                                        </div>
+                                      ) : (
+                                        <Minus className="h-3 w-3 text-muted-foreground/30" />
+                                      )}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {instance
+                                      ? `${group.name} в "${scene.name}" (${instance.featureCount} объектов) — нажмите для удаления`
+                                      : `Добавить "${group.name}" в "${scene.name}"`}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </td>
+                            );
+                          })}
                         </tr>
-                      ) : (
-                        filteredMatrix.map((group, idx) => (
-                          <tr
-                            key={`${group.name}__${group.geometryType}`}
-                            className={`border-b hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
-                            data-testid={`row-layer-${idx}`}
-                            style={{ height: "52px" }}
-                          >
-                            {scenes.map((scene) => {
-                              const instance = getInstanceForScene(group, scene.id);
-                              return (
-                                <td
-                                  key={scene.id}
-                                  className="px-2 py-0 text-center min-w-[120px] w-[120px] border-r last:border-r-0"
-                                  style={{ height: "52px" }}
-                                >
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        className={`w-8 h-8 rounded-md border-2 flex items-center justify-center transition-all mx-auto
-                                          ${instance
-                                            ? "border-primary bg-primary/10 hover:bg-primary/20 cursor-pointer"
-                                            : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
-                                          }`}
-                                        onClick={() => handleCellClick(group, scene.id)}
-                                        data-testid={`cell-layer-${idx}-scene-${scene.id}`}
-                                      >
-                                        {instance ? (
-                                          <div className="flex flex-col items-center">
-                                            <div
-                                              className="w-3 h-3 rounded-full"
-                                              style={{ backgroundColor: instance.color }}
-                                            />
-                                          </div>
-                                        ) : (
-                                          <Minus className="h-3 w-3 text-muted-foreground/30" />
-                                        )}
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {instance
-                                        ? `${group.name} в "${scene.name}" (${instance.featureCount} объектов) — нажмите для удаления`
-                                        : `Добавить "${group.name}" в "${scene.name}"`}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </CardContent>
