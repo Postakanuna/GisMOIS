@@ -596,6 +596,25 @@ export type InsertAppSetting = typeof appSettings.$inferInsert;
 export const geocodeProviderSchema = z.enum(["yandex", "dadata"]);
 export type GeocodeProvider = z.infer<typeof geocodeProviderSchema>;
 
+// Audit log for user action tracking
+export const auditLog = pgTable("audit_log", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id"),
+  username: varchar("username"),
+  action: varchar("action", { length: 100 }).notNull(),
+  entityType: varchar("entity_type", { length: 50 }),
+  entityId: varchar("entity_id", { length: 100 }),
+  sceneId: integer("scene_id"),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("audit_log_user_id_idx").on(table.userId),
+  index("audit_log_created_at_idx").on(table.createdAt),
+  index("audit_log_action_idx").on(table.action),
+]);
+
+export type AuditLogEntry = typeof auditLog.$inferSelect;
+
 // External API schemas
 export const externalCreatePointSchema = z.object({
   sceneId: z.number(),

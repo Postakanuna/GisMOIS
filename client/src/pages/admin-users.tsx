@@ -35,6 +35,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/models/auth";
 import { ApiKeysManager } from "@/components/api-keys-manager";
+import { AuditLogPanel } from "@/components/audit-log-panel";
 
 type AdminUser = SafeUser;
 
@@ -297,8 +298,9 @@ export default function AdminUsers() {
       <div className="container mx-auto p-6">
 
       <Tabs defaultValue="users" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4" data-testid="admin-tabs">
+        <TabsList className="grid w-full grid-cols-5" data-testid="admin-tabs">
           <TabsTrigger value="users" data-testid="tab-users">Пользователи</TabsTrigger>
+          <TabsTrigger value="audit" data-testid="tab-audit">Журнал действий</TabsTrigger>
           <TabsTrigger value="geocoding" data-testid="tab-geocoding">Геокодирование</TabsTrigger>
           <TabsTrigger value="ai" data-testid="tab-ai">ИИ-агент</TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">Внешние подключения</TabsTrigger>
@@ -561,6 +563,10 @@ export default function AdminUsers() {
 
         <TabsContent value="connections">
           <ApiKeysManager />
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <AuditLogPanel />
         </TabsContent>
       </Tabs>
 

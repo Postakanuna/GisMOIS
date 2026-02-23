@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import { db } from "../db";
 import { users, type SafeUser } from "@shared/models/auth";
 import { eq, and } from "drizzle-orm";
+import { logAction } from "../audit";
 
 declare module "express-session" {
   interface SessionData {
@@ -116,6 +117,7 @@ export function registerAuthRoutes(app: Express): void {
             console.error("Session save error:", saveErr);
             return res.status(500).json({ message: "Login failed" });
           }
+          logAction({ userId: user.id, username: user.username, action: "login", entityType: "auth" });
           res.json(safeUser);
         });
       });
@@ -126,9 +128,13 @@ export function registerAuthRoutes(app: Express): void {
   });
 
   app.post("/api/auth/logout", (req: Request, res: Response) => {
+    const userId = req.session.userId;
     req.session.destroy((err) => {
       if (err) {
         return res.status(500).json({ message: "Logout failed" });
+      }
+      if (userId) {
+        logAction({ userId, action: "logout", entityType: "auth" });
       }
       res.clearCookie("connect.sid");
       res.json({ message: "Logged out" });
@@ -188,6 +194,7 @@ export function registerAuthRoutes(app: Express): void {
 
       const passwordHash = await hashPassword(newPassword);
       await db.update(users).set({ passwordHash }).where(eq(users.id, authReq.user!.id));
+      logAction({ userId: authReq.user!.id, username: authReq.user!.username, action: "password_change", entityType: "user", entityId: authReq.user!.id });
       res.json({ message: "Пароль успешно изменён" });
     } catch (error) {
       console.error("Error changing password:", error);
@@ -246,6 +253,8 @@ export function registerAuthRoutes(app: Express): void {
       }).returning();
 
       const { passwordHash: _, ...safeUser } = newUser;
+      const authReq = req as AuthRequest;
+      logAction({ userId: authReq.user?.id, username: authReq.user?.username, action: "user_create", entityType: "user", entityId: newUser.id, details: { newUsername: username, role: role || "user" } });
       res.status(201).json(safeUser);
     } catch (error) {
       console.error("Error creating user:", error);
@@ -263,6 +272,7 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       await db.update(users).set({ isActive: "false" }).where(eq(users.id, id));
+      logAction({ userId: authReq.user?.id, username: authReq.user?.username, action: "user_deactivate", entityType: "user", entityId: id });
       res.json({ message: "User deactivated" });
     } catch (error) {
       console.error("Error deleting user:", error);
@@ -281,6 +291,8 @@ export function registerAuthRoutes(app: Express): void {
 
       const passwordHash = await hashPassword(password);
       await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, id));
+      const authReq = req as AuthRequest;
+      logAction({ userId: authReq.user?.id, username: authReq.user?.username, action: "password_reset", entityType: "user", entityId: id, details: { targetUserId: id } });
       res.json({ message: "Password updated" });
     } catch (error) {
       console.error("Error updating password:", error);

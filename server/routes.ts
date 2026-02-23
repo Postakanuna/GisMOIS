@@ -7,10 +7,10 @@ import ExcelJS from "exceljs";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, seedAdminUser, isAuthenticated, type AuthRequest } from "./auth";
 import { isApiAuthenticated, generateApiToken, hashApiToken, type ApiAuthenticatedRequest } from "./auth/api-auth";
-import { externalCreatePointSchema, apiKeys, geocodeProviderSchema, type GeocodeProvider } from "@shared/schema";
+import { externalCreatePointSchema, apiKeys, geocodeProviderSchema, auditLog, type GeocodeProvider } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, desc, gte, lte, count } from "drizzle-orm";
 import multer from "multer";
 import fs from "fs";
 import { geocodeBatch, reverseGeocodeBatch, type ReverseGeocodeBatchItem } from "./geocoder";
@@ -19,6 +19,7 @@ import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
 import { transformPropertyKeys } from "@shared/field-labels";
 import { searchObjectsForRAG, getLayersSummaryForContext } from "./ai-rag";
+import { logAction } from "./audit";
 
 function normalizeSvgForColorSupport(svgContent: string): string {
   let svg = svgContent;
@@ -1523,6 +1524,7 @@ export async function registerRoutes(
       // Fetch updated layer with correct feature count
       const updatedLayer = await storage.getEditableLayer(layer.id);
       
+      logAction({ action: "layer_import", entityType: "layer", entityId: layer.id, details: { name: layer.name, source: "shapefile" } });
       return res.status(201).json(updatedLayer);
     } catch (error) {
       console.error("Import layer error:", error);
@@ -3402,6 +3404,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid layer data", errors: parsed.error.errors });
       }
       const layer = await storage.createEditableLayer(parsed.data);
+      logAction({ action: "layer_create", entityType: "layer", entityId: layer.id, sceneId: parsed.data.sceneId ?? undefined, details: { name: parsed.data.name, geometryType: parsed.data.geometryType } });
       return res.status(201).json(layer);
     } catch (error) {
       console.error("Error creating editable layer:", error);
@@ -3437,6 +3440,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Layer not found" });
       }
+      logAction({ action: "layer_delete", entityType: "layer", entityId: id });
       return res.status(204).send();
     } catch (error) {
       console.error("Error deleting editable layer:", error);
@@ -3559,6 +3563,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid feature data", errors: parsed.error.errors });
       }
       const feature = await storage.createDrawnFeature(parsed.data);
+      logAction({ action: "feature_create", entityType: "feature", entityId: feature.id, details: { layerId } });
       return res.status(201).json(feature);
     } catch (error) {
       console.error("Error creating drawn feature:", error);
@@ -3574,6 +3579,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request: ids must be a non-empty array" });
       }
       const result = await storage.deleteDrawnFeaturesBatch(ids);
+      logAction({ action: "feature_batch_delete", entityType: "feature", details: { count: ids.length } });
       return res.json(result);
     } catch (error) {
       console.error("Error batch deleting features:", error);
@@ -3595,6 +3601,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "No valid updates provided" });
       }
       const result = await storage.updateDrawnFeaturesBatch(validUpdates);
+      logAction({ action: "feature_batch_update", entityType: "feature", details: { count: validUpdates.length } });
       return res.json(result);
     } catch (error) {
       console.error("Error batch updating features:", error);
@@ -3609,6 +3616,7 @@ export async function registerRoutes(
       if (!feature) {
         return res.status(404).json({ message: "Feature not found" });
       }
+      logAction({ action: "feature_update", entityType: "feature", entityId: id });
       return res.json(feature);
     } catch (error) {
       console.error("Error updating drawn feature:", error);
@@ -3623,6 +3631,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Feature not found" });
       }
+      logAction({ action: "feature_delete", entityType: "feature", entityId: id });
       return res.status(204).send();
     } catch (error) {
       console.error("Error deleting drawn feature:", error);
@@ -3879,6 +3888,84 @@ export async function registerRoutes(
       return res.json({ provider });
     } catch (error) {
       console.error("Error setting AI provider:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
+  // AUDIT LOG API (Admin only)
+  // ============================================
+
+  app.get("/api/admin/audit-log", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(100, Math.max(10, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+
+      const conditions: any[] = [];
+
+      if (req.query.userId && typeof req.query.userId === "string") {
+        conditions.push(eq(auditLog.userId, req.query.userId));
+      }
+      if (req.query.action && typeof req.query.action === "string") {
+        conditions.push(eq(auditLog.action, req.query.action));
+      }
+      if (req.query.entityType && typeof req.query.entityType === "string") {
+        conditions.push(eq(auditLog.entityType, req.query.entityType));
+      }
+      if (req.query.dateFrom && typeof req.query.dateFrom === "string") {
+        conditions.push(gte(auditLog.createdAt, new Date(req.query.dateFrom)));
+      }
+      if (req.query.dateTo && typeof req.query.dateTo === "string") {
+        const dateTo = new Date(req.query.dateTo);
+        dateTo.setDate(dateTo.getDate() + 1);
+        conditions.push(lte(auditLog.createdAt, dateTo));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const [totalResult] = await db
+        .select({ total: count() })
+        .from(auditLog)
+        .where(whereClause);
+
+      const entries = await db
+        .select()
+        .from(auditLog)
+        .where(whereClause)
+        .orderBy(desc(auditLog.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      return res.json({
+        entries,
+        total: totalResult?.total || 0,
+        page,
+        limit,
+        totalPages: Math.ceil((totalResult?.total || 0) / limit),
+      });
+    } catch (error) {
+      console.error("Error fetching audit log:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/audit-log/actions", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const actions = await db
+        .selectDistinct({ action: auditLog.action })
+        .from(auditLog)
+        .orderBy(auditLog.action);
+      return res.json(actions.map((a) => a.action));
+    } catch (error) {
+      console.error("Error fetching audit actions:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -4391,6 +4478,7 @@ export async function registerRoutes(
       }
       
       const scene = await storage.createScene({ name, description, folderId: folderId ?? null, createdBy: user.id });
+      logAction({ userId: user.id, action: "scene_create", entityType: "scene", entityId: scene.id, details: { name } });
       return res.status(201).json({ ...scene, role: "owner" });
     } catch (error) {
       console.error("Error creating scene:", error);
@@ -4443,6 +4531,7 @@ export async function registerRoutes(
       }
       
       await storage.deleteScene(sceneId);
+      logAction({ userId: user.id, action: "scene_delete", entityType: "scene", entityId: sceneId });
       return res.json({ success: true });
     } catch (error) {
       console.error("Error deleting scene:", error);
@@ -4501,6 +4590,7 @@ export async function registerRoutes(
       }
       
       const member = await storage.addSceneMember(sceneId, newUserId, role);
+      logAction({ userId: user.id, action: "scene_member_add", entityType: "scene", entityId: sceneId, sceneId, details: { memberId: newUserId, role } });
       return res.status(201).json(member);
     } catch (error) {
       console.error("Error adding scene member:", error);
@@ -4548,6 +4638,7 @@ export async function registerRoutes(
       }
       
       await storage.removeSceneMember(sceneId, memberId);
+      logAction({ userId: user.id, action: "scene_member_remove", entityType: "scene", entityId: sceneId, sceneId });
       return res.json({ success: true });
     } catch (error) {
       console.error("Error removing member:", error);
