@@ -322,7 +322,6 @@ export function useDrawing(options: UseDrawingOptions = {}) {
 
     // Filter out any invalid updates
     const validUpdates = updates.filter(u => typeof u.id === 'number' && !isNaN(u.id) && u.id > 0);
-    console.log("batchUpdateFeatures received:", updates.length, "valid:", validUpdates.length);
     
     if (validUpdates.length === 0) {
       console.warn("No valid updates to process");

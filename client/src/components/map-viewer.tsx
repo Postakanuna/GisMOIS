@@ -1412,7 +1412,6 @@ export function MapViewer({
       setFetchViewport(bufferedExtentRef.current);
     }, 100);
     
-    console.log(`Projection changed from ${oldProjection} to ${currentProjection}, center: ${centerLonLat}`);
   }, [currentProjection]);
 
   useEffect(() => {
@@ -1891,17 +1890,11 @@ export function MapViewer({
 
   // Manage uploaded shapefile layers
   useEffect(() => {
-    console.log("=== Layer sync effect ===");
-    console.log("allEditableLayers count:", allEditableLayers.length);
-    console.log("allLayerFeatures keys:", Object.keys(allLayerFeatures));
-    console.log("isFetchingFeatures:", isFetchingFeatures);
-    
     if (!mapRef.current) return;
     const map = mapRef.current;
     
     // Don't process layers while features are still loading
     if (isFetchingFeatures && Object.keys(allLayerFeatures).length === 0) {
-      console.log("Skipping layer sync - features still loading");
       return;
     }
     
@@ -1948,7 +1941,6 @@ export function MapViewer({
             });
             
             vectorSource.addFeatures(features);
-            console.log(`Loaded ${features.length} features for layer: ${editableLayerItem.name}`);
           }
         } catch (e) {
           console.error("Failed to parse layer GeoJSON:", e);
@@ -2194,7 +2186,6 @@ export function MapViewer({
 
           map.addLayer(vectorLayer);
           sceneDatasetLayersRef.current.set(sd.id, vectorLayer);
-          console.log(`Added scene dataset layer: ${sd.layerName || sd.dataset.name} with ${features.length} features (viewport optimized)`);
         } catch (e) {
           console.error("Error loading scene dataset:", e);
         }
@@ -2261,7 +2252,6 @@ export function MapViewer({
                 });
                 source.addFeatures(olFeatures);
                 vectorLayer.set("lastViewportKey", currentViewportKey);
-                console.log(`Refreshed dataset ${sd.layerName || sd.dataset.name}: ${features.length} features for viewport`);
               }
             }
           } catch (e) {
@@ -2408,7 +2398,6 @@ export function MapViewer({
         removeLastPoint: () => {
           const draw = drawInteractionRef.current;
           if (!draw) {
-            console.log("[DRAW UNDO] No draw interaction");
             return false;
           }
           
@@ -2419,13 +2408,11 @@ export function MapViewer({
             // Get sketch coordinates to check if there are points
             const sketchFeature = (draw as any).sketchFeature_;
             if (!sketchFeature) {
-              console.log("[DRAW UNDO] No sketch feature - not currently drawing");
               return false;
             }
             
             const geom = sketchFeature.getGeometry();
             if (!geom) {
-              console.log("[DRAW UNDO] No geometry in sketch");
               return false;
             }
             
@@ -2438,16 +2425,12 @@ export function MapViewer({
               coordCount = coords[0]?.length || 0;
             }
             
-            console.log("[DRAW UNDO] Sketch coordinate count:", coordCount);
-            
             // Need at least 2 coordinates (current mouse + at least 1 placed point)
             if (coordCount >= 2) {
               draw.removeLastPoint();
-              console.log("[DRAW UNDO] Removed last point");
               return true;
             }
             
-            console.log("[DRAW UNDO] Not enough points to remove");
             return false;
           } catch (e) {
             console.error("[DRAW UNDO] Error:", e);
@@ -2535,15 +2518,6 @@ export function MapViewer({
 
   // Manage drawing interactions
   useEffect(() => {
-    console.log("[SNAP DEBUG] Effect triggered", {
-      hasMap: !!mapRef.current,
-      hasEditableLayer: !!editableLayerRef.current,
-      editMode,
-      drawingMode,
-      snapEnabled: snapSettings?.enabled,
-      snapSettings,
-    });
-    
     if (!mapRef.current || !editableLayerRef.current) return;
     const map = mapRef.current;
     const editableSource = editableLayerRef.current.getSource();
@@ -2621,28 +2595,16 @@ export function MapViewer({
       const snapSources: VectorSource[] = [];
       const useAllLayers = !snapSettings.snapLayerIds || snapSettings.snapLayerIds.length === 0;
       
-      console.log("[SNAP] Setting up snap interactions", {
-        enabled: snapSettings.enabled,
-        drawingMode,
-        useAllLayers,
-        snapLayerIds: snapSettings.snapLayerIds,
-        allEditableLayersCount: allEditableLayersRef.current.size,
-        sceneDatasetLayersCount: sceneDatasetLayersRef.current.size,
-      });
-      
       // Add sources from all editable layers (from allEditableLayersRef)
       allEditableLayersRef.current.forEach((layerRef, layerId) => {
         const layer = layerRef as VectorLayer<VectorSource>;
         const source = layer.getSource();
         const featureCount = source?.getFeatures().length || 0;
         const isVisible = layer.getVisible();
-        console.log(`[SNAP] Layer ${layerId}: visible=${isVisible}, features=${featureCount}`);
         
         if (source && isVisible) {
-          // Check if layer should be included based on snapLayerIds
           if (useAllLayers || snapSettings.snapLayerIds.includes(layerId)) {
             snapSources.push(source);
-            console.log(`[SNAP] Added layer ${layerId} to snap sources`);
           }
         }
       });
@@ -2652,18 +2614,13 @@ export function MapViewer({
         const source = layer.getSource();
         const featureCount = source?.getFeatures().length || 0;
         const isVisible = layer.getVisible();
-        console.log(`[SNAP] Dataset ${datasetId}: visible=${isVisible}, features=${featureCount}`);
         
         if (source && isVisible) {
-          // Check if layer should be included based on snapLayerIds
           if (useAllLayers || snapSettings.snapLayerIds.includes(datasetId)) {
             snapSources.push(source);
-            console.log(`[SNAP] Added dataset ${datasetId} to snap sources`);
           }
         }
       });
-      
-      console.log(`[SNAP] Total snap sources: ${snapSources.length}`);
       
       // Create snap interactions for all collected sources
       const allSnaps: Snap[] = [];
@@ -2676,7 +2633,6 @@ export function MapViewer({
         });
         map.addInteraction(snap);
         allSnaps.push(snap);
-        console.log(`[SNAP] Created snap interaction ${idx + 1} with tolerance ${snapSettings.snapRadius}px, vertex=${snapSettings.snapToVertices}, edge=${snapSettings.snapToEdges}`);
       });
       
       // Store first snap in primary ref, rest in additional
@@ -2916,7 +2872,6 @@ export function MapViewer({
                   }
                   if (data.raw) {
                     const features = parseZwsResponse(data.raw, currentProjectionRef.current);
-                    console.log(`Loaded ${features.length} features for ${layerConfig.id}`);
                     
                     allFeaturesRef.current[layerConfig.id] = features;
                     
@@ -3038,8 +2993,6 @@ export function MapViewer({
 
       vectorSource.clear();
       vectorSource.addFeatures(filteredFeatures);
-      
-      console.log(`Filtered ${layerId}: ${filteredFeatures.length}/${allFeatures.length} features`);
     });
   }, [activeFilters]);
 

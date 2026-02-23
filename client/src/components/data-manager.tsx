@@ -475,8 +475,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
             const firstFeature = layer.geojson.features[0];
             const geometryType = firstFeature.geometry?.type || "Unknown";
             
-            console.log("Import layer sourceFiles:", layer.sourceFiles);
-            
             const res = await apiRequest("POST", "/api/datasets/import", {
               name: layer.name,
               geometryType,
@@ -573,7 +571,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     e.dataTransfer.effectAllowed = "move";
     setDragLayerId(layerId);
     setDragType("layer");
-    console.log("[DnD] Layer drag start:", layerId);
   };
 
   const handleFolderDragStart = (e: React.DragEvent, folderId: number) => {
@@ -581,7 +578,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     e.dataTransfer.effectAllowed = "move";
     setDragFolderId(folderId);
     setDragType("folder");
-    console.log("[DnD] Folder drag start:", folderId);
   };
 
   const handleDragEnd = () => {
@@ -713,7 +709,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         layerDisplayOrders.push(baseOrder);
       }
     }
-    console.log("[DnD] executeSave: folders=", folderIds, "folderOrders=", folderDisplayOrders, "layers=", layerIds, "layerOrders=", layerDisplayOrders);
     if (folderIds.length > 0) {
       await reorderFoldersMutation.mutateAsync({ folderIds, displayOrders: folderDisplayOrders });
     }
@@ -763,27 +758,22 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     const layerIdStr = e.dataTransfer.getData("text/layer");
     const folderIdStr = e.dataTransfer.getData("text/folder");
     
-    console.log("[DnD] Drop at index:", { scope, index, layerIdStr, folderIdStr, dragType });
-    
     if (folderIdStr && dragType === "folder") {
       const movedFolderId = Number(folderIdStr);
       const flatItems: FlatItem[] = currentFlatOrderRef.current.map(it => 
         it.type === "folder" ? { ...it, layers: [...it.layers] } : { ...it }
       );
       const fromIdx = flatItems.findIndex(it => it.type === "folder" && it.folderId === movedFolderId);
-      console.log("[DnD] Folder drop: fromIdx=", fromIdx, "targetIdx=", index);
       if (fromIdx >= 0) {
         const [removed] = flatItems.splice(fromIdx, 1);
         const insertAt = index > fromIdx ? index - 1 : index;
         flatItems.splice(Math.min(insertAt, flatItems.length), 0, removed);
-        console.log("[DnD] Folder reorder result:", flatItems.map(it => it.type === "folder" ? `F${it.folderId}` : `L${it.layerId}`));
         persistFlatOrder(flatItems);
       }
     } else if (layerIdStr && dragType === "layer") {
       const movedLayerId = Number(layerIdStr);
       const layer = sceneLayers.find(l => l.id === movedLayerId);
       if (!layer) {
-        console.log("[DnD] Layer not found:", movedLayerId);
         dropHandledRef.current = true;
         setDragLayerId(null);
         setDragFolderId(null);
@@ -816,7 +806,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         const adjustedIndex = wasSplicedOut && fromIdx < index ? index - 1 : index;
         const insertAt = Math.min(adjustedIndex, flatItems.length);
         flatItems.splice(insertAt, 0, { type: "layer", layerId: movedLayerId, displayOrder: 0 });
-        console.log("[DnD] Layer ungrouped drop: fromIdx=", fromIdx, "adjustedIdx=", adjustedIndex, "result=", flatItems.map(it => it.type === "folder" ? `F${it.folderId}` : `L${it.layerId}`));
         persistFlatOrder(flatItems, movedLayerId, sourceFolderId, null);
       } else {
         const targetFolderId = scope as number;
@@ -838,11 +827,8 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           filteredLayers.splice(insertAt, 0, movedLayerId);
           tgtFolder.layers = filteredLayers;
         }
-        console.log("[DnD] Layer folder drop: targetFolder=", targetFolderId, "index=", index);
         persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
       }
-    } else {
-      console.log("[DnD] No valid data for drop:", { layerIdStr, folderIdStr, dragType });
     }
     
     dropHandledRef.current = true;
@@ -857,7 +843,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     e.preventDefault();
     e.stopPropagation();
     const layerIdStr = e.dataTransfer.getData("text/layer");
-    console.log("[DnD] Folder body drop:", { targetFolderId, layerIdStr, dragType });
     if (layerIdStr && dragType === "layer") {
       const movedLayerId = Number(layerIdStr);
       const layer = sceneLayers.find(l => l.id === movedLayerId);

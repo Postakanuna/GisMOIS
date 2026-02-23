@@ -300,8 +300,6 @@ export async function registerRoutes(
   </Command>
 </zulu-server>`;
 
-      console.log("ZWS query request:", { layer, sqlQuery, projection });
-
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
 
@@ -324,8 +322,6 @@ export async function registerRoutes(
       clearTimeout(timeoutId);
 
       const responseText = await response.text();
-      console.log("ZWS query response status:", response.status);
-      console.log("ZWS query response preview:", responseText.substring(0, 500));
 
       if (!response.ok) {
         console.error("ZWS query error:", responseText);
@@ -1766,8 +1762,6 @@ export async function registerRoutes(
           address: String(row[addressColumn!] || ""),
         }));
 
-        console.log(`Starting geocoding of ${addressEntries.length} addresses via ${excelGeoProvider}...`);
-
         let geocodeResults;
         try {
           geocodeResults = await geocodeBatch(addressEntries, excelGeoApiKey!, undefined, excelGeoProvider);
@@ -1777,8 +1771,6 @@ export async function registerRoutes(
             message: error.message || "Ошибка геокодирования",
           });
         }
-
-        console.log(`Geocoding complete. Processing results...`);
 
         for (const gr of geocodeResults) {
           if (!gr.result) {
@@ -4724,8 +4716,6 @@ export async function registerRoutes(
 
       const { name, geometryType, geojson, sourceFileName, sourceFiles, crs, sceneId, color } = req.body;
       
-      console.log("Server received sourceFiles:", sourceFiles);
-      
       if (!name || !geometryType || !geojson) {
         return res.status(400).json({ 
           message: "Missing required fields: name, geometryType, geojson" 
@@ -4809,12 +4799,8 @@ export async function registerRoutes(
       const originalName = file.originalname;
       const baseName = customName || originalName.replace(/\.zip$/i, "");
 
-      console.log(`Processing shapefile upload: ${originalName} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-
       const fileBuffer = fs.readFileSync(filePath);
       const parseResult = await parseShapefileBuffer(fileBuffer);
-      
-      console.log(`Parsed ${parseResult.features.length} features, type: ${parseResult.geometryType}`);
 
       // Extract field schema from first feature
       let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
@@ -4862,7 +4848,6 @@ export async function registerRoutes(
           properties: feature.properties || {},
         }));
         await storage.createDrawnFeaturesBatch(insertFeatures);
-        console.log(`Inserted batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(parseResult.features.length / BATCH_SIZE)}`);
       }
 
       const updatedLayer = await storage.getEditableLayer(layer.id);
@@ -4921,22 +4906,6 @@ export async function registerRoutes(
       const zoomLevel = zoom ? parseInt(zoom as string) : 10;
       const tolerance = getSimplifyTolerance(zoomLevel);
 
-      // Debug: Log layer info for polygon layers
-      const layer = await storage.getEditableLayer(layerId);
-      const isPolygonLayer = allFeatures.some(f => f.geometryType === "Polygon" || f.geometryType === "MultiPolygon");
-      if (isPolygonLayer || layerId === 153) {
-        console.log(`[Viewport Filter] Layer ${layer?.name || layerId} (id=${layerId}): ${allFeatures.length} total features, bbox: [${bbox.minX.toFixed(4)}, ${bbox.minY.toFixed(4)}, ${bbox.maxX.toFixed(4)}, ${bbox.maxY.toFixed(4)}], zoom: ${zoomLevel}`);
-        
-        // Log a sample of feature bounds to debug filtering
-        const sampleFeatures = allFeatures.slice(0, 3);
-        for (const f of sampleFeatures) {
-          const bounds = getFeatureBounds(f.coordinates, f.geometryType);
-          if (bounds) {
-            console.log(`  Feature ${f.id}: bounds [${bounds.minX.toFixed(4)}, ${bounds.minY.toFixed(4)}, ${bounds.maxX.toFixed(4)}, ${bounds.maxY.toFixed(4)}]`);
-          }
-        }
-      }
-
       // Filter features by bbox and simplify geometry
       const filteredFeatures = allFeatures.filter(feature => {
         const coords = feature.coordinates;
@@ -4950,17 +4919,8 @@ export async function registerRoutes(
         const intersects = !(bounds.maxX < bbox.minX || bounds.minX > bbox.maxX ||
                  bounds.maxY < bbox.minY || bounds.minY > bbox.maxY);
         
-        // Debug: Log excluded polygon features (only first few)
-        if (!intersects && (feature.geometryType === "Polygon" || feature.geometryType === "MultiPolygon")) {
-          console.log(`[Viewport Filter] Excluding polygon ${feature.id}: bounds [${bounds.minX.toFixed(4)}, ${bounds.minY.toFixed(4)}, ${bounds.maxX.toFixed(4)}, ${bounds.maxY.toFixed(4)}]`);
-        }
-        
         return intersects;
       });
-      
-      if (isPolygonLayer) {
-        console.log(`[Viewport Filter] Layer ${layer?.name || layerId}: ${filteredFeatures.length} features after filter`);
-      }
 
       // Apply limit before simplification for performance
       const limitedFeatures = filteredFeatures.slice(0, featureLimit);
@@ -6773,9 +6733,6 @@ export async function registerRoutes(
         ]);
         ragContext = ragResult;
         layersSummary = layersResult;
-        if (ragContext) {
-          console.log("[RAG] Found relevant data for query:", lastUserMessage.substring(0, 80));
-        }
       } catch (e) {
         console.error("[RAG] Error during search:", e);
       }
@@ -6805,8 +6762,6 @@ export async function registerRoutes(
         const OpenAI = (await import("openai")).default;
         const openai = new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl });
 
-        console.log("OpenAI request:", JSON.stringify({ provider: "openai", messageCount: apiMessages.length }));
-
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
           messages: apiMessages as any,
@@ -6815,7 +6770,6 @@ export async function registerRoutes(
         });
 
         const aiText = completion.choices?.[0]?.message?.content || "Нет ответа от модели";
-        console.log("OpenAI response received successfully");
         return res.json({ content: aiText, provider: "openai" });
 
       } else if (selectedProvider === "yandex") {
@@ -6832,8 +6786,6 @@ export async function registerRoutes(
           temperature: 0.3,
           max_tokens: 2000,
         };
-
-        console.log("Yandex AI request:", JSON.stringify({ model: requestBody.model, messageCount: requestBody.messages.length }));
 
         const response = await fetch("https://llm.api.cloud.yandex.net/v1/chat/completions", {
           method: "POST",
@@ -6859,7 +6811,6 @@ export async function registerRoutes(
         }
 
         const data = await response.json() as any;
-        console.log("Yandex AI response received successfully");
         const aiText = data?.choices?.[0]?.message?.content || "Нет ответа от модели";
 
         return res.json({ content: aiText, provider: "yandex" });

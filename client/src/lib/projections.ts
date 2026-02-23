@@ -32,7 +32,6 @@ export function registerProjections(): void {
   }
   
   projectionsRegistered = true;
-  console.log("Projections registered: EPSG:3395");
 }
 
 export const YANDEX_TILE_GRID = createXYZ({
