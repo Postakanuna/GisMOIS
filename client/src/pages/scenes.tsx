@@ -40,12 +40,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, LogOut, Settings, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Layers, Home, Map, Crown, UserPen, Eye } from "lucide-react";
+import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Home, Map, Crown, UserPen, Eye } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { SceneAccessDialog } from "@/components/scene-access-dialog";
 import { BugReportButton } from "@/components/bug-report-button";
+import { UserButton } from "@/components/user-button";
 
 interface Scene {
   id: number;
@@ -69,7 +70,7 @@ interface SceneFolder {
 export default function ScenesPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { setCurrentSceneId } = useScene();
 
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
@@ -329,11 +330,6 @@ export default function ScenesPage() {
     setLocation("/app");
   };
 
-  const handleLogout = async () => {
-    await logout();
-    setLocation("/login");
-  };
-
   const getRoleIcon = (role: string) => {
     switch (role) {
       case "owner":
@@ -388,38 +384,7 @@ export default function ScenesPage() {
           <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            {user?.firstName || user?.username}
-          </span>
-          {user?.role === "admin" && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setLocation("/admin/layers")}
-                data-testid="button-layer-manager"
-                title="Менеджер слоёв"
-              >
-                <Layers className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setLocation("/admin/users")}
-                data-testid="button-admin"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleLogout}
-            data-testid="button-logout"
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <UserButton />
         </div>
       </header>
 
