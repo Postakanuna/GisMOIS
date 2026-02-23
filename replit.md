@@ -44,6 +44,10 @@ The system includes intelligent capacity analysis to find upstream CTP/source, e
 
 This feature allows enriching layer data from XLSX files by matching key fields from the layer with key columns from the Excel file, similar to a database table join.
 
+### Bug Report System
+
+Users can submit bug reports via a floating button (bug icon) in the bottom-right corner on map and scene pages. The report includes a text description and an optional screenshot. Administrators manage bug reports through the "Сведения об ошибках" tab on the admin settings page, where they can view reports, screenshots, and set statuses (new, rejected, in_progress, fixed, paused). Data stored in `bug_reports` table. Components: `BugReportButton`, `BugReportsPanel`.
+
 ### AI Assistant
 
 An integrated AI chat panel allows users to interact with an AI assistant. It supports message history, text input, and dual AI providers (OpenAI GPT-4o-mini and Yandex GPT-Lite) with an in-chat model switcher. A Retrieval-Augmented Generation (RAG) system automatically injects relevant GIS object data from `drawn_features` and `editable_layers` into the AI's system prompt, enabling data-aware responses.
