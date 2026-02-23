@@ -80,9 +80,7 @@ export default function LandingPage() {
             <p className="text-xs text-muted-foreground">
               Оператор — Государственное казённое учреждение Московской области «Агентство развития коммунальной инфраструктуры»
             </p>
-            <p className="text-xs text-muted-foreground">
-              Распоряжение Министерства энергетики Московской области от 04.03.2015 № 33-Р
-            </p>
+            <p className="text-xs text-muted-foreground">Распоряжение Министерства энергетики Московской области от 04.03.2025 № 33-Р</p>
             <p className="text-xs">
               <a href="https://t.me/ZULUSTP_bot" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" data-testid="link-support-bot">Техническая поддержка: @ZULUSTP_bot</a>
             </p>
