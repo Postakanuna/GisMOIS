@@ -135,11 +135,9 @@ export function MapSearchBar({ onZoomToCoordinates, onZoomToFeature }: MapSearch
           {isSearching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
         </Button>
       </div>
-      {resultText && (
-        <div className="mt-1 text-xs text-muted-foreground truncate" data-testid="text-search-result">
-          {resultText}
-        </div>
-      )}
+      <div className="mt-1 text-xs text-muted-foreground truncate min-h-[1.25rem]" data-testid="text-search-result">
+        {resultText || "\u00A0"}
+      </div>
     </div>
   );
 }
