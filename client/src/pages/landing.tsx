@@ -88,7 +88,7 @@ export default function LandingPage() {
         </div>
       </main>
       <footer className="py-1 px-2 text-right">
-        <span className="text-[10px] text-muted-foreground/40 select-none" data-testid="text-app-version">v1.0.0-rc.1</span>
+        <span className="text-[10px] text-muted-foreground select-none" data-testid="text-app-version">v1.0.0-rc.1</span>
       </footer>
     </div>
   );
