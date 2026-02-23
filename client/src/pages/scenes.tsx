@@ -26,7 +26,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -41,7 +40,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, LogOut, Settings, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Layers, Home, Map } from "lucide-react";
+import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, LogOut, Settings, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Layers, Home, Map, Crown, UserPen, Eye } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { SceneAccessDialog } from "@/components/scene-access-dialog";
@@ -333,14 +333,35 @@ export default function ScenesPage() {
     setLocation("/login");
   };
 
-  const getRoleBadge = (role: string) => {
+  const getRoleIcon = (role: string) => {
     switch (role) {
       case "owner":
-        return <Badge variant="default" data-testid="badge-role-owner">Владелец</Badge>;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Crown className="h-3.5 w-3.5 text-amber-500 shrink-0" data-testid="icon-role-owner" />
+            </TooltipTrigger>
+            <TooltipContent>Владелец</TooltipContent>
+          </Tooltip>
+        );
       case "editor":
-        return <Badge variant="secondary" data-testid="badge-role-editor">Редактор</Badge>;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <UserPen className="h-3.5 w-3.5 text-blue-500 shrink-0" data-testid="icon-role-editor" />
+            </TooltipTrigger>
+            <TooltipContent>Редактор</TooltipContent>
+          </Tooltip>
+        );
       case "viewer":
-        return <Badge variant="outline" data-testid="badge-role-viewer">Просмотр</Badge>;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Eye className="h-3.5 w-3.5 text-muted-foreground shrink-0" data-testid="icon-role-viewer" />
+            </TooltipTrigger>
+            <TooltipContent>Просмотр</TooltipContent>
+          </Tooltip>
+        );
       default:
         return null;
     }
@@ -401,7 +422,7 @@ export default function ScenesPage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="mx-auto px-4 md:px-6 py-8 max-w-[1600px]">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2 min-w-0">
             {currentFolderId !== null && (
@@ -505,7 +526,7 @@ export default function ScenesPage() {
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {[1, 2, 3].map((i) => (
               <Card key={i}>
                 <CardHeader>
@@ -519,7 +540,7 @@ export default function ScenesPage() {
             ))}
           </div>
         ) : (currentFolders.length > 0 || currentScenes.length > 0) ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {currentFolders.map((folder) => (
               <Card
                 key={`folder-${folder.id}`}
@@ -581,12 +602,11 @@ export default function ScenesPage() {
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <FolderOpen className="h-5 w-5 text-primary" />
-                      <CardTitle className="text-base">{scene.name}</CardTitle>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <FolderOpen className="h-5 w-5 text-primary shrink-0" />
+                      <CardTitle className="text-base truncate" title={scene.name}>{scene.name}</CardTitle>
                     </div>
-                    <div className="flex items-center gap-1">
-                      {getRoleBadge(scene.role)}
+                    <div className="flex items-center gap-1 shrink-0">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-scene-menu-${scene.id}`}>
@@ -671,6 +691,7 @@ export default function ScenesPage() {
                         {format(new Date(scene.updatedAt), "d MMM yyyy", { locale: ru })}
                       </span>
                     </div>
+                    {getRoleIcon(scene.role)}
                   </div>
                 </CardContent>
               </Card>
