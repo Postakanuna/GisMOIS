@@ -3398,7 +3398,8 @@ export async function registerRoutes(
         maxY: Math.ceil(parseFloat(maxY as string) * 100) / 100,
       };
 
-      const cacheKey = `${ids.sort().join(",")}_${roundedBbox.minX}_${roundedBbox.minY}_${roundedBbox.maxX}_${roundedBbox.maxY}_${zoomLevel}_${featureLimit}`;
+      const simplifyGroup = zoomLevel >= 14 ? 14 : zoomLevel >= 12 ? 12 : zoomLevel >= 10 ? 10 : zoomLevel >= 9 ? 9 : zoomLevel >= 8 ? 8 : zoomLevel >= 7 ? 7 : zoomLevel >= 6 ? 6 : zoomLevel >= 5 ? 5 : zoomLevel >= 4 ? 4 : 0;
+      const cacheKey = `${ids.sort().join(",")}_${roundedBbox.minX}_${roundedBbox.minY}_${roundedBbox.maxX}_${roundedBbox.maxY}_${simplifyGroup}_${featureLimit}`;
 
       const cached = viewportCacheGet(cacheKey);
       if (cached) {

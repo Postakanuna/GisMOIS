@@ -633,6 +633,20 @@ const VIEWPORT_DEBOUNCE_MS = 250;
 const VIEWPORT_PRECISION = 2;
 const PREFETCH_BUFFER_RATIO = 2.0;
 const MAX_CACHE_SIZE = 20000;
+const NO_SIMPLIFICATION_ZOOM = 14;
+
+function getSimplificationGroup(zoom: number): number {
+  if (zoom >= NO_SIMPLIFICATION_ZOOM) return NO_SIMPLIFICATION_ZOOM;
+  if (zoom >= 12) return 12;
+  if (zoom >= 10) return 10;
+  if (zoom >= 9) return 9;
+  if (zoom >= 8) return 8;
+  if (zoom >= 7) return 7;
+  if (zoom >= 6) return 6;
+  if (zoom >= 5) return 5;
+  if (zoom >= 4) return 4;
+  return 0;
+}
 
 // Parse hex color to RGB components
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -1288,14 +1302,16 @@ export function MapViewer({
     }
 
     const currentZoom = Math.round(fetchViewport.zoom);
+    const currentGroup = getSimplificationGroup(currentZoom);
     const prevZoom = lastFetchZoomRef.current;
-    if (prevZoom !== null && currentZoom !== prevZoom) {
+    const prevGroup = prevZoom !== null ? getSimplificationGroup(prevZoom) : null;
+    if (prevGroup !== null && currentGroup !== prevGroup) {
       featureCacheRef.current.clear();
     }
     lastFetchZoomRef.current = currentZoom;
 
     const vp = fetchViewport;
-    const fetchKey = `${layerIdsKey}_${vp.minX.toFixed(VIEWPORT_PRECISION)}_${vp.minY.toFixed(VIEWPORT_PRECISION)}_${vp.maxX.toFixed(VIEWPORT_PRECISION)}_${vp.maxY.toFixed(VIEWPORT_PRECISION)}_${currentZoom}`;
+    const fetchKey = `${layerIdsKey}_${vp.minX.toFixed(VIEWPORT_PRECISION)}_${vp.minY.toFixed(VIEWPORT_PRECISION)}_${vp.maxX.toFixed(VIEWPORT_PRECISION)}_${vp.maxY.toFixed(VIEWPORT_PRECISION)}_${currentGroup}`;
 
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
