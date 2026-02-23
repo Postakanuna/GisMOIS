@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Users } from "lucide-react";
+import { LogOut, Users, Settings } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 
@@ -61,6 +61,12 @@ export function UserButton() {
               <Link href="/admin/users" className="flex items-center cursor-pointer" data-testid="link-admin-users">
                 <Users className="mr-2 h-4 w-4" />
                 <span>Пользователи</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/settings" className="flex items-center cursor-pointer" data-testid="link-settings">
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Настройки</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />

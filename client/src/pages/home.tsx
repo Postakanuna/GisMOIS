@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Settings, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Map, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -654,11 +654,6 @@ export default function Home() {
                 <Pencil className="h-4 w-4" />
                 <span className="hidden sm:inline">Редактор</span>
               </Button>
-              <Link href="/settings">
-                <Button variant="ghost" size="icon" data-testid="button-open-settings">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </Link>
               <ThemeToggle />
               <UserButton />
             </div>
