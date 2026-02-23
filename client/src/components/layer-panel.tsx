@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, BarChart3, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot } from "lucide-react";
 import { useScene } from "@/contexts/scene-context";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { Switch } from "@/components/ui/switch";
@@ -51,7 +51,6 @@ import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 
 const truncateName = (name: string, maxLength: number = 30): string => {
   if (name.length <= maxLength) return name;
@@ -116,6 +115,7 @@ interface LayerPanelProps {
   onOpenStyleConfig?: (layerId: number) => void;
   onOpenGeocodeDialog?: (layerId: number) => void;
   onToggleAiChat?: () => void;
+  onOpenDataManager?: () => void;
 }
 
 export function LayerPanel({
@@ -138,11 +138,11 @@ export function LayerPanel({
   onOpenStyleConfig,
   onOpenGeocodeDialog,
   onToggleAiChat,
+  onOpenDataManager,
 }: LayerPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { currentSceneId } = useScene();
-  const [geoAnalysisOpen, setGeoAnalysisOpen] = useState(false);
   const [newLayerDialogOpen, setNewLayerDialogOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerGeomType, setNewLayerGeomType] = useState<GeometryType>("Point");
@@ -451,30 +451,22 @@ export function LayerPanel({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        {editableLayers.length >= 2 && (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setGeoAnalysisOpen(true)}
-                  data-testid="button-open-analytics"
-                >
-                  <BarChart3 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Геопространственный анализ</p>
-              </TooltipContent>
-            </Tooltip>
-            <GeoAnalysisModal
-              isOpen={geoAnalysisOpen}
-              onClose={() => setGeoAnalysisOpen(false)}
-              editableLayers={editableLayers}
-              sceneId={currentSceneId}
-            />
-          </>
+        {onOpenDataManager && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onOpenDataManager}
+                data-testid="button-open-data-manager"
+              >
+                <Database className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Менеджер данных</p>
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
     </div>

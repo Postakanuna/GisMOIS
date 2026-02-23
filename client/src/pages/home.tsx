@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Menu, Layers, ArrowLeft, Pencil, Database, FolderOpen, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3 } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,6 +33,7 @@ import { NetworkSimulationDialog, type SimulationResult } from "@/components/net
 import { ConsumerConnectDialog, type ConsumerFormData } from "@/components/consumer-connect-dialog";
 import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
+import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage } from "@/components/ai-chat-panel";
@@ -78,6 +79,7 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   onOpenStyleConfig?: (layerId: number) => void;
   onOpenGeocodeDialog?: (layerId: number) => void;
   onToggleAiChat?: () => void;
+  onOpenDataManager?: () => void;
   connectionStatus: ConnectionStatus;
 }
 
@@ -101,6 +103,7 @@ function SidebarContentPanel({
   onOpenStyleConfig,
   onOpenGeocodeDialog,
   onToggleAiChat,
+  onOpenDataManager,
   connectionStatus,
 }: SidebarContentPanelProps) {
   return (
@@ -129,6 +132,7 @@ function SidebarContentPanel({
           onOpenStyleConfig={onOpenStyleConfig}
           onOpenGeocodeDialog={onOpenGeocodeDialog}
           onToggleAiChat={onToggleAiChat}
+          onOpenDataManager={onOpenDataManager}
         />
       </div>
     </ScrollArea>
@@ -213,6 +217,7 @@ export default function Home() {
   const [editMode, setEditMode] = useState(false);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
   const [showDataManager, setShowDataManager] = useState(false);
+  const [showGeoAnalysis, setShowGeoAnalysis] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
   const drawActionsRef = useRef<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>(null);
   const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void } | null>(null);
@@ -512,6 +517,7 @@ export default function Home() {
                     onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                     onToggleAiChat={() => setSidebarView("ai-chat")}
+                    onOpenDataManager={() => setShowDataManager(true)}
                     connectionStatus={zuluConnection.status}
                   />
                 ) : (
@@ -573,6 +579,7 @@ export default function Home() {
                       onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                       onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                       onToggleAiChat={() => setSidebarView("ai-chat")}
+                      onOpenDataManager={() => setShowDataManager(true)}
                       connectionStatus={zuluConnection.status}
                     />
                   )}
@@ -605,19 +612,21 @@ export default function Home() {
                   <TooltipContent>Сменить сцену</TooltipContent>
                 </Tooltip>
               )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowDataManager(true)}
-                    data-testid="button-open-data-manager"
-                  >
-                    <Database className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Менеджер данных</TooltipContent>
-              </Tooltip>
+              {drawing.editableLayers.length >= 2 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={showGeoAnalysis ? "default" : "ghost"}
+                      size="icon"
+                      onClick={() => setShowGeoAnalysis(prev => !prev)}
+                      data-testid="button-open-analytics"
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Геопространственный анализ</TooltipContent>
+                </Tooltip>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -941,6 +950,13 @@ export default function Home() {
               open={showTopologyDialog}
               onOpenChange={setShowTopologyDialog}
               sceneId={currentSceneId || 0}
+            />
+
+            <GeoAnalysisModal
+              isOpen={showGeoAnalysis}
+              onClose={() => setShowGeoAnalysis(false)}
+              editableLayers={drawing.editableLayers}
+              sceneId={currentSceneId}
             />
 
           </main>
