@@ -36,6 +36,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/models/auth";
 import { ApiKeysManager } from "@/components/api-keys-manager";
 import { AuditLogPanel } from "@/components/audit-log-panel";
+import { BugReportsPanel } from "@/components/bug-reports-panel";
 
 type AdminUser = SafeUser;
 
@@ -326,12 +327,13 @@ export default function AdminUsers() {
       <div className="container mx-auto p-6">
 
       <Tabs defaultValue="users" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5" data-testid="admin-tabs">
+        <TabsList className="grid w-full grid-cols-6" data-testid="admin-tabs">
           <TabsTrigger value="users" data-testid="tab-users">Пользователи</TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-audit">Журнал действий</TabsTrigger>
           <TabsTrigger value="geocoding" data-testid="tab-geocoding">Геокодирование</TabsTrigger>
           <TabsTrigger value="ai" data-testid="tab-ai">ИИ-агент</TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">Внешние подключения</TabsTrigger>
+          <TabsTrigger value="bugs" data-testid="tab-bugs">Сведения об ошибках</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -617,6 +619,18 @@ export default function AdminUsers() {
 
         <TabsContent value="audit">
           <AuditLogPanel />
+        </TabsContent>
+
+        <TabsContent value="bugs">
+          <Card>
+            <CardHeader>
+              <CardTitle>Сведения об ошибках</CardTitle>
+              <CardDescription>Отчёты пользователей о выявленных проблемах</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BugReportsPanel />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

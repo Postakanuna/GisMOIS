@@ -7,7 +7,7 @@ import ExcelJS from "exceljs";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, seedAdminUser, isAuthenticated, type AuthRequest } from "./auth";
 import { isApiAuthenticated, generateApiToken, hashApiToken, type ApiAuthenticatedRequest } from "./auth/api-auth";
-import { externalCreatePointSchema, apiKeys, geocodeProviderSchema, auditLog, type GeocodeProvider } from "@shared/schema";
+import { externalCreatePointSchema, apiKeys, geocodeProviderSchema, auditLog, type GeocodeProvider, bugReportStatusEnum } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq, and, sql, inArray, desc, gte, lte, count } from "drizzle-orm";
@@ -111,6 +111,29 @@ const excelUpload = multer({
       cb(null, true);
     } else {
       cb(new Error("Only .xls and .xlsx files are allowed"));
+    }
+  },
+});
+
+const screenshotUploadDir = path.join(os.tmpdir(), "gis-bug-screenshots");
+if (!fs.existsSync(screenshotUploadDir)) {
+  fs.mkdirSync(screenshotUploadDir, { recursive: true });
+}
+
+const screenshotStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, screenshotUploadDir),
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+});
+
+const screenshotUpload = multer({
+  storage: screenshotStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
     }
   },
 });
@@ -7095,6 +7118,87 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error in geocode search:", error);
       return res.status(500).json({ message: "Geocoding error" });
+    }
+  });
+
+  app.post("/api/bug-reports", isAuthenticated, screenshotUpload.single("screenshot"), async (req: AuthRequest, res: Response) => {
+    try {
+      const { message } = req.body;
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ message: "Сообщение обязательно" });
+      }
+
+      const userId = req.user!.id;
+      const username = req.user!.username;
+      const screenshotPath = req.file ? req.file.filename : null;
+
+      const report = await storage.createBugReport({
+        userId,
+        username,
+        message: message.trim(),
+        screenshotPath,
+        status: "new",
+      });
+
+      res.status(201).json(report);
+    } catch (error: any) {
+      console.error("Error creating bug report:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bug-reports", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Доступ запрещён" });
+      }
+      const reports = await storage.getBugReports();
+      res.json(reports);
+    } catch (error: any) {
+      console.error("Error fetching bug reports:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/bug-reports/:id/status", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Доступ запрещён" });
+      }
+      const id = parseInt(req.params.id);
+      const { status } = req.body;
+      if (!status || !(bugReportStatusEnum as readonly string[]).includes(status)) {
+        return res.status(400).json({ message: "Недопустимый статус" });
+      }
+      const updated = await storage.updateBugReportStatus(id, status);
+      if (!updated) {
+        return res.status(404).json({ message: "Отчёт не найден" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating bug report status:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bug-reports/:id/screenshot", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Доступ запрещён" });
+      }
+      const id = parseInt(req.params.id);
+      const report = await storage.getBugReport(id);
+      if (!report || !report.screenshotPath) {
+        return res.status(404).json({ message: "Скриншот не найден" });
+      }
+      const filePath = path.join(screenshotUploadDir, report.screenshotPath);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "Файл не найден" });
+      }
+      res.sendFile(filePath);
+    } catch (error: any) {
+      console.error("Error serving screenshot:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 

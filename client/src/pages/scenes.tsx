@@ -45,6 +45,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { SceneAccessDialog } from "@/components/scene-access-dialog";
+import { BugReportButton } from "@/components/bug-report-button";
 
 interface Scene {
   id: number;
@@ -888,6 +889,7 @@ export default function ScenesPage() {
           sceneName={accessScene.name}
         />
       )}
+      <BugReportButton />
     </div>
   );
 }

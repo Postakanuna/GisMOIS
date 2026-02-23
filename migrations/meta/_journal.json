@@ -8,6 +8,13 @@
       "when": 1768556620244,
       "tag": "0000_bright_xorn",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771834650882,
+      "tag": "0001_watery_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }

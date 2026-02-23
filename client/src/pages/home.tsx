@@ -38,6 +38,7 @@ import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage } from "@/components/ai-chat-panel";
 import { MapSearchBar } from "@/components/map-search-bar";
+import { BugReportButton } from "@/components/bug-report-button";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -967,6 +968,7 @@ export default function Home() {
           </main>
         </div>
       </div>
+      <BugReportButton />
     </SidebarProvider>
   );
 }

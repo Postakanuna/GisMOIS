@@ -15,9 +15,10 @@ import {
   type ApiKey, type InsertApiKey, type ApiKeyPermission,
   type CustomIcon, type InsertCustomIcon,
   type LayerFolder,
+  type BugReport, type InsertBugReport,
   editableLayers, drawnFeatures, layerSchemas,
   scenes, sceneMembers, sceneFolders, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
-  appSettings
+  appSettings, bugReports
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { db } from "./db";
@@ -130,6 +131,12 @@ export interface IStorage {
   getAppSetting(key: string): Promise<string | undefined>;
   setAppSetting(key: string, value: string): Promise<void>;
   deleteAppSetting(key: string): Promise<void>;
+
+  // Bug reports methods
+  getBugReports(): Promise<BugReport[]>;
+  getBugReport(id: number): Promise<BugReport | undefined>;
+  createBugReport(report: InsertBugReport): Promise<BugReport>;
+  updateBugReportStatus(id: number, status: string): Promise<BugReport | undefined>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -1024,6 +1031,25 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAppSetting(key: string): Promise<void> {
     await db.delete(appSettings).where(eq(appSettings.key, key));
+  }
+
+  async getBugReports(): Promise<BugReport[]> {
+    return await db.select().from(bugReports).orderBy(sql`${bugReports.createdAt} DESC`);
+  }
+
+  async getBugReport(id: number): Promise<BugReport | undefined> {
+    const [row] = await db.select().from(bugReports).where(eq(bugReports.id, id));
+    return row;
+  }
+
+  async createBugReport(report: InsertBugReport): Promise<BugReport> {
+    const [row] = await db.insert(bugReports).values(report).returning();
+    return row;
+  }
+
+  async updateBugReportStatus(id: number, status: string): Promise<BugReport | undefined> {
+    const [row] = await db.update(bugReports).set({ status }).where(eq(bugReports.id, id)).returning();
+    return row;
   }
 }
 

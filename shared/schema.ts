@@ -615,6 +615,28 @@ export const auditLog = pgTable("audit_log", {
 
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 
+// Bug reports
+export const bugReportStatusEnum = ["new", "rejected", "in_progress", "fixed", "paused"] as const;
+export type BugReportStatus = typeof bugReportStatusEnum[number];
+
+export const bugReports = pgTable("bug_reports", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  username: varchar("username"),
+  message: text("message").notNull(),
+  screenshotPath: text("screenshot_path"),
+  status: varchar("status", { length: 50 }).notNull().default("new"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("bug_reports_user_id_idx").on(table.userId),
+  index("bug_reports_status_idx").on(table.status),
+  index("bug_reports_created_at_idx").on(table.createdAt),
+]);
+
+export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: true, createdAt: true });
+export type BugReport = typeof bugReports.$inferSelect;
+export type InsertBugReport = z.infer<typeof insertBugReportSchema>;
+
 // External API schemas
 export const externalCreatePointSchema = z.object({
   sceneId: z.number(),
