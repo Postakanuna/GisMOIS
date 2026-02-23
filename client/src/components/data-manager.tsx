@@ -229,6 +229,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     },
     onSuccess: () => {
       setEditingLayerId(null);
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
