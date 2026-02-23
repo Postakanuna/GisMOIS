@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Bug, Paperclip, X, Loader2, Send, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -76,19 +77,36 @@ export function BugReportButton() {
     }
   }
 
+  const buttonEl = (
+    <button
+      data-testid="button-bug-report"
+      title="Сообщить об ошибке"
+      onClick={() => setOpen(true)}
+      style={{
+        position: 'fixed',
+        bottom: '1cm',
+        right: '1cm',
+        zIndex: 99999,
+        width: '40px',
+        height: '40px',
+        borderRadius: '50%',
+        border: '1px solid hsl(0 60% 50% / 0.3)',
+        backgroundColor: 'var(--background, #fff)',
+        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 0,
+      }}
+    >
+      <Bug style={{ width: '20px', height: '20px', color: 'hsl(0 72% 51%)' }} />
+    </button>
+  );
+
   return (
     <>
-      <Button
-        data-testid="button-bug-report"
-        variant="outline"
-        size="icon"
-        title="Сообщить об ошибке"
-        className="fixed z-[9999] h-10 w-10 rounded-full shadow-lg bg-background border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
-        style={{ bottom: '1cm', right: '1cm' }}
-        onClick={() => setOpen(true)}
-      >
-        <Bug className="h-5 w-5 text-destructive" />
-      </Button>
+      {createPortal(buttonEl, document.body)}
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); setOpen(v); }}>
         <DialogContent className="sm:max-w-md overflow-hidden">
