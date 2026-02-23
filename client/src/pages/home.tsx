@@ -37,6 +37,7 @@ import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage } from "@/components/ai-chat-panel";
+import { MapSearchBar } from "@/components/map-search-bar";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
@@ -220,7 +221,7 @@ export default function Home() {
   const [showGeoAnalysis, setShowGeoAnalysis] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
   const drawActionsRef = useRef<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>(null);
-  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void } | null>(null);
+  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void } | null>(null);
   const drawing = useDrawing({ drawActionsRef });
   const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
@@ -712,6 +713,11 @@ export default function Home() {
                 ]}
               />
             )}
+
+            <MapSearchBar
+              onZoomToCoordinates={(lat, lon, zoom) => mapActionsRef.current?.zoomToCoordinates(lat, lon, zoom)}
+              onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
+            />
             
             <MapViewer
               layers={zuluConnection.layers}

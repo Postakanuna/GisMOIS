@@ -143,7 +143,7 @@ interface MapViewerProps {
     snapRadius: number;
     snapLayerIds: number[];
   };
-  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void } | null>;
+  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void } | null>;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -2493,6 +2493,16 @@ export function MapViewer({
           } catch (e) {
             console.error("[ZOOM TO FEATURE] Error:", e);
           }
+        },
+        zoomToCoordinates: (lat: number, lon: number, zoom?: number) => {
+          const map = mapRef.current;
+          if (!map) return;
+          const center = fromLonLat([lon, lat], map.getView().getProjection());
+          map.getView().animate({
+            center,
+            zoom: zoom ?? 16,
+            duration: 500,
+          });
         },
       };
     }

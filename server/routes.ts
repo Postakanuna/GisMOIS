@@ -7029,6 +7029,71 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/geocode/search", async (req: Request, res: Response) => {
+    try {
+      const query = (req.query.q as string || "").trim();
+      if (!query) {
+        return res.status(400).json({ message: "Query parameter 'q' is required" });
+      }
+
+      const providerSetting = await storage.getAppSetting("geocode_provider");
+      const provider: GeocodeProvider = providerSetting === "dadata" ? "dadata" : "yandex";
+
+      let apiKey: string | undefined;
+      if (provider === "dadata") {
+        apiKey = (await storage.getAppSetting("geocode_dadata_api_key")) || process.env.DADATA_API_KEY;
+      } else {
+        apiKey = (await storage.getAppSetting("geocode_yandex_api_key")) || process.env.YANDEX_GEOCODER_API_KEY;
+      }
+
+      if (apiKey) {
+        const results = await geocodeBatch(
+          [{ index: 0, address: query }],
+          apiKey,
+          undefined,
+          provider
+        );
+        if (results.length > 0 && results[0].result) {
+          const r = results[0].result;
+          return res.json({
+            found: true,
+            lat: r.lat,
+            lon: r.lon,
+            address: r.formattedAddress,
+            provider,
+          });
+        }
+      }
+
+      const nominatimUrl = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
+        q: query,
+        format: "json",
+        limit: "1",
+        "accept-language": "ru",
+      })}`;
+      const nominatimRes = await fetch(nominatimUrl, {
+        headers: { "User-Agent": "GIS-MO-InzhenernySeti/1.0" },
+      });
+      if (nominatimRes.ok) {
+        const data = await nominatimRes.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return res.json({
+            found: true,
+            lat: parseFloat(data[0].lat),
+            lon: parseFloat(data[0].lon),
+            address: data[0].display_name,
+            provider: "osm",
+          });
+        }
+      }
+
+      return res.json({ found: false });
+    } catch (error) {
+      console.error("Error in geocode search:", error);
+      return res.status(500).json({ message: "Geocoding error" });
+    }
+  });
+
   return httpServer;
 }
 
