@@ -11,7 +11,6 @@ import { ProtectedRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import Home from "@/pages/home";
-import Settings from "@/pages/settings";
 import AdminUsers from "@/pages/admin-users";
 import AdminLayerManager from "@/pages/admin-layer-manager";
 import LoginPage from "@/pages/login";
@@ -38,12 +37,7 @@ function Router() {
           <ProfilePage />
         </ProtectedRoute>
       </Route>
-      <Route path="/settings">
-        <ProtectedRoute>
-          <Settings />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/admin/users">
+      <Route path="/admin/settings">
         <ProtectedRoute requireAdmin>
           <AdminUsers />
         </ProtectedRoute>
