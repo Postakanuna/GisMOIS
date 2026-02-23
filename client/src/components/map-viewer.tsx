@@ -628,10 +628,10 @@ function getLayerZIndex(rank: number, totalLayers: number, layerFeatures: Array<
   return baseZ + orderZ + geomOffset;
 }
 
-const VIEWPORT_BUFFER_RATIO = 2.0;
+const VIEWPORT_BUFFER_RATIO = 0.5;
 const VIEWPORT_DEBOUNCE_MS = 100;
 const VIEWPORT_PRECISION = 2;
-const PREFETCH_BUFFER_RATIO = 3.0;
+const PREFETCH_BUFFER_RATIO = 1.0;
 const MAX_CACHE_SIZE = 20000;
 const NO_SIMPLIFICATION_ZOOM = 14;
 
@@ -2121,6 +2121,8 @@ export function MapViewer({
         vectorLayer = new VectorLayer({
           source: vectorSource,
           style: createEditableLayerStyleFunction(editableLayerItem, currentZoom, cachedIconMap) as any,
+          updateWhileAnimating: true,
+          updateWhileInteracting: true,
           properties: { 
             editableLayerId: editableLayerItem.id, 
             featureCount: layerFeatures.length,
@@ -2334,6 +2336,8 @@ export function MapViewer({
           vectorLayer = new VectorLayer({
             source: vectorSource,
             style: createZoomAdaptiveStyleFn(sd.color, sd.pointStyle as PointStyle, fetchViewport.zoom) as any,
+            updateWhileAnimating: true,
+            updateWhileInteracting: true,
             opacity: sd.opacity,
             visible: !!sd.isVisible,
             properties: { 
