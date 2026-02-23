@@ -3143,6 +3143,55 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/scenes/:sceneId/extent", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const sceneId = parseInt(req.params.sceneId);
+
+      const membership = await storage.getSceneMember(sceneId, user.id);
+      if (!membership && user.role !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const result = await db.execute(sql`
+        SELECT 
+          MIN(df.bbox_min_x) as min_x,
+          MIN(df.bbox_min_y) as min_y,
+          MAX(df.bbox_max_x) as max_x,
+          MAX(df.bbox_max_y) as max_y,
+          COUNT(*)::int as feature_count
+        FROM drawn_features df
+        INNER JOIN editable_layers el ON df.layer_id = el.id
+        WHERE el.scene_id = ${sceneId}
+          AND df.bbox_min_x IS NOT NULL
+          AND df.bbox_min_y IS NOT NULL
+          AND df.bbox_max_x IS NOT NULL
+          AND df.bbox_max_y IS NOT NULL
+      `);
+
+      const row = result.rows[0] as any;
+      if (!row || row.min_x == null || row.feature_count === 0) {
+        return res.json({ extent: null, featureCount: 0 });
+      }
+
+      return res.json({
+        extent: [
+          parseFloat(row.min_x),
+          parseFloat(row.min_y),
+          parseFloat(row.max_x),
+          parseFloat(row.max_y),
+        ],
+        featureCount: row.feature_count,
+      });
+    } catch (error) {
+      console.error("Error fetching scene extent:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Layer folders endpoints
   app.get("/api/scenes/:sceneId/folders", async (req: Request, res: Response) => {
     try {

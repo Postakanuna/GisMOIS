@@ -1859,6 +1859,36 @@ export function MapViewer({
     };
   }, []);
 
+  useEffect(() => {
+    if (!mapRef.current || !currentSceneId) return;
+    const map = mapRef.current;
+
+    fetch(`/api/scenes/${currentSceneId}/extent`, { credentials: "include" })
+      .then((res) => res.json())
+      .then((data: { extent: [number, number, number, number] | null; featureCount: number }) => {
+        if (data.extent && data.featureCount > 0) {
+          const [minX, minY, maxX, maxY] = data.extent;
+          const proj = map.getView().getProjection();
+          const bottomLeft = fromLonLat([minX, minY], proj);
+          const topRight = fromLonLat([maxX, maxY], proj);
+          const extent = [bottomLeft[0], bottomLeft[1], topRight[0], topRight[1]] as [number, number, number, number];
+          map.getView().fit(extent, {
+            padding: [50, 50, 50, 50],
+            maxZoom: 18,
+            duration: 500,
+          });
+        } else {
+          const proj = map.getView().getProjection();
+          map.getView().animate({
+            center: fromLonLat(DEFAULT_CENTER, proj),
+            zoom: DEFAULT_ZOOM,
+            duration: 500,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [currentSceneId]);
+
   // Manage uploaded shapefile layers
   useEffect(() => {
     console.log("=== Layer sync effect ===");
