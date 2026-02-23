@@ -37,6 +37,7 @@ import { MapControls } from "./map-controls";
 import { CoordinateDisplay } from "./coordinate-display";
 import { FeatureInfoPanel } from "./feature-info";
 import { LoadingOverlay } from "./loading-overlay";
+import { MeasureTool } from "./measure-tool";
 import { getDistance, getLength } from "ol/sphere";
 import { Point as OlPoint, Polygon as OlPolygon, MultiPolygon as OlMultiPolygon } from "ol/geom";
 import Text from "ol/style/Text";
@@ -933,6 +934,7 @@ export function MapViewer({
   const [selectedFeature, setSelectedFeature] = useState<FeatureInfo | null>(null);
   const [featureCoordinates, setFeatureCoordinates] = useState<[number, number] | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const [measureActive, setMeasureActive] = useState(false);
   
   // Viewport state for optimized feature loading
   // actualViewport: real map bounds (for UI components that need precise bounds)
@@ -3390,6 +3392,8 @@ export function MapViewer({
         rotation={rotation}
         ticketMode={ticketMode}
         onToggleTicketMode={isConnected ? onToggleTicketMode : undefined}
+        measureActive={measureActive}
+        onToggleMeasure={() => setMeasureActive((prev) => !prev)}
       />
 
       <CoordinateDisplay 
@@ -3407,7 +3411,11 @@ export function MapViewer({
 
       <LoadingOverlay isLoading={isLoading} message="Получение информации..." />
 
-
+      <MeasureTool
+        map={mapRef.current}
+        active={measureActive}
+        onClose={() => setMeasureActive(false)}
+      />
 
       {/* Layer Selection Dialog for overlapping features */}
       {selectionCandidates.length > 0 && (

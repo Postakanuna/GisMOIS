@@ -1,4 +1,4 @@
-import { Plus, Minus, Compass, Home, Maximize2, MapPin } from "lucide-react";
+import { Plus, Minus, Compass, Home, Maximize2, MapPin, Ruler } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -11,6 +11,8 @@ interface MapControlsProps {
   rotation: number;
   ticketMode?: boolean;
   onToggleTicketMode?: () => void;
+  measureActive?: boolean;
+  onToggleMeasure?: () => void;
 }
 
 export function MapControls({
@@ -22,6 +24,8 @@ export function MapControls({
   rotation,
   ticketMode,
   onToggleTicketMode,
+  measureActive,
+  onToggleMeasure,
 }: MapControlsProps) {
   return (
     <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
@@ -95,7 +99,7 @@ export function MapControls({
               size="icon"
               variant="ghost"
               onClick={onFullscreen}
-              className="rounded-none"
+              className="rounded-none border-b border-card-border"
               data-testid="button-fullscreen"
             >
               <Maximize2 className="h-4 w-4" />
@@ -103,6 +107,25 @@ export function MapControls({
           </TooltipTrigger>
           <TooltipContent side="left">Полноэкранный режим</TooltipContent>
         </Tooltip>
+
+        {onToggleMeasure && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={measureActive ? "default" : "ghost"}
+                onClick={onToggleMeasure}
+                className={`rounded-none ${measureActive ? "bg-primary text-primary-foreground" : ""}`}
+                data-testid="button-measure"
+              >
+                <Ruler className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              {measureActive ? "Выключить линейку" : "Линейка (измерения)"}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {onToggleTicketMode && (
