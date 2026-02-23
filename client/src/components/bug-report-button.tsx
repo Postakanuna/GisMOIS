@@ -12,7 +12,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function BugReportButton() {
   const [open, setOpen] = useState(false);
@@ -79,20 +78,17 @@ export function BugReportButton() {
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            data-testid="button-bug-report"
-            variant="outline"
-            size="icon"
-            className="fixed bottom-4 right-4 z-[9999] h-10 w-10 rounded-full shadow-lg bg-background border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
-            onClick={() => setOpen(true)}
-          >
-            <Bug className="h-5 w-5 text-destructive" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">Сообщить об ошибке</TooltipContent>
-      </Tooltip>
+      <Button
+        data-testid="button-bug-report"
+        variant="outline"
+        size="icon"
+        title="Сообщить об ошибке"
+        className="fixed z-[9999] h-10 w-10 rounded-full shadow-lg bg-background border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
+        style={{ bottom: '1cm', right: '1cm' }}
+        onClick={() => setOpen(true)}
+      >
+        <Bug className="h-5 w-5 text-destructive" />
+      </Button>
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); setOpen(v); }}>
         <DialogContent className="sm:max-w-md overflow-hidden">
