@@ -628,11 +628,10 @@ function getLayerZIndex(rank: number, totalLayers: number, layerFeatures: Array<
   return baseZ + orderZ + geomOffset;
 }
 
-const VIEWPORT_BUFFER_RATIO = 1.0;
+const VIEWPORT_BUFFER_RATIO = 2.0;
 const VIEWPORT_DEBOUNCE_MS = 100;
-const VIEWPORT_DRAG_DEBOUNCE_MS = 400;
 const VIEWPORT_PRECISION = 2;
-const PREFETCH_BUFFER_RATIO = 2.0;
+const PREFETCH_BUFFER_RATIO = 3.0;
 const MAX_CACHE_SIZE = 20000;
 const NO_SIMPLIFICATION_ZOOM = 14;
 
@@ -961,7 +960,6 @@ export function MapViewer({
     zoom: number;
   } | null>(null);
   const viewportDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const dragIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Buffered extent for hysteresis - only refetch when viewport exits this area
   const bufferedExtentRef = useRef<{
     minX: number;
@@ -1754,7 +1752,7 @@ export function MapViewer({
       setRotation(map.getView().getRotation());
     });
 
-    const updateViewport = (duringDrag = false) => {
+    const updateViewport = () => {
       const size = map.getSize();
       if (!size) return;
       const extent = map.getView().calculateExtent(size);
@@ -1794,39 +1792,19 @@ export function MapViewer({
         
         bufferedExtentRef.current = newBufferedExtent;
         setFetchViewport(newBufferedExtent);
-      } else if (duringDrag && featureCacheRef.current.size > 0) {
-        const layerIds = (allEditableLayersDataRef.current || []).map(l => l.id);
-        if (layerIds.length > 0) {
-          setAllLayerFeatures(buildResultFromCache(layerIds));
-        }
       }
     };
-
-    const stopDragInterval = () => {
-      if (dragIntervalRef.current) {
-        clearInterval(dragIntervalRef.current);
-        dragIntervalRef.current = null;
-      }
-    };
-
-    map.on("movestart", () => {
-      stopDragInterval();
-      dragIntervalRef.current = setInterval(() => {
-        updateViewport(true);
-      }, VIEWPORT_DRAG_DEBOUNCE_MS);
-    });
 
     map.on("moveend", () => {
-      stopDragInterval();
       if (viewportDebounceRef.current) {
         clearTimeout(viewportDebounceRef.current);
       }
       viewportDebounceRef.current = setTimeout(() => {
-        updateViewport(false);
+        updateViewport();
       }, VIEWPORT_DEBOUNCE_MS);
     });
 
-    setTimeout(() => updateViewport(false), 100);
+    setTimeout(() => updateViewport(), 100);
 
     map.on("singleclick", async (evt) => {
       const currentConnection = connectionRef.current;
@@ -2038,10 +2016,6 @@ export function MapViewer({
     mapRef.current = map;
 
     return () => {
-      if (dragIntervalRef.current) {
-        clearInterval(dragIntervalRef.current);
-        dragIntervalRef.current = null;
-      }
       map.setTarget(undefined);
       mapRef.current = null;
     };
