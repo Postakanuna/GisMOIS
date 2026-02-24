@@ -4625,7 +4625,31 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
       const folders = await storage.getSceneFolders();
-      return res.json(folders);
+
+      if (user.role === "admin") {
+        return res.json(folders);
+      }
+
+      const userScenes = await storage.getScenesForUser(user.id);
+      const directFolderIds = new Set(
+        userScenes.map(s => s.folderId).filter((id): id is number => id !== null && id !== undefined)
+      );
+
+      const folderMap = new Map(folders.map(f => [f.id, f]));
+      const visibleFolderIds = new Set<number>();
+
+      for (const folder of folders) {
+        if (folder.createdBy === user.id || directFolderIds.has(folder.id)) {
+          let current: typeof folder | undefined = folder;
+          while (current && !visibleFolderIds.has(current.id)) {
+            visibleFolderIds.add(current.id);
+            current = current.parentId ? folderMap.get(current.parentId) : undefined;
+          }
+        }
+      }
+
+      const visibleFolders = folders.filter(folder => visibleFolderIds.has(folder.id));
+      return res.json(visibleFolders);
     } catch (error) {
       console.error("Error getting scene folders:", error);
       return res.status(500).json({ message: "Internal server error" });
