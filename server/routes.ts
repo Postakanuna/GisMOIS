@@ -7078,7 +7078,7 @@ export async function registerRoutes(
             geometryType: layer.geometryType,
             source: layer.source,
             sourceFileName: layer.sourceFileName,
-            networkType: layer.networkType,
+            networkType: null,
             instances: [],
           });
         }
@@ -7098,7 +7098,11 @@ export async function registerRoutes(
         });
       }
 
-      const matrix = Array.from(layerGroups.values());
+      const matrix = Array.from(layerGroups.values()).map(group => {
+        const types = group.instances.map(i => i.networkType).filter(Boolean);
+        group.networkType = types.length > 0 ? types[0] as string : null;
+        return group;
+      });
       const scenes = allScenes.map(s => ({ id: s.id, name: s.name }));
 
       return res.json({ matrix, scenes });

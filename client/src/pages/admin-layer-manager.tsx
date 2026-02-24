@@ -159,6 +159,7 @@ export default function AdminLayerManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/layer-matrix"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       toast({ title: "Тип сети обновлён", description: "Тип сетевого слоя обновлён для всех экземпляров" });
     },
     onError: () => {
