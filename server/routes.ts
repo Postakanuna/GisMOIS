@@ -4129,7 +4129,17 @@ export async function registerRoutes(
       if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const { baseUrl, apiKey, model } = req.body;
+      let { baseUrl, apiKey, model, providerId } = req.body;
+
+      if (!apiKey && providerId) {
+        const existingProvider = await storage.getAiProvider(parseInt(providerId));
+        if (existingProvider) {
+          apiKey = existingProvider.apiKey;
+          if (!baseUrl) baseUrl = existingProvider.baseUrl;
+          if (!model) model = existingProvider.model;
+        }
+      }
+
       if (!baseUrl || !apiKey) {
         return res.status(400).json({ success: false, message: "Base URL и API-ключ обязательны для тестирования" });
       }

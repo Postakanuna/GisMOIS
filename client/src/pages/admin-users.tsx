@@ -426,11 +426,16 @@ export default function AdminUsers() {
   const handleTestConnection = async () => {
     setTestingConnection(true);
     try {
-      const res = await apiRequest("POST", "/api/admin/ai-providers/test", {
+      const body: Record<string, unknown> = {
         baseUrl: providerForm.baseUrl,
-        apiKey: providerForm.apiKey,
         model: providerForm.model || undefined,
-      });
+      };
+      if (providerForm.apiKey) {
+        body.apiKey = providerForm.apiKey;
+      } else if (editingProvider) {
+        body.providerId = editingProvider.id;
+      }
+      const res = await apiRequest("POST", "/api/admin/ai-providers/test", body);
       const data = await res.json();
       if (data.success) {
         toast({ title: "Успешно", description: data.message });
@@ -446,7 +451,7 @@ export default function AdminUsers() {
 
   const isProviderConfigured = (p: AdminAiProvider) => !!(p.baseUrl && p.apiKey);
 
-  const canTestConnection = !!(providerForm.baseUrl && providerForm.apiKey);
+  const canTestConnection = !!(providerForm.baseUrl && (providerForm.apiKey || (editingProvider && editingProvider.apiKey)));
 
   return (
     <div className="min-h-screen bg-background">
