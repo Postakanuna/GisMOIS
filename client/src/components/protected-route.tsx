@@ -14,10 +14,10 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
 
   useEffect(() => {
     if (!isLoading && !user) {
-      setLocation("/login");
+      setLocation("/gis/login");
     }
     if (!isLoading && user && requireAdmin && !isAdmin) {
-      setLocation("/scenes");
+      setLocation("/gis/scenes");
     }
   }, [isLoading, user, isAdmin, requireAdmin, setLocation]);
 

@@ -79,7 +79,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="flex h-14 shrink-0 items-center gap-4 border-b px-4">
-        <Link href="/app">
+        <Link href="/gis/app">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>

@@ -46,7 +46,7 @@ export function SceneProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (location === "/" && !currentSceneId && !isLoading) {
-      setLocation("/scenes");
+      setLocation("/gis/scenes");
     }
   }, [location, currentSceneId, isLoading, setLocation]);
 

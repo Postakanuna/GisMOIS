@@ -50,7 +50,7 @@ export function useAuth() {
     },
     onSuccess: () => {
       queryClient.clear();
-      window.location.href = "/login";
+      window.location.href = "/gis/login";
     },
   });
 

@@ -327,7 +327,7 @@ export default function ScenesPage() {
 
   const handleSelectScene = (sceneId: number) => {
     setCurrentSceneId(sceneId);
-    setLocation("/app");
+    setLocation("/gis/app");
   };
 
   const getRoleIcon = (role: string) => {

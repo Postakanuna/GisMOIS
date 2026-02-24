@@ -367,7 +367,7 @@ export default function AdminUsers() {
         <Card className="w-96">
           <CardContent className="pt-6 text-center">
             <p className="text-muted-foreground">Доступ запрещен</p>
-            <Link href="/app">
+            <Link href="/gis/app">
               <Button className="mt-4" data-testid="button-back-home">На главную</Button>
             </Link>
           </CardContent>
@@ -456,7 +456,7 @@ export default function AdminUsers() {
   return (
     <div className="min-h-screen bg-background">
       <header className="flex h-14 shrink-0 items-center gap-4 border-b px-4">
-        <Link href="/scenes">
+        <Link href="/gis/scenes">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>

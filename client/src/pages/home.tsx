@@ -253,7 +253,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!currentSceneId) {
-      setLocation("/scenes");
+      setLocation("/gis/scenes");
     }
   }, [currentSceneId, setLocation]);
 
@@ -589,7 +589,7 @@ export default function Home() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setLocation("/scenes")}
+                      onClick={() => setLocation("/gis/scenes")}
                       className="gap-1 max-w-[150px]"
                       data-testid="button-current-scene"
                     >

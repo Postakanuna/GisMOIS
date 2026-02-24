@@ -42,7 +42,7 @@ export function UserButton() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem asChild>
-          <Link href="/profile" className="flex items-center gap-2 cursor-pointer p-2" data-testid="link-profile">
+          <Link href="/gis/profile" className="flex items-center gap-2 cursor-pointer p-2" data-testid="link-profile">
             <Avatar className="h-8 w-8">
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
@@ -58,13 +58,13 @@ export function UserButton() {
         {isAdmin && (
           <>
             <DropdownMenuItem asChild>
-              <Link href="/admin/settings" className="flex items-center cursor-pointer" data-testid="link-admin-settings">
+              <Link href="/gis/admin/settings" className="flex items-center cursor-pointer" data-testid="link-admin-settings">
                 <Users className="mr-2 h-4 w-4" />
                 <span>Настройки</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/admin/layers" className="flex items-center cursor-pointer" data-testid="link-admin-layers">
+              <Link href="/gis/admin/layers" className="flex items-center cursor-pointer" data-testid="link-admin-layers">
                 <Layers className="mr-2 h-4 w-4" />
                 <span>Менеджер слоёв</span>
               </Link>

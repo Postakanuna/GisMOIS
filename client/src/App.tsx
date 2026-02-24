@@ -21,33 +21,33 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={LandingPage} />
-      <Route path="/login" component={LoginPage} />
-      <Route path="/scenes">
+      <Route path="/gis/login" component={LoginPage} />
+      <Route path="/gis/scenes">
         <ProtectedRoute>
           <ScenesPage />
         </ProtectedRoute>
       </Route>
-      <Route path="/app">
+      <Route path="/gis/app">
         <ProtectedRoute>
           <Home />
         </ProtectedRoute>
       </Route>
-      <Route path="/profile">
+      <Route path="/gis/profile">
         <ProtectedRoute>
           <ProfilePage />
         </ProtectedRoute>
       </Route>
-      <Route path="/admin/settings">
+      <Route path="/gis/admin/settings">
         <ProtectedRoute requireAdmin>
           <AdminUsers />
         </ProtectedRoute>
       </Route>
-      <Route path="/admin/layers">
+      <Route path="/gis/admin/layers">
         <ProtectedRoute requireAdmin>
           <AdminLayerManager />
         </ProtectedRoute>
       </Route>
-      <Route path="/admin">
+      <Route path="/gis/admin">
         <ProtectedRoute requireAdmin>
           <AdminUsers />
         </ProtectedRoute>
