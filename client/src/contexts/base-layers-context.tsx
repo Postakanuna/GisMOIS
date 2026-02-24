@@ -15,8 +15,8 @@ interface BaseLayersContextType {
 }
 
 const defaultBaseLayers: BaseLayerConfig[] = [
-  { id: "osm", name: "OpenStreetMap", visible: true },
-  { id: "yandex-map", name: "Яндекс Карта", visible: false },
+  { id: "osm", name: "OpenStreetMap", visible: false },
+  { id: "yandex-map", name: "Яндекс Карта", visible: true },
   { id: "yandex-satellite", name: "Яндекс Спутник", visible: false },
   { id: "none", name: "Без подложки", visible: false },
 ];
@@ -24,7 +24,7 @@ const defaultBaseLayers: BaseLayerConfig[] = [
 const BaseLayersContext = createContext<BaseLayersContextType | null>(null);
 
 export function BaseLayersProvider({ children }: { children: ReactNode }) {
-  const [activeBaseLayer, setActiveBaseLayerState] = useState<BaseLayerType>("osm");
+  const [activeBaseLayer, setActiveBaseLayerState] = useState<BaseLayerType>("yandex-map");
 
   const baseLayers = defaultBaseLayers.map(layer => ({
     ...layer,
