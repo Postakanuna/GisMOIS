@@ -22,6 +22,12 @@ interface AiProvider {
   available: boolean;
 }
 
+interface ProvidersResponse {
+  enabled: boolean;
+  providers: AiProvider[];
+  default: string | null;
+}
+
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
@@ -39,18 +45,24 @@ export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelP
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [providers, setProviders] = useState<AiProvider[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState("openai");
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     fetch("/api/ai/providers")
       .then(r => r.json())
-      .then(data => {
+      .then((data: ProvidersResponse) => {
+        setAiEnabled(data.enabled);
         if (data.providers) setProviders(data.providers);
         if (data.default) setSelectedProvider(data.default);
+        setProvidersLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        setProvidersLoaded(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -59,9 +71,11 @@ export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelP
     }
   }, [messages]);
 
+  const isDisabled = !aiEnabled || providers.length === 0;
+
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if (!text || isLoading || isDisabled) return;
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -85,6 +99,9 @@ export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelP
       });
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error(data.error || "ИИ-агент отключён администратором системы");
+        }
         throw new Error(data.error || `Ошибка сервера: ${response.status}`);
       }
 
@@ -130,88 +147,101 @@ export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelP
         </Button>
         <Bot className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold">ИИ-ассистент</span>
-        <div className="ml-auto flex items-center gap-1">
-          {hasHistory && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={handleClearChat}
-              className="h-7 w-7"
-              title="Очистить чат"
-              data-testid="button-clear-chat"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
-                {currentProvider?.name || "Модель"}
-                <ChevronDown className="h-3 w-3" />
+        {!isDisabled && (
+          <div className="ml-auto flex items-center gap-1">
+            {hasHistory && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleClearChat}
+                className="h-7 w-7"
+                title="Очистить чат"
+                data-testid="button-clear-chat"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {providers.map(p => (
-                <DropdownMenuItem
-                  key={p.id}
-                  onClick={() => setSelectedProvider(p.id)}
-                  disabled={!p.available}
-                  data-testid={`provider-option-${p.id}`}
-                >
-                  <span className={selectedProvider === p.id ? "font-semibold" : ""}>
-                    {p.name}
-                  </span>
-                  {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            data-testid={`chat-message-${msg.id}`}
-          >
-            {msg.role === "assistant" && (
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                <Bot className="h-3.5 w-3.5 text-primary" />
-              </div>
             )}
-            <div
-              className={`rounded-md px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap ${
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted"
-              }`}
-            >
-              {msg.content}
-            </div>
-            {msg.role === "user" && (
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
-                <User className="h-3.5 w-3.5" />
-              </div>
-            )}
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex gap-2 justify-start" data-testid="chat-loading">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
-              <Bot className="h-3.5 w-3.5 text-primary" />
-            </div>
-            <div className="rounded-md px-3 py-2 text-sm bg-muted">
-              <span className="inline-flex gap-1">
-                <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
-                <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
-                <span className="animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
-              </span>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
+                  {currentProvider?.name || "Модель"}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {providers.map(p => (
+                  <DropdownMenuItem
+                    key={p.id}
+                    onClick={() => setSelectedProvider(p.id)}
+                    disabled={!p.available}
+                    data-testid={`provider-option-${p.id}`}
+                  >
+                    <span className={selectedProvider === p.id ? "font-semibold" : ""}>
+                      {p.name}
+                    </span>
+                    {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>
+
+      {isDisabled && providersLoaded ? (
+        <div className="flex-1 flex items-center justify-center p-6" data-testid="ai-disabled-message">
+          <div className="text-center space-y-3">
+            <Bot className="h-12 w-12 text-muted-foreground mx-auto" />
+            <p className="text-sm text-muted-foreground max-w-xs">
+              ИИ-агент отключён администратором системы, обратитесь в техническую поддержку.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              data-testid={`chat-message-${msg.id}`}
+            >
+              {msg.role === "assistant" && (
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                  <Bot className="h-3.5 w-3.5 text-primary" />
+                </div>
+              )}
+              <div
+                className={`rounded-md px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted"
+                }`}
+              >
+                {msg.content}
+              </div>
+              {msg.role === "user" && (
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <User className="h-3.5 w-3.5" />
+                </div>
+              )}
+            </div>
+          ))}
+          {isLoading && (
+            <div className="flex gap-2 justify-start" data-testid="chat-loading">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                <Bot className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <div className="rounded-md px-3 py-2 text-sm bg-muted">
+                <span className="inline-flex gap-1">
+                  <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
+                  <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
+                  <span className="animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="border-t p-3 shrink-0">
         <div className="flex gap-2">
@@ -220,16 +250,16 @@ export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelP
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Задайте вопрос..."
+            placeholder={isDisabled ? "ИИ-агент недоступен" : "Задайте вопрос..."}
             className="resize-none min-h-[40px] max-h-[120px] text-sm"
             rows={1}
-            disabled={isLoading}
+            disabled={isLoading || isDisabled}
             data-testid="input-ai-chat"
           />
           <Button
             size="icon"
             onClick={handleSend}
-            disabled={!input.trim() || isLoading}
+            disabled={!input.trim() || isLoading || isDisabled}
             data-testid="button-send-ai-chat"
           >
             <Send className="h-4 w-4" />

@@ -21,8 +21,9 @@ import {
   appSettings, bugReports
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
+import { aiProviders, type AiProvider, type InsertAiProvider, type UpdateAiProvider } from "@shared/models/chat";
 import { db } from "./db";
-import { eq, sql, and, inArray, gte, lte, isNull } from "drizzle-orm";
+import { eq, sql, and, inArray, gte, lte, isNull, desc } from "drizzle-orm";
 
 export interface IStorage {
   getTickets(): Promise<Ticket[]>;
@@ -137,6 +138,14 @@ export interface IStorage {
   getBugReport(id: number): Promise<BugReport | undefined>;
   createBugReport(report: InsertBugReport): Promise<BugReport>;
   updateBugReportStatus(id: number, status: string): Promise<BugReport | undefined>;
+
+  // AI providers methods
+  getAiProviders(): Promise<AiProvider[]>;
+  getAiProvider(id: number): Promise<AiProvider | undefined>;
+  createAiProvider(provider: InsertAiProvider): Promise<AiProvider>;
+  updateAiProvider(id: number, updates: UpdateAiProvider): Promise<AiProvider | undefined>;
+  deleteAiProvider(id: number): Promise<boolean>;
+  getDefaultAiProvider(): Promise<AiProvider | undefined>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -1050,6 +1059,38 @@ export class DatabaseStorage implements IStorage {
   async updateBugReportStatus(id: number, status: string): Promise<BugReport | undefined> {
     const [row] = await db.update(bugReports).set({ status }).where(eq(bugReports.id, id)).returning();
     return row;
+  }
+
+  async getAiProviders(): Promise<AiProvider[]> {
+    return await db.select().from(aiProviders).orderBy(aiProviders.createdAt);
+  }
+
+  async getAiProvider(id: number): Promise<AiProvider | undefined> {
+    const [row] = await db.select().from(aiProviders).where(eq(aiProviders.id, id));
+    return row;
+  }
+
+  async createAiProvider(provider: InsertAiProvider): Promise<AiProvider> {
+    const [row] = await db.insert(aiProviders).values(provider).returning();
+    return row;
+  }
+
+  async updateAiProvider(id: number, updates: UpdateAiProvider): Promise<AiProvider | undefined> {
+    const setData: Record<string, unknown> = { ...updates, updatedAt: new Date() };
+    const [row] = await db.update(aiProviders).set(setData).where(eq(aiProviders.id, id)).returning();
+    return row;
+  }
+
+  async deleteAiProvider(id: number): Promise<boolean> {
+    const result = await db.delete(aiProviders).where(eq(aiProviders.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getDefaultAiProvider(): Promise<AiProvider | undefined> {
+    const [row] = await db.select().from(aiProviders).where(and(eq(aiProviders.isDefault, true), eq(aiProviders.isActive, true)));
+    if (row) return row;
+    const [first] = await db.select().from(aiProviders).where(eq(aiProviders.isActive, true)).limit(1);
+    return first;
   }
 }
 

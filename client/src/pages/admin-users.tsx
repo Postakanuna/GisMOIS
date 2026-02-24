@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, Plus, Trash2, Key, Loader2, MapPin, Bot, Save, Check, Eye, EyeOff, X, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Key, Loader2, MapPin, Bot, Save, Check, Eye, EyeOff, X, Pencil, TestTube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,9 +34,22 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/models/auth";
+import { Switch } from "@/components/ui/switch";
 import { ApiKeysManager } from "@/components/api-keys-manager";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { BugReportsPanel } from "@/components/bug-reports-panel";
+
+type AdminAiProvider = {
+  id: number;
+  name: string;
+  baseUrl: string | null;
+  apiKey: string | null;
+  model: string | null;
+  isActive: boolean;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type AdminUser = SafeUser;
 
@@ -177,6 +190,10 @@ export default function AdminUsers() {
     email: "",
   });
   const [newPassword, setNewPassword] = useState("");
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<AdminAiProvider | null>(null);
+  const [providerForm, setProviderForm] = useState({ name: "", baseUrl: "", apiKey: "", model: "", isActive: true, isDefault: false });
+  const [testingConnection, setTestingConnection] = useState(false);
 
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -188,23 +205,27 @@ export default function AdminUsers() {
     enabled: isAdmin,
   });
 
-  const { data: aiProviderData, isLoading: aiProviderLoading } = useQuery<{ provider: string }>({
-    queryKey: ["/api/settings/ai-provider"],
-    enabled: isAdmin,
-  });
-
   const { data: keysData } = useQuery<KeysData>({
     queryKey: ["/api/settings/keys"],
     enabled: isAdmin,
   });
 
-  const { data: aiProvidersStatus } = useQuery<{ providers: Array<{ id: string; name: string; available: boolean }> }>({
-    queryKey: ["/api/ai/providers"],
+  const { data: aiEnabledData } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/settings/ai-enabled"],
+    enabled: isAdmin,
+  });
+
+  const { data: aiProviders, isLoading: aiProvidersLoading } = useQuery<AdminAiProvider[]>({
+    queryKey: ["/api/admin/ai-providers"],
     enabled: isAdmin,
   });
 
   const invalidateKeys = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/settings/keys"] });
+  };
+
+  const invalidateAiProviders = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-providers"] });
     queryClient.invalidateQueries({ queryKey: ["/api/ai/providers"] });
   };
 
@@ -221,16 +242,62 @@ export default function AdminUsers() {
     },
   });
 
-  const updateAiProvider = useMutation({
-    mutationFn: async (provider: string) => {
-      await apiRequest("PUT", "/api/settings/ai-provider", { provider });
+  const toggleAiEnabled = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      await apiRequest("PUT", "/api/settings/ai-enabled", { enabled });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings/ai-provider"] });
-      toast({ title: "Сохранено", description: "Провайдер ИИ обновлён" });
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/ai-enabled"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/providers"] });
+      toast({ title: "Сохранено" });
     },
     onError: (err: any) => {
-      toast({ title: "Ошибка", description: err.message || "Не удалось обновить настройку", variant: "destructive" });
+      toast({ title: "Ошибка", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createProviderMutation = useMutation({
+    mutationFn: async (data: { name: string; baseUrl?: string; apiKey?: string; model?: string; isActive?: boolean; isDefault?: boolean }) => {
+      const res = await apiRequest("POST", "/api/admin/ai-providers", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateAiProviders();
+      setProviderDialogOpen(false);
+      setEditingProvider(null);
+      toast({ title: "Провайдер создан" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Ошибка", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateProviderMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
+      const res = await apiRequest("PUT", `/api/admin/ai-providers/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateAiProviders();
+      setProviderDialogOpen(false);
+      setEditingProvider(null);
+      toast({ title: "Провайдер обновлён" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Ошибка", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteProviderMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/admin/ai-providers/${id}`);
+    },
+    onSuccess: () => {
+      invalidateAiProviders();
+      toast({ title: "Провайдер удалён" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Ошибка", description: err.message, variant: "destructive" });
     },
   });
 
@@ -310,9 +377,76 @@ export default function AdminUsers() {
   }
 
   const currentGeoProvider = providerData?.provider || "yandex";
-  const currentAiProvider = aiProviderData?.provider || "openai";
-  const openaiStatus = aiProvidersStatus?.providers?.find(p => p.id === "openai");
-  const yandexStatus = aiProvidersStatus?.providers?.find(p => p.id === "yandex");
+  const aiEnabled = aiEnabledData?.enabled ?? true;
+
+  const openProviderDialog = (provider?: AdminAiProvider) => {
+    if (provider) {
+      setEditingProvider(provider);
+      setProviderForm({
+        name: provider.name,
+        baseUrl: provider.baseUrl || "",
+        apiKey: "",
+        model: provider.model || "",
+        isActive: provider.isActive,
+        isDefault: provider.isDefault,
+      });
+    } else {
+      setEditingProvider(null);
+      setProviderForm({ name: "", baseUrl: "", apiKey: "", model: "", isActive: true, isDefault: false });
+    }
+    setProviderDialogOpen(true);
+  };
+
+  const handleSaveProvider = () => {
+    if (editingProvider) {
+      const data: Record<string, unknown> = {
+        name: providerForm.name,
+        baseUrl: providerForm.baseUrl || null,
+        model: providerForm.model || null,
+        isActive: providerForm.isActive,
+        isDefault: providerForm.isDefault,
+      };
+      if (providerForm.apiKey) {
+        data.apiKey = providerForm.apiKey;
+      }
+      updateProviderMutation.mutate({ id: editingProvider.id, data });
+    } else {
+      const data: Record<string, unknown> = {
+        name: providerForm.name,
+        isActive: providerForm.isActive,
+        isDefault: providerForm.isDefault,
+      };
+      if (providerForm.baseUrl) data.baseUrl = providerForm.baseUrl;
+      if (providerForm.apiKey) data.apiKey = providerForm.apiKey;
+      if (providerForm.model) data.model = providerForm.model;
+      createProviderMutation.mutate(data as any);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    try {
+      const res = await apiRequest("POST", "/api/admin/ai-providers/test", {
+        baseUrl: providerForm.baseUrl,
+        apiKey: providerForm.apiKey,
+        model: providerForm.model || undefined,
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: "Успешно", description: data.message });
+      } else {
+        toast({ title: "Ошибка подключения", description: data.message, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Ошибка", description: err.message, variant: "destructive" });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const isProviderConfigured = (p: AdminAiProvider) => !!(p.baseUrl && p.apiKey);
+
+  const canTestConnection = !!(providerForm.baseUrl && providerForm.apiKey);
 
   return (
     <div className="min-h-screen bg-background">
@@ -521,92 +655,123 @@ export default function AdminUsers() {
                 ИИ-агент
               </CardTitle>
               <CardDescription>
-                Настройка провайдера искусственного интеллекта для чат-ассистента
+                Настройка провайдеров искусственного интеллекта для чат-ассистента
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="ai-provider">Провайдер ИИ</Label>
-                  {aiProviderLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Загрузка...</span>
-                    </div>
-                  ) : (
-                    <Select
-                      value={currentAiProvider}
-                      onValueChange={(value) => updateAiProvider.mutate(value)}
-                      disabled={updateAiProvider.isPending}
-                    >
-                      <SelectTrigger id="ai-provider" className="max-w-sm" data-testid="select-ai-provider">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="openai">OpenAI (GPT)</SelectItem>
-                        <SelectItem value="yandex">Yandex GPT</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="ai-enabled-switch">Включить ИИ-агента</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Когда выключено, пользователи не смогут использовать чат-ассистента
+                    </p>
+                  </div>
+                  <Switch
+                    id="ai-enabled-switch"
+                    checked={aiEnabled}
+                    onCheckedChange={(checked) => toggleAiEnabled.mutate(checked)}
+                    disabled={toggleAiEnabled.isPending}
+                    data-testid="switch-ai-enabled"
+                  />
                 </div>
 
-                <div className="border-t pt-4 space-y-6">
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <h4 className="text-sm font-medium">OpenAI (GPT)</h4>
-                      {openaiStatus?.available ? (
-                        <Badge variant="outline" className="text-green-600 border-green-600" data-testid="badge-openai-status">
-                          <Check className="h-3 w-3 mr-1" />
-                          Подключён
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground" data-testid="badge-openai-status">
-                          Не настроен
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      OpenAI подключается через интеграцию Replit. Ключи управляются автоматически.
-                      {openaiStatus?.available
-                        ? " Интеграция активна, модель gpt-4o-mini доступна."
-                        : " Для подключения активируйте интеграцию OpenAI в настройках проекта."}
-                    </p>
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+                    <h4 className="text-sm font-medium">Провайдеры ИИ</h4>
+                    <Button onClick={() => openProviderDialog()} data-testid="button-add-provider">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Добавить провайдера
+                    </Button>
                   </div>
 
-                  <div className="border-t pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <h4 className="text-sm font-medium">Yandex GPT</h4>
-                      {yandexStatus?.available ? (
-                        <Badge variant="outline" className="text-green-600 border-green-600" data-testid="badge-yandex-status">
-                          <Check className="h-3 w-3 mr-1" />
-                          Подключён
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground" data-testid="badge-yandex-status">
-                          Не настроен
-                        </Badge>
-                      )}
+                  {aiProvidersLoading ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Yandex GPT использует модель yandexgpt-lite. Для подключения введите API-ключ Yandex Studio и Folder ID.
+                  ) : !aiProviders?.length ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      Нет настроенных провайдеров. Добавьте провайдера для начала работы.
                     </p>
-                    <div className="space-y-4">
-                      <SecretKeyField
-                        settingKey="ai_yandex_api_key"
-                        label="API-ключ Yandex Studio"
-                        placeholder="Введите API-ключ Yandex Studio"
-                        keysData={keysData}
-                        onSaved={invalidateKeys}
-                      />
-                      <SecretKeyField
-                        settingKey="ai_yandex_folder_id"
-                        label="Folder ID (Yandex Cloud)"
-                        placeholder="Введите Folder ID"
-                        keysData={keysData}
-                        onSaved={invalidateKeys}
-                      />
-                    </div>
-                  </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Название</TableHead>
+                          <TableHead>Base URL</TableHead>
+                          <TableHead>Модель</TableHead>
+                          <TableHead>Статус</TableHead>
+                          <TableHead className="text-right">Действия</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {aiProviders.map((p) => (
+                          <TableRow key={p.id} data-testid={`row-provider-${p.id}`}>
+                            <TableCell className="font-medium" data-testid={`text-provider-name-${p.id}`}>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {p.name}
+                                {p.isDefault && (
+                                  <Badge variant="secondary" data-testid={`badge-default-${p.id}`}>
+                                    По умолчанию
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm" data-testid={`text-provider-url-${p.id}`}>
+                              {p.baseUrl || "—"}
+                            </TableCell>
+                            <TableCell className="text-sm" data-testid={`text-provider-model-${p.id}`}>
+                              {p.model || "—"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {p.isActive ? (
+                                  <Badge variant="outline" className="text-green-600 border-green-600" data-testid={`badge-active-${p.id}`}>
+                                    Активен
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-active-${p.id}`}>
+                                    Неактивен
+                                  </Badge>
+                                )}
+                                {isProviderConfigured(p) ? (
+                                  <Badge variant="outline" className="text-green-600 border-green-600" data-testid={`badge-configured-${p.id}`}>
+                                    <Check className="h-3 w-3 mr-1" />
+                                    Настроен
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-configured-${p.id}`}>
+                                    Не полностью
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openProviderDialog(p)}
+                                  data-testid={`button-edit-provider-${p.id}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => deleteProviderMutation.mutate(p.id)}
+                                  disabled={deleteProviderMutation.isPending}
+                                  data-testid={`button-delete-provider-${p.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -902,6 +1067,103 @@ export default function AdminUsers() {
             >
               {resetPasswordMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Сохранить"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingProvider ? "Редактирование провайдера" : "Новый провайдер"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="provider-name">Название провайдера *</Label>
+              <Input
+                id="provider-name"
+                value={providerForm.name}
+                onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })}
+                placeholder="Например: OpenAI"
+                data-testid="input-provider-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="provider-base-url">Base URL</Label>
+              <Input
+                id="provider-base-url"
+                value={providerForm.baseUrl}
+                onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })}
+                placeholder="https://api.openai.com/v1"
+                data-testid="input-provider-base-url"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="provider-api-key">API-ключ</Label>
+              <Input
+                id="provider-api-key"
+                type="password"
+                value={providerForm.apiKey}
+                onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
+                placeholder={editingProvider ? "Оставьте пустым, чтобы сохранить текущий" : "Введите API-ключ"}
+                data-testid="input-provider-api-key"
+              />
+              {editingProvider && editingProvider.apiKey && (
+                <p className="text-xs text-muted-foreground">
+                  Текущий ключ: {editingProvider.apiKey}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="provider-model">Модель</Label>
+              <Input
+                id="provider-model"
+                value={providerForm.model}
+                onChange={(e) => setProviderForm({ ...providerForm, model: e.target.value })}
+                placeholder="gpt-4o-mini"
+                data-testid="input-provider-model"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="provider-active">Активен</Label>
+              <Switch
+                id="provider-active"
+                checked={providerForm.isActive}
+                onCheckedChange={(checked) => setProviderForm({ ...providerForm, isActive: checked })}
+                data-testid="switch-provider-active"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="provider-default">По умолчанию</Label>
+              <Switch
+                id="provider-default"
+                checked={providerForm.isDefault}
+                onCheckedChange={(checked) => setProviderForm({ ...providerForm, isDefault: checked })}
+                data-testid="switch-provider-default"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={!canTestConnection || testingConnection}
+              data-testid="button-test-connection"
+            >
+              {testingConnection ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <TestTube className="h-4 w-4 mr-2" />}
+              Тестировать соединение
+            </Button>
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" onClick={() => setProviderDialogOpen(false)} data-testid="button-cancel-provider">
+                Отмена
+              </Button>
+              <Button
+                onClick={handleSaveProvider}
+                disabled={!providerForm.name.trim() || createProviderMutation.isPending || updateProviderMutation.isPending}
+                data-testid="button-save-provider"
+              >
+                {(createProviderMutation.isPending || updateProviderMutation.isPending) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Сохранить"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

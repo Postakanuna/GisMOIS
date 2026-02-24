@@ -3928,9 +3928,6 @@ export async function registerRoutes(
   const MANAGED_KEYS = [
     "geocode_yandex_api_key",
     "geocode_dadata_api_key",
-    "ai_yandex_api_key",
-    "ai_yandex_folder_id",
-    "ai_provider",
   ] as const;
 
   function maskSecret(value: string): string {
@@ -3999,30 +3996,172 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/settings/ai-provider", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+  app.get("/api/settings/ai-enabled", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
-      const value = await storage.getAppSetting("ai_provider");
-      return res.json({ provider: value || "openai" });
+      const value = await storage.getAppSetting("ai_enabled");
+      return res.json({ enabled: value === "true" });
     } catch (error) {
-      console.error("Error getting AI provider:", error);
+      console.error("Error getting AI enabled:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
 
-  app.put("/api/settings/ai-provider", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+  app.put("/api/settings/ai-enabled", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const provider = req.body?.provider;
-      if (!["openai", "yandex"].includes(provider)) {
-        return res.status(400).json({ message: "Некорректный провайдер. Допустимые: openai, yandex" });
-      }
-      await storage.setAppSetting("ai_provider", provider);
-      return res.json({ provider });
+      const enabled = !!req.body?.enabled;
+      await storage.setAppSetting("ai_enabled", String(enabled));
+      return res.json({ enabled });
     } catch (error) {
-      console.error("Error setting AI provider:", error);
+      console.error("Error setting AI enabled:", error);
       return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/ai-providers", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const providers = await storage.getAiProviders();
+      const masked = providers.map(p => ({
+        ...p,
+        apiKey: p.apiKey ? "****" + p.apiKey.slice(-4) : null,
+      }));
+      return res.json(masked);
+    } catch (error) {
+      console.error("Error getting AI providers:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/ai-providers", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { name, baseUrl, apiKey, model, isActive, isDefault } = req.body;
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ message: "Название провайдера обязательно" });
+      }
+      const provider = await storage.createAiProvider({
+        name: name.trim(),
+        baseUrl: baseUrl?.trim() || null,
+        apiKey: apiKey?.trim() || null,
+        model: model?.trim() || null,
+        isActive: isActive ?? true,
+        isDefault: isDefault ?? false,
+      });
+      return res.status(201).json({
+        ...provider,
+        apiKey: provider.apiKey ? "****" + provider.apiKey.slice(-4) : null,
+      });
+    } catch (error) {
+      console.error("Error creating AI provider:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/admin/ai-providers/:id", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Некорректный ID" });
+      }
+      const updates: Record<string, unknown> = {};
+      if (req.body.name !== undefined) updates.name = req.body.name.trim();
+      if (req.body.baseUrl !== undefined) updates.baseUrl = req.body.baseUrl?.trim() || null;
+      if (req.body.apiKey !== undefined) updates.apiKey = req.body.apiKey?.trim() || null;
+      if (req.body.model !== undefined) updates.model = req.body.model?.trim() || null;
+      if (req.body.isActive !== undefined) updates.isActive = req.body.isActive;
+      if (req.body.isDefault !== undefined) updates.isDefault = req.body.isDefault;
+
+      if (updates.isDefault === true) {
+        const allProviders = await storage.getAiProviders();
+        for (const p of allProviders) {
+          if (p.id !== id && p.isDefault) {
+            await storage.updateAiProvider(p.id, { isDefault: false });
+          }
+        }
+      }
+
+      const provider = await storage.updateAiProvider(id, updates as any);
+      if (!provider) {
+        return res.status(404).json({ message: "Провайдер не найден" });
+      }
+      return res.json({
+        ...provider,
+        apiKey: provider.apiKey ? "****" + provider.apiKey.slice(-4) : null,
+      });
+    } catch (error) {
+      console.error("Error updating AI provider:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/ai-providers/:id", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Некорректный ID" });
+      }
+      const deleted = await storage.deleteAiProvider(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Провайдер не найден" });
+      }
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting AI provider:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/ai-providers/test", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { baseUrl, apiKey, model } = req.body;
+      if (!baseUrl || !apiKey) {
+        return res.status(400).json({ success: false, message: "Base URL и API-ключ обязательны для тестирования" });
+      }
+
+      const OpenAI = (await import("openai")).default;
+      const client = new OpenAI({ apiKey, baseURL: baseUrl, timeout: 15000 });
+
+      const completion = await client.chat.completions.create({
+        model: model || "gpt-4o-mini",
+        messages: [{ role: "user", content: "Ответь одним словом: работает" }],
+        max_tokens: 10,
+      });
+
+      const text = completion.choices?.[0]?.message?.content;
+      if (text) {
+        return res.json({ success: true, message: `Соединение успешно. Ответ модели: "${text}"` });
+      } else {
+        return res.json({ success: false, message: "Модель не вернула ответ" });
+      }
+    } catch (error: any) {
+      console.error("AI provider test error:", error);
+      let message = "Ошибка подключения";
+      if (error.status === 401 || error.code === "authentication_error") {
+        message = "Ошибка авторизации: неверный API-ключ";
+      } else if (error.status === 404) {
+        message = "Модель не найдена или неверный Base URL";
+      } else if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
+        message = "Сервер недоступен: проверьте Base URL";
+      } else if (error.message) {
+        message = error.message.substring(0, 200);
+      }
+      return res.json({ success: false, message });
     }
   });
 
@@ -6787,32 +6926,51 @@ export async function registerRoutes(
   });
 
   app.get("/api/ai/providers", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
-    const providers = [];
-    const dbYandexKey = await storage.getAppSetting("ai_yandex_api_key");
-    const dbYandexFolder = await storage.getAppSetting("ai_yandex_folder_id");
-    const hasYandex = !!((dbYandexKey || process.env.YANDEX_STUDIO_API_KEY) && (dbYandexFolder || process.env.YANDEX_FOLDER_ID));
-    const hasOpenAI = !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
-
-    if (hasOpenAI) {
-      providers.push({ id: "openai", name: "OpenAI (GPT)", available: true });
+    try {
+      const aiEnabled = await storage.getAppSetting("ai_enabled");
+      if (aiEnabled !== "true") {
+        return res.json({ enabled: false, providers: [], default: null });
+      }
+      const allProviders = await storage.getAiProviders();
+      const activeProviders = allProviders.filter(p => p.isActive && p.baseUrl && p.apiKey && p.model);
+      const providers = activeProviders.map(p => ({
+        id: String(p.id),
+        name: p.name,
+        available: true,
+      }));
+      const defaultProvider = allProviders.find(p => p.isDefault && p.isActive && p.baseUrl && p.apiKey && p.model);
+      return res.json({
+        enabled: true,
+        providers,
+        default: defaultProvider ? String(defaultProvider.id) : (activeProviders.length > 0 ? String(activeProviders[0].id) : null),
+      });
+    } catch (error) {
+      console.error("Error getting AI providers:", error);
+      return res.status(500).json({ error: "Internal server error" });
     }
-    if (hasYandex) {
-      providers.push({ id: "yandex", name: "Yandex GPT", available: true });
-    }
-    if (providers.length === 0) {
-      providers.push({ id: "openai", name: "OpenAI (GPT)", available: false });
-      providers.push({ id: "yandex", name: "Yandex GPT", available: false });
-    }
-
-    return res.json({ providers, default: providers.find(p => p.available)?.id || "openai" });
   });
 
-  // ===== AI Chat (Multi-provider: OpenAI + Yandex) with RAG =====
   app.post("/api/ai/chat", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { messages, provider } = req.body;
+      const aiEnabled = await storage.getAppSetting("ai_enabled");
+      if (aiEnabled !== "true") {
+        return res.status(403).json({ error: "ИИ-агент отключён администратором системы, обратитесь в техническую поддержку." });
+      }
+
+      const { messages, provider: providerIdStr } = req.body;
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         return res.status(400).json({ error: "messages is required and must be a non-empty array" });
+      }
+
+      let selectedProvider;
+      if (providerIdStr) {
+        selectedProvider = await storage.getAiProvider(parseInt(providerIdStr));
+      }
+      if (!selectedProvider) {
+        selectedProvider = await storage.getDefaultAiProvider();
+      }
+      if (!selectedProvider || !selectedProvider.baseUrl || !selectedProvider.apiKey || !selectedProvider.model) {
+        return res.status(500).json({ error: "ИИ-агент отключён администратором системы, обратитесь в техническую поддержку." });
       }
 
       const lastUserMessage = [...messages].reverse().find((m: any) => m.role === "user")?.content || "";
@@ -6842,75 +7000,18 @@ export async function registerRoutes(
         content: m.content,
       }))];
 
-      const selectedProvider = provider || "openai";
+      const OpenAI = (await import("openai")).default;
+      const client = new OpenAI({ apiKey: selectedProvider.apiKey, baseURL: selectedProvider.baseUrl });
 
-      if (selectedProvider === "openai") {
-        const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-        const openaiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      const completion = await client.chat.completions.create({
+        model: selectedProvider.model,
+        messages: apiMessages as any,
+        temperature: 0.3,
+        max_tokens: 2000,
+      });
 
-        if (!openaiKey || !openaiBaseUrl) {
-          return res.status(500).json({ error: "OpenAI не настроен" });
-        }
-
-        const OpenAI = (await import("openai")).default;
-        const openai = new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl });
-
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: apiMessages as any,
-          temperature: 0.3,
-          max_tokens: 2000,
-        });
-
-        const aiText = completion.choices?.[0]?.message?.content || "Нет ответа от модели";
-        return res.json({ content: aiText, provider: "openai" });
-
-      } else if (selectedProvider === "yandex") {
-        const apiKey = (await storage.getAppSetting("ai_yandex_api_key")) || process.env.YANDEX_STUDIO_API_KEY;
-        const folderId = (await storage.getAppSetting("ai_yandex_folder_id")) || process.env.YANDEX_FOLDER_ID;
-
-        if (!apiKey || !folderId) {
-          return res.status(500).json({ error: "Yandex Studio AI не настроен: отсутствует API-ключ или Folder ID" });
-        }
-
-        const requestBody = {
-          model: `gpt://${folderId}/yandexgpt-lite/latest`,
-          messages: apiMessages.map(m => ({ role: m.role, content: m.content })),
-          temperature: 0.3,
-          max_tokens: 2000,
-        };
-
-        const response = await fetch("https://llm.api.cloud.yandex.net/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
-            "x-folder-id": folderId,
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("Yandex Studio AI error:", response.status, errorText);
-
-          if (response.status === 401) {
-            return res.status(502).json({
-              error: "Ошибка авторизации Yandex AI. API-ключ и Folder ID не совпадают.",
-              details: errorText.substring(0, 300),
-            });
-          }
-          return res.status(502).json({ error: `Ошибка Yandex AI: ${response.status} - ${errorText.substring(0, 200)}` });
-        }
-
-        const data = await response.json() as any;
-        const aiText = data?.choices?.[0]?.message?.content || "Нет ответа от модели";
-
-        return res.json({ content: aiText, provider: "yandex" });
-
-      } else {
-        return res.status(400).json({ error: `Неизвестный провайдер: ${selectedProvider}` });
-      }
+      const aiText = completion.choices?.[0]?.message?.content || "Нет ответа от модели";
+      return res.json({ content: aiText, provider: selectedProvider.name });
     } catch (error: any) {
       console.error("AI chat error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
