@@ -175,6 +175,10 @@ GRANT ALL PRIVILEGES ON DATABASE gismo TO gismo_user;
 
 ### 5.2. Инициализация схемы базы данных
 
+Есть два способа инициализировать базу данных:
+
+**Способ 1 (рекомендуемый) — через Drizzle ORM:**
+
 ```bash
 cd /opt/gismo
 
@@ -188,7 +192,20 @@ export DATABASE_URL="postgresql://gismo_user:НАДЁЖНЫЙ_ПАРОЛЬ@local
 npm run db:push
 ```
 
+**Способ 2 — через SQL-файл миграции:**
+
+```bash
+# Применить полную схему БД из файла
+sudo -u postgres psql -d gismo -f /opt/gismo/migrations/init.sql
+```
+
+Файл `migrations/init.sql` содержит полные `CREATE TABLE IF NOT EXISTS` для всех 22 таблиц приложения. Он безопасен для повторного применения — не удаляет существующие данные.
+
 Вы должны увидеть сообщения о создании таблиц. Если появляются ошибки — проверьте правильность пароля и имени базы данных.
+
+> **ВАЖНО:** При каждом обновлении приложения необходимо синхронизировать схему БД
+> командой `npm run db:push` или повторным применением `migrations/init.sql`.
+> Без этого новые столбцы и таблицы не будут созданы, что приведёт к ошибкам 500.
 
 ---
 
@@ -672,7 +689,11 @@ docker compose exec app npx tsx scripts/init-admin.ts -- --username=admin --pass
 ### 14.5. Применение миграций (Docker)
 
 ```bash
+# Способ 1 — через Drizzle
 docker compose exec app npm run db:push
+
+# Способ 2 — через SQL-файл
+docker compose exec db psql -U postgres -d gis_mo -f /app/migrations/init.sql
 ```
 
 ### 14.6. Nginx для Docker

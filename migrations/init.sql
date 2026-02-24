@@ -1,152 +1,293 @@
-CREATE TABLE "dataset_features" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "dataset_features_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "dataset_id" integer NOT NULL,
-        "geometry_type" text NOT NULL,
-        "coordinates" jsonb NOT NULL,
-        "properties" jsonb DEFAULT '{}'::jsonb NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL
+-- =====================================================
+-- ГИС МО "Инженерные сети" — Полная схема базы данных
+-- Версия: 1.0.0-rc.1
+-- Дата обновления: 2026-02-24
+--
+-- Этот файл содержит ВСЕ таблицы приложения (22 шт.).
+-- Безопасен для повторного применения (IF NOT EXISTS).
+-- При добавлении новых таблиц/столбцов в schema.ts —
+-- ОБЯЗАТЕЛЬНО обновляйте этот файл.
+--
+-- Применение на сервере:
+--   psql -U postgres -d gis_mo -f migrations/init.sql
+-- или через Drizzle:
+--   npm run db:push
+-- =====================================================
+
+-- 1. Сессии (express-session + connect-pg-simple)
+CREATE TABLE IF NOT EXISTS "sessions" (
+  "sid" varchar PRIMARY KEY NOT NULL,
+  "sess" jsonb NOT NULL,
+  "expire" timestamp NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "sessions" USING btree ("expire");
+
+-- 2. Пользователи
+CREATE TABLE IF NOT EXISTS "users" (
+  "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "username" varchar(50) NOT NULL,
+  "password_hash" varchar(255) NOT NULL,
+  "role" varchar(20) DEFAULT 'user' NOT NULL,
+  "first_name" varchar,
+  "last_name" varchar,
+  "middle_name" varchar,
+  "position" varchar,
+  "organization" varchar,
+  "phone" varchar,
+  "email" varchar,
+  "is_active" varchar(5) DEFAULT 'true' NOT NULL,
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now(),
+  CONSTRAINT "users_username_unique" UNIQUE("username")
 );
 
-CREATE TABLE "datasets" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "datasets_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "name" text NOT NULL,
-        "original_filename" text NOT NULL,
-        "geometry_type" text NOT NULL,
-        "crs" text DEFAULT 'EPSG:4326',
-        "field_schema" jsonb DEFAULT '[]'::jsonb NOT NULL,
-        "feature_count" integer DEFAULT 0 NOT NULL,
-        "created_by" varchar NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL
+-- 3. Папки сцен
+CREATE TABLE IF NOT EXISTS "scene_folders" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "name" text NOT NULL,
+  "parent_id" integer,
+  "created_by" varchar NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "drawn_features" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drawn_features_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "layer_id" integer NOT NULL,
-        "geometry_type" text NOT NULL,
-        "coordinates" jsonb NOT NULL,
-        "properties" jsonb DEFAULT '{}'::jsonb NOT NULL,
-        "version" integer DEFAULT 1 NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL,
-        "updated_at" timestamp DEFAULT now() NOT NULL
+-- 4. Сцены (проекты)
+CREATE TABLE IF NOT EXISTS "scenes" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "name" text NOT NULL,
+  "description" text,
+  "folder_id" integer,
+  "created_by" varchar NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "editable_layers" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "editable_layers_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "scene_id" integer,
-        "name" text NOT NULL,
-        "geometry_type" text NOT NULL,
-        "color" text DEFAULT '#1976D2' NOT NULL,
-        "point_style" text DEFAULT 'circle' NOT NULL,
-        "line_style" text DEFAULT 'solid' NOT NULL,
-        "visible" integer DEFAULT 1 NOT NULL,
-        "opacity" real DEFAULT 1 NOT NULL,
-        "feature_count" integer DEFAULT 0 NOT NULL,
-        "source" text DEFAULT 'user' NOT NULL,
-        "source_file_name" text,
-        "source_files" jsonb DEFAULT '[]'::jsonb,
-        "crs" text DEFAULT 'EPSG:4326' NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL,
-        "updated_at" timestamp DEFAULT now() NOT NULL
+-- 5. Участники сцен (роли доступа)
+CREATE TABLE IF NOT EXISTS "scene_members" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "scene_id" integer NOT NULL,
+  "user_id" varchar NOT NULL,
+  "role" text DEFAULT 'viewer' NOT NULL,
+  "added_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "feature_history" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "feature_history_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "feature_id" integer NOT NULL,
-        "layer_id" integer NOT NULL,
-        "geometry_type" text NOT NULL,
-        "coordinates" jsonb NOT NULL,
-        "properties" jsonb NOT NULL,
-        "version" integer NOT NULL,
-        "action" text NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL
+-- 6. Папки слоёв
+CREATE TABLE IF NOT EXISTS "layer_folders" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "scene_id" integer NOT NULL,
+  "name" text NOT NULL,
+  "visible" integer DEFAULT 1 NOT NULL,
+  "display_order" integer DEFAULT 0 NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "layer_schemas" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "layer_schemas_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "layer_id" integer NOT NULL,
-        "fields" jsonb DEFAULT '[]'::jsonb NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL,
-        "updated_at" timestamp DEFAULT now() NOT NULL,
-        CONSTRAINT "layer_schemas_layer_id_unique" UNIQUE("layer_id")
+-- 7. Редактируемые слои
+CREATE TABLE IF NOT EXISTS "editable_layers" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "scene_id" integer,
+  "folder_id" integer,
+  "name" text NOT NULL,
+  "geometry_type" text NOT NULL,
+  "color" text DEFAULT '#1976D2' NOT NULL,
+  "point_style" text DEFAULT 'circle' NOT NULL,
+  "line_style" text DEFAULT 'solid' NOT NULL,
+  "visible" integer DEFAULT 1 NOT NULL,
+  "opacity" real DEFAULT 1 NOT NULL,
+  "feature_count" integer DEFAULT 0 NOT NULL,
+  "display_order" integer DEFAULT 0 NOT NULL,
+  "source" text DEFAULT 'user' NOT NULL,
+  "source_file_name" text,
+  "source_files" jsonb DEFAULT '[]'::jsonb,
+  "crs" text DEFAULT 'EPSG:4326' NOT NULL,
+  "style_config" jsonb,
+  "metadata" jsonb,
+  "network_type" text,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "scene_datasets" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "scene_datasets_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "scene_id" integer NOT NULL,
-        "dataset_id" integer NOT NULL,
-        "layer_name" text,
-        "is_visible" integer DEFAULT 1 NOT NULL,
-        "opacity" real DEFAULT 1 NOT NULL,
-        "color" text DEFAULT '#1976D2' NOT NULL,
-        "point_style" text DEFAULT 'circle' NOT NULL,
-        "line_style" text DEFAULT 'solid' NOT NULL,
-        "z_index" integer DEFAULT 0 NOT NULL,
-        "added_at" timestamp DEFAULT now() NOT NULL
+-- 8. Объекты (геометрии) слоёв
+CREATE TABLE IF NOT EXISTS "drawn_features" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "layer_id" integer NOT NULL,
+  "geometry_type" text NOT NULL,
+  "coordinates" jsonb NOT NULL,
+  "properties" jsonb DEFAULT '{}'::jsonb NOT NULL,
+  "version" integer DEFAULT 1 NOT NULL,
+  "bbox_min_x" real,
+  "bbox_min_y" real,
+  "bbox_max_x" real,
+  "bbox_max_y" real,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "drawn_features_layer_id_idx" ON "drawn_features" USING btree ("layer_id");
+CREATE INDEX IF NOT EXISTS "drawn_features_bbox_idx" ON "drawn_features" USING btree ("layer_id", "bbox_min_x", "bbox_min_y", "bbox_max_x", "bbox_max_y");
+
+-- 9. История изменений объектов
+CREATE TABLE IF NOT EXISTS "feature_history" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "feature_id" integer NOT NULL,
+  "layer_id" integer NOT NULL,
+  "geometry_type" text NOT NULL,
+  "coordinates" jsonb NOT NULL,
+  "properties" jsonb NOT NULL,
+  "version" integer NOT NULL,
+  "action" text NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "scene_members" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "scene_members_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "scene_id" integer NOT NULL,
-        "user_id" varchar NOT NULL,
-        "role" text DEFAULT 'viewer' NOT NULL,
-        "added_at" timestamp DEFAULT now() NOT NULL
+-- 10. Схемы атрибутов слоёв
+CREATE TABLE IF NOT EXISTS "layer_schemas" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "layer_id" integer NOT NULL,
+  "fields" jsonb DEFAULT '[]'::jsonb NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL,
+  CONSTRAINT "layer_schemas_layer_id_unique" UNIQUE("layer_id")
 );
 
-CREATE TABLE "scenes" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "scenes_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "name" text NOT NULL,
-        "description" text,
-        "created_by" varchar NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL,
-        "updated_at" timestamp DEFAULT now() NOT NULL
+-- 11. Каталог датасетов (загруженные шейпфайлы)
+CREATE TABLE IF NOT EXISTS "datasets" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "name" text NOT NULL,
+  "original_filename" text NOT NULL,
+  "geometry_type" text NOT NULL,
+  "crs" text DEFAULT 'EPSG:4326',
+  "field_schema" jsonb DEFAULT '[]'::jsonb NOT NULL,
+  "feature_count" integer DEFAULT 0 NOT NULL,
+  "created_by" varchar NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "uploads" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "uploads_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "filename" text NOT NULL,
-        "original_filename" text NOT NULL,
-        "status" text DEFAULT 'pending' NOT NULL,
-        "error" text,
-        "dataset_id" integer,
-        "created_by" varchar NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL,
-        "updated_at" timestamp DEFAULT now() NOT NULL
+-- 12. Объекты датасетов
+CREATE TABLE IF NOT EXISTS "dataset_features" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "dataset_id" integer NOT NULL,
+  "geometry_type" text NOT NULL,
+  "coordinates" jsonb NOT NULL,
+  "properties" jsonb DEFAULT '{}'::jsonb NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "sessions" (
-        "sid" varchar PRIMARY KEY NOT NULL,
-        "sess" jsonb NOT NULL,
-        "expire" timestamp NOT NULL
+-- 13. Привязка датасетов к сценам
+CREATE TABLE IF NOT EXISTS "scene_datasets" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "scene_id" integer NOT NULL,
+  "dataset_id" integer NOT NULL,
+  "layer_name" text,
+  "is_visible" integer DEFAULT 1 NOT NULL,
+  "opacity" real DEFAULT 1 NOT NULL,
+  "color" text DEFAULT '#1976D2' NOT NULL,
+  "point_style" text DEFAULT 'circle' NOT NULL,
+  "line_style" text DEFAULT 'solid' NOT NULL,
+  "z_index" integer DEFAULT 0 NOT NULL,
+  "added_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "users" (
-        "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-        "username" varchar(50) NOT NULL,
-        "password_hash" varchar(255) NOT NULL,
-        "role" varchar(20) DEFAULT 'user' NOT NULL,
-        "first_name" varchar,
-        "last_name" varchar,
-        "email" varchar,
-        "is_active" varchar(5) DEFAULT 'true' NOT NULL,
-        "created_at" timestamp DEFAULT now(),
-        "updated_at" timestamp DEFAULT now(),
-        CONSTRAINT "users_username_unique" UNIQUE("username")
+-- 14. Загрузки (статус обработки шейпфайлов)
+CREATE TABLE IF NOT EXISTS "uploads" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "filename" text NOT NULL,
+  "original_filename" text NOT NULL,
+  "status" text DEFAULT 'pending' NOT NULL,
+  "error" text,
+  "dataset_id" integer,
+  "created_by" varchar NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "api_keys" (
-        "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "api_keys_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-        "user_id" varchar NOT NULL,
-        "name" varchar NOT NULL,
-        "token_hash" varchar NOT NULL,
-        "scene_id" integer,
-        "permissions" text[] DEFAULT ARRAY['create_point'],
-        "is_active" integer DEFAULT 1,
-        "last_used_at" timestamp,
-        "created_at" timestamp DEFAULT now()
+-- 15. Пользовательские иконки (SVG)
+CREATE TABLE IF NOT EXISTS "custom_icons" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "name" text NOT NULL,
+  "svg_content" text NOT NULL,
+  "category" text DEFAULT 'custom',
+  "created_by" varchar,
+  "created_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE INDEX "drawn_features_layer_id_idx" ON "drawn_features" USING btree ("layer_id");
-CREATE INDEX "IDX_session_expire" ON "sessions" USING btree ("expire");
+-- 16. API-ключи для внешних интеграций
+CREATE TABLE IF NOT EXISTS "api_keys" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "user_id" varchar NOT NULL,
+  "name" text NOT NULL,
+  "token_hash" varchar(255) NOT NULL,
+  "scene_id" integer,
+  "permissions" text[] DEFAULT ARRAY['create_point'] NOT NULL,
+  "is_active" integer DEFAULT 1 NOT NULL,
+  "last_used_at" timestamp,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
 
-ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_scene_id_scenes_id_fk" FOREIGN KEY ("scene_id") REFERENCES "scenes"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+-- 17. Настройки приложения (key-value)
+CREATE TABLE IF NOT EXISTS "app_settings" (
+  "key" varchar(255) PRIMARY KEY NOT NULL,
+  "value" text NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
+-- 18. Журнал аудита
+CREATE TABLE IF NOT EXISTS "audit_log" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "user_id" varchar,
+  "username" varchar,
+  "action" varchar(100) NOT NULL,
+  "entity_type" varchar(50),
+  "entity_id" varchar(100),
+  "scene_id" integer,
+  "details" jsonb,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "audit_log_user_id_idx" ON "audit_log" USING btree ("user_id");
+CREATE INDEX IF NOT EXISTS "audit_log_created_at_idx" ON "audit_log" USING btree ("created_at");
+CREATE INDEX IF NOT EXISTS "audit_log_action_idx" ON "audit_log" USING btree ("action");
+
+-- 19. Отчёты об ошибках
+CREATE TABLE IF NOT EXISTS "bug_reports" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "user_id" varchar NOT NULL,
+  "username" varchar,
+  "message" text NOT NULL,
+  "screenshot_path" text,
+  "status" varchar(50) DEFAULT 'new' NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "bug_reports_user_id_idx" ON "bug_reports" USING btree ("user_id");
+CREATE INDEX IF NOT EXISTS "bug_reports_status_idx" ON "bug_reports" USING btree ("status");
+CREATE INDEX IF NOT EXISTS "bug_reports_created_at_idx" ON "bug_reports" USING btree ("created_at");
+
+-- 20. Диалоги AI-ассистента
+CREATE TABLE IF NOT EXISTS "conversations" (
+  "id" serial PRIMARY KEY,
+  "title" text NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 21. Сообщения AI-ассистента
+CREATE TABLE IF NOT EXISTS "messages" (
+  "id" serial PRIMARY KEY,
+  "conversation_id" integer NOT NULL REFERENCES "conversations" ("id") ON DELETE CASCADE,
+  "role" text NOT NULL,
+  "content" text NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 22. AI-провайдеры (настройки подключения к моделям)
+CREATE TABLE IF NOT EXISTS "ai_providers" (
+  "id" serial PRIMARY KEY,
+  "name" text NOT NULL,
+  "base_url" text,
+  "api_key" text,
+  "model" text,
+  "is_active" boolean NOT NULL DEFAULT true,
+  "is_default" boolean NOT NULL DEFAULT false,
+  "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- Конец схемы. Итого: 22 таблицы.
+-- При добавлении новых таблиц в shared/schema.ts или
+-- shared/models/ — ОБЯЗАТЕЛЬНО добавляйте их сюда.
+-- =====================================================
