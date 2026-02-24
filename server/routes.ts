@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, drawnFeatures, editableLayers, type AttributeField } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, networkTypeSchema, drawnFeatures, editableLayers, type AttributeField } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -3550,6 +3550,13 @@ export async function registerRoutes(
         }
         req.body.styleConfig = parsed.data;
       }
+      if (req.body.networkType !== undefined && req.body.networkType !== null) {
+        const parsed = networkTypeSchema.safeParse(req.body.networkType);
+        if (!parsed.success) {
+          return res.status(400).json({ message: "Invalid networkType", errors: parsed.error.errors });
+        }
+        req.body.networkType = parsed.data;
+      }
       const layer = await storage.updateEditableLayer(id, req.body);
       if (!layer) {
         return res.status(404).json({ message: "Layer not found" });
@@ -7047,6 +7054,7 @@ export async function registerRoutes(
         geometryType: string;
         source: string;
         sourceFileName?: string;
+        networkType?: string | null;
         instances: Array<{
           layerId: number;
           sceneId: number | null;
@@ -7058,6 +7066,7 @@ export async function registerRoutes(
           visible: boolean;
           featureCount: number;
           styleConfig?: any;
+          networkType?: string | null;
         }>;
       }>();
 
@@ -7069,6 +7078,7 @@ export async function registerRoutes(
             geometryType: layer.geometryType,
             source: layer.source,
             sourceFileName: layer.sourceFileName,
+            networkType: layer.networkType,
             instances: [],
           });
         }
@@ -7084,6 +7094,7 @@ export async function registerRoutes(
           visible: layer.visible,
           featureCount: layer.featureCount,
           styleConfig: layer.styleConfig,
+          networkType: layer.networkType,
         });
       }
 

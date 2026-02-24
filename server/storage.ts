@@ -168,6 +168,7 @@ function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer
     crs: row.crs || "EPSG:4326",
     styleConfig: (row as any).styleConfig || undefined,
     metadata: (row as any).metadata || undefined,
+    networkType: (row as any).networkType || null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -301,6 +302,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.crs !== undefined) updateData.crs = updates.crs;
     if ((updates as any).styleConfig !== undefined) updateData.styleConfig = (updates as any).styleConfig;
     if ((updates as any).metadata !== undefined) updateData.metadata = (updates as any).metadata;
+    if ((updates as any).networkType !== undefined) updateData.networkType = (updates as any).networkType;
 
     const [row] = await db.update(editableLayers)
       .set(updateData)

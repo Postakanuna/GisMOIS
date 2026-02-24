@@ -57,6 +57,16 @@ const truncateName = (name: string, maxLength: number = 30): string => {
   return name.substring(0, maxLength - 3) + "...";
 };
 
+const NETWORK_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  source: { label: "Источник", color: "#e53935" },
+  ctp: { label: "ЦТП", color: "#8e24aa" },
+  consumer: { label: "Потребитель", color: "#43a047" },
+  segment: { label: "Участок", color: "#1e88e5" },
+  valve: { label: "Задвижка", color: "#f4511e" },
+  node: { label: "Узел", color: "#6d4c41" },
+  pump: { label: "Насос", color: "#00acc1" },
+};
+
 type LayerGeometryType = "point" | "line" | "polygon" | "unknown";
 
 interface Dataset {
@@ -516,6 +526,16 @@ export function LayerPanel({
                           <span className="text-xs font-medium" title={layer.name}>
                             {truncateName(layer.name)}
                           </span>
+                          {(layer as any).networkType && NETWORK_TYPE_LABELS[(layer as any).networkType] && (
+                            <span
+                              className="text-[9px] px-1 py-0 rounded shrink-0 font-medium text-white leading-tight"
+                              style={{ backgroundColor: NETWORK_TYPE_LABELS[(layer as any).networkType].color }}
+                              title={`Тип сети: ${NETWORK_TYPE_LABELS[(layer as any).networkType].label}`}
+                              data-testid={`badge-network-type-${layer.id}`}
+                            >
+                              {NETWORK_TYPE_LABELS[(layer as any).networkType].label}
+                            </span>
+                          )}
                           {layer.source === "import" && (
                             <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
                           )}
@@ -641,6 +661,29 @@ export function LayerPanel({
                               </TooltipTrigger>
                               <TooltipContent><p>Удалить</p></TooltipContent>
                             </Tooltip>
+                          </div>
+                          <div className="border-t mt-1 pt-1">
+                            <Select
+                              value={(layer as any).networkType || "__none__"}
+                              onValueChange={(val) => {
+                                const newType = val === "__none__" ? null : val;
+                                updateLayerMutation.mutate({ id: layer.id, networkType: newType });
+                              }}
+                            >
+                              <SelectTrigger className="h-6 text-[10px]" data-testid={`select-network-type-${layer.id}`}>
+                                <SelectValue placeholder="Тип сети..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Не задано</SelectItem>
+                                <SelectItem value="source">Источник</SelectItem>
+                                <SelectItem value="ctp">ЦТП</SelectItem>
+                                <SelectItem value="consumer">Потребитель</SelectItem>
+                                <SelectItem value="segment">Участок</SelectItem>
+                                <SelectItem value="valve">Задвижка</SelectItem>
+                                <SelectItem value="node">Узел</SelectItem>
+                                <SelectItem value="pump">Насос</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         </PopoverContent>
                       </Popover>

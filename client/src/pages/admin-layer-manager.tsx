@@ -64,6 +64,7 @@ interface LayerInstance {
   visible: boolean;
   featureCount: number;
   styleConfig?: any;
+  networkType?: string | null;
 }
 
 interface LayerGroup {
@@ -71,6 +72,7 @@ interface LayerGroup {
   geometryType: string;
   source: string;
   sourceFileName?: string;
+  networkType?: string | null;
   instances: LayerInstance[];
 }
 
@@ -89,6 +91,16 @@ const GEOMETRY_LABELS: Record<string, string> = {
   LineString: "Линии",
   Polygon: "Полигоны",
 };
+
+const NETWORK_TYPE_OPTIONS: { value: string; label: string; color: string }[] = [
+  { value: "source", label: "Источник", color: "#e53935" },
+  { value: "ctp", label: "ЦТП", color: "#8e24aa" },
+  { value: "consumer", label: "Потребитель", color: "#43a047" },
+  { value: "segment", label: "Участок", color: "#1e88e5" },
+  { value: "valve", label: "Задвижка", color: "#f4511e" },
+  { value: "node", label: "Узел", color: "#6d4c41" },
+  { value: "pump", label: "Насос", color: "#00acc1" },
+];
 
 export default function AdminLayerManager() {
   const { toast } = useToast();
@@ -135,6 +147,22 @@ export default function AdminLayerManager() {
     },
     onError: () => {
       toast({ title: "Ошибка", description: "Не удалось удалить слой", variant: "destructive" });
+    },
+  });
+
+  const updateNetworkTypeMutation = useMutation({
+    mutationFn: async (params: { layerIds: number[]; networkType: string | null }) => {
+      const promises = params.layerIds.map((id) =>
+        apiRequest("PATCH", `/api/editable-layers/${id}`, { networkType: params.networkType })
+      );
+      await Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/layer-matrix"] });
+      toast({ title: "Тип сети обновлён", description: "Тип сетевого слоя обновлён для всех экземпляров" });
+    },
+    onError: () => {
+      toast({ title: "Ошибка", description: "Не удалось обновить тип сети", variant: "destructive" });
     },
   });
 
@@ -336,13 +364,31 @@ export default function AdminLayerManager() {
                                   <div className="font-medium truncate max-w-[220px]" data-testid={`text-layer-name-${idx}`}>
                                     {group.name}
                                   </div>
-                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                     <Badge variant="outline" className="text-[10px] px-1 py-0">
                                       {GEOMETRY_LABELS[group.geometryType] || group.geometryType}
                                     </Badge>
                                     <span className="text-[10px] text-muted-foreground">
                                       {sourceInst?.featureCount || 0} объектов
                                     </span>
+                                    <Select
+                                      value={group.networkType || "__none__"}
+                                      onValueChange={(val) => {
+                                        const newType = val === "__none__" ? null : val;
+                                        const layerIds = group.instances.map(i => i.layerId);
+                                        updateNetworkTypeMutation.mutate({ layerIds, networkType: newType });
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-5 text-[10px] w-auto min-w-[90px] px-1.5 py-0" data-testid={`select-admin-network-type-${idx}`}>
+                                        <SelectValue placeholder="Тип сети" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__none__">Не задано</SelectItem>
+                                        {NETWORK_TYPE_OPTIONS.map(opt => (
+                                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
                                   </div>
                                 </div>
                               </div>

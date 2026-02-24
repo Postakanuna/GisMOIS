@@ -150,6 +150,7 @@ export async function getSceneNetworkLayers(sceneId: number) {
       name: editableLayers.name,
       geometryType: editableLayers.geometryType,
       sceneId: editableLayers.sceneId,
+      networkType: editableLayers.networkType,
     })
     .from(editableLayers)
     .where(eq(editableLayers.sceneId, sceneId));
@@ -173,24 +174,30 @@ export async function getSceneNetworkLayers(sceneId: number) {
   };
 
   for (const layer of layers) {
-    const sampleFeatures = await db
-      .select({ properties: drawnFeatures.properties })
-      .from(drawnFeatures)
-      .where(eq(drawnFeatures.layerId, layer.id))
-      .limit(10);
+    let layerType: string;
 
-    if (sampleFeatures.length === 0) continue;
+    if (layer.networkType) {
+      layerType = layer.networkType;
+      console.log(`[NetworkGraph] Layer "${layer.name}" (id=${layer.id}) => manual type: ${layerType}`);
+    } else {
+      const sampleFeatures = await db
+        .select({ properties: drawnFeatures.properties })
+        .from(drawnFeatures)
+        .where(eq(drawnFeatures.layerId, layer.id))
+        .limit(10);
 
-    const props = sampleFeatures[0].properties as Record<string, unknown>;
-    const propKeys = Object.keys(props);
-    const sampleNames = sampleFeatures.map(f => {
-      const p = f.properties as Record<string, unknown>;
-      return (p.Name as string) || "";
-    });
+      if (sampleFeatures.length === 0) continue;
 
-    const layerType = classifyLayerByContentSync(propKeys, layer.geometryType, sampleNames);
+      const props = sampleFeatures[0].properties as Record<string, unknown>;
+      const propKeys = Object.keys(props);
+      const sampleNames = sampleFeatures.map(f => {
+        const p = f.properties as Record<string, unknown>;
+        return (p.Name as string) || "";
+      });
 
-    console.log(`[NetworkGraph] Layer "${layer.name}" (id=${layer.id}, geom=${layer.geometryType}) => type: ${layerType}`);
+      layerType = classifyLayerByContentSync(propKeys, layer.geometryType, sampleNames);
+      console.log(`[NetworkGraph] Layer "${layer.name}" (id=${layer.id}, geom=${layer.geometryType}) => auto type: ${layerType}`);
+    }
 
     switch (layerType) {
       case "segment":
