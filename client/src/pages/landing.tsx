@@ -70,7 +70,7 @@ export default function LandingPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1 justify-center">
-                  <Badge variant="outline" className="text-xs">GIS Zulu</Badge>
+                  <Badge variant="outline" className="text-xs">ZuluGIS</Badge>
                 </div>
               </CardContent>
             </Card>
