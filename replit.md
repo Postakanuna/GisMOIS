@@ -49,6 +49,10 @@ The system supports multi-provider geocoding (Yandex Geocoder and DaData) for co
 
 Extensive styling options are available for points (basic shapes, GOST-compliant thermal network icons, custom SVGs) and lines (basic patterns, GOST-compliant thermal network styles). Per-class styling with categorized and graduated renderers allows assigning specific styles, facilitated by `IconPicker` and `LinePicker` components.
 
+### Network Type Badges (Manual Layer Classification)
+
+Each editable layer can be manually assigned a `networkType` (stored in the `network_type` column of `editable_layers`). Supported types: `source` (Источник), `ctp` (ЦТП), `consumer` (Потребитель), `segment` (Участок), `valve` (Задвижка), `node` (Узел), `pump` (Насос), or `null` (auto-classify). Manual type assignment takes priority over the heuristic `classifyLayerByContentSync` function in `network-graph.ts`. When `networkType` is null, the old auto-classification is used as fallback. UI: colored badges in layer panel, Select dropdown in layer popover, bulk assignment in AdminLayerManager.
+
 ### Automatic Consumer Connection
 
 This feature automates connecting new heat consumers to the network. Users place a point, input consumer data (name, address, building type, thermal loads), and the system automatically traces the nearest connection point, routes along roads using OSRM, places heat chambers, and calculates pipe parameters using an AI model (OpenAI gpt-4o-mini) or heuristic fallback. Results include route details, AI-calculated parameters, heat chamber placements, and capacity analysis. Users can confirm and update the point or save the route and chambers as new layers.
