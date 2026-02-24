@@ -251,6 +251,9 @@ export type FeatureHistory = z.infer<typeof featureHistorySchema>;
 export const insertFeatureHistorySchema = featureHistorySchema.omit({ id: true, createdAt: true });
 export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
 
+export const networkTypeSchema = z.enum(["source", "ctp", "consumer", "segment", "valve", "node", "pump"]);
+export type NetworkType = z.infer<typeof networkTypeSchema>;
+
 // Editable layer (user-created layer for drawing or imported from shapefile)
 export const editableLayerSchema = z.object({
   id: z.number(),
@@ -271,6 +274,7 @@ export const editableLayerSchema = z.object({
   crs: z.string().default("EPSG:4326"),
   styleConfig: styleConfigSchema.optional(),
   metadata: z.record(z.unknown()).nullable().optional(),
+  networkType: networkTypeSchema.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -333,6 +337,7 @@ export const editableLayers = pgTable("editable_layers", {
   crs: text("crs").notNull().default("EPSG:4326"), // coordinate reference system
   styleConfig: jsonb("style_config"),
   metadata: jsonb("metadata"),
+  networkType: text("network_type"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
