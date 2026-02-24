@@ -1067,12 +1067,11 @@ export async function registerRoutes(
         const segmentsDetail = route.segments.map((s, i) => `${i + 1}: ${Math.round(s.length)}м`).join("; ");
 
         try {
-          const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-          const openaiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+          const aiProvider = await storage.getDefaultAiProvider();
 
-          if (openaiKey && openaiBaseUrl) {
+          if (aiProvider && aiProvider.isActive && aiProvider.baseUrl && aiProvider.apiKey && aiProvider.model) {
             const OpenAI = (await import("openai")).default;
-            const openai = new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl });
+            const openai = new OpenAI({ apiKey: aiProvider.apiKey, baseURL: aiProvider.baseUrl });
 
             const refDiam = heuristicDiameter(totalLoad);
             const prompt = `Ты инженер-теплотехник. Рассчитай параметры трубопровода для подключения нового потребителя к тепловой сети.
@@ -1114,10 +1113,10 @@ export async function registerRoutes(
   "recommendations": ["рекомендация 1", "рекомендация 2"]
 }`;
 
-            console.log("[AutoTrace] Requesting AI calculation...");
+            console.log(`[AutoTrace] Requesting AI calculation via provider "${aiProvider.name}" (model: ${aiProvider.model})...`);
 
             const completion = await openai.chat.completions.create({
-              model: "gpt-4o-mini",
+              model: aiProvider.model,
               messages: [
                 { role: "system", content: "Ты опытный инженер-теплотехник. Отвечай только валидным JSON." },
                 { role: "user", content: prompt },
@@ -1136,7 +1135,7 @@ export async function registerRoutes(
               console.error("[AutoTrace] Failed to parse AI response:", aiText.substring(0, 200));
             }
           } else {
-            console.log("[AutoTrace] AI not configured, using heuristic calculation");
+            console.log("[AutoTrace] No active AI provider configured, using heuristic calculation");
             aiParams = calculateHeuristicParams(totalLoad, route.totalLength, route.turningAngles.length);
           }
         } catch (aiError: any) {

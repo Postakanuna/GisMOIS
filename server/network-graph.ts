@@ -2069,8 +2069,8 @@ export async function analyzeCapacity(
     surplus = installedCapacity - currentLoad - requestedLoad;
     hasSufficientCapacity = surplus >= 0;
   } else if (connectedLoadFromAttributes !== null) {
-    surplus = -(currentLoad + requestedLoad);
-    hasSufficientCapacity = false;
+    surplus = connectedLoadFromAttributes - currentLoad - requestedLoad;
+    hasSufficientCapacity = surplus >= 0;
   } else {
     surplus = 0;
     hasSufficientCapacity = false;
