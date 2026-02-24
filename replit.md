@@ -67,7 +67,7 @@ Users can submit bug reports via a floating button (bug icon) in the bottom-righ
 
 ### AI Assistant
 
-An integrated AI chat panel allows users to interact with an AI assistant. It supports message history, text input, and dual AI providers (OpenAI GPT-4o-mini and Yandex GPT-Lite) with an in-chat model switcher. A Retrieval-Augmented Generation (RAG) system automatically injects relevant GIS object data from `drawn_features` and `editable_layers` into the AI's system prompt, enabling data-aware responses.
+An integrated AI chat panel allows users to interact with an AI assistant. It supports message history, text input, and a dynamic provider management system. Administrators can create custom AI providers using the OpenAI API protocol (supports OpenAI, local LMStudio, Ollama, and any OpenAI-compatible endpoint). Providers are managed via the admin panel with CRUD operations, connection testing, and a global enable/disable toggle. When the AI agent is disabled, users see a message directing them to contact support. A Retrieval-Augmented Generation (RAG) system automatically injects relevant GIS object data from `drawn_features` and `editable_layers` into the AI's system prompt, enabling data-aware responses. Provider configuration is stored in the `ai_providers` database table.
 
 ## External Dependencies
 
@@ -78,7 +78,6 @@ An integrated AI chat panel allows users to interact with an AI assistant. It su
 -   **DaData**: Optional geocoding service, providing FIAS IDs.
 -   **OSRM (router.project-osrm.org)**: Routing service for automatic consumer connection.
 -   **OpenAI**: AI provider for automatic consumer connection parameter calculation and the AI Assistant.
--   **Yandex GPT**: AI provider for the AI Assistant.
 
 ### Database
 
