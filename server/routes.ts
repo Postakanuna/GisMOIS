@@ -7446,30 +7446,43 @@ export async function registerRoutes(
             });
           }
         } catch (geoErr) {
-          console.warn("Configured geocoder failed, falling back to Nominatim:", (geoErr as Error).message);
+          console.warn(`Configured geocoder (${provider}) failed, trying fallback:`, (geoErr as Error).message);
         }
       }
 
-      const nominatimUrl = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
-        q: query,
-        format: "json",
-        limit: "1",
-        "accept-language": "ru",
-      })}`;
-      const nominatimRes = await fetch(nominatimUrl, {
-        headers: { "User-Agent": "GIS-MO-InzhenernySeti/1.0" },
-      });
-      if (nominatimRes.ok) {
-        const data = await nominatimRes.json();
-        if (Array.isArray(data) && data.length > 0) {
-          return res.json({
-            found: true,
-            lat: parseFloat(data[0].lat),
-            lon: parseFloat(data[0].lon),
-            address: data[0].display_name,
-            provider: "osm",
-          });
+      const fallbackProvider: GeocodeProvider = provider === "dadata" ? "yandex" : "dadata";
+      let fallbackKey: string | undefined;
+      if (fallbackProvider === "yandex") {
+        fallbackKey = (await storage.getAppSetting("geocode_yandex_api_key")) || process.env.YANDEX_GEOCODER_API_KEY;
+      } else {
+        fallbackKey = (await storage.getAppSetting("geocode_dadata_api_key")) || process.env.DADATA_API_KEY;
+      }
+
+      if (fallbackKey) {
+        try {
+          const fallbackResults = await geocodeBatch(
+            [{ index: 0, address: query }],
+            fallbackKey,
+            undefined,
+            fallbackProvider
+          );
+          if (fallbackResults.length > 0 && fallbackResults[0].result) {
+            const r = fallbackResults[0].result;
+            return res.json({
+              found: true,
+              lat: r.lat,
+              lon: r.lon,
+              address: r.formattedAddress,
+              provider: fallbackProvider,
+            });
+          }
+        } catch (fallbackErr) {
+          console.warn(`Fallback geocoder (${fallbackProvider}) also failed:`, (fallbackErr as Error).message);
         }
+      }
+
+      if (!apiKey && !fallbackKey) {
+        return res.json({ found: false, message: "Геокодер не настроен. Укажите API-ключ Яндекс или DaData в настройках." });
       }
 
       return res.json({ found: false });
