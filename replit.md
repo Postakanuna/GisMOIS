@@ -65,6 +65,10 @@ This feature automates connecting new heat consumers to the network. Users place
 
 The system includes intelligent capacity analysis to find upstream CTP/source, extract capacity data, calculate downstream load, and check pipe capacity against existing diameters. It provides `installedCapacity`, `connectedLoadFromAttributes`, `currentLoadFromConsumers`, `surplus`, `capacityUnknown` flags, and pipe issue warnings.
 
+### Complaint Analysis (Multi-Layer)
+
+Analyzes complaint data from up to 5 point layers simultaneously. Each layer can have its own date and address field mapping. Two modes: topology-based (matches complaints to consumers via network topology, groups by date/source, finds probable failure zones) and no-topology (spatial clustering by date + radius). Results include `layerBreakdown` per cluster/group showing complaint counts by source layer. Saved polygon layers include `source_layers`, `layer_breakdown`, and per-complaint `complaint_N_layer` attributes. API accepts `complaintLayers: [{layerId, dateField, addressField}]` with backward compatibility for single-layer `complaintLayerId` format.
+
 ### Attribute Join
 
 This feature allows enriching layer data from XLSX files by matching key fields from the layer with key columns from the Excel file, similar to a database table join.

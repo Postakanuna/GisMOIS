@@ -116,8 +116,16 @@ function getPointCoords(coordinates: any): [number, number] | null {
   return null;
 }
 
+export interface ComplaintLayerInput {
+  layerId: number;
+  dateField: string;
+  addressField: string;
+}
+
 interface ComplaintFeature {
   id: number;
+  layerId: number;
+  layerName: string;
   coordinates: any;
   properties: Record<string, unknown>;
   date: string;
@@ -140,6 +148,8 @@ interface ComplaintMatch {
   complaintId: number;
   complaintAddress: string;
   complaintDate: string;
+  complaintLayerId: number;
+  complaintLayerName: string;
   consumerId: number;
   consumerName: string;
   consumerAddress: string;
@@ -184,11 +194,13 @@ export interface ComplaintAnalysisResult {
   totalMatched: number;
   totalUnmatched: number;
   emptyNistCount: number;
+  layerNames: Record<number, string>;
   dateGroups: Array<{
     date: string;
     nist: string;
     sourceName: string;
     complaintCount: number;
+    layerBreakdown: Record<string, number>;
     consumers: Array<{
       name: string;
       address: string;
@@ -207,30 +219,44 @@ export interface ComplaintAnalysisResult {
 }
 
 export async function analyzeComplaints(
-  complaintLayerId: number,
+  complaintLayers: ComplaintLayerInput[],
   sceneId: number,
-  dateFieldName: string,
-  addressFieldName: string,
   matchRadius: number = 100
 ): Promise<ComplaintAnalysisResult> {
   console.log(`[ComplaintAnalysis] === Start ===`);
-  console.log(`[ComplaintAnalysis] complaintLayer=${complaintLayerId}, scene=${sceneId}, dateField="${dateFieldName}", addressField="${addressFieldName}", radius=${matchRadius}m`);
+  console.log(`[ComplaintAnalysis] complaintLayers=${JSON.stringify(complaintLayers)}, scene=${sceneId}, radius=${matchRadius}m`);
+
+  const layerIds = complaintLayers.map(l => l.layerId);
+  const layerFieldMap = new Map<number, { dateField: string; addressField: string }>();
+  for (const l of complaintLayers) {
+    layerFieldMap.set(l.layerId, { dateField: l.dateField, addressField: l.addressField });
+  }
+
+  const layerRows = await db
+    .select({ id: editableLayers.id, name: editableLayers.name })
+    .from(editableLayers)
+    .where(inArray(editableLayers.id, layerIds));
+  const layerNameMap: Record<number, string> = {};
+  for (const r of layerRows) layerNameMap[r.id] = r.name;
 
   const complaints = await db
     .select({
       id: drawnFeatures.id,
+      layerId: drawnFeatures.layerId,
       coordinates: drawnFeatures.coordinates,
       properties: drawnFeatures.properties,
     })
     .from(drawnFeatures)
-    .where(eq(drawnFeatures.layerId, complaintLayerId));
+    .where(inArray(drawnFeatures.layerId, layerIds));
 
-  console.log(`[ComplaintAnalysis] Loaded ${complaints.length} complaints`);
+  console.log(`[ComplaintAnalysis] Loaded ${complaints.length} complaints from ${layerIds.length} layers`);
 
   const parsedComplaints: ComplaintFeature[] = [];
   for (const c of complaints) {
     const props = c.properties as Record<string, unknown>;
-    const effectiveDateField = dateFieldName && dateFieldName !== "_none_" ? dateFieldName : "";
+    const fields = layerFieldMap.get(c.layerId) || { dateField: "", addressField: "" };
+
+    const effectiveDateField = fields.dateField && fields.dateField !== "_none_" ? fields.dateField : "";
     let dateStr = "Без даты";
     if (effectiveDateField) {
       const dateVal = props[effectiveDateField];
@@ -247,7 +273,7 @@ export async function analyzeComplaints(
       }
     }
 
-    const effectiveAddressField = addressFieldName && addressFieldName !== "_none_" ? addressFieldName : "";
+    const effectiveAddressField = fields.addressField && fields.addressField !== "_none_" ? fields.addressField : "";
     const addrCandidates = effectiveAddressField
       ? [effectiveAddressField, "Adres", "adres", "Address", "address", "Адрес", "адрес"]
       : ["Adres", "adres", "Address", "address", "Адрес", "адрес"];
@@ -261,6 +287,8 @@ export async function analyzeComplaints(
 
     parsedComplaints.push({
       id: c.id,
+      layerId: c.layerId,
+      layerName: layerNameMap[c.layerId] || `Слой ${c.layerId}`,
       coordinates: c.coordinates,
       properties: props,
       date: dateStr,
@@ -360,6 +388,8 @@ export async function analyzeComplaints(
         complaintId: complaint.id,
         complaintAddress: complaint.address,
         complaintDate: complaint.date,
+        complaintLayerId: complaint.layerId,
+        complaintLayerName: complaint.layerName,
         consumerId: bestMatch.consumer.id,
         consumerName: bestMatch.consumer.name,
         consumerAddress: bestMatch.consumer.address,
@@ -412,11 +442,17 @@ export async function analyzeComplaints(
   for (const [, group] of Array.from(dateNistGroups)) {
     const consumerSummary = summarizeConsumers(group);
 
+    const layerBreakdown: Record<string, number> = {};
+    for (const c of group.complaints) {
+      layerBreakdown[c.complaintLayerName] = (layerBreakdown[c.complaintLayerName] || 0) + 1;
+    }
+
     resultGroups.push({
       date: group.date,
       nist: group.nist,
       sourceName: "",
       complaintCount: group.complaints.length,
+      layerBreakdown,
       consumers: consumerSummary,
       failureZones: [],
     });
@@ -438,6 +474,7 @@ export async function analyzeComplaints(
     totalMatched: matches.length,
     totalUnmatched: unmatched.length,
     emptyNistCount,
+    layerNames: layerNameMap,
     dateGroups: resultGroups,
     unmatchedComplaints: unmatched,
   };
@@ -469,8 +506,11 @@ export interface NoTopologyCluster {
   id: number;
   date: string;
   complaintCount: number;
+  layerBreakdown: Record<string, number>;
   complaints: Array<{
     featureId: number;
+    layerId: number;
+    layerName: string;
     address: string;
     lon: number;
     lat: number;
@@ -486,6 +526,7 @@ export interface NoTopologyAnalysisResult {
   totalComplaints: number;
   totalClustered: number;
   totalUnclustered: number;
+  layerNames: Record<number, string>;
   clusters: NoTopologyCluster[];
   unclustered: Array<{
     featureId: number;
@@ -570,27 +611,41 @@ function bufferPolygon(hullPoints: number[][], radiusM: number): number[][] {
 }
 
 export async function analyzeComplaintsNoTopology(
-  complaintLayerId: number,
-  dateFieldName: string,
-  addressFieldName: string,
+  complaintLayers: ComplaintLayerInput[],
   clusterRadiusM: number = 350
 ): Promise<NoTopologyAnalysisResult> {
   console.log(`[ComplaintAnalysis:NoTopology] === Start ===`);
-  console.log(`[ComplaintAnalysis:NoTopology] complaintLayer=${complaintLayerId}, dateField="${dateFieldName}", addressField="${addressFieldName}", radius=${clusterRadiusM}m`);
+  console.log(`[ComplaintAnalysis:NoTopology] complaintLayers=${JSON.stringify(complaintLayers)}, radius=${clusterRadiusM}m`);
+
+  const layerIds = complaintLayers.map(l => l.layerId);
+  const layerFieldMap = new Map<number, { dateField: string; addressField: string }>();
+  for (const l of complaintLayers) {
+    layerFieldMap.set(l.layerId, { dateField: l.dateField, addressField: l.addressField });
+  }
+
+  const layerRows = await db
+    .select({ id: editableLayers.id, name: editableLayers.name })
+    .from(editableLayers)
+    .where(inArray(editableLayers.id, layerIds));
+  const layerNameMap: Record<number, string> = {};
+  for (const r of layerRows) layerNameMap[r.id] = r.name;
 
   const complaints = await db
     .select({
       id: drawnFeatures.id,
+      layerId: drawnFeatures.layerId,
       coordinates: drawnFeatures.coordinates,
       properties: drawnFeatures.properties,
     })
     .from(drawnFeatures)
-    .where(eq(drawnFeatures.layerId, complaintLayerId));
+    .where(inArray(drawnFeatures.layerId, layerIds));
 
-  console.log(`[ComplaintAnalysis:NoTopology] Loaded ${complaints.length} complaints`);
+  console.log(`[ComplaintAnalysis:NoTopology] Loaded ${complaints.length} complaints from ${layerIds.length} layers`);
 
   interface ParsedComplaint {
     featureId: number;
+    layerId: number;
+    layerName: string;
     date: string;
     address: string;
     lon: number;
@@ -603,8 +658,9 @@ export async function analyzeComplaintsNoTopology(
 
   for (const c of complaints) {
     const props = c.properties as Record<string, unknown>;
+    const fields = layerFieldMap.get(c.layerId) || { dateField: "", addressField: "" };
 
-    const effectiveDateField = dateFieldName && dateFieldName !== "_none_" ? dateFieldName : "";
+    const effectiveDateField = fields.dateField && fields.dateField !== "_none_" ? fields.dateField : "";
     let dateStr = "Без даты";
     if (effectiveDateField) {
       const dateVal = props[effectiveDateField];
@@ -621,7 +677,7 @@ export async function analyzeComplaintsNoTopology(
       }
     }
 
-    const effectiveAddressField = addressFieldName && addressFieldName !== "_none_" ? addressFieldName : "";
+    const effectiveAddressField = fields.addressField && fields.addressField !== "_none_" ? fields.addressField : "";
     const addrCandidates = effectiveAddressField
       ? [effectiveAddressField, "Adres", "adres", "Address", "address", "Адрес", "адрес"]
       : ["Adres", "adres", "Address", "address", "Адрес", "адрес"];
@@ -646,6 +702,8 @@ export async function analyzeComplaintsNoTopology(
 
     parsed.push({
       featureId: c.id,
+      layerId: c.layerId,
+      layerName: layerNameMap[c.layerId] || `Слой ${c.layerId}`,
       date: dateStr,
       address,
       lon: coords[0],
@@ -709,12 +767,20 @@ export async function analyzeComplaintsNoTopology(
       const hull = convexHull(points);
       const buffered = bufferPolygon(hull, 50);
 
+      const layerBreakdown: Record<string, number> = {};
+      for (const m of clusterMembers) {
+        layerBreakdown[m.layerName] = (layerBreakdown[m.layerName] || 0) + 1;
+      }
+
       clusters.push({
         id: clusterId,
         date,
         complaintCount: clusterMembers.length,
+        layerBreakdown,
         complaints: clusterMembers.map(m => ({
           featureId: m.featureId,
+          layerId: m.layerId,
+          layerName: m.layerName,
           address: m.address,
           lon: m.lon,
           lat: m.lat,
@@ -738,6 +804,7 @@ export async function analyzeComplaintsNoTopology(
     totalComplaints: parsed.length + noPosComplaints.length,
     totalClustered,
     totalUnclustered: noPosComplaints.length,
+    layerNames: layerNameMap,
     clusters,
     unclustered: noPosComplaints,
   };

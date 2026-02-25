@@ -4,6 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { Card } from "@/components/ui/card";
 import {
@@ -37,6 +38,7 @@ import {
   HelpCircle,
   Unlink,
   Save,
+  Layers,
 } from "lucide-react";
 
 type AnalysisMode = "topology" | "no_topology";
@@ -77,11 +79,13 @@ interface ComplaintAnalysisResult {
   totalMatched: number;
   totalUnmatched: number;
   emptyNistCount: number;
+  layerNames?: Record<number, string>;
   dateGroups: Array<{
     date: string;
     nist: string;
     sourceName: string;
     complaintCount: number;
+    layerBreakdown?: Record<string, number>;
     consumers: Array<{
       name: string;
       address: string;
@@ -103,8 +107,11 @@ interface NoTopologyCluster {
   id: number;
   date: string;
   complaintCount: number;
+  layerBreakdown?: Record<string, number>;
   complaints: Array<{
     featureId: number;
+    layerId?: number;
+    layerName?: string;
     address: string;
     lon: number;
     lat: number;
@@ -120,6 +127,7 @@ interface NoTopologyResult {
   totalComplaints: number;
   totalClustered: number;
   totalUnclustered: number;
+  layerNames?: Record<number, string>;
   clusters: NoTopologyCluster[];
   unclustered: Array<{
     featureId: number;
@@ -127,6 +135,12 @@ interface NoTopologyResult {
     date: string;
     reason: string;
   }>;
+}
+
+interface LayerFieldMapping {
+  layerId: number;
+  dateField: string;
+  addressField: string;
 }
 
 interface ComplaintAnalysisDialogProps {
@@ -149,14 +163,14 @@ export function ComplaintAnalysisDialog({
   onHighlightPolygons,
 }: ComplaintAnalysisDialogProps) {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("topology");
-  const [selectedLayerId, setSelectedLayerId] = useState<string>("");
-  const [dateFieldName, setDateFieldName] = useState<string>("");
-  const [addressFieldName, setAddressFieldName] = useState<string>("");
+  const [selectedLayerIds, setSelectedLayerIds] = useState<number[]>([]);
+  const [layerFieldMappings, setLayerFieldMappings] = useState<Record<number, { dateField: string; addressField: string }>>({});
   const [matchRadius, setMatchRadius] = useState<number>(100);
   const [result, setResult] = useState<ComplaintAnalysisResult | null>(null);
   const [noTopoResult, setNoTopoResult] = useState<NoTopologyResult | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [highlightedZoneKey, setHighlightedZoneKey] = useState<string | null>(null);
+  const [layerAttributesCache, setLayerAttributesCache] = useState<Record<number, string[]>>({});
 
   const [position, setPosition] = useState({ x: 20, y: 80 });
   const isDragging = useRef(false);
@@ -188,20 +202,61 @@ export function ComplaintAnalysisDialog({
     };
   }, []);
 
-  const layerAttributes = useQuery<string[]>({
-    queryKey: ["/api/editable-layers", selectedLayerId, "attributes"],
-    enabled: !!selectedLayerId,
-  });
+  useEffect(() => {
+    for (const layerId of selectedLayerIds) {
+      if (layerAttributesCache[layerId] !== undefined) continue;
+      setLayerAttributesCache(prev => ({ ...prev, [layerId]: [] }));
+      fetch(`/api/editable-layers/${layerId}/attributes`)
+        .then(r => r.ok ? r.json() : [])
+        .then((attrs: string[]) => {
+          setLayerAttributesCache(prev => ({ ...prev, [layerId]: attrs }));
+        })
+        .catch(() => {});
+    }
+  }, [selectedLayerIds, layerAttributesCache]);
+
+  const toggleLayerSelection = (layerId: number) => {
+    setSelectedLayerIds(prev => {
+      if (prev.includes(layerId)) {
+        const next = prev.filter(id => id !== layerId);
+        setLayerFieldMappings(m => {
+          const copy = { ...m };
+          delete copy[layerId];
+          return copy;
+        });
+        return next;
+      }
+      if (prev.length >= 5) return prev;
+      setLayerFieldMappings(m => ({
+        ...m,
+        [layerId]: { dateField: "", addressField: "" },
+      }));
+      return [...prev, layerId];
+    });
+  };
+
+  const updateFieldMapping = (layerId: number, field: "dateField" | "addressField", value: string) => {
+    setLayerFieldMappings(prev => ({
+      ...prev,
+      [layerId]: { ...prev[layerId], [field]: value },
+    }));
+  };
+
+  const buildComplaintLayers = (): LayerFieldMapping[] => {
+    return selectedLayerIds.map(id => ({
+      layerId: id,
+      dateField: layerFieldMappings[id]?.dateField || "",
+      addressField: layerFieldMappings[id]?.addressField || "",
+    }));
+  };
 
   const analysisMutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
-        complaintLayerId: Number(selectedLayerId),
-        dateFieldName,
-        addressFieldName,
+        complaintLayers: buildComplaintLayers(),
         mode: analysisMode,
+        matchRadius,
       };
-      body.matchRadius = matchRadius;
       if (analysisMode === "topology") {
         body.sceneId = sceneId;
       }
@@ -224,6 +279,13 @@ export function ComplaintAnalysisDialog({
   const [exporting, setExporting] = useState(false);
   const { toast } = useToast();
 
+  const getSelectedLayerNames = (): string[] => {
+    return selectedLayerIds.map(id => {
+      const layer = editableLayers.find(l => l.id === id);
+      return layer?.name || `Слой ${id}`;
+    });
+  };
+
   const saveAsLayerMutation = useMutation({
     mutationFn: async () => {
       const now = new Date();
@@ -231,17 +293,16 @@ export function ComplaintAnalysisDialog({
       const modeSuffix = analysisMode === "topology" ? "топология" : "кластеры";
       const defaultName = `Анализ жалоб (${modeSuffix}) ${dateStr}`;
 
-      const selectedLayer = editableLayers.find(l => l.id === Number(selectedLayerId));
+      const layerNames = getSelectedLayerNames();
 
       const body: Record<string, unknown> = {
         mode: analysisMode,
         sceneId: sceneId || null,
         layerName: defaultName,
         analysisParams: {
-          complaintLayerName: selectedLayer?.name || "",
+          complaintLayerName: layerNames.join("; "),
+          sourceLayerNames: layerNames,
           matchRadius,
-          dateFieldName: dateFieldName || undefined,
-          addressFieldName: addressFieldName || undefined,
         },
       };
 
@@ -291,10 +352,8 @@ export function ComplaintAnalysisDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          complaintLayerId: Number(selectedLayerId),
+          complaintLayers: buildComplaintLayers(),
           sceneId,
-          dateFieldName,
-          addressFieldName,
           matchRadius,
         }),
       });
@@ -470,66 +529,107 @@ export function ComplaintAnalysisDialog({
               </p>
 
               <div className="space-y-2">
-                <Label className="text-xs">Слой жалоб (точечный)</Label>
-                <Select value={selectedLayerId} onValueChange={setSelectedLayerId}>
-                  <SelectTrigger data-testid="select-complaint-layer">
-                    <SelectValue placeholder="Выберите слой" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pointLayers.map(l => (
-                      <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">Поле даты</Label>
-                {layerAttributes.data && layerAttributes.data.length > 0 ? (
-                  <Select value={dateFieldName} onValueChange={setDateFieldName}>
-                    <SelectTrigger data-testid="select-date-field">
-                      <SelectValue placeholder="Выберите поле" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none_">Не указывать (все как одна группа)</SelectItem>
-                      {layerAttributes.data.map((attr: string) => (
-                        <SelectItem key={attr} value={attr}>{attr}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    placeholder="Имя поля (напр. Date)"
-                    value={dateFieldName}
-                    onChange={e => setDateFieldName(e.target.value)}
-                    data-testid="input-date-field"
-                  />
+                <Label className="text-xs flex items-center gap-1">
+                  <Layers className="h-3 w-3" />
+                  Слои жалоб (точечные, до 5)
+                </Label>
+                <div className="border rounded-md max-h-[140px] overflow-y-auto">
+                  {pointLayers.length === 0 && (
+                    <div className="p-2 text-xs text-muted-foreground">Нет точечных слоёв</div>
+                  )}
+                  {pointLayers.map(l => (
+                    <label
+                      key={l.id}
+                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50 cursor-pointer text-xs"
+                      data-testid={`checkbox-layer-${l.id}`}
+                    >
+                      <Checkbox
+                        checked={selectedLayerIds.includes(l.id)}
+                        onCheckedChange={() => toggleLayerSelection(l.id)}
+                        disabled={!selectedLayerIds.includes(l.id) && selectedLayerIds.length >= 5}
+                      />
+                      <span className="truncate">{l.name}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedLayerIds.length > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    Выбрано: {selectedLayerIds.length} из {pointLayers.length}
+                  </div>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-xs">Поле адреса (необязательно)</Label>
-                {layerAttributes.data && layerAttributes.data.length > 0 ? (
-                  <Select value={addressFieldName} onValueChange={setAddressFieldName}>
-                    <SelectTrigger data-testid="select-address-field">
-                      <SelectValue placeholder="Выберите поле" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none_">Не указывать</SelectItem>
-                      {layerAttributes.data.map((attr: string) => (
-                        <SelectItem key={attr} value={attr}>{attr}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    placeholder="Имя поля (напр. Adres)"
-                    value={addressFieldName}
-                    onChange={e => setAddressFieldName(e.target.value)}
-                    data-testid="input-address-field"
-                  />
-                )}
-              </div>
+              {selectedLayerIds.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Маппинг полей для каждого слоя</Label>
+                  {selectedLayerIds.map(layerId => {
+                    const layer = editableLayers.find(l => l.id === layerId);
+                    const attrs = layerAttributesCache[layerId] || [];
+                    const mapping = layerFieldMappings[layerId] || { dateField: "", addressField: "" };
+                    return (
+                      <div key={layerId} className="border rounded-md p-2 space-y-1.5 bg-muted/30">
+                        <div className="text-xs font-medium truncate">{layer?.name || `Слой ${layerId}`}</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div>
+                            <div className="text-[10px] text-muted-foreground mb-0.5">Поле даты</div>
+                            {attrs.length > 0 ? (
+                              <Select
+                                value={mapping.dateField}
+                                onValueChange={v => updateFieldMapping(layerId, "dateField", v)}
+                              >
+                                <SelectTrigger className="h-7 text-xs" data-testid={`select-date-field-${layerId}`}>
+                                  <SelectValue placeholder="Поле" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="_none_">Не указывать</SelectItem>
+                                  {attrs.map(attr => (
+                                    <SelectItem key={attr} value={attr}>{attr}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                className="h-7 text-xs"
+                                placeholder="Имя поля"
+                                value={mapping.dateField}
+                                onChange={e => updateFieldMapping(layerId, "dateField", e.target.value)}
+                                data-testid={`input-date-field-${layerId}`}
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-muted-foreground mb-0.5">Поле адреса</div>
+                            {attrs.length > 0 ? (
+                              <Select
+                                value={mapping.addressField}
+                                onValueChange={v => updateFieldMapping(layerId, "addressField", v)}
+                              >
+                                <SelectTrigger className="h-7 text-xs" data-testid={`select-address-field-${layerId}`}>
+                                  <SelectValue placeholder="Поле" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="_none_">Не указывать</SelectItem>
+                                  {attrs.map(attr => (
+                                    <SelectItem key={attr} value={attr}>{attr}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                className="h-7 text-xs"
+                                placeholder="Имя поля"
+                                value={mapping.addressField}
+                                onChange={e => updateFieldMapping(layerId, "addressField", e.target.value)}
+                                data-testid={`input-address-field-${layerId}`}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-xs">
@@ -548,7 +648,7 @@ export function ComplaintAnalysisDialog({
               <Button
                 className="w-full gap-2"
                 onClick={() => analysisMutation.mutate()}
-                disabled={!selectedLayerId || analysisMutation.isPending}
+                disabled={selectedLayerIds.length === 0 || analysisMutation.isPending}
                 data-testid="button-run-analysis"
               >
                 {analysisMutation.isPending ? (
@@ -771,6 +871,15 @@ export function ComplaintAnalysisDialog({
                       </CollapsibleTrigger>
                       <CollapsibleContent>
                         <div className="px-2 pb-2 space-y-2">
+                          {cluster.layerBreakdown && Object.keys(cluster.layerBreakdown).length > 1 && (
+                            <div className="flex flex-wrap gap-1">
+                              {Object.entries(cluster.layerBreakdown).map(([name, count]) => (
+                                <Badge key={name} variant="outline" className="text-[10px] py-0 px-1.5">
+                                  {name}: {count}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                           <div className="text-xs font-medium flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
                             Жалобы в кластере ({cluster.complaintCount})
@@ -778,6 +887,9 @@ export function ComplaintAnalysisDialog({
                           {cluster.complaints.map((c, ci) => (
                             <div key={ci} className="text-xs pl-4 border-l-2 border-muted py-0.5">
                               <div className="text-muted-foreground">{c.address || "Без адреса"}</div>
+                              {c.layerName && selectedLayerIds.length > 1 && (
+                                <div className="text-muted-foreground/60 text-[10px]">{c.layerName}</div>
+                              )}
                             </div>
                           ))}
 

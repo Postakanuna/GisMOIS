@@ -6628,18 +6628,36 @@ export async function registerRoutes(
 
   app.post("/api/complaint-analysis", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, mode } = req.body;
+      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, mode, complaintLayers } = req.body;
 
-      if (!complaintLayerId || !dateFieldName) {
-        return res.status(400).json({ error: "complaintLayerId and dateFieldName are required" });
+      let layersInput: Array<{ layerId: number; dateField: string; addressField: string }>;
+      if (complaintLayers && Array.isArray(complaintLayers) && complaintLayers.length > 0) {
+        layersInput = complaintLayers.map((l: any) => ({
+          layerId: Number(l.layerId),
+          dateField: String(l.dateField || ""),
+          addressField: String(l.addressField || ""),
+        }));
+      } else if (complaintLayerId) {
+        layersInput = [{
+          layerId: Number(complaintLayerId),
+          dateField: String(dateFieldName || ""),
+          addressField: String(addressFieldName || ""),
+        }];
+      } else {
+        return res.status(400).json({ error: "complaintLayers or complaintLayerId is required" });
+      }
+
+      if (layersInput.length === 0) {
+        return res.status(400).json({ error: "At least one complaint layer is required" });
+      }
+      if (layersInput.length > 5) {
+        return res.status(400).json({ error: "Maximum 5 complaint layers allowed" });
       }
 
       if (mode === "no_topology") {
         const { analyzeComplaintsNoTopology } = await import("./complaint-analysis");
         const result = await analyzeComplaintsNoTopology(
-          Number(complaintLayerId),
-          String(dateFieldName),
-          String(addressFieldName || ""),
+          layersInput,
           Number(matchRadius) || 350
         );
         return res.json(result);
@@ -6651,10 +6669,8 @@ export async function registerRoutes(
 
       const { analyzeComplaints } = await import("./complaint-analysis");
       const result = await analyzeComplaints(
-        Number(complaintLayerId),
+        layersInput,
         Number(sceneId),
-        String(dateFieldName),
-        String(addressFieldName || ""),
         Number(matchRadius) || 100
       );
 
@@ -6667,18 +6683,33 @@ export async function registerRoutes(
 
   app.post("/api/complaint-analysis/export", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius } = req.body;
+      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, complaintLayers } = req.body;
 
-      if (!complaintLayerId || !sceneId || !dateFieldName) {
-        return res.status(400).json({ error: "complaintLayerId, sceneId, and dateFieldName are required" });
+      let layersInput: Array<{ layerId: number; dateField: string; addressField: string }>;
+      if (complaintLayers && Array.isArray(complaintLayers) && complaintLayers.length > 0) {
+        layersInput = complaintLayers.map((l: any) => ({
+          layerId: Number(l.layerId),
+          dateField: String(l.dateField || ""),
+          addressField: String(l.addressField || ""),
+        }));
+      } else if (complaintLayerId && sceneId) {
+        layersInput = [{
+          layerId: Number(complaintLayerId),
+          dateField: String(dateFieldName || ""),
+          addressField: String(addressFieldName || ""),
+        }];
+      } else {
+        return res.status(400).json({ error: "complaintLayers or (complaintLayerId + sceneId) required" });
+      }
+
+      if (!sceneId) {
+        return res.status(400).json({ error: "sceneId is required for export" });
       }
 
       const { analyzeComplaints } = await import("./complaint-analysis");
       const result = await analyzeComplaints(
-        Number(complaintLayerId),
+        layersInput,
         Number(sceneId),
-        String(dateFieldName),
-        String(addressFieldName || ""),
         Number(matchRadius) || 100
       );
 
@@ -6865,10 +6896,18 @@ export async function registerRoutes(
             .filter(Boolean);
           const uniqueAddresses = [...new Set(addresses)];
 
+          const layerBreakdown = cluster.layerBreakdown || {};
+          const breakdownStr = Object.entries(layerBreakdown)
+            .map(([name, count]) => `${name}: ${count}`)
+            .join("; ");
+          const sourceLayerNames = Object.keys(layerBreakdown);
+
           const props: Record<string, unknown> = {
             cluster_id: cluster.id,
             date: cluster.date || "Все даты",
             complaint_count: cluster.complaintCount,
+            source_layers: sourceLayerNames.join("; "),
+            layer_breakdown: breakdownStr,
             radius_m: Math.round(cluster.radiusM),
             centroid_lon: cluster.centroid[0],
             centroid_lat: cluster.centroid[1],
@@ -6879,6 +6918,7 @@ export async function registerRoutes(
           cluster.complaints.forEach((c: any, idx: number) => {
             const num = idx + 1;
             props[`complaint_${num}_address`] = c.address || "";
+            props[`complaint_${num}_layer`] = c.layerName || "";
             props[`complaint_${num}_lon`] = c.lon;
             props[`complaint_${num}_lat`] = c.lat;
             if (c.featureId) props[`complaint_${num}_id`] = c.featureId;
@@ -7039,6 +7079,9 @@ export async function registerRoutes(
 
       if (analysisParams) {
         if (analysisParams.complaintLayerName) layerMetadata.complaintLayerName = analysisParams.complaintLayerName;
+        if (analysisParams.sourceLayerNames && Array.isArray(analysisParams.sourceLayerNames)) {
+          layerMetadata.sourceLayerNames = analysisParams.sourceLayerNames;
+        }
         if (analysisParams.matchRadius !== undefined && analysisParams.matchRadius !== null) layerMetadata.matchRadius = analysisParams.matchRadius;
         if (analysisParams.dateFieldName) layerMetadata.dateFieldName = analysisParams.dateFieldName;
         if (analysisParams.addressFieldName) layerMetadata.addressFieldName = analysisParams.addressFieldName;
