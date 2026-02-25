@@ -55,7 +55,7 @@ export default function LandingPage() {
             <Card
               className="cursor-pointer transition-all hover:border-primary/50 hover:shadow-md group"
               onClick={() => {
-                window.open("https://is.arki.mosreg.ru/Zuluweb/", "_blank");
+                window.open("https://is.arki.mosreg.ru/ZuluWeb/#!/maps", "_blank");
               }}
               data-testid="card-engineering"
             >
