@@ -125,8 +125,8 @@ const diskStorage = multer.diskStorage({
 const upload = multer({
   storage: diskStorage,
   limits: { 
-    fileSize: 500 * 1024 * 1024, // 500MB limit
-    fieldSize: 500 * 1024 * 1024,
+    fileSize: 1024 * 1024 * 1024, // 1GB limit
+    fieldSize: 1024 * 1024 * 1024,
   },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
@@ -141,7 +141,7 @@ const upload = multer({
 const excelUpload = multer({
   storage: diskStorage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit for Excel files
+    fileSize: 200 * 1024 * 1024, // 200MB limit for Excel files
   },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();

@@ -115,7 +115,7 @@ export async function parseShapefileBuffer(
   const bufferSizeMB = buffer.length / (1024 * 1024);
   console.log(`Parsing shapefile buffer: ${bufferSizeMB.toFixed(2)} MB`);
   
-  if (bufferSizeMB > 50) {
+  if (bufferSizeMB > 500) {
     console.warn(`Large file detected (${bufferSizeMB.toFixed(0)} MB). Processing may take longer and use significant memory.`);
   }
   
