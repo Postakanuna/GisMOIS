@@ -25,6 +25,77 @@ import crypto from "crypto";
 const VIEWPORT_CACHE_MAX = 200;
 const VIEWPORT_CACHE_TTL_MS = 30_000;
 
+const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB
+const LARGE_EXCEL_THRESHOLD = 50 * 1024 * 1024; // 50MB
+
+const uploadRateLimits = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_UPLOADS = 5;
+
+function checkUploadRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = uploadRateLimits.get(userId) || [];
+  const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= RATE_LIMIT_MAX_UPLOADS) {
+    uploadRateLimits.set(userId, recent);
+    return false;
+  }
+  recent.push(now);
+  uploadRateLimits.set(userId, recent);
+  return true;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, timestamps] of uploadRateLimits.entries()) {
+    const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+    if (recent.length === 0) uploadRateLimits.delete(userId);
+    else uploadRateLimits.set(userId, recent);
+  }
+}, 5 * 60_000);
+
+function validateShapefileBuffer(buffer: Buffer): { valid: boolean; error?: string } {
+  if (buffer.length < 4) {
+    return { valid: false, error: "Файл слишком мал для шейпфайла" };
+  }
+
+  const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B;
+  const shpMagic = buffer.readUInt32BE(0);
+  const isShp = shpMagic === 9994;
+
+  if (!isZip && !isShp) {
+    return { valid: false, error: "Файл не является ZIP-архивом или SHP-файлом" };
+  }
+
+  if (isZip) {
+    let hasShp = false;
+    let offset = 0;
+    while (offset < buffer.length - 30) {
+      if (buffer[offset] === 0x50 && buffer[offset + 1] === 0x4B &&
+          buffer[offset + 2] === 0x03 && buffer[offset + 3] === 0x04) {
+        const fnLen = buffer.readUInt16LE(offset + 26);
+        const extraLen = buffer.readUInt16LE(offset + 28);
+        if (offset + 30 + fnLen <= buffer.length) {
+          const fileName = buffer.toString("utf8", offset + 30, offset + 30 + fnLen).toLowerCase();
+          if (fileName.endsWith(".shp")) {
+            hasShp = true;
+            break;
+          }
+        }
+        const compressedSize = buffer.readUInt32LE(offset + 18);
+        offset += 30 + fnLen + extraLen + compressedSize;
+      } else {
+        break;
+      }
+    }
+    if (!hasShp) {
+      return { valid: false, error: "ZIP-архив не содержит SHP-файлов. Загрузите архив с шейпфайлом (.shp, .dbf, .shx)" };
+    }
+  }
+
+  return { valid: true };
+}
+
 interface ViewportCacheEntry {
   data: any;
   etag: string;
@@ -1525,6 +1596,20 @@ export async function registerRoutes(
   // Import shapefile as editable layer with features
   app.post("/api/editable-layers/import", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (!checkUploadRateLimit(user.id)) {
+        return res.status(429).json({ message: "Слишком много загрузок. Подождите минуту и попробуйте снова." });
+      }
+
+      const contentLength = parseInt(req.headers["content-length"] || "0", 10);
+      if (contentLength > LARGE_FILE_THRESHOLD && user.role !== "admin") {
+        return res.status(403).json({ message: `Импорт данных размером более 100 МБ доступен только администраторам.` });
+      }
+
       const { name, geometryType, geojson, sourceFileName, color, pointStyle, lineStyle } = req.body;
       
       if (!name || !geometryType || !geojson) {
@@ -1595,8 +1680,27 @@ export async function registerRoutes(
   // Parse Excel file and return columns/preview data
   app.post("/api/parse-excel", isAuthenticated as any, excelUpload.single("file"), async (req: AuthRequest, res: Response) => {
     try {
+      const user = await getUserFromSession(req);
+      if (!user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (!checkUploadRateLimit(user.id)) {
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+          try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+        }
+        return res.status(429).json({ message: "Слишком много загрузок. Подождите минуту и попробуйте снова." });
+      }
+
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      if (req.file.size > LARGE_EXCEL_THRESHOLD && user.role !== "admin") {
+        if (req.file.path && fs.existsSync(req.file.path)) {
+          try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+        }
+        return res.status(403).json({ message: `Excel-файлы размером более 50 МБ доступны только администраторам. Размер вашего файла: ${(req.file.size / (1024 * 1024)).toFixed(0)} МБ` });
       }
 
       const filePath = req.file.path;
@@ -1923,8 +2027,23 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
+
+      if (!checkUploadRateLimit(user.id)) {
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+          try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+        }
+        return res.status(429).json({ message: "Слишком много загрузок. Подождите минуту и попробуйте снова." });
+      }
+
       if (!req.file) {
         return res.status(400).json({ message: "Файл не загружен" });
+      }
+
+      if (req.file.size > LARGE_EXCEL_THRESHOLD && user.role !== "admin") {
+        if (req.file.path && fs.existsSync(req.file.path)) {
+          try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+        }
+        return res.status(403).json({ message: `Excel-файлы размером более 50 МБ доступны только администраторам.` });
       }
 
       const filePath = req.file.path;
@@ -5061,9 +5180,20 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
+      if (!checkUploadRateLimit(user.id)) {
+        return res.status(429).json({ message: "Слишком много загрузок. Подождите минуту и попробуйте снова." });
+      }
+
       const file = req.file;
       if (!file) {
         return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      if (file.size > LARGE_FILE_THRESHOLD && user.role !== "admin") {
+        if (file.path && fs.existsSync(file.path)) {
+          try { fs.unlinkSync(file.path); } catch (e) { /* ignore */ }
+        }
+        return res.status(403).json({ message: `Файлы размером более 100 МБ доступны только администраторам. Размер вашего файла: ${(file.size / (1024 * 1024)).toFixed(0)} МБ` });
       }
 
       filePath = file.path;
@@ -5072,6 +5202,15 @@ export async function registerRoutes(
       const baseName = customName || originalName.replace(/\.zip$/i, "");
 
       const fileBuffer = fs.readFileSync(filePath);
+
+      const validation = validateShapefileBuffer(fileBuffer);
+      if (!validation.valid) {
+        if (filePath && fs.existsSync(filePath)) {
+          try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+        }
+        return res.status(400).json({ message: validation.error });
+      }
+
       const parseResult = await parseShapefileBuffer(fileBuffer);
 
       // Extract field schema from first feature

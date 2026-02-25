@@ -37,6 +37,10 @@ Key components include `MapViewer`, `DataManager`, `ScenesPage`, and `AdminLayer
 
 The backend uses Node.js with Express and TypeScript, providing a REST API (`/api/`) that supports multi-scene architecture and role-based access. It features universal tracing, optimized shapefile uploads (CP1251 encoding), an external API with key management, cross-scene search, and geospatial analytics. It handles layer attribute access, unique attribute values for filtering, and filtered object counts. Layer export supports GeoJSON and Shapefile formats.
 
+#### Upload Protection
+
+File upload limits: shapefiles up to 1 GB, Excel up to 200 MB, screenshots up to 10 MB. Files larger than 100 MB (shapefiles/GeoJSON) or 50 MB (Excel) require admin role. Rate limiting: max 5 uploads per minute per user. ZIP archives are validated for SHP content before processing (magic bytes + ZIP entry scan). Implemented in `server/routes.ts` via `checkUploadRateLimit()` and `validateShapefileBuffer()`.
+
 ### Storage
 
 Data is stored in PostgreSQL, managed by Drizzle ORM, with schemas for users, scenes, datasets, and API keys, validated using Zod.
