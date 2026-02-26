@@ -7237,7 +7237,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "ИИ-агент отключён администратором системы, обратитесь в техническую поддержку." });
       }
 
-      const { messages, provider: providerIdStr } = req.body;
+      const { messages, provider: providerIdStr, sceneId } = req.body;
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         return res.status(400).json({ error: "messages is required and must be a non-empty array" });
       }
@@ -7258,9 +7258,10 @@ export async function registerRoutes(
       let ragContext = "";
       let layersSummary = "";
       try {
+        const parsedSceneId = sceneId ? parseInt(sceneId) : null;
         const [ragResult, layersResult] = await Promise.all([
-          searchObjectsForRAG(lastUserMessage),
-          getLayersSummaryForContext(),
+          searchObjectsForRAG(lastUserMessage, parsedSceneId),
+          getLayersSummaryForContext(parsedSceneId),
         ]);
         ragContext = ragResult;
         layersSummary = layersResult;

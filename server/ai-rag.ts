@@ -7,8 +7,19 @@ interface FoundObject {
   objectName: string;
   address: string;
   geometryType: string;
+  networkType: string | null;
   properties: Record<string, any>;
 }
+
+const NETWORK_TYPE_LABELS: Record<string, string> = {
+  source: "Источник",
+  ctp: "ЦТП",
+  consumer: "Потребитель",
+  segment: "Участок сети",
+  valve: "Задвижка",
+  node: "Узел",
+  pump: "Насос",
+};
 
 const IMPORTANT_FIELDS = [
   "Name", "Adres", "Nist", "Sist", "Mode",
@@ -140,12 +151,20 @@ function formatPropertiesForContext(props: Record<string, any>): string {
   return lines.join("\n");
 }
 
-async function searchByTerm(term: string, results: FoundObject[], limit: number): Promise<void> {
+function buildSceneFilter(sceneId?: number | null) {
+  if (sceneId) {
+    return sql`AND el.scene_id = ${sceneId}`;
+  }
+  return sql``;
+}
+
+async function searchByTerm(term: string, results: FoundObject[], limit: number, sceneId?: number | null): Promise<void> {
   if (results.length >= limit) return;
 
   try {
+    const sceneFilter = sceneId ? sql`AND el.scene_id = ${sceneId}` : sql``;
     const rows = await db.execute(sql`
-      SELECT df.properties, df.geometry_type, el.name as layer_name
+      SELECT df.properties, df.geometry_type, el.name as layer_name, el.network_type
       FROM drawn_features df
       JOIN editable_layers el ON df.layer_id = el.id
       WHERE (
@@ -157,6 +176,7 @@ async function searchByTerm(term: string, results: FoundObject[], limit: number)
         OR df.properties->>'gorodskoi' ILIKE ${'%' + term + '%'}
         OR el.name ILIKE ${'%' + term + '%'}
       )
+      ${sceneFilter}
       LIMIT ${limit}
     `);
 
@@ -176,6 +196,7 @@ async function searchByTerm(term: string, results: FoundObject[], limit: number)
           objectName: name,
           address: addr,
           geometryType: row.geometry_type,
+          networkType: row.network_type || null,
           properties: props,
         });
       }
@@ -185,11 +206,11 @@ async function searchByTerm(term: string, results: FoundObject[], limit: number)
   }
 }
 
-export async function searchObjectsForRAG(userMessage: string): Promise<string> {
+export async function searchObjectsForRAG(userMessage: string, sceneId?: number | null): Promise<string> {
   const terms = extractSearchTerms(userMessage);
   const layerTypeKeywords = detectLayerTypeKeywords(userMessage);
 
-  console.log("[RAG] Search terms:", terms, "Layer keywords:", layerTypeKeywords);
+  console.log("[RAG] Search terms:", terms, "Layer keywords:", layerTypeKeywords, "Scene ID:", sceneId);
 
   if (terms.length === 0 && layerTypeKeywords.length === 0) {
     return "";
@@ -199,18 +220,20 @@ export async function searchObjectsForRAG(userMessage: string): Promise<string> 
 
   for (const term of terms) {
     if (results.length >= 5) break;
-    await searchByTerm(term, results, 5);
+    await searchByTerm(term, results, 5, sceneId);
   }
 
   if (results.length === 0 && layerTypeKeywords.length > 0) {
+    const sceneFilter = sceneId ? sql`AND el.scene_id = ${sceneId}` : sql``;
     for (const layerType of layerTypeKeywords) {
       if (results.length >= 5) break;
       try {
         const rows = await db.execute(sql`
-          SELECT df.properties, df.geometry_type, el.name as layer_name
+          SELECT df.properties, df.geometry_type, el.name as layer_name, el.network_type
           FROM drawn_features df
           JOIN editable_layers el ON df.layer_id = el.id
-          WHERE el.name ILIKE ${'%' + layerType + '%'}
+          WHERE (el.name ILIKE ${'%' + layerType + '%'} OR el.network_type = ${layerType.toLowerCase()})
+          ${sceneFilter}
           LIMIT 3
         `);
 
@@ -223,6 +246,7 @@ export async function searchObjectsForRAG(userMessage: string): Promise<string> 
             objectName: props.Name || "",
             address: props.Adres || "",
             geometryType: row.geometry_type,
+            networkType: row.network_type || null,
             properties: props,
           });
         }
@@ -240,7 +264,11 @@ export async function searchObjectsForRAG(userMessage: string): Promise<string> 
 
   for (let i = 0; i < results.length; i++) {
     const obj = results[i];
-    context += `\nОбъект ${i + 1}: "${obj.objectName || "без имени"}" (слой: ${obj.layerName}, тип геометрии: ${obj.geometryType})\n`;
+    const networkLabel = obj.networkType ? NETWORK_TYPE_LABELS[obj.networkType] || obj.networkType : null;
+    const layerInfo = networkLabel
+      ? `слой: ${obj.layerName}, тип сети: ${networkLabel}`
+      : `слой: ${obj.layerName}`;
+    context += `\nОбъект ${i + 1}: "${obj.objectName || "без имени"}" (${layerInfo}, тип геометрии: ${obj.geometryType})\n`;
     if (obj.address) {
       context += `  Адрес: ${obj.address}\n`;
     }
@@ -252,37 +280,41 @@ export async function searchObjectsForRAG(userMessage: string): Promise<string> 
   return context;
 }
 
-let cachedLayersSummary: string = "";
-let layersCacheTime: number = 0;
-const LAYERS_CACHE_TTL = 5 * 60 * 1000;
+const layersCacheByScene = new Map<string, { summary: string; time: number }>();
+const LAYERS_CACHE_TTL = 2 * 60 * 1000;
 
-export async function getLayersSummaryForContext(): Promise<string> {
+export async function getLayersSummaryForContext(sceneId?: number | null): Promise<string> {
+  const cacheKey = sceneId ? String(sceneId) : "all";
   const now = Date.now();
-  if (cachedLayersSummary && (now - layersCacheTime) < LAYERS_CACHE_TTL) {
-    return cachedLayersSummary;
+  const cached = layersCacheByScene.get(cacheKey);
+  if (cached && (now - cached.time) < LAYERS_CACHE_TTL) {
+    return cached.summary;
   }
 
   try {
+    const sceneFilter = sceneId ? sql`AND scene_id = ${sceneId}` : sql``;
     const rows = await db.execute(sql`
-      SELECT name, geometry_type, feature_count
+      SELECT name, geometry_type, feature_count, network_type
       FROM editable_layers
       WHERE feature_count > 0
+      ${sceneFilter}
       ORDER BY feature_count DESC
     `);
 
     const layers = (rows as any).rows || [];
     if (layers.length === 0) return "";
 
-    let summary = "\n\nДоступные слои в системе:\n";
+    let summary = "\n\nДоступные слои в текущей сцене:\n";
     for (const l of layers) {
-      summary += `- ${l.name} (${l.geometry_type}, ${l.feature_count} объектов)\n`;
+      const networkLabel = l.network_type ? NETWORK_TYPE_LABELS[l.network_type] || l.network_type : null;
+      const typeInfo = networkLabel ? `, тип сети: ${networkLabel}` : "";
+      summary += `- ${l.name} (${l.geometry_type}, ${l.feature_count} объектов${typeInfo})\n`;
     }
 
-    cachedLayersSummary = summary;
-    layersCacheTime = now;
+    layersCacheByScene.set(cacheKey, { summary, time: now });
     return summary;
   } catch (e) {
     console.error("[RAG] layers summary error:", e);
-    return cachedLayersSummary || "";
+    return cached?.summary || "";
   }
 }

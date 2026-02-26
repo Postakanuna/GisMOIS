@@ -39,9 +39,10 @@ interface AiChatPanelProps {
   onBack: () => void;
   messages: ChatMessage[];
   onMessagesChange: (messages: ChatMessage[]) => void;
+  sceneId?: number | null;
 }
 
-export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelProps) {
+export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId }: AiChatPanelProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [providers, setProviders] = useState<AiProvider[]>([]);
@@ -95,7 +96,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelP
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages, provider: selectedProvider }),
+        body: JSON.stringify({ messages: apiMessages, provider: selectedProvider, sceneId: sceneId || undefined }),
       });
       const data = await response.json();
       if (!response.ok) {

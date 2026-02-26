@@ -481,7 +481,7 @@ export default function Home() {
             <SidebarGroup className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
               <SidebarGroupContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
                 {sidebarView === "ai-chat" ? (
-                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} />
+                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} />
                 ) : sidebarView === "layers" ? (
                   <SidebarContentPanel
                     layers={zuluConnection.layers}
@@ -543,7 +543,7 @@ export default function Home() {
                     <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
                   </Link>
                   {sidebarView === "ai-chat" ? (
-                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} />
+                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} />
                   ) : (
                     <SidebarContentPanel
                       layers={zuluConnection.layers}
