@@ -524,9 +524,15 @@ export const uploads = pgTable("uploads", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   filename: text("filename").notNull(),
   originalFilename: text("original_filename").notNull(),
-  status: text("status").notNull().default("pending"), // pending, processing, completed, failed
+  status: text("status").notNull().default("pending"), // pending, uploading, processing, completed, failed
   error: text("error"),
-  datasetId: integer("dataset_id"), // linked after processing
+  datasetId: integer("dataset_id"),
+  layerId: integer("layer_id"),
+  progress: integer("progress").notNull().default(0),
+  totalFeatures: integer("total_features"),
+  processedFeatures: integer("processed_features").notNull().default(0),
+  sceneId: integer("scene_id"),
+  color: text("color"),
   createdBy: varchar("created_by").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

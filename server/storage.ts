@@ -98,7 +98,7 @@ export interface IStorage {
   getUploads(userId?: string): Promise<Upload[]>;
   getUpload(id: number): Promise<Upload | undefined>;
   createUpload(upload: { filename: string; originalFilename: string; createdBy: string }): Promise<Upload>;
-  updateUpload(id: number, updates: Partial<{ status: string; error: string | null; datasetId: number | null }>): Promise<Upload | undefined>;
+  updateUpload(id: number, updates: Partial<{ status: string; error: string | null; datasetId: number | null; layerId: number | null; progress: number; totalFeatures: number | null; processedFeatures: number }>): Promise<Upload | undefined>;
   deleteUpload(id: number): Promise<boolean>;
   
   // API Key methods
@@ -845,20 +845,26 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async createUpload(upload: { filename: string; originalFilename: string; createdBy: string }): Promise<Upload> {
+  async createUpload(upload: { filename: string; originalFilename: string; createdBy: string; sceneId?: number | null; color?: string | null }): Promise<Upload> {
     const [row] = await db.insert(uploads).values({
       filename: upload.filename,
       originalFilename: upload.originalFilename,
       createdBy: upload.createdBy,
+      sceneId: upload.sceneId ?? null,
+      color: upload.color ?? null,
     }).returning();
     return row;
   }
 
-  async updateUpload(id: number, updates: Partial<{ status: string; error: string | null; datasetId: number | null }>): Promise<Upload | undefined> {
+  async updateUpload(id: number, updates: Partial<{ status: string; error: string | null; datasetId: number | null; layerId: number | null; progress: number; totalFeatures: number | null; processedFeatures: number }>): Promise<Upload | undefined> {
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.error !== undefined) updateData.error = updates.error;
     if (updates.datasetId !== undefined) updateData.datasetId = updates.datasetId;
+    if (updates.layerId !== undefined) updateData.layerId = updates.layerId;
+    if (updates.progress !== undefined) updateData.progress = updates.progress;
+    if (updates.totalFeatures !== undefined) updateData.totalFeatures = updates.totalFeatures;
+    if (updates.processedFeatures !== undefined) updateData.processedFeatures = updates.processedFeatures;
     
     const [row] = await db.update(uploads).set(updateData).where(eq(uploads.id, id)).returning();
     return row;

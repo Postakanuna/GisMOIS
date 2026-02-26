@@ -41,6 +41,14 @@ The backend uses Node.js with Express and TypeScript, providing a REST API (`/ap
 
 File upload limits: shapefiles up to 1 GB, Excel up to 200 MB, screenshots up to 10 MB. Files larger than 100 MB (shapefiles/GeoJSON) or 50 MB (Excel) require admin role. Rate limiting: max 5 uploads per minute per user. ZIP archives are validated for SHP content before processing (magic bytes + ZIP entry scan). Implemented in `server/routes.ts` via `checkUploadRateLimit()` and `validateShapefileBuffer()`.
 
+#### Background Upload Processing
+
+Large shapefile uploads (>10MB) use a two-step background processing mechanism:
+1. **Upload step**: `POST /api/datasets/upload` accepts the file, creates an `uploads` record with status "pending", and returns `uploadId` immediately (HTTP 202).
+2. **Background processing**: `processShapefileInBackground()` runs asynchronously — validates, parses shapefile, creates layer, batch-inserts features in chunks of 1000, updating progress in `uploads` table at each step.
+3. **SSE progress**: `GET /api/uploads/:id/progress` streams real-time progress via Server-Sent Events (status, percent, processedFeatures/totalFeatures, layerId, error).
+4. **Frontend**: `data-manager.tsx` connects to SSE after upload, displays a progress bar with percentage and descriptive status messages (validation → unpacking → DB writes). Uses `requestAnimationFrame` for smooth UI updates.
+
 ### Storage
 
 Data is stored in PostgreSQL, managed by Drizzle ORM, with schemas for users, scenes, datasets, and API keys, validated using Zod.

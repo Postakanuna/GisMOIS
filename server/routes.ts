@@ -5215,8 +5215,96 @@ export async function registerRoutes(
     }
   });
 
-  // Server-side shapefile upload and parsing (for large files)
-  app.post("/api/datasets/upload", isAuthenticated as any, upload.single("file"), async (req: AuthRequest, res: Response) => {
+  // Background shapefile processing function
+  async function processShapefileInBackground(uploadId: number, filePath: string, originalName: string, sceneId: number | null, color: string) {
+    try {
+      await storage.updateUpload(uploadId, { status: "processing", progress: 5 });
+
+      const fileBuffer = fs.readFileSync(filePath);
+
+      const validation = validateShapefileBuffer(fileBuffer);
+      if (!validation.valid) {
+        await storage.updateUpload(uploadId, { status: "failed", error: validation.error || "Невалидный шейпфайл", progress: 0 });
+        return;
+      }
+
+      await storage.updateUpload(uploadId, { progress: 10 });
+
+      const parseResult = await parseShapefileBuffer(fileBuffer);
+      const baseName = originalName.replace(/\.zip$/i, "");
+
+      await storage.updateUpload(uploadId, { progress: 30, totalFeatures: parseResult.features.length });
+
+      let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
+      if (parseResult.features.length > 0 && parseResult.features[0].properties) {
+        fieldSchema = Object.keys(parseResult.features[0].properties).map(key => ({
+          name: key,
+          type: typeof parseResult.features[0].properties[key] === 'number' ? 'number' : 'text',
+          required: false
+        }));
+      }
+
+      const normalizedType = normalizeGeometryType(parseResult.geometryType);
+      const layer = await storage.createEditableLayer({
+        sceneId,
+        name: baseName,
+        geometryType: normalizedType,
+        color: color || "#1976D2",
+        pointStyle: "circle",
+        lineStyle: "solid",
+        visible: true,
+        opacity: 1,
+        source: "import",
+        sourceFileName: originalName,
+        sourceFiles: parseResult.fileList,
+        crs: parseResult.crs,
+      });
+
+      if (fieldSchema.length > 0) {
+        await storage.createLayerSchema({
+          layerId: layer.id,
+          fields: fieldSchema as any,
+        });
+      }
+
+      await storage.updateUpload(uploadId, { progress: 40, layerId: layer.id });
+
+      const BATCH_SIZE = 1000;
+      const totalFeatures = parseResult.features.length;
+      let processedFeatures = 0;
+
+      for (let i = 0; i < totalFeatures; i += BATCH_SIZE) {
+        const batch = parseResult.features.slice(i, i + BATCH_SIZE);
+        const insertFeatures = batch.map((feature) => ({
+          layerId: layer.id,
+          geometryType: feature.geometry?.type || parseResult.geometryType,
+          coordinates: feature.geometry?.coordinates || [],
+          properties: feature.properties || {},
+        }));
+        await storage.createDrawnFeaturesBatch(insertFeatures);
+
+        processedFeatures += batch.length;
+        const progress = Math.round(40 + (processedFeatures / totalFeatures) * 55);
+        await storage.updateUpload(uploadId, { progress, processedFeatures });
+      }
+
+      await storage.updateUpload(uploadId, { status: "completed", progress: 100, processedFeatures: totalFeatures, layerId: layer.id });
+    } catch (error: any) {
+      console.error(`[Upload ${uploadId}] Background processing error:`, error);
+      await storage.updateUpload(uploadId, { status: "failed", error: error?.message || "Ошибка обработки шейпфайла" });
+    } finally {
+      if (filePath && fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
+  // Server-side shapefile upload — returns immediately, processes in background
+  app.post("/api/datasets/upload", isAuthenticated as any, (req: AuthRequest, res: Response, next: any) => {
+    req.setTimeout(10 * 60 * 1000);
+    res.setTimeout(10 * 60 * 1000);
+    next();
+  }, upload.single("file"), async (req: AuthRequest, res: Response) => {
     let filePath: string | null = null;
     try {
       const user = await getUserFromSession(req);
@@ -5241,89 +5329,91 @@ export async function registerRoutes(
       }
 
       filePath = file.path;
-      const { sceneId, color, name: customName } = req.body;
+      const { sceneId, color } = req.body;
       const originalName = file.originalname;
-      const baseName = customName || originalName.replace(/\.zip$/i, "");
 
-      const fileBuffer = fs.readFileSync(filePath);
-
-      const validation = validateShapefileBuffer(fileBuffer);
-      if (!validation.valid) {
-        if (filePath && fs.existsSync(filePath)) {
-          try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
-        }
-        return res.status(400).json({ message: validation.error });
-      }
-
-      const parseResult = await parseShapefileBuffer(fileBuffer);
-
-      // Extract field schema from first feature
-      let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
-      if (parseResult.features.length > 0 && parseResult.features[0].properties) {
-        fieldSchema = Object.keys(parseResult.features[0].properties).map(key => ({
-          name: key,
-          type: typeof parseResult.features[0].properties[key] === 'number' ? 'number' : 'text',
-          required: false
-        }));
-      }
-
-      // Create editable layer
-      const normalizedType = normalizeGeometryType(parseResult.geometryType);
-      const layer = await storage.createEditableLayer({
+      const uploadRecord = await storage.createUpload({
+        filename: path.basename(filePath),
+        originalFilename: originalName,
+        createdBy: user.id,
         sceneId: sceneId ? parseInt(sceneId) : null,
-        name: baseName,
-        geometryType: normalizedType,
-        color: color || "#1976D2",
-        pointStyle: "circle",
-        lineStyle: "solid",
-        visible: true,
-        opacity: 1,
-        source: "import",
-        sourceFileName: originalName,
-        sourceFiles: parseResult.fileList,
-        crs: parseResult.crs,
+        color: color || null,
       });
 
-      // Create layer schema
-      if (fieldSchema.length > 0) {
-        await storage.createLayerSchema({
-          layerId: layer.id,
-          fields: fieldSchema as any,
-        });
-      }
+      processShapefileInBackground(uploadRecord.id, filePath, originalName, sceneId ? parseInt(sceneId) : null, color || "#1976D2");
 
-      // Batch create features in chunks to avoid memory issues
-      const BATCH_SIZE = 1000;
-      for (let i = 0; i < parseResult.features.length; i += BATCH_SIZE) {
-        const batch = parseResult.features.slice(i, i + BATCH_SIZE);
-        const insertFeatures = batch.map((feature) => ({
-          layerId: layer.id,
-          geometryType: feature.geometry?.type || parseResult.geometryType,
-          coordinates: feature.geometry?.coordinates || [],
-          properties: feature.properties || {},
-        }));
-        await storage.createDrawnFeaturesBatch(insertFeatures);
-      }
-
-      const updatedLayer = await storage.getEditableLayer(layer.id);
-      
-      // Clean up temp file
-      if (filePath && fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-      
-      return res.status(201).json(updatedLayer);
+      return res.status(202).json({ uploadId: uploadRecord.id, message: "Файл принят в обработку" });
     } catch (error: any) {
       console.error("Upload shapefile error:", error);
-      // Clean up temp file on error
       if (filePath && fs.existsSync(filePath)) {
         try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
       }
-      
-      // Return more descriptive error message
       const errorMessage = error?.message || "Failed to process shapefile";
       return res.status(500).json({ message: errorMessage });
     }
+  });
+
+  // SSE endpoint for upload progress
+  app.get("/api/uploads/:id/progress", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    const user = await getUserFromSession(req);
+    if (!user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const uploadId = parseInt(req.params.id);
+    if (isNaN(uploadId)) {
+      return res.status(400).json({ message: "Invalid upload ID" });
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    let closed = false;
+    req.on("close", () => { closed = true; });
+
+    const sendEvent = (data: Record<string, unknown>) => {
+      if (!closed) {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      }
+    };
+
+    const poll = async () => {
+      while (!closed) {
+        try {
+          const upload = await storage.getUpload(uploadId);
+          if (!upload) {
+            sendEvent({ status: "failed", error: "Загрузка не найдена", progress: 0 });
+            break;
+          }
+
+          sendEvent({
+            status: upload.status,
+            progress: upload.progress,
+            totalFeatures: upload.totalFeatures,
+            processedFeatures: upload.processedFeatures,
+            layerId: upload.layerId,
+            error: upload.error,
+          });
+
+          if (upload.status === "completed" || upload.status === "failed") {
+            break;
+          }
+        } catch (err) {
+          console.error(`[Upload SSE ${uploadId}] Error:`, err);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      if (!closed) {
+        res.end();
+      }
+    };
+
+    poll();
   });
 
   // Get features by viewport (bbox) with geometry simplification

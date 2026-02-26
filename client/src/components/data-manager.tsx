@@ -409,6 +409,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
+  const [uploadPercent, setUploadPercent] = useState<number>(0);
   const SERVER_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -426,6 +427,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         
         if (fileSize > SERVER_UPLOAD_THRESHOLD) {
           setUploadProgress(`Загрузка ${file.name} (${fileSizeMB} МБ) на сервер...`);
+          setUploadPercent(0);
           
           const formData = new FormData();
           formData.append("file", file);
@@ -445,20 +447,68 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
               const error = await res.json();
               errorMessage = error.message || errorMessage;
             } catch {
-              // Response is not JSON, use status text
               errorMessage = `Ошибка сервера: ${res.status} ${res.statusText}`;
             }
             throw new Error(errorMessage);
           }
           
-          // Safely parse success response
+          let responseData: { uploadId?: number } = {};
           try {
-            await res.json();
+            responseData = await res.json();
           } catch {
             console.warn("Could not parse upload response as JSON");
           }
           
-          setUploadProgress(`Обработка завершена`);
+          if (responseData.uploadId) {
+            setUploadProgress(`Обработка ${file.name}...`);
+            setUploadPercent(5);
+            
+            await new Promise<void>((resolve, reject) => {
+              const eventSource = new EventSource(`/api/uploads/${responseData.uploadId}/progress`);
+              
+              eventSource.onmessage = (event) => {
+                try {
+                  const data = JSON.parse(event.data);
+                  requestAnimationFrame(() => {
+                    setUploadPercent(data.progress || 0);
+                    
+                    if (data.status === "processing") {
+                      if (data.totalFeatures && data.processedFeatures) {
+                        setUploadProgress(`Запись в БД: ${data.processedFeatures} / ${data.totalFeatures} объектов`);
+                      } else if (data.progress <= 10) {
+                        setUploadProgress(`Валидация ${file.name}...`);
+                      } else if (data.progress <= 30) {
+                        setUploadProgress(`Распаковка ${file.name}...`);
+                      } else {
+                        setUploadProgress(`Обработка ${file.name}...`);
+                      }
+                    }
+                    
+                    if (data.status === "completed") {
+                      setUploadProgress("Обработка завершена");
+                      setUploadPercent(100);
+                      eventSource.close();
+                      resolve();
+                    }
+                    
+                    if (data.status === "failed") {
+                      eventSource.close();
+                      reject(new Error(data.error || "Ошибка обработки файла"));
+                    }
+                  });
+                } catch (e) {
+                  console.error("SSE parse error:", e);
+                }
+              };
+              
+              eventSource.onerror = () => {
+                eventSource.close();
+                reject(new Error("Потеряно соединение с сервером"));
+              };
+            });
+          } else {
+            setUploadProgress(`Обработка завершена`);
+          }
         } else {
           setUploadProgress(`Обработка ${file.name}...`);
           const arrayBuffer = await file.arrayBuffer();
@@ -509,6 +559,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     } finally {
       setIsUploading(false);
       setUploadProgress("");
+      setUploadPercent(0);
     }
 
     if (fileInputRef.current) {
@@ -1440,9 +1491,21 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
             )}
             
             {uploadProgress && (
-              <div className="mb-3 p-2 bg-muted rounded text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {uploadProgress}
+              <div className="mb-3 p-2 bg-muted rounded text-sm text-muted-foreground" data-testid="upload-progress-container">
+                <div className="flex items-center gap-2 mb-1">
+                  <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                  <span className="truncate">{uploadProgress}</span>
+                  {uploadPercent > 0 && <span className="ml-auto flex-shrink-0 font-medium">{uploadPercent}%</span>}
+                </div>
+                {uploadPercent > 0 && (
+                  <div className="w-full bg-background rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-primary h-2 rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${uploadPercent}%` }}
+                      data-testid="upload-progress-bar"
+                    />
+                  </div>
+                )}
               </div>
             )}
             
