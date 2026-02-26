@@ -69,7 +69,13 @@ The system includes intelligent capacity analysis to find upstream CTP/source, e
 
 ### Complaint Analysis (Multi-Layer)
 
-Analyzes complaint data from up to 5 point layers simultaneously. Each layer can have its own date and address field mapping. Two modes: topology-based (matches complaints to consumers via network topology, groups by date/source, finds probable failure zones) and no-topology (spatial clustering by date + radius). Results include `layerBreakdown` per cluster/group showing complaint counts by source layer. Saved polygon layers include `source_layers`, `layer_breakdown`, and per-complaint `complaint_N_layer` attributes. API accepts `complaintLayers: [{layerId, dateField, addressField}]` with backward compatibility for single-layer `complaintLayerId` format.
+Analyzes complaint data from up to 5 point layers simultaneously. Each layer can have its own date and address field mapping. Two modes:
+
+**Topology mode**: Matches complaints to consumers by address+proximity (improved address matching strips regional prefixes, extracts street+house for comparison). Groups consumers with complaints by date + spatial proximity (DBSCAN-like clustering with `matchRadius × 5`). Clusters with fewer than 2 unique consumers are filtered out as "unclustered" (single complaint doesn't indicate network problem). For valid clusters, finds LCA (least common ancestor) in the BFS tree from the source, counts ALL downstream consumers, calculates probability = complaining/total downstream × 100%. Results sorted by complaint count (descending).
+
+**No-topology mode**: Spatial clustering by date + radius.
+
+Results include `layerBreakdown` per cluster/group, `uniqueConsumerCount`, `clusterId`, `clusterCenter`. `unclustered` array holds single-consumer matches. API accepts `complaintLayers: [{layerId, dateField, addressField}]` with backward compatibility for single-layer `complaintLayerId` format.
 
 ### Attribute Join
 

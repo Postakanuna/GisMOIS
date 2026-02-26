@@ -57,6 +57,7 @@ interface FailureZone {
   incomingSegment: { featureId: number; from: string; to: string; length: number } | null;
   complaintConsumers: string[];
   complaintCount: number;
+  uniqueComplaintConsumerCount?: number;
   downstreamConsumerCount: number;
   probability?: number;
   confidence: string;
@@ -79,13 +80,14 @@ interface ComplaintAnalysisResult {
   totalComplaints: number;
   totalMatched: number;
   totalUnmatched: number;
-  emptyNistCount: number;
   layerNames?: Record<number, string>;
   dateGroups: Array<{
     date: string;
-    nist: string;
+    clusterId: number;
     sourceName: string;
     complaintCount: number;
+    uniqueConsumerCount: number;
+    clusterCenter?: [number, number];
     layerBreakdown?: Record<string, number>;
     consumers: Array<{
       name: string;
@@ -95,6 +97,13 @@ interface ComplaintAnalysisResult {
       matchType: "address+proximity" | "proximity_only";
     }>;
     failureZones: FailureZone[];
+  }>;
+  unclustered?: Array<{
+    complaintId: number;
+    address: string;
+    date: string;
+    consumerName: string;
+    reason: string;
   }>;
   unmatchedComplaints: Array<{
     complaintId: number;
@@ -525,7 +534,7 @@ export function ComplaintAnalysisDialog({
 
               <p className="text-xs text-muted-foreground">
                 {analysisMode === "topology"
-                  ? "Привязка жалоб к потребителям, группировка по дате/источнику, поиск зон аварий через топологию сети"
+                  ? "Привязка жалоб к потребителям, кластеризация по дате и близости, поиск точки схождения проблемных потребителей на графе сети"
                   : "Пространственная кластеризация жалоб: одна дата + заданный радиус. Предпросмотр полигонов кластеров на карте"}
               </p>
 
@@ -683,15 +692,11 @@ export function ComplaintAnalysisDialog({
                 )}
               </div>
 
-              {result.emptyNistCount > 0 && (
-                <div className="text-xs text-orange-600 dark:text-orange-400 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3 shrink-0" />
-                  {result.emptyNistCount} потребител{result.emptyNistCount === 1 ? "ь" : result.emptyNistCount < 5 ? "я" : "ей"} без привязки к источнику (Nist) — не группируются
-                </div>
-              )}
-
               <div className="text-xs text-muted-foreground">
-                Найдено {result.dateGroups.length} групп (дата + источник)
+                Найдено {result.dateGroups.length} кластер{result.dateGroups.length === 1 ? "" : result.dateGroups.length < 5 ? "а" : "ов"} (дата + близость потребителей)
+                {result.unclustered && result.unclustered.length > 0 && (
+                  <span className="text-orange-600 dark:text-orange-400"> | {result.unclustered.length} единичных</span>
+                )}
               </div>
 
               {result.dateGroups.map((group, index) => (
@@ -706,17 +711,15 @@ export function ComplaintAnalysisDialog({
                             <ChevronRight className="h-4 w-4 shrink-0" />
                           )}
                           <span className="text-sm font-medium truncate">{group.date}</span>
-                          {group.nist ? (
-                            <Badge variant="outline" className="shrink-0">Nist {group.nist}</Badge>
-                          ) : (
-                            <Badge variant="outline" className="shrink-0 text-orange-600 dark:text-orange-400 border-orange-300 dark:border-orange-600">Nist нет</Badge>
-                          )}
+                          <Badge variant="outline" className="shrink-0">
+                            {group.uniqueConsumerCount} МКД
+                          </Badge>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           {group.failureZones.length > 0 && (
                             <Badge variant="destructive" className="shrink-0">{group.failureZones.length} зон</Badge>
                           )}
-                          <Badge variant="secondary">{group.complaintCount}</Badge>
+                          <Badge variant="secondary">{group.complaintCount} жалоб</Badge>
                         </div>
                       </div>
                     </CollapsibleTrigger>
@@ -728,11 +731,21 @@ export function ComplaintAnalysisDialog({
                           </div>
                         )}
 
+                        {group.layerBreakdown && Object.keys(group.layerBreakdown).length > 1 && (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(group.layerBreakdown).map(([name, count]) => (
+                              <Badge key={name} variant="outline" className="text-[10px] py-0 px-1.5">
+                                {name}: {count}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
                         {group.failureZones.length > 0 && (
                           <div className="space-y-2">
                             <div className="text-xs font-medium flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3 text-orange-500" />
-                              Вероятные зоны аварий ({group.failureZones.length})
+                              Вероятные точки проблемы ({group.failureZones.length})
                             </div>
                             {group.failureZones.map((zone, zi) => {
                               const zoneKey = `${index}-${zi}`;
@@ -771,7 +784,10 @@ export function ComplaintAnalysisDialog({
                                         Жалоб: {zone.complaintCount}
                                       </span>
                                       <span className="text-muted-foreground">
-                                        Потребителей ниже: {zone.downstreamConsumerCount}
+                                        МКД с жалобами: {zone.uniqueComplaintConsumerCount || zone.complaintConsumers?.length || "—"}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        Всего потребителей ниже: {zone.downstreamConsumerCount}
                                       </span>
                                       {zone.affectedSegments && zone.affectedSegments.length > 0 && (
                                         <span className="text-muted-foreground">
@@ -821,6 +837,49 @@ export function ComplaintAnalysisDialog({
                   </Collapsible>
                 </Card>
               ))}
+
+              {result.unclustered && result.unclustered.length > 0 && (
+                <Collapsible>
+                  <CollapsibleTrigger className="w-full" data-testid="trigger-unclustered-topology">
+                    <div className="flex items-center gap-2 p-2 text-sm">
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                      <span className="text-muted-foreground">Единичные жалобы — не кластеризованы ({result.unclustered.length})</span>
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-2 pb-2 space-y-1">
+                      {result.unclustered.map((u, i) => (
+                        <div key={i} className="text-xs pl-4 border-l-2 border-muted py-0.5">
+                          <div className="text-muted-foreground">{u.date} — {u.consumerName || "Без имени"}</div>
+                          <div className="text-muted-foreground/80">{u.address || "Без адреса"}</div>
+                          <div className="text-muted-foreground/60">{u.reason}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
+              {result.unmatchedComplaints.length > 0 && (
+                <Collapsible>
+                  <CollapsibleTrigger className="w-full" data-testid="trigger-unmatched">
+                    <div className="flex items-center gap-2 p-2 text-sm">
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                      <span className="text-muted-foreground">Не привязаны к потребителям ({result.unmatchedComplaints.length})</span>
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-2 pb-2 space-y-1">
+                      {result.unmatchedComplaints.map((u, i) => (
+                        <div key={i} className="text-xs pl-4 border-l-2 border-muted py-0.5">
+                          <div className="text-muted-foreground">{u.date} — {u.address || "Без адреса"}</div>
+                          <div className="text-muted-foreground/60">{u.reason}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
 
               <Button
                 size="sm"

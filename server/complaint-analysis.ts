@@ -13,6 +13,40 @@ import {
 } from "./network-graph";
 import type { SpatialGraph } from "./network-graph";
 
+const ADDRESS_PREFIXES_TO_STRIP = [
+  "россия",
+  "российская федерация",
+  "рф",
+  "московская область",
+  "московская обл",
+  "москвоская область",
+  "мо",
+  "ленинградская область",
+  "ленинградская обл",
+  "свердловская область",
+  "свердловская обл",
+  "нижегородская область",
+  "нижегородская обл",
+  "самарская область",
+  "самарская обл",
+  "челябинская область",
+  "челябинская обл",
+  "ростовская область",
+  "ростовская обл",
+  "краснодарский край",
+  "красноярский край",
+  "пермский край",
+  "республика татарстан",
+  "республика башкортостан",
+  "муниципальный район",
+  "муниципальный округ",
+  "городской округ",
+  "г.о.",
+  "г.о",
+  "м.р.",
+  "м.р",
+];
+
 function normalizeAddress(addr: string): string {
   return addr
     .toLowerCase()
@@ -53,9 +87,62 @@ function normalizeAddress(addr: string): string {
     .trim();
 }
 
+function stripAddressPrefixes(addr: string): string {
+  let result = addr.toLowerCase().trim();
+  for (const prefix of ADDRESS_PREFIXES_TO_STRIP) {
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    result = result.replace(new RegExp(`^${escaped}[,\\s]*`, "i"), "");
+    result = result.replace(new RegExp(`[,\\s]+${escaped}[,\\s]*`, "gi"), " ");
+  }
+  return result.replace(/^[,\s]+/, "").replace(/[,\s]+$/, "").trim();
+}
+
+function extractStreetAndHouse(addr: string): { street: string; house: string } | null {
+  const normalized = normalizeAddress(addr);
+  const stripped = stripAddressPrefixes(normalized);
+
+  const streetPatterns = [
+    /(?:ул\.?|улица)\s*([^,\d]+)/i,
+    /(?:пр-т\.?|проспект)\s*([^,\d]+)/i,
+    /(?:пер\.?|переулок)\s*([^,\d]+)/i,
+    /(?:б-р\.?|бульвар)\s*([^,\d]+)/i,
+    /(?:ш\.?|шоссе)\s*([^,\d]+)/i,
+    /(?:пр-д\.?|проезд)\s*([^,\d]+)/i,
+    /(?:пл\.?|площадь)\s*([^,\d]+)/i,
+    /(?:наб\.?|набережная)\s*([^,\d]+)/i,
+  ];
+
+  let street = "";
+  for (const pattern of streetPatterns) {
+    const match = stripped.match(pattern);
+    if (match) {
+      street = match[1].trim().replace(/[,\s]+$/, "");
+      break;
+    }
+  }
+
+  const housePatterns = [
+    /(?:д\.?|дом)\s*(\d+[\w\/]*)/i,
+    /(?:,\s*)(\d+[\w\/]*)\s*$/,
+  ];
+
+  let house = "";
+  for (const pattern of housePatterns) {
+    const match = stripped.match(pattern);
+    if (match) {
+      house = match[1].trim();
+      break;
+    }
+  }
+
+  if (!street && !house) return null;
+  return { street: street.toLowerCase(), house: house.toLowerCase() };
+}
+
 function extractAddressTokens(addr: string): string[] {
   const normalized = normalizeAddress(addr);
-  return normalized
+  const stripped = stripAddressPrefixes(normalized);
+  return stripped
     .split(/[,\s]+/)
     .filter(t => t.length > 0)
     .sort();
@@ -81,6 +168,21 @@ function addressMatch(addr1: string, addr2: string): boolean {
   const norm2 = normalizeAddress(addr2);
   if (norm1 === norm2) return true;
 
+  const sh1 = extractStreetAndHouse(addr1);
+  const sh2 = extractStreetAndHouse(addr2);
+  if (sh1 && sh2 && sh1.house && sh2.house) {
+    if (sh1.house === sh2.house) {
+      if (sh1.street && sh2.street) {
+        const streetTokens1 = sh1.street.split(/[\s.]+/).filter(t => t.length > 1);
+        const streetTokens2 = sh2.street.split(/[\s.]+/).filter(t => t.length > 1);
+        const hasCommonStreetToken = streetTokens1.some(t1 =>
+          streetTokens2.some(t2 => tokenMatch(t1, t2))
+        );
+        if (hasCommonStreetToken) return true;
+      }
+    }
+  }
+
   const tokens1 = extractAddressTokens(addr1);
   const tokens2 = extractAddressTokens(addr2);
 
@@ -96,7 +198,7 @@ function addressMatch(addr1: string, addr2: string): boolean {
     }
   }
 
-  return matchCount >= Math.max(2, Math.ceil(shorter.length * 0.6));
+  return matchCount >= Math.max(2, Math.ceil(shorter.length * 0.5));
 }
 
 function haversineDistance(
@@ -162,15 +264,15 @@ interface ComplaintMatch {
   consumerName: string;
   consumerAddress: string;
   consumerNist: string;
+  consumerLon: number;
+  consumerLat: number;
   distance: number;
   matchType: "address+proximity" | "proximity_only";
 }
 
-interface DateGroup {
-  date: string;
-  nist: string;
-  complaints: ComplaintMatch[];
-  consumerNodeNames: string[];
+interface SpatialCluster {
+  matches: ComplaintMatch[];
+  uniqueConsumerIds: Set<number>;
 }
 
 interface FailureZone {
@@ -180,6 +282,7 @@ interface FailureZone {
   incomingSegment: { featureId: number; from: string; to: string; length: number } | null;
   complaintConsumers: string[];
   complaintCount: number;
+  uniqueComplaintConsumerCount: number;
   downstreamConsumerCount: number;
   probability: number;
   confidence: "high" | "medium" | "low";
@@ -202,13 +305,14 @@ export interface ComplaintAnalysisResult {
   totalComplaints: number;
   totalMatched: number;
   totalUnmatched: number;
-  emptyNistCount: number;
   layerNames: Record<number, string>;
   dateGroups: Array<{
     date: string;
-    nist: string;
+    clusterId: number;
     sourceName: string;
     complaintCount: number;
+    uniqueConsumerCount: number;
+    clusterCenter: [number, number];
     layerBreakdown: Record<string, number>;
     consumers: Array<{
       name: string;
@@ -218,6 +322,13 @@ export interface ComplaintAnalysisResult {
       matchType: "address+proximity" | "proximity_only";
     }>;
     failureZones: FailureZone[];
+  }>;
+  unclustered: Array<{
+    complaintId: number;
+    address: string;
+    date: string;
+    consumerName: string;
+    reason: string;
   }>;
   unmatchedComplaints: Array<{
     complaintId: number;
@@ -284,8 +395,8 @@ export async function analyzeComplaints(
 
     const effectiveAddressField = fields.addressField && fields.addressField !== "_none_" ? fields.addressField : "";
     const addrCandidates = effectiveAddressField
-      ? [effectiveAddressField, "Adres", "adres", "Address", "address", "Адрес", "адрес"]
-      : ["Adres", "adres", "Address", "address", "Адрес", "адрес"];
+      ? [effectiveAddressField, "Adres", "adres", "Address", "address", "Адрес", "адрес", "addr_point"]
+      : ["Adres", "adres", "Address", "address", "Адрес", "адрес", "addr_point"];
     let address = "";
     for (const field of addrCandidates) {
       if (props[field] && String(props[field]).trim()) {
@@ -305,7 +416,7 @@ export async function analyzeComplaints(
     });
   }
 
-  console.log(`[ComplaintAnalysis] Parsed ${parsedComplaints.length} complaints with valid dates`);
+  console.log(`[ComplaintAnalysis] Parsed ${parsedComplaints.length} complaints`);
 
   const layerConfig = await getSceneNetworkLayers(sceneId);
   const consumerLayerIds = [...layerConfig.consumerLayerIds, ...layerConfig.ctpLayerIds];
@@ -403,6 +514,8 @@ export async function analyzeComplaints(
         consumerName: bestMatch.consumer.name,
         consumerAddress: bestMatch.consumer.address,
         consumerNist: bestMatch.consumer.nist,
+        consumerLon: bestMatch.consumer.lon,
+        consumerLat: bestMatch.consumer.lat,
         distance: Math.round(bestMatch.distance),
         matchType: bestMatch.matchType,
       });
@@ -420,31 +533,83 @@ export async function analyzeComplaints(
   console.log(`[ComplaintAnalysis] Address+proximity matches: ${matches.filter(m => m.matchType === "address+proximity").length}`);
   console.log(`[ComplaintAnalysis] Proximity-only matches: ${matches.filter(m => m.matchType === "proximity_only").length}`);
 
-  const dateNistGroups = new Map<string, DateGroup>();
-  let emptyNistCounter = 0;
+  const byDate = new Map<string, ComplaintMatch[]>();
   for (const match of matches) {
-    let key: string;
-    if (!match.consumerNist || match.consumerNist.trim() === "") {
-      key = `${match.complaintDate}|__empty_nist_${emptyNistCounter++}`;
-    } else {
-      key = `${match.complaintDate}|${match.consumerNist}`;
+    if (!byDate.has(match.complaintDate)) byDate.set(match.complaintDate, []);
+    byDate.get(match.complaintDate)!.push(match);
+  }
+
+  const spatialClusters: Array<{ date: string; cluster: SpatialCluster }> = [];
+  const unclusteredMatches: ComplaintAnalysisResult["unclustered"] = [];
+
+  for (const [date, dateMatches] of byDate) {
+    const consumerPositions = new Map<number, { lon: number; lat: number; matches: ComplaintMatch[] }>();
+    for (const m of dateMatches) {
+      if (!consumerPositions.has(m.consumerId)) {
+        consumerPositions.set(m.consumerId, { lon: m.consumerLon, lat: m.consumerLat, matches: [] });
+      }
+      consumerPositions.get(m.consumerId)!.matches.push(m);
     }
-    if (!dateNistGroups.has(key)) {
-      dateNistGroups.set(key, {
-        date: match.complaintDate,
-        nist: match.consumerNist,
-        complaints: [],
-        consumerNodeNames: [],
+
+    const consumerEntries = Array.from(consumerPositions.entries());
+    const visited = new Set<number>();
+
+    for (let i = 0; i < consumerEntries.length; i++) {
+      if (visited.has(i)) continue;
+
+      const queue = [i];
+      visited.add(i);
+      const clusterMembers: number[] = [i];
+
+      let head = 0;
+      while (head < queue.length) {
+        const currentEntry = consumerEntries[queue[head]];
+        head++;
+
+        for (let j = 0; j < consumerEntries.length; j++) {
+          if (visited.has(j)) continue;
+          const candidateEntry = consumerEntries[j];
+          const dist = haversineDistance(
+            currentEntry[1].lat, currentEntry[1].lon,
+            candidateEntry[1].lat, candidateEntry[1].lon
+          );
+          if (dist <= matchRadius * 5) {
+            visited.add(j);
+            queue.push(j);
+            clusterMembers.push(j);
+          }
+        }
+      }
+
+      const uniqueConsumerIds = new Set<number>();
+      const allMatches: ComplaintMatch[] = [];
+      for (const idx of clusterMembers) {
+        const [consumerId, data] = consumerEntries[idx];
+        uniqueConsumerIds.add(consumerId);
+        allMatches.push(...data.matches);
+      }
+
+      if (uniqueConsumerIds.size < 2) {
+        for (const m of allMatches) {
+          unclusteredMatches.push({
+            complaintId: m.complaintId,
+            address: m.complaintAddress,
+            date: m.complaintDate,
+            consumerName: m.consumerName,
+            reason: "Единичная жалоба (менее 2 МКД/потребителей в радиусе)",
+          });
+        }
+        continue;
+      }
+
+      spatialClusters.push({
+        date,
+        cluster: { matches: allMatches, uniqueConsumerIds },
       });
-    }
-    const group = dateNistGroups.get(key)!;
-    group.complaints.push(match);
-    if (!group.consumerNodeNames.includes(match.consumerName)) {
-      group.consumerNodeNames.push(match.consumerName);
     }
   }
 
-  console.log(`[ComplaintAnalysis] Date-Nist groups: ${dateNistGroups.size}`);
+  console.log(`[ComplaintAnalysis] Spatial clusters (>=2 consumers): ${spatialClusters.length}, Unclustered: ${unclusteredMatches.length}`);
 
   let graph: SpatialGraph | null = null;
   try {
@@ -466,28 +631,41 @@ export async function analyzeComplaints(
   }
 
   const resultGroups: ComplaintAnalysisResult["dateGroups"] = [];
+  let clusterIdCounter = 0;
 
-  for (const [, group] of Array.from(dateNistGroups)) {
-    const consumerSummary = summarizeConsumers(group);
+  for (const { date, cluster } of spatialClusters) {
+    clusterIdCounter++;
+
+    const consumerSummary = summarizeClusterConsumers(cluster.matches);
 
     const layerBreakdown: Record<string, number> = {};
-    for (const c of group.complaints) {
-      layerBreakdown[c.complaintLayerName] = (layerBreakdown[c.complaintLayerName] || 0) + 1;
+    for (const m of cluster.matches) {
+      layerBreakdown[m.complaintLayerName] = (layerBreakdown[m.complaintLayerName] || 0) + 1;
     }
+
+    let centerLon = 0, centerLat = 0;
+    for (const cid of cluster.uniqueConsumerIds) {
+      const consumer = consumers.find(c => c.id === cid);
+      if (consumer) {
+        centerLon += consumer.lon;
+        centerLat += consumer.lat;
+      }
+    }
+    centerLon /= cluster.uniqueConsumerIds.size;
+    centerLat /= cluster.uniqueConsumerIds.size;
 
     let failureZones: FailureZone[] = [];
     let sourceName = "";
 
-    if (graph && group.complaints.length >= 1) {
+    if (graph) {
       try {
-        const uniqueConsumerIds = new Set(group.complaints.map(c => c.consumerId));
         const consumerKeys: string[] = [];
-        for (const cid of uniqueConsumerIds) {
+        for (const cid of cluster.uniqueConsumerIds) {
           const key = consumerKeyMap.get(cid);
           if (key) consumerKeys.push(key);
         }
 
-        if (consumerKeys.length >= 1) {
+        if (consumerKeys.length >= 2) {
           const firstKey = consumerKeys[0];
           const component = getConnectedComponent(graph, firstKey);
           const sourceKey = findSourceInComponent(graph, component);
@@ -501,7 +679,7 @@ export async function analyzeComplaints(
             const parentMap = spatialBfsFromSource(graph, sourceKey, component);
 
             const keysInTree = consumerKeys.filter(k => parentMap.has(k));
-            if (keysInTree.length >= 1) {
+            if (keysInTree.length >= 2) {
               const candidates = findFailureZonesForConsumers(
                 graph, parentMap, sourceKey, keysInTree
               );
@@ -522,10 +700,9 @@ export async function analyzeComplaints(
                 }
 
                 const complaintConsumerNames: string[] = [];
-                for (const c of group.complaints) {
-                  const key = consumerKeyMap.get(c.consumerId);
-                  if (key && !complaintConsumerNames.includes(c.consumerName)) {
-                    complaintConsumerNames.push(c.consumerName);
+                for (const m of cluster.matches) {
+                  if (!complaintConsumerNames.includes(m.consumerName)) {
+                    complaintConsumerNames.push(m.consumerName);
                   }
                 }
 
@@ -570,7 +747,8 @@ export async function analyzeComplaints(
                   zoneCoordinates: candidate.nodeCoordinates,
                   incomingSegment,
                   complaintConsumers: complaintConsumerNames,
-                  complaintCount: group.complaints.length,
+                  complaintCount: cluster.matches.length,
+                  uniqueComplaintConsumerCount: cluster.uniqueConsumerIds.size,
                   downstreamConsumerCount: candidate.downstreamConsumerCount,
                   probability,
                   confidence,
@@ -579,64 +757,58 @@ export async function analyzeComplaints(
                 });
               }
 
-              console.log(`[ComplaintAnalysis] Group ${group.date}|${group.nist}: found ${failureZones.length} failure zones`);
+              console.log(`[ComplaintAnalysis] Cluster ${clusterIdCounter} (${date}): ${failureZones.length} failure zones, ${cluster.uniqueConsumerIds.size} consumers, ${cluster.matches.length} complaints`);
             } else {
-              console.log(`[ComplaintAnalysis] Group ${group.date}|${group.nist}: no consumers in BFS tree`);
+              console.log(`[ComplaintAnalysis] Cluster ${clusterIdCounter} (${date}): fewer than 2 consumers in BFS tree`);
             }
           } else {
-            console.log(`[ComplaintAnalysis] Group ${group.date}|${group.nist}: no source found in component`);
+            console.log(`[ComplaintAnalysis] Cluster ${clusterIdCounter} (${date}): no source found in component`);
           }
         } else {
-          console.log(`[ComplaintAnalysis] Group ${group.date}|${group.nist}: no consumers found in graph`);
+          console.log(`[ComplaintAnalysis] Cluster ${clusterIdCounter} (${date}): fewer than 2 consumers found in graph`);
         }
       } catch (zoneErr: any) {
-        console.warn(`[ComplaintAnalysis] Error finding failure zones for group ${group.date}|${group.nist}:`, zoneErr.message);
+        console.warn(`[ComplaintAnalysis] Error finding failure zones for cluster ${clusterIdCounter}:`, zoneErr.message);
       }
     }
 
     resultGroups.push({
-      date: group.date,
-      nist: group.nist,
+      date,
+      clusterId: clusterIdCounter,
       sourceName,
-      complaintCount: group.complaints.length,
+      complaintCount: cluster.matches.length,
+      uniqueConsumerCount: cluster.uniqueConsumerIds.size,
+      clusterCenter: [centerLon, centerLat],
       layerBreakdown,
       consumers: consumerSummary,
       failureZones,
     });
   }
 
-  resultGroups.sort((a, b) => {
-    return a.date.localeCompare(b.date);
-  });
+  resultGroups.sort((a, b) => b.complaintCount - a.complaintCount);
 
-  console.log(`[ComplaintAnalysis] === End === Groups: ${resultGroups.length}, Zones: ${resultGroups.reduce((s, g) => s + g.failureZones.length, 0)}`);
-
-  const emptyNistCount = matches.filter(m => !m.consumerNist || m.consumerNist.trim() === "").length;
-  if (emptyNistCount > 0) {
-    console.log(`[ComplaintAnalysis] WARNING: ${emptyNistCount} matches have empty Nist — treated as individual groups`);
-  }
+  console.log(`[ComplaintAnalysis] === End === Groups: ${resultGroups.length}, Zones: ${resultGroups.reduce((s, g) => s + g.failureZones.length, 0)}, Unclustered: ${unclusteredMatches.length}`);
 
   return {
     totalComplaints: parsedComplaints.length,
     totalMatched: matches.length,
     totalUnmatched: unmatched.length,
-    emptyNistCount,
     layerNames: layerNameMap,
     dateGroups: resultGroups,
+    unclustered: unclusteredMatches,
     unmatchedComplaints: unmatched,
   };
 }
 
-function summarizeConsumers(group: DateGroup) {
-  const consumerMap = new Map<string, { name: string; address: string; count: number; distance: number; matchType: ComplaintMatch["matchType"] }>();
-  for (const c of group.complaints) {
-    const key = c.consumerName;
-    if (!consumerMap.has(key)) {
-      consumerMap.set(key, { name: c.consumerName, address: c.consumerAddress, count: 0, distance: c.distance, matchType: c.matchType });
+function summarizeClusterConsumers(matches: ComplaintMatch[]) {
+  const consumerMap = new Map<number, { name: string; address: string; count: number; distance: number; matchType: ComplaintMatch["matchType"] }>();
+  for (const m of matches) {
+    if (!consumerMap.has(m.consumerId)) {
+      consumerMap.set(m.consumerId, { name: m.consumerName, address: m.consumerAddress, count: 0, distance: m.distance, matchType: m.matchType });
     }
-    const entry = consumerMap.get(key)!;
+    const entry = consumerMap.get(m.consumerId)!;
     entry.count++;
-    if (c.matchType === "address+proximity" && entry.matchType !== "address+proximity") {
+    if (m.matchType === "address+proximity" && entry.matchType !== "address+proximity") {
       entry.matchType = "address+proximity";
     }
   }

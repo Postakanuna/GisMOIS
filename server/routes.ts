@@ -6762,15 +6762,16 @@ export async function registerRoutes(
       const summarySheet = workbook.addWorksheet("Сводка");
       summarySheet.columns = [
         { header: "Дата", key: "date", width: 15 },
-        { header: "Источник (Nist)", key: "nist", width: 15 },
+        { header: "Кластер", key: "clusterId", width: 10 },
         { header: "Источник", key: "sourceName", width: 30 },
         { header: "Кол-во жалоб", key: "complaintCount", width: 15 },
+        { header: "Уник. потребителей", key: "uniqueConsumerCount", width: 20 },
         { header: "Кол-во потребителей", key: "consumerCount", width: 20 },
         { header: "Вероятный узел аварии", key: "failureNode", width: 35 },
         { header: "Тип узла", key: "nodeType", width: 15 },
         { header: "Участок (от-до)", key: "segment", width: 40 },
+        { header: "Вероятность (%)", key: "probability", width: 15 },
         { header: "Уверенность", key: "confidence", width: 15 },
-        { header: "Зона покрытия (%)", key: "coverage", width: 18 },
         { header: "Потребителей ниже аварии", key: "downstream", width: 25 },
       ];
       const hRow = summarySheet.getRow(1);
@@ -6782,30 +6783,32 @@ export async function registerRoutes(
           for (const zone of group.failureZones) {
             summarySheet.addRow({
               date: group.date,
-              nist: group.nist,
+              clusterId: group.clusterId || "",
               sourceName: group.sourceName,
               complaintCount: group.complaintCount,
+              uniqueConsumerCount: group.uniqueConsumerCount || group.consumers.length,
               consumerCount: group.consumers.length,
               failureNode: zone.zoneName || "—",
               nodeType: translateNodeType(zone.zoneType),
               segment: zone.incomingSegment ? `${zone.incomingSegment.from} → ${zone.incomingSegment.to}` : "—",
+              probability: (zone as any).probability ?? "—",
               confidence: translateConfidence(zone.confidence),
-              coverage: group.complaintCount > 0 ? Math.round((zone.complaintCount / group.complaintCount) * 100) : "—",
               downstream: zone.downstreamConsumerCount,
             });
           }
         } else {
           summarySheet.addRow({
             date: group.date,
-            nist: group.nist,
+            clusterId: group.clusterId || "",
             sourceName: group.sourceName,
             complaintCount: group.complaintCount,
+            uniqueConsumerCount: group.uniqueConsumerCount || group.consumers.length,
             consumerCount: group.consumers.length,
             failureNode: "—",
             nodeType: "—",
             segment: "—",
+            probability: "—",
             confidence: "—",
-            coverage: "—",
             downstream: "—",
           });
         }
@@ -6822,17 +6825,20 @@ export async function registerRoutes(
       statsSheet.addRow({ param: "Всего жалоб", value: result.totalComplaints });
       statsSheet.addRow({ param: "Привязано к потребителям", value: result.totalMatched });
       statsSheet.addRow({ param: "Не привязано", value: result.totalUnmatched });
-      statsSheet.addRow({ param: "Потребителей без Nist (не группируются)", value: result.emptyNistCount });
-      statsSheet.addRow({ param: "Групп дата+источник", value: result.dateGroups.length });
+      statsSheet.addRow({ param: "Кластеров (дата+близость)", value: result.dateGroups.length });
+      if (result.unclustered) {
+        statsSheet.addRow({ param: "Единичных жалоб (не кластеризованы)", value: result.unclustered.length });
+      }
 
       const usedSheetNames = new Set<string>();
-      for (const group of result.dateGroups) {
+      for (let gi = 0; gi < result.dateGroups.length; gi++) {
+        const group = result.dateGroups[gi];
         if (group.consumers.length === 0) continue;
-        let sheetName = `${group.date}_Nist${group.nist}`.substring(0, 31);
+        let sheetName = `${group.date}_кл${group.clusterId || gi + 1}`.substring(0, 31);
         let counter = 1;
         while (usedSheetNames.has(sheetName)) {
           const suffix = `_${counter}`;
-          sheetName = `${group.date}_Nist${group.nist}`.substring(0, 31 - suffix.length) + suffix;
+          sheetName = `${group.date}_кл${group.clusterId || gi + 1}`.substring(0, 31 - suffix.length) + suffix;
           counter++;
         }
         usedSheetNames.add(sheetName);
@@ -7013,7 +7019,7 @@ export async function registerRoutes(
               zone_name: zone.zoneName || "",
               zone_type: nodeTypeMap[zone.zoneType] || zone.zoneType || "",
               date: group.date || "",
-              nist: group.nist || "",
+              cluster_id: group.clusterId || "",
               source_name: group.sourceName || "",
               probability: (zone as any).probability ?? null,
               confidence: confidenceMap[zone.confidence] || zone.confidence || "",
@@ -7117,8 +7123,8 @@ export async function registerRoutes(
         layerMetadata.totalComplaints = topologyResult.totalComplaints || 0;
         layerMetadata.totalMatched = topologyResult.totalMatched || 0;
         layerMetadata.totalUnmatched = topologyResult.totalUnmatched || 0;
-        layerMetadata.emptyNistCount = topologyResult.emptyNistCount || 0;
-        layerMetadata.dateGroupCount = topologyResult.dateGroups?.length || 0;
+        layerMetadata.clusterCount = topologyResult.dateGroups?.length || 0;
+        layerMetadata.unclusteredCount = topologyResult.unclustered?.length || 0;
         layerMetadata.failureZoneCount = features.length;
       } else if (mode === "no_topology" && noTopologyResult) {
         layerMetadata.totalComplaints = noTopologyResult.totalComplaints || 0;
