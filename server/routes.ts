@@ -7386,11 +7386,14 @@ export async function registerRoutes(
 ИНСТРУМЕНТ АНАЛИЗА ЖАЛОБ:
 Если пользователь просит проанализировать жалобы, найти кластеры жалоб, или что-то связанное с анализом обращений/жалоб:
 1. Проанализируй список доступных слоёв (ниже) и найди слой, который содержит жалобы (по названию слоя — ключевые слова: "жалоб", "обращен", "заявк", "complaint").
-2. Если нашёл подходящий слой — посмотри его атрибуты и определи столбец с датами (ключевые слова в названии атрибута: "дат", "date", "Date", "Дат", "дата", "created", "время").
-3. Ответь пользователю, указав какой слой ты нашёл, какой столбец дат определил, и что можешь запустить анализ.
-4. В САМОМ КОНЦЕ ответа добавь технический маркер в формате: [ACTION:COMPLAINT_ANALYSIS:ID_СЛОЯ:НАЗВАНИЕ_ПОЛЯ_ДАТЫ]
-   Например: [ACTION:COMPLAINT_ANALYSIS:42:Дата_жалобы]
-   Если столбец дат не найден, используй _none_: [ACTION:COMPLAINT_ANALYSIS:42:_none_]
+2. Если нашёл подходящий слой — посмотри его атрибуты и определи:
+   а) Столбец с датами (ключевые слова: "дат", "date", "Date", "Дат", "дата", "created", "время").
+   б) Столбец с адресами (ключевые слова: "адрес", "адр", "address", "addr", "Adres", "place", "location", "место", "улиц", "street").
+3. Ответь пользователю, указав какой слой нашёл, какой столбец дат и какой столбец адресов определил, и что можешь запустить анализ.
+4. В САМОМ КОНЦЕ ответа добавь технический маркер в формате: [ACTION:COMPLAINT_ANALYSIS:ID_СЛОЯ:ПОЛЕ_ДАТЫ:ПОЛЕ_АДРЕСА]
+   Например: [ACTION:COMPLAINT_ANALYSIS:42:Дата_жалобы:Адрес]
+   Если столбец дат не найден, используй _none_: [ACTION:COMPLAINT_ANALYSIS:42:_none_:Адрес]
+   Если столбец адреса не найден, используй _none_: [ACTION:COMPLAINT_ANALYSIS:42:Дата_жалобы:_none_]
 5. Если подходящий слой не найден — сообщи об этом и попроси пользователя уточнить название слоя. НЕ добавляй маркер в этом случае.
 
 ВАЖНО: Если ниже приведены данные из базы — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${ragContext}`,
@@ -7421,7 +7424,7 @@ export async function registerRoutes(
 
   app.post("/api/ai/run-complaint-analysis", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layerId, dateField } = req.body;
+      const { layerId, dateField, addressField } = req.body;
 
       if (!layerId) {
         return res.status(400).json({ error: "layerId is required" });
@@ -7434,7 +7437,7 @@ export async function registerRoutes(
 
       const { analyzeComplaintsNoTopology } = await import("./complaint-analysis");
       const result = await analyzeComplaintsNoTopology(
-        [{ layerId: Number(layerId), dateField: dateField || "_none_", addressField: "" }],
+        [{ layerId: Number(layerId), dateField: dateField || "_none_", addressField: addressField || "" }],
         250
       );
 

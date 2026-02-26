@@ -51,7 +51,7 @@ interface AiChatPanelProps {
   onComplaintAnalysisResult?: (result: any) => void;
 }
 
-const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^\]]+)\]/;
+const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
 
 export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult }: AiChatPanelProps) {
   const [input, setInput] = useState("");
@@ -126,6 +126,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
       if (actionMatch) {
         const layerId = parseInt(actionMatch[1]);
         const dateField = actionMatch[2];
+        const addressField = actionMatch[3] && actionMatch[3] !== "_none_" ? actionMatch[3] : "";
         aiContent = aiContent.replace(ACTION_MARKER_REGEX, "").trim();
 
         const aiMsg: ChatMessage = {
@@ -144,7 +145,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
           action: {
             type: "start_complaint_analysis",
             label: "Начать анализ",
-            payload: { layerId, dateField },
+            payload: { layerId, dateField, addressField },
           },
         };
         newMessages.push(actionMsg);
@@ -176,7 +177,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
     if (!msg.action || msg.action.done) return;
 
     if (msg.action.type === "start_complaint_analysis") {
-      const { layerId, dateField } = msg.action.payload;
+      const { layerId, dateField, addressField } = msg.action.payload;
 
       const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
       const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
@@ -194,7 +195,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
         const response = await fetch("/api/ai/run-complaint-analysis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ layerId, dateField }),
+          body: JSON.stringify({ layerId, dateField, addressField }),
         });
         const data = await response.json();
 
