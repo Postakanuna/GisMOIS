@@ -49,6 +49,8 @@ Data is stored in PostgreSQL, managed by Drizzle ORM, with schemas for users, sc
 
 The system supports multi-provider geocoding (Yandex Geocoder and DaData) for converting addresses to coordinates and vice-versa, enriching layer attributes with address information, including FIAS IDs from DaData. All coordinates are normalized to EPSG:4326 (WGS84).
 
+**Chunked processing**: Batch geocoding processes objects in chunks of 50, saving results to DB after each chunk. This prevents data loss on interruption and allows resuming from where it stopped. Layer schema (attribute columns) is updated before processing starts so columns appear immediately. SSE progress events are throttled (max every 2 seconds or per chunk) to prevent frontend UI freezes. Frontend uses `requestAnimationFrame` to batch React state updates. Duplicate geocoding requests for the same layer are rejected (in-memory `activeGeocodeLayers` set).
+
 ### Advanced Styling
 
 Extensive styling options are available for points (basic shapes, GOST-compliant thermal network icons, custom SVGs) and lines (basic patterns, GOST-compliant thermal network styles). Per-class styling with categorized and graduated renderers allows assigning specific styles, facilitated by `IconPicker` and `LinePicker` components.

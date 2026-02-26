@@ -4382,9 +4382,17 @@ export async function registerRoutes(
   // REVERSE GEOCODING API (Address landmarks)
   // ============================================
 
+  const activeGeocodeLayers = new Set<number>();
+
   app.post("/api/editable-layers/:layerId/geocode", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    const layerId = parseInt(req.params.layerId);
+    let keepaliveInterval: ReturnType<typeof setInterval> | undefined;
+
     try {
-      const layerId = parseInt(req.params.layerId);
+      if (activeGeocodeLayers.has(layerId)) {
+        return res.status(409).json({ message: "Геокодирование этого слоя уже выполняется. Дождитесь завершения." });
+      }
+
       const forceOverwrite = req.body?.forceOverwrite === true;
       const providerSetting = await storage.getAppSetting("geocode_provider");
       const provider: GeocodeProvider = providerSetting === "dadata" ? "dadata" : "yandex";
@@ -4420,6 +4428,53 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Геокодирование не поддерживается для геометрии типа ${layer.geometryType}` });
       }
 
+      try {
+        const existingSchema = await storage.getLayerSchema(layerId);
+        const existingFields: AttributeField[] = existingSchema ? (existingSchema.fields as AttributeField[]) : [];
+        const existingNames = new Set(existingFields.map((f: AttributeField) => f.name));
+
+        const newFields: AttributeField[] = [];
+        if (isLine) {
+          if (!existingNames.has("addr_begin")) {
+            newFields.push({ name: "addr_begin", type: "text", required: false });
+          }
+          if (!existingNames.has("addr_end")) {
+            newFields.push({ name: "addr_end", type: "text", required: false });
+          }
+          if (useDadata) {
+            if (!existingNames.has("fias_begin")) {
+              newFields.push({ name: "fias_begin", type: "text", required: false });
+            }
+            if (!existingNames.has("fias_end")) {
+              newFields.push({ name: "fias_end", type: "text", required: false });
+            }
+          }
+        } else {
+          if (!existingNames.has("addr_point")) {
+            newFields.push({ name: "addr_point", type: "text", required: false });
+          }
+          if (useDadata) {
+            if (!existingNames.has("fias_point")) {
+              newFields.push({ name: "fias_point", type: "text", required: false });
+            }
+          }
+        }
+
+        if (newFields.length > 0) {
+          const updatedFields = [...existingFields, ...newFields];
+          if (existingSchema) {
+            await storage.updateLayerSchema(layerId, updatedFields);
+          } else {
+            await storage.createLayerSchema({ layerId, fields: updatedFields });
+          }
+          console.log(`[Geocoder] Schema updated for layer ${layerId}: added fields ${newFields.map(f => f.name).join(", ")}`);
+        }
+      } catch (schemaErr) {
+        console.error("Error updating layer schema with geocode fields:", schemaErr);
+      }
+
+      activeGeocodeLayers.add(layerId);
+
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -4432,12 +4487,12 @@ export async function registerRoutes(
 
       req.on("close", () => {
         clientConnected = false;
-        clearInterval(keepaliveInterval);
+        if (keepaliveInterval) clearInterval(keepaliveInterval);
         abortController.abort();
         console.log(`[Geocoder] Client disconnected for layer ${layerId}`);
       });
 
-      const keepaliveInterval = setInterval(() => {
+      keepaliveInterval = setInterval(() => {
         if (clientConnected) {
           try {
             res.write(`:keepalive\n\n`);
@@ -4515,8 +4570,9 @@ export async function registerRoutes(
       }
 
       if (batchItems.length === 0) {
-        clearInterval(keepaliveInterval);
-        sendSSE({ type: "complete", processed: 0, total: 0, success: 0, skipped: features.length });
+        activeGeocodeLayers.delete(layerId);
+        if (keepaliveInterval) clearInterval(keepaliveInterval);
+        sendSSE({ type: "complete", processed: 0, total: 0, success: 0, skipped: features.length, saved: 0 });
         res.end();
         return;
       }
@@ -4526,119 +4582,105 @@ export async function registerRoutes(
         totalRequests += item.coords.length;
       }
 
-      sendSSE({ type: "start", total: totalRequests, features: batchItems.length, totalFeatures: features.length });
-
+      const CHUNK_SIZE = 50;
+      const totalChunks = Math.ceil(batchItems.length / CHUNK_SIZE);
+      let globalProcessed = 0;
       let successCount = 0;
       let errorCount = 0;
 
+      sendSSE({ type: "start", total: totalRequests, features: batchItems.length, totalFeatures: features.length });
+
+      let lastSSETime = Date.now();
+      const SSE_THROTTLE_MS = 2000;
+
       try {
-        const results = await reverseGeocodeBatch(
-          batchItems,
-          apiKey,
-          (processed, total) => {
-            sendSSE({ type: "progress", processed, total });
-          },
-          abortController.signal,
-          provider
-        );
+        for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+          if (abortController.signal.aborted) break;
 
-        for (const result of results) {
-          const info = featureMap.get(result.featureId);
-          if (!info) continue;
+          const chunkStart = chunkIdx * CHUNK_SIZE;
+          const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, batchItems.length);
+          const chunk = batchItems.slice(chunkStart, chunkEnd);
 
-          const props = { ...((info.feature.properties || {}) as Record<string, unknown>) };
-          let updated = false;
-
-          if (isLine) {
-            let addrIdx = 0;
-            if (!info.skipBegin && result.addresses[addrIdx] !== undefined) {
-              props.addr_begin = result.addresses[addrIdx] || "";
-              if (useDadata && result.fiasIds[addrIdx]) {
-                props.fias_begin = result.fiasIds[addrIdx];
+          const chunkResults = await reverseGeocodeBatch(
+            chunk,
+            apiKey,
+            (processed, total) => {
+              const now = Date.now();
+              if (now - lastSSETime >= SSE_THROTTLE_MS) {
+                sendSSE({ type: "progress", processed: globalProcessed + processed, total: totalRequests, saved: successCount });
+                lastSSETime = now;
               }
-              addrIdx++;
-              updated = true;
+            },
+            abortController.signal,
+            provider
+          );
+
+          let chunkCoordsCount = 0;
+          for (const item of chunk) {
+            chunkCoordsCount += item.coords.length;
+          }
+
+          for (const result of chunkResults) {
+            const info = featureMap.get(result.featureId);
+            if (!info) continue;
+
+            const props = { ...((info.feature.properties || {}) as Record<string, unknown>) };
+            let updated = false;
+
+            if (isLine) {
+              let addrIdx = 0;
+              if (!info.skipBegin && result.addresses[addrIdx] !== undefined) {
+                props.addr_begin = result.addresses[addrIdx] || "";
+                if (useDadata && result.fiasIds[addrIdx]) {
+                  props.fias_begin = result.fiasIds[addrIdx];
+                }
+                addrIdx++;
+                updated = true;
+              }
+              if (!info.skipEnd && result.addresses[addrIdx] !== undefined) {
+                props.addr_end = result.addresses[addrIdx] || "";
+                if (useDadata && result.fiasIds[addrIdx]) {
+                  props.fias_end = result.fiasIds[addrIdx];
+                }
+                updated = true;
+              }
+            } else {
+              if (result.addresses[0] !== undefined) {
+                props.addr_point = result.addresses[0] || "";
+                if (useDadata && result.fiasIds[0]) {
+                  props.fias_point = result.fiasIds[0];
+                }
+                updated = true;
+              }
             }
-            if (!info.skipEnd && result.addresses[addrIdx] !== undefined) {
-              props.addr_end = result.addresses[addrIdx] || "";
-              if (useDadata && result.fiasIds[addrIdx]) {
-                props.fias_end = result.fiasIds[addrIdx];
-              }
-              updated = true;
+
+            if (updated) {
+              await storage.updateDrawnFeature(result.featureId, { properties: props });
+              successCount++;
             }
-          } else {
-            if (result.addresses[0] !== undefined) {
-              props.addr_point = result.addresses[0] || "";
-              if (useDadata && result.fiasIds[0]) {
-                props.fias_point = result.fiasIds[0];
-              }
-              updated = true;
+
+            if (result.error) {
+              errorCount++;
             }
           }
 
-          if (updated) {
-            await storage.updateDrawnFeature(result.featureId, { properties: props });
-            successCount++;
-          }
+          globalProcessed += chunkCoordsCount;
 
-          if (result.error) {
-            errorCount++;
-          }
+          sendSSE({ type: "progress", processed: globalProcessed, total: totalRequests, saved: successCount });
+          lastSSETime = Date.now();
+          console.log(`[Geocoder] Chunk ${chunkIdx + 1}/${totalChunks} saved: ${successCount} total saved, ${globalProcessed}/${totalRequests} processed`);
         }
       } catch (error: any) {
-        clearInterval(keepaliveInterval);
-        sendSSE({ type: "error", message: error.message || "Ошибка геокодирования" });
+        console.error(`[Geocoder] Error during geocoding layer ${layerId}: ${error.message}. Saved ${successCount} objects before error.`);
+        activeGeocodeLayers.delete(layerId);
+        if (keepaliveInterval) clearInterval(keepaliveInterval);
+        sendSSE({ type: "error", message: error.message || "Ошибка геокодирования", saved: successCount, processed: globalProcessed, total: totalRequests });
         res.end();
         return;
       }
 
-      if (successCount > 0) {
-        try {
-          const existingSchema = await storage.getLayerSchema(layerId);
-          const existingFields: AttributeField[] = existingSchema ? (existingSchema.fields as AttributeField[]) : [];
-          const existingNames = new Set(existingFields.map((f: AttributeField) => f.name));
-
-          const newFields: AttributeField[] = [];
-          if (isLine) {
-            if (!existingNames.has("addr_begin")) {
-              newFields.push({ name: "addr_begin", type: "text", required: false });
-            }
-            if (!existingNames.has("addr_end")) {
-              newFields.push({ name: "addr_end", type: "text", required: false });
-            }
-            if (useDadata) {
-              if (!existingNames.has("fias_begin")) {
-                newFields.push({ name: "fias_begin", type: "text", required: false });
-              }
-              if (!existingNames.has("fias_end")) {
-                newFields.push({ name: "fias_end", type: "text", required: false });
-              }
-            }
-          } else {
-            if (!existingNames.has("addr_point")) {
-              newFields.push({ name: "addr_point", type: "text", required: false });
-            }
-            if (useDadata) {
-              if (!existingNames.has("fias_point")) {
-                newFields.push({ name: "fias_point", type: "text", required: false });
-              }
-            }
-          }
-
-          if (newFields.length > 0) {
-            const updatedFields = [...existingFields, ...newFields];
-            if (existingSchema) {
-              await storage.updateLayerSchema(layerId, updatedFields);
-            } else {
-              await storage.createLayerSchema({ layerId, fields: updatedFields });
-            }
-          }
-        } catch (schemaErr) {
-          console.error("Error updating layer schema with geocode fields:", schemaErr);
-        }
-      }
-
-      clearInterval(keepaliveInterval);
+      activeGeocodeLayers.delete(layerId);
+      if (keepaliveInterval) clearInterval(keepaliveInterval);
       sendSSE({
         type: "complete",
         processed: totalRequests,
@@ -4646,10 +4688,12 @@ export async function registerRoutes(
         success: successCount,
         errors: errorCount,
         skipped: features.length - batchItems.length,
+        saved: successCount,
       });
       res.end();
     } catch (error) {
-      clearInterval(keepaliveInterval);
+      activeGeocodeLayers.delete(layerId);
+      if (keepaliveInterval) clearInterval(keepaliveInterval);
       console.error("Error in reverse geocoding:", error);
       if (!res.headersSent) {
         return res.status(500).json({ message: "Internal server error" });

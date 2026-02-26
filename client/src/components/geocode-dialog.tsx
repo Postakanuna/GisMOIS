@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { MapPin, Loader2, CheckCircle2, AlertTriangle, X, RefreshCw } from "lucide-react";
+import { MapPin, Loader2, CheckCircle2, AlertTriangle, X, RefreshCw, Play } from "lucide-react";
 
 interface GeocodeDialogProps {
   layerId: number;
@@ -51,10 +51,13 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
   const [status, setStatus] = useState<GeocodeStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [total, setTotal] = useState(0);
+  const [saved, setSaved] = useState(0);
   const [result, setResult] = useState<{ success: number; errors: number; skipped: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [forceOverwrite, setForceOverwrite] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const progressRef = useRef({ progress: 0, total: 0, saved: 0 });
+  const rafRef = useRef<number | null>(null);
 
   const { data: info, isLoading: infoLoading } = useQuery<GeocodeInfo>({
     queryKey: ["/api/editable-layers", layerId, "geocode-info"],
@@ -67,15 +70,35 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
       setStatus("idle");
       setProgress(0);
       setTotal(0);
+      setSaved(0);
       setResult(null);
       setErrorMessage(null);
       setForceOverwrite(false);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     }
   }, [open]);
+
+  const flushProgress = useCallback(() => {
+    setProgress(progressRef.current.progress);
+    setTotal(progressRef.current.total);
+    setSaved(progressRef.current.saved);
+    rafRef.current = null;
+  }, []);
+
+  const scheduleProgressUpdate = useCallback((processed: number, totalVal: number, savedVal: number) => {
+    progressRef.current = { progress: processed, total: totalVal, saved: savedVal };
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(flushProgress);
+    }
+  }, [flushProgress]);
 
   const startGeocoding = useCallback(async () => {
     setStatus("running");
     setProgress(0);
+    setSaved(0);
     setErrorMessage(null);
     setResult(null);
 
@@ -116,16 +139,27 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
               if (data.type === "start") {
                 setTotal(data.total);
               } else if (data.type === "progress") {
-                setProgress(data.processed);
-                setTotal(data.total);
+                scheduleProgressUpdate(data.processed, data.total, data.saved || 0);
               } else if (data.type === "complete") {
+                if (rafRef.current) {
+                  cancelAnimationFrame(rafRef.current);
+                  rafRef.current = null;
+                }
                 setResult({
                   success: data.success || 0,
                   errors: data.errors || 0,
                   skipped: data.skipped || 0,
                 });
+                setSaved(data.saved || data.success || 0);
                 setStatus("complete");
               } else if (data.type === "error") {
+                if (rafRef.current) {
+                  cancelAnimationFrame(rafRef.current);
+                  rafRef.current = null;
+                }
+                setSaved(data.saved || 0);
+                setProgress(data.processed || progressRef.current.progress);
+                setTotal(data.total || progressRef.current.total);
                 setErrorMessage(data.message);
                 setStatus("error");
               }
@@ -134,20 +168,23 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
         }
       }
 
-      if (status !== "error") {
-        queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", layerId, "geocode-info"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
-      }
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", layerId, "geocode-info"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
     } catch (err: any) {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       if (err.name === "AbortError") {
         setStatus("idle");
         toast({ title: "Отменено", description: "Геокодирование отменено" });
+        queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", layerId, "geocode-info"] });
       } else {
         setErrorMessage(err.message);
         setStatus("error");
       }
     }
-  }, [layerId, toast, forceOverwrite]);
+  }, [layerId, toast, forceOverwrite, scheduleProgressUpdate]);
 
   const cancelGeocoding = useCallback(() => {
     abortRef.current?.abort();
@@ -262,6 +299,11 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
                     <span data-testid="text-geocode-progress">{progress} / {total}</span>
                   </div>
                   <Progress value={progressPercent} className="h-2" data-testid="progress-geocode" />
+                  {saved > 0 && (
+                    <div className="text-xs text-muted-foreground" data-testid="text-geocode-saved">
+                      Сохранено в базу: {saved}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -280,9 +322,16 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
               )}
 
               {status === "error" && errorMessage && (
-                <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>{errorMessage}</span>
+                <div className="space-y-2 p-3 rounded-md bg-destructive/10 text-sm">
+                  <div className="flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                  {saved > 0 && (
+                    <div className="text-muted-foreground">
+                      Сохранено {saved} объектов. Запустите повторно — обработка продолжится с места остановки.
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -308,7 +357,23 @@ export function GeocodeDialog({ layerId, layerName, open, onOpenChange }: Geocod
               >
                 Закрыть
               </Button>
-              {info && effectiveNeedsGeocoding > 0 && status !== "complete" && (
+              {status === "error" && (
+                <Button
+                  onClick={() => {
+                    queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", layerId, "geocode-info"] });
+                    setStatus("idle");
+                    setErrorMessage(null);
+                    setSaved(0);
+                    setProgress(0);
+                  }}
+                  variant="outline"
+                  data-testid="button-retry-geocode"
+                >
+                  <Play className="h-4 w-4 mr-1" />
+                  Продолжить обработку
+                </Button>
+              )}
+              {info && effectiveNeedsGeocoding > 0 && status !== "complete" && status !== "error" && (
                 <Button
                   onClick={startGeocoding}
                   data-testid="button-start-geocode"
