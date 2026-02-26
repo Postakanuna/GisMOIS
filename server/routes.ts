@@ -7275,6 +7275,16 @@ export async function registerRoutes(
 
 СТРОГОЕ ПРАВИЛО ФОРМАТИРОВАНИЯ: Никогда не используй двойные звёздочки (**) в своих ответах. Не используй разметку Markdown для жирного текста. Для выделения важной информации используй заглавные буквы или тире.
 
+ИНСТРУМЕНТ АНАЛИЗА ЖАЛОБ:
+Если пользователь просит проанализировать жалобы, найти кластеры жалоб, или что-то связанное с анализом обращений/жалоб:
+1. Проанализируй список доступных слоёв (ниже) и найди слой, который содержит жалобы (по названию слоя — ключевые слова: "жалоб", "обращен", "заявк", "complaint").
+2. Если нашёл подходящий слой — посмотри его атрибуты и определи столбец с датами (ключевые слова в названии атрибута: "дат", "date", "Date", "Дат", "дата", "created", "время").
+3. Ответь пользователю, указав какой слой ты нашёл, какой столбец дат определил, и что можешь запустить анализ.
+4. В САМОМ КОНЦЕ ответа добавь технический маркер в формате: [ACTION:COMPLAINT_ANALYSIS:ID_СЛОЯ:НАЗВАНИЕ_ПОЛЯ_ДАТЫ]
+   Например: [ACTION:COMPLAINT_ANALYSIS:42:Дата_жалобы]
+   Если столбец дат не найден, используй _none_: [ACTION:COMPLAINT_ANALYSIS:42:_none_]
+5. Если подходящий слой не найден — сообщи об этом и попроси пользователя уточнить название слоя. НЕ добавляй маркер в этом случае.
+
 ВАЖНО: Если ниже приведены данные из базы — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${ragContext}`,
       };
 
@@ -7298,6 +7308,32 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("AI chat error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/ai/run-complaint-analysis", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layerId, dateField } = req.body;
+
+      if (!layerId) {
+        return res.status(400).json({ error: "layerId is required" });
+      }
+
+      const layer = await storage.getEditableLayer(Number(layerId));
+      if (!layer) {
+        return res.status(404).json({ error: "Слой не найден" });
+      }
+
+      const { analyzeComplaintsNoTopology } = await import("./complaint-analysis");
+      const result = await analyzeComplaintsNoTopology(
+        [{ layerId: Number(layerId), dateField: dateField || "_none_", addressField: "" }],
+        350
+      );
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error("AI complaint analysis error:", error);
+      return res.status(500).json({ error: error.message || "Ошибка анализа жалоб" });
     }
   });
 

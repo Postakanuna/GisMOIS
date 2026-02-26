@@ -283,6 +283,27 @@ export async function searchObjectsForRAG(userMessage: string, sceneId?: number 
 const layersCacheByScene = new Map<string, { summary: string; time: number }>();
 const LAYERS_CACHE_TTL = 2 * 60 * 1000;
 
+async function getLayerAttributes(layerId: number): Promise<string[]> {
+  try {
+    const rows = await db.execute(sql`
+      SELECT properties FROM drawn_features
+      WHERE layer_id = ${layerId}
+      LIMIT 20
+    `);
+    const dbRows = (rows as any).rows || [];
+    const attrSet = new Set<string>();
+    for (const row of dbRows) {
+      const props = typeof row.properties === "string" ? JSON.parse(row.properties) : row.properties;
+      if (props) {
+        Object.keys(props).forEach(k => attrSet.add(k));
+      }
+    }
+    return Array.from(attrSet);
+  } catch (e) {
+    return [];
+  }
+}
+
 export async function getLayersSummaryForContext(sceneId?: number | null): Promise<string> {
   const cacheKey = sceneId ? String(sceneId) : "all";
   const now = Date.now();
@@ -294,7 +315,7 @@ export async function getLayersSummaryForContext(sceneId?: number | null): Promi
   try {
     const sceneFilter = sceneId ? sql`AND scene_id = ${sceneId}` : sql``;
     const rows = await db.execute(sql`
-      SELECT name, geometry_type, feature_count, network_type
+      SELECT id, name, geometry_type, feature_count, network_type
       FROM editable_layers
       WHERE feature_count > 0
       ${sceneFilter}
@@ -308,7 +329,12 @@ export async function getLayersSummaryForContext(sceneId?: number | null): Promi
     for (const l of layers) {
       const networkLabel = l.network_type ? NETWORK_TYPE_LABELS[l.network_type] || l.network_type : null;
       const typeInfo = networkLabel ? `, тип сети: ${networkLabel}` : "";
-      summary += `- ${l.name} (${l.geometry_type}, ${l.feature_count} объектов${typeInfo})\n`;
+      summary += `- ${l.name} (ID: ${l.id}, ${l.geometry_type}, ${l.feature_count} объектов${typeInfo})\n`;
+
+      const attrs = await getLayerAttributes(l.id);
+      if (attrs.length > 0) {
+        summary += `  Атрибуты: ${attrs.join(", ")}\n`;
+      }
     }
 
     layersCacheByScene.set(cacheKey, { summary, time: now });

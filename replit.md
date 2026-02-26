@@ -87,7 +87,17 @@ Users can submit bug reports via a floating button (bug icon) in the bottom-righ
 
 ### AI Assistant
 
-An integrated AI chat panel allows users to interact with an AI assistant. It supports message history, text input, and a dynamic provider management system. Administrators can create custom AI providers using the OpenAI API protocol (supports OpenAI, local LMStudio, Ollama, and any OpenAI-compatible endpoint). Providers are managed via the admin panel with CRUD operations, connection testing, and a global enable/disable toggle. When the AI agent is disabled, users see a message directing them to contact support. A Retrieval-Augmented Generation (RAG) system automatically injects relevant GIS object data from `drawn_features` and `editable_layers` into the AI's system prompt, enabling data-aware responses. Provider configuration is stored in the `ai_providers` database table.
+An integrated AI chat panel allows users to interact with an AI assistant. It supports message history, text input, action buttons, and a dynamic provider management system. Administrators can create custom AI providers using the OpenAI API protocol (supports OpenAI, local LMStudio, Ollama, and any OpenAI-compatible endpoint). Providers are managed via the admin panel with CRUD operations, connection testing, and a global enable/disable toggle. When the AI agent is disabled, users see a message directing them to contact support. A Retrieval-Augmented Generation (RAG) system automatically injects relevant GIS object data from `drawn_features` and `editable_layers` into the AI's system prompt, enabling data-aware responses. The RAG context is scene-aware: it filters layers and objects by the current scene's `scene_id`, and includes layer IDs, `networkType` labels (Источник, ЦТП, Потребитель, etc.), and attribute column names for each layer. The layers summary cache is keyed by sceneId (TTL 2 min). Provider configuration is stored in the `ai_providers` database table.
+
+#### AI-Triggered Complaint Analysis
+
+The AI agent can automatically trigger complaint analysis (no-topology mode) when the user asks about analyzing complaints. The flow:
+1. AI analyzes available layers in the RAG context and finds a complaint layer by name keywords, identifies the date column from layer attributes.
+2. AI responds with details about the found layer/date field and appends a marker `[ACTION:COMPLAINT_ANALYSIS:layerId:dateField]`.
+3. Frontend parses the marker, strips it from display, and shows a "Начать анализ" button.
+4. On click, frontend calls `POST /api/ai/run-complaint-analysis` with `{ layerId, dateField }`, which runs `analyzeComplaintsNoTopology` with 350m radius.
+5. Results are displayed with a "Показать результат" button that opens the `ComplaintAnalysisDialog` with pre-loaded results via `initialNoTopoResult` prop.
+Chat messages support an `action` field (`ChatAction` type) for interactive buttons.
 
 ## External Dependencies
 

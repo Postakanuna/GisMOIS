@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2 } from "lucide-react";
+import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2, Play, BarChart3, Loader2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,11 +9,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+export interface ChatAction {
+  type: "start_complaint_analysis" | "show_complaint_result";
+  label: string;
+  payload?: any;
+  done?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  action?: ChatAction;
 }
 
 interface AiProvider {
@@ -40,11 +48,15 @@ interface AiChatPanelProps {
   messages: ChatMessage[];
   onMessagesChange: (messages: ChatMessage[]) => void;
   sceneId?: number | null;
+  onComplaintAnalysisResult?: (result: any) => void;
 }
 
-export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId }: AiChatPanelProps) {
+const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^\]]+)\]/;
+
+export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult }: AiChatPanelProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [providers, setProviders] = useState<AiProvider[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [aiEnabled, setAiEnabled] = useState(true);
@@ -90,7 +102,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId }: AiC
     setIsLoading(true);
 
     try {
-      const allMessages = updatedMessages.filter(m => m.id !== "welcome");
+      const allMessages = updatedMessages.filter(m => m.id !== "welcome" && !m.action);
       const apiMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
 
       const response = await fetch("/api/ai/chat", {
@@ -106,13 +118,47 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId }: AiC
         throw new Error(data.error || `Ошибка сервера: ${response.status}`);
       }
 
-      const aiMsg: ChatMessage = {
-        id: `ai-${Date.now()}`,
-        role: "assistant",
-        content: data.content || "Нет ответа от модели",
-        timestamp: new Date(),
-      };
-      onMessagesChange([...updatedMessages, aiMsg]);
+      let aiContent = data.content || "Нет ответа от модели";
+      const actionMatch = aiContent.match(ACTION_MARKER_REGEX);
+
+      const newMessages = [...updatedMessages];
+
+      if (actionMatch) {
+        const layerId = parseInt(actionMatch[1]);
+        const dateField = actionMatch[2];
+        aiContent = aiContent.replace(ACTION_MARKER_REGEX, "").trim();
+
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: "assistant",
+          content: aiContent,
+          timestamp: new Date(),
+        };
+        newMessages.push(aiMsg);
+
+        const actionMsg: ChatMessage = {
+          id: `action-${Date.now()}`,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+          action: {
+            type: "start_complaint_analysis",
+            label: "Начать анализ",
+            payload: { layerId, dateField },
+          },
+        };
+        newMessages.push(actionMsg);
+      } else {
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: "assistant",
+          content: aiContent,
+          timestamp: new Date(),
+        };
+        newMessages.push(aiMsg);
+      }
+
+      onMessagesChange(newMessages);
     } catch (error: any) {
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
@@ -123,6 +169,72 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId }: AiC
       onMessagesChange([...updatedMessages, errorMsg]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleActionClick = async (msg: ChatMessage) => {
+    if (!msg.action || msg.action.done) return;
+
+    if (msg.action.type === "start_complaint_analysis") {
+      const { layerId, dateField } = msg.action.payload;
+
+      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
+      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
+
+      const loadingMsg: ChatMessage = {
+        id: `analyzing-${Date.now()}`,
+        role: "assistant",
+        content: "Анализирую жалобы...",
+        timestamp: new Date(),
+      };
+      onMessagesChange([...currentMessages, loadingMsg]);
+      setIsAnalyzing(true);
+
+      try {
+        const response = await fetch("/api/ai/run-complaint-analysis", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ layerId, dateField }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Ошибка анализа");
+        }
+
+        const clusterCount = data.clusters?.length || 0;
+        const totalComplaints = data.totalComplaints || 0;
+
+        const resultMsg: ChatMessage = {
+          id: `result-${Date.now()}`,
+          role: "assistant",
+          content: `Анализ завершён. Обработано жалоб: ${totalComplaints}. Найдено кластеров: ${clusterCount}.`,
+          timestamp: new Date(),
+          action: {
+            type: "show_complaint_result",
+            label: "Показать результат",
+            payload: data,
+          },
+        };
+
+        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+        onMessagesChange([...finalMessages, resultMsg]);
+      } catch (error: any) {
+        const errorMsg: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: `Ошибка анализа: ${error.message}`,
+          timestamp: new Date(),
+        };
+        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+        onMessagesChange([...finalMessages, errorMsg]);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    } else if (msg.action.type === "show_complaint_result") {
+      if (onComplaintAnalysisResult && msg.action.payload) {
+        onComplaintAnalysisResult(msg.action.payload);
+      }
     }
   };
 
@@ -211,14 +323,26 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId }: AiC
                   <Bot className="h-3.5 w-3.5 text-primary" />
                 </div>
               )}
-              <div
-                className={`rounded-md px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
-                }`}
-              >
-                {msg.content}
+              <div className={`rounded-md px-3 py-2 text-sm max-w-[85%] ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                {msg.content && <div className="whitespace-pre-wrap">{msg.content}</div>}
+                {msg.action && (
+                  <div className={msg.content ? "mt-2" : ""}>
+                    <Button
+                      size="sm"
+                      variant={msg.action.done ? "outline" : "default"}
+                      disabled={msg.action.done || isAnalyzing}
+                      onClick={() => handleActionClick(msg)}
+                      className="gap-1.5 text-xs"
+                      data-testid={`button-action-${msg.action.type}`}
+                    >
+                      {msg.action.type === "start_complaint_analysis" && (
+                        isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />
+                      )}
+                      {msg.action.type === "show_complaint_result" && <BarChart3 className="h-3.5 w-3.5" />}
+                      {msg.action.done ? "Выполнено" : msg.action.label}
+                    </Button>
+                  </div>
+                )}
               </div>
               {msg.role === "user" && (
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">

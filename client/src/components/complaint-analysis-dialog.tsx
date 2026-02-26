@@ -161,6 +161,7 @@ interface ComplaintAnalysisDialogProps {
   onAnalysisResult: (result: ComplaintAnalysisResult | null) => void;
   onHighlightZone: (zone: FailureZone | null) => void;
   onHighlightPolygons: (data: { polygons: Array<{ coordinates: number[][] }>; points: Array<{ coordinates: [number, number]; type: string }> } | null) => void;
+  initialNoTopoResult?: NoTopologyResult | null;
 }
 
 export function ComplaintAnalysisDialog({
@@ -171,6 +172,7 @@ export function ComplaintAnalysisDialog({
   onAnalysisResult,
   onHighlightZone,
   onHighlightPolygons,
+  initialNoTopoResult,
 }: ComplaintAnalysisDialogProps) {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("topology");
   const [selectedLayerIds, setSelectedLayerIds] = useState<number[]>([]);
@@ -212,6 +214,14 @@ export function ComplaintAnalysisDialog({
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, []);
+
+  useEffect(() => {
+    if (initialNoTopoResult && open) {
+      setNoTopoResult(initialNoTopoResult);
+      setAnalysisMode("no_topology");
+      setResult(null);
+    }
+  }, [initialNoTopoResult, open]);
 
   useEffect(() => {
     for (const layerId of selectedLayerIds) {

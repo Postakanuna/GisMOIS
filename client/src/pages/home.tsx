@@ -229,6 +229,7 @@ export default function Home() {
   } | null>(null);
   const [showComplaintDialog, setShowComplaintDialog] = useState(false);
   const [complaintResult, setComplaintResult] = useState<ComplaintAnalysisResult | null>(null);
+  const [aiComplaintNoTopoResult, setAiComplaintNoTopoResult] = useState<any>(null);
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
   const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
@@ -481,7 +482,7 @@ export default function Home() {
             <SidebarGroup className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
               <SidebarGroupContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
                 {sidebarView === "ai-chat" ? (
-                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} />
+                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} />
                 ) : sidebarView === "layers" ? (
                   <SidebarContentPanel
                     layers={zuluConnection.layers}
@@ -543,7 +544,7 @@ export default function Home() {
                     <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
                   </Link>
                   {sidebarView === "ai-chat" ? (
-                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} />
+                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} />
                   ) : (
                     <SidebarContentPanel
                       layers={zuluConnection.layers}
@@ -849,9 +850,10 @@ export default function Home() {
             {/* Complaint Analysis Dialog */}
             <ComplaintAnalysisDialog
               open={showComplaintDialog}
-              onOpenChange={setShowComplaintDialog}
+              onOpenChange={(open) => { setShowComplaintDialog(open); if (!open) setAiComplaintNoTopoResult(null); }}
               editableLayers={drawing.editableLayers}
               sceneId={currentSceneId || 0}
+              initialNoTopoResult={aiComplaintNoTopoResult}
               onAnalysisResult={(result) => {
                 setComplaintResult(result);
                 if (!result) {
