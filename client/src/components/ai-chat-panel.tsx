@@ -31,7 +31,7 @@ interface ProvidersResponse {
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content: "Здравствуйте! Я ИИ-ассистент ГИС теплосетей. Задайте вопрос о сетях, объектах или аналитике.",
+  content: "Здравствуйте! Я ИИ-агент ГИС МО \"Инженерные сети\". Задайте интересующий вас вопрос.",
   timestamp: new Date(),
 };
 
