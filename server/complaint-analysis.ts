@@ -9,6 +9,7 @@ import {
   getConnectedComponent,
   findSourceInComponent,
   spatialBfsFromSource,
+  normalizeName,
 } from "./network-graph";
 import type { SpatialGraph } from "./network-graph";
 

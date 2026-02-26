@@ -2,7 +2,7 @@ import { db } from "./db";
 import { drawnFeatures, editableLayers } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 
-function normalizeName(name: string): string {
+export function normalizeName(name: string): string {
   return name
     .replace(/\s+/g, " ")
     .replace(/\s*\.\s*/g, ".")
