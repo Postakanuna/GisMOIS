@@ -301,6 +301,20 @@ function getBasicAuthHeader(): string {
   return `Basic ${credentials}`;
 }
 
+async function migrateUploadsTable() {
+  try {
+    await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS layer_id INTEGER`);
+    await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS total_features INTEGER`);
+    await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS processed_features INTEGER NOT NULL DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS scene_id INTEGER`);
+    await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS color TEXT`);
+    console.log("[Migration] uploads table columns OK");
+  } catch (error) {
+    console.error("[Migration] uploads table error:", error);
+  }
+}
+
 async function backfillBboxColumns() {
   try {
     const result = await db.execute(sql`SELECT COUNT(*) as cnt FROM drawn_features WHERE bbox_min_x IS NULL`);
@@ -346,6 +360,7 @@ export async function registerRoutes(
   registerAuthRoutes(app);
   await seedAdminUser();
 
+  migrateUploadsTable();
   backfillBboxColumns();
 
   app.post("/api/zulu/zws/layers", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
@@ -5193,16 +5208,19 @@ export async function registerRoutes(
         });
       }
       
-      // Batch create drawn features
+      // Batch create drawn features in chunks to avoid PostgreSQL 65535 parameter limit
       if (features.length > 0) {
-        const insertFeatures = features.map((feature: any) => ({
-          layerId: layer.id,
-          geometryType: feature.geometry?.type || geometryType,
-          coordinates: feature.geometry?.coordinates || [],
-          properties: feature.properties || {},
-        }));
-        
-        await storage.createDrawnFeaturesBatch(insertFeatures);
+        const BATCH_SIZE = 1000;
+        for (let i = 0; i < features.length; i += BATCH_SIZE) {
+          const batch = features.slice(i, i + BATCH_SIZE);
+          const insertFeatures = batch.map((feature: any) => ({
+            layerId: layer.id,
+            geometryType: feature.geometry?.type || geometryType,
+            coordinates: feature.geometry?.coordinates || [],
+            properties: feature.properties || {},
+          }));
+          await storage.createDrawnFeaturesBatch(insertFeatures);
+        }
       }
       
       // Fetch updated layer with correct feature count
