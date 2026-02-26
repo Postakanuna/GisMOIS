@@ -6810,7 +6810,7 @@ export async function registerRoutes(
         const { analyzeComplaintsNoTopology } = await import("./complaint-analysis");
         const result = await analyzeComplaintsNoTopology(
           layersInput,
-          Number(matchRadius) || 350
+          Number(matchRadius) || 250
         );
         return res.json(result);
       }
@@ -7381,7 +7381,7 @@ export async function registerRoutes(
         role: "system",
         content: `Ты — ИИ-агент ГИС МО "Инженерные сети". Помогай пользователю с вопросами об инженерных сетях, теплоснабжении, объектах инфраструктуры. Отвечай на русском языке, кратко и по делу. Ты разбираешься в тепловых сетях, потребителях, источниках теплоснабжения, ЦТП, задвижках, узлах учёта. Можешь помочь с анализом данных, поиском проблемных участков и планированием обслуживания.
 
-СТРОГОЕ ПРАВИЛО ФОРМАТИРОВАНИЯ: Никогда не используй двойные звёздочки (**) в своих ответах. Не используй разметку Markdown для жирного текста. Для выделения важной информации используй заглавные буквы или тире.
+СТРОГОЕ ПРАВИЛО ФОРМАТИРОВАНИЯ: Никогда не используй двойные звёздочки (**) в своих ответах. Не используй разметку Markdown для жирного текста. Не используй заглавные буквы для выделения. Для структурирования информации используй тире или нумерованные списки.
 
 ИНСТРУМЕНТ АНАЛИЗА ЖАЛОБ:
 Если пользователь просит проанализировать жалобы, найти кластеры жалоб, или что-то связанное с анализом обращений/жалоб:
@@ -7435,7 +7435,7 @@ export async function registerRoutes(
       const { analyzeComplaintsNoTopology } = await import("./complaint-analysis");
       const result = await analyzeComplaintsNoTopology(
         [{ layerId: Number(layerId), dateField: dateField || "_none_", addressField: "" }],
-        350
+        250
       );
 
       return res.json(result);
