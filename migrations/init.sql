@@ -1,7 +1,7 @@
 -- =====================================================
 -- ГИС МО "Инженерные сети" — Полная схема базы данных
--- Версия: 1.0.0-rc.1
--- Дата обновления: 2026-02-24
+-- Версия: 1.0.0-rc.2
+-- Дата обновления: 2026-02-26
 --
 -- Этот файл содержит ВСЕ таблицы приложения (22 шт.).
 -- Безопасен для повторного применения (IF NOT EXISTS).
@@ -184,7 +184,10 @@ CREATE TABLE IF NOT EXISTS "scene_datasets" (
   "added_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 14. Загрузки (статус обработки шейпфайлов)
+-- 14. Загрузки (статус фоновой обработки шейпфайлов)
+-- Статусы: pending → processing → completed | failed
+-- Фоновая обработка: файл принимается мгновенно (202),
+-- парсинг и запись в БД идут асинхронно с обновлением прогресса.
 CREATE TABLE IF NOT EXISTS "uploads" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "filename" text NOT NULL,
@@ -192,6 +195,12 @@ CREATE TABLE IF NOT EXISTS "uploads" (
   "status" text DEFAULT 'pending' NOT NULL,
   "error" text,
   "dataset_id" integer,
+  "layer_id" integer,
+  "progress" integer DEFAULT 0 NOT NULL,
+  "total_features" integer,
+  "processed_features" integer DEFAULT 0 NOT NULL,
+  "scene_id" integer,
+  "color" text,
   "created_by" varchar NOT NULL,
   "created_at" timestamp DEFAULT now() NOT NULL,
   "updated_at" timestamp DEFAULT now() NOT NULL
