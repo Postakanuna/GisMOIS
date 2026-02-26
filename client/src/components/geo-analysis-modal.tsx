@@ -554,8 +554,6 @@ export function GeoAnalysisModal({
   const [includeSummary, setIncludeSummary] = useState(true);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, Set<string>>>({});
   const [sourceLayerAttributes, setSourceLayerAttributes] = useState<Record<string, string[]>>({});
-  const [targetLayerAttributes, setTargetLayerAttributes] = useState<string[]>([]);
-  const [selectedTargetAttributes, setSelectedTargetAttributes] = useState<Set<string>>(new Set());
 
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -594,8 +592,6 @@ export function GeoAnalysisModal({
       setIncludeSummary(true);
       setSelectedAttributes({});
       setSourceLayerAttributes({});
-      setTargetLayerAttributes([]);
-      setSelectedTargetAttributes(new Set());
       setAnalysisResults(null);
       setExpandedResultLayers(new Set());
       setFilterDialogOpen(false);
@@ -619,28 +615,11 @@ export function GeoAnalysisModal({
     setSourceLayerAttributes(attrsMap);
   }, [sourceLayers]);
 
-  const loadTargetLayerAttributes = useCallback(async () => {
-    if (!targetLayer) {
-      setTargetLayerAttributes([]);
-      return;
-    }
-    try {
-      const response = await fetch(`/api/editable-layers/${targetLayer.layerId}/attributes`);
-      if (response.ok) {
-        const attrs: string[] = await response.json();
-        setTargetLayerAttributes(attrs);
-      }
-    } catch {
-      setTargetLayerAttributes([]);
-    }
-  }, [targetLayer]);
-
   useEffect(() => {
     if (step === "report-constructor") {
       loadSourceLayerAttributes();
-      loadTargetLayerAttributes();
     }
-  }, [step, loadSourceLayerAttributes, loadTargetLayerAttributes]);
+  }, [step, loadSourceLayerAttributes]);
 
   const toggleSourceLayer = (layer: EditableLayer) => {
     const existingIndex = sourceLayers.findIndex(e => e.layerId === layer.id);
@@ -767,26 +746,6 @@ export function GeoAnalysisModal({
     }));
   };
 
-  const toggleTargetAttributeSelection = (attr: string) => {
-    setSelectedTargetAttributes(prev => {
-      const next = new Set(prev);
-      if (next.has(attr)) {
-        next.delete(attr);
-      } else {
-        next.add(attr);
-      }
-      return next;
-    });
-  };
-
-  const selectAllTargetAttrs = () => {
-    setSelectedTargetAttributes(new Set(targetLayerAttributes));
-  };
-
-  const deselectAllTargetAttrs = () => {
-    setSelectedTargetAttributes(new Set<string>());
-  };
-
   const toggleResultLayerExpand = (layerId: string) => {
     setExpandedResultLayers(prev => {
       const next = new Set(prev);
@@ -862,10 +821,6 @@ export function GeoAnalysisModal({
         }
       }
 
-      const includeTargetAttrs = selectedTargetAttributes.size > 0
-        ? Array.from(selectedTargetAttributes)
-        : [];
-
       const requestBody: Record<string, unknown> = {
         sourceLayerIds: sourceLayers.map(e => e.layerId),
         sourceFilters: sourceFiltersForRequest,
@@ -879,7 +834,6 @@ export function GeoAnalysisModal({
         maxDistanceMeters: hasTargetLayer ? distanceNum : 15,
         reportConfig: {
           includeAttributes: includeAttrs,
-          includeTargetAttributes: includeTargetAttrs,
           includeSummary,
           format,
         },
@@ -1164,9 +1118,6 @@ export function GeoAnalysisModal({
   );
 
   const renderReportConstructor = () => {
-    const targetLayerObj = targetLayer ? editableLayers.find(l => l.id === targetLayer.layerId) : null;
-    const totalCols = sourceLayers.length + (targetLayerObj ? 1 : 0);
-
     return (
       <div className="flex h-full min-h-0">
         {sourceLayers.map((entry, colIndex) => {
@@ -1180,20 +1131,16 @@ export function GeoAnalysisModal({
           return (
             <div
               key={`${entry.layerId}-${colIndex}`}
-              className="flex-1 flex flex-col min-w-0 border-r"
+              className={`flex-1 flex flex-col min-w-0 ${colIndex < sourceLayers.length - 1 ? "border-r" : ""}`}
             >
               <div className="p-2.5 border-b bg-muted/20 shrink-0 space-y-1">
                 <div className="flex items-center gap-1.5">
-                  <Layers className="h-3 w-3 text-muted-foreground shrink-0" />
                   <GeomIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-xs font-medium truncate">{layer.name}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Badge variant="secondary" className="text-[9px] px-1 py-0">Исходный</Badge>
-                  <p className="text-[10px] text-muted-foreground font-mono truncate flex-1" title={getFilterSummary(entry)}>
-                    {entry.filterSqlPreview || "Все объекты"}
-                  </p>
-                </div>
+                <p className="text-[10px] text-muted-foreground font-mono truncate" title={getFilterSummary(entry)}>
+                  {entry.filterSqlPreview || "Все объекты"}
+                </p>
               </div>
               <div className="p-2 flex gap-1 shrink-0">
                 <Button size="sm" variant="ghost" onClick={() => selectAllAttrsForLayer(layerIdStr, attrs)} className="h-6 text-[11px] flex-1">
@@ -1225,57 +1172,6 @@ export function GeoAnalysisModal({
             </div>
           );
         })}
-
-        {targetLayerObj && (
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="p-2.5 border-b bg-primary/5 shrink-0 space-y-1">
-              <div className="flex items-center gap-1.5">
-                <Target className="h-3.5 w-3.5 text-primary shrink-0" />
-                {(() => { const Icon = GEOM_TYPE_ICONS[targetLayerObj.geometryType] || MapPin; return <Icon className="h-3.5 w-3.5 text-primary shrink-0" />; })()}
-                <span className="text-xs font-medium truncate">{targetLayerObj.name}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Badge variant="default" className="text-[9px] px-1 py-0">Целевой</Badge>
-                <p className="text-[10px] text-muted-foreground font-mono truncate flex-1" title={getFilterSummary(targetLayer!)}>
-                  {targetLayer!.filterSqlPreview || "Все объекты"}
-                </p>
-              </div>
-            </div>
-            <div className="p-2 flex gap-1 shrink-0">
-              <Button size="sm" variant="ghost" onClick={selectAllTargetAttrs} className="h-6 text-[11px] flex-1">
-                Все
-              </Button>
-              <Button size="sm" variant="ghost" onClick={deselectAllTargetAttrs} className="h-6 text-[11px] flex-1">
-                Сброс
-              </Button>
-            </div>
-            <ScrollArea className="flex-1">
-              <div className="px-2 pb-2 space-y-0.5">
-                {targetLayerAttributes.length === 0 ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (
-                  targetLayerAttributes.map(attr => (
-                    <label key={attr} className="flex items-center gap-1.5 text-[11px] cursor-pointer p-1 rounded hover-elevate">
-                      <Checkbox
-                        checked={selectedTargetAttributes.has(attr)}
-                        onCheckedChange={() => toggleTargetAttributeSelection(attr)}
-                      />
-                      <span className="truncate">{attr}</span>
-                    </label>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
-          </div>
-        )}
-
-        {totalCols === 0 && (
-          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground italic">
-            Нет слоёв для настройки
-          </div>
-        )}
       </div>
     );
   };

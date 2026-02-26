@@ -2737,7 +2737,6 @@ export async function registerRoutes(
 
       const {
         includeAttributes = {},
-        includeTargetAttributes = [],
         includeSummary = true,
         format = "xlsx",
       } = reportConfig;
@@ -2984,10 +2983,7 @@ export async function registerRoutes(
         for (const feature of targetFeatures) {
           Object.keys(feature.properties).forEach(k => targetPropKeys.add(k));
         }
-        const allTargetPropKeys = Array.from(targetPropKeys).sort();
-        const targetPropKeysArr = (Array.isArray(includeTargetAttributes) && includeTargetAttributes.length > 0)
-          ? allTargetPropKeys.filter(k => includeTargetAttributes.includes(k))
-          : allTargetPropKeys;
+        const targetPropKeysArr = Array.from(targetPropKeys).sort();
 
         const sourceLayerNames = layerSummaries.map(ls => ls.layerName);
 
@@ -3039,20 +3035,12 @@ export async function registerRoutes(
 
         const detailsSheet = workbook.addWorksheet("Детали привязок");
 
-        const allSourcePropKeysArr = Array.from(allSourcePropKeys).sort();
-        const hasAnySourceSelection = Object.values(includeAttributes).some((v: any) => Array.isArray(v) && v.length > 0);
-        const filteredSourcePropKeys = hasAnySourceSelection
-          ? allSourcePropKeysArr.filter(k => {
-              return Object.entries(includeAttributes).some(([, attrs]: [string, any]) =>
-                Array.isArray(attrs) && attrs.includes(k)
-              );
-            })
-          : allSourcePropKeysArr;
+        const sourcePropKeysArr = Array.from(allSourcePropKeys).sort();
 
         detailsSheet.columns = [
           { header: "Слой", key: "source_layer", width: 20 },
           { header: "Исходный ID", key: "source_id", width: 12 },
-          ...filteredSourcePropKeys.map(k => ({ header: `Исх: ${k}`, key: `src_${k}`, width: 15 })),
+          ...sourcePropKeysArr.map(k => ({ header: `Исх: ${k}`, key: `src_${k}`, width: 15 })),
           { header: "Целевой ID", key: "target_id", width: 12 },
           ...targetPropKeysArr.map(k => ({ header: `Цел: ${k}`, key: `tgt_${k}`, width: 15 })),
           { header: "Расстояние (м)", key: "distance", width: 15 },
@@ -3067,7 +3055,6 @@ export async function registerRoutes(
 
         for (const match of allSourceMatches) {
           const targetFeature = targetFeatures[match.targetIdx];
-          const selectedSourceAttrs: string[] | null = includeAttributes[String(match.sourceLayerId)];
 
           const detailRow: Record<string, any> = {
             source_layer: match.sourceLayerName,
@@ -3076,12 +3063,8 @@ export async function registerRoutes(
             distance: Math.round(match.distance * 100) / 100,
           };
 
-          for (const key of filteredSourcePropKeys) {
-            if (!selectedSourceAttrs || selectedSourceAttrs.length === 0 || selectedSourceAttrs.includes(key)) {
-              detailRow[`src_${key}`] = match.sourceFeature.properties[key] ?? "";
-            } else {
-              detailRow[`src_${key}`] = "";
-            }
+          for (const key of sourcePropKeysArr) {
+            detailRow[`src_${key}`] = match.sourceFeature.properties[key] ?? "";
           }
           for (const key of targetPropKeysArr) {
             detailRow[`tgt_${key}`] = targetFeature.properties[key] ?? "";
