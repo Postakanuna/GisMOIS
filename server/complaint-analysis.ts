@@ -341,10 +341,11 @@ export interface ComplaintAnalysisResult {
 export async function analyzeComplaints(
   complaintLayers: ComplaintLayerInput[],
   sceneId: number,
-  matchRadius: number = 100
+  matchRadius: number = 100,
+  clusterRadius: number = 500
 ): Promise<ComplaintAnalysisResult> {
   console.log(`[ComplaintAnalysis] === Start ===`);
-  console.log(`[ComplaintAnalysis] complaintLayers=${JSON.stringify(complaintLayers)}, scene=${sceneId}, radius=${matchRadius}m`);
+  console.log(`[ComplaintAnalysis] complaintLayers=${JSON.stringify(complaintLayers)}, scene=${sceneId}, matchRadius=${matchRadius}m, clusterRadius=${clusterRadius}m`);
 
   const layerIds = complaintLayers.map(l => l.layerId);
   const layerFieldMap = new Map<number, { dateField: string; addressField: string }>();
@@ -573,7 +574,7 @@ export async function analyzeComplaints(
             currentEntry[1].lat, currentEntry[1].lon,
             candidateEntry[1].lat, candidateEntry[1].lon
           );
-          if (dist <= matchRadius * 5) {
+          if (dist <= clusterRadius) {
             visited.add(j);
             queue.push(j);
             clusterMembers.push(j);

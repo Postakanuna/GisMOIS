@@ -176,6 +176,7 @@ export function ComplaintAnalysisDialog({
   const [selectedLayerIds, setSelectedLayerIds] = useState<number[]>([]);
   const [layerFieldMappings, setLayerFieldMappings] = useState<Record<number, { dateField: string; addressField: string }>>({});
   const [matchRadius, setMatchRadius] = useState<number>(100);
+  const [clusterRadius, setClusterRadius] = useState<number>(500);
   const [result, setResult] = useState<ComplaintAnalysisResult | null>(null);
   const [noTopoResult, setNoTopoResult] = useState<NoTopologyResult | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
@@ -269,6 +270,7 @@ export function ComplaintAnalysisDialog({
       };
       if (analysisMode === "topology") {
         body.sceneId = sceneId;
+        body.clusterRadius = clusterRadius;
       }
       const res = await apiRequest("POST", "/api/complaint-analysis", body);
       return res.json();
@@ -365,6 +367,7 @@ export function ComplaintAnalysisDialog({
           complaintLayers: buildComplaintLayers(),
           sceneId,
           matchRadius,
+          clusterRadius,
         }),
       });
       if (!res.ok) {
@@ -514,7 +517,7 @@ export function ComplaintAnalysisDialog({
                   size="sm"
                   variant={analysisMode === "topology" ? "default" : "outline"}
                   className="flex-1 text-xs toggle-elevate"
-                  onClick={() => { setAnalysisMode("topology"); setMatchRadius(100); }}
+                  onClick={() => { setAnalysisMode("topology"); setMatchRadius(100); setClusterRadius(500); }}
                   data-testid="button-mode-topology"
                 >
                   <GitBranch className="h-3 w-3 mr-1" />
@@ -641,19 +644,46 @@ export function ComplaintAnalysisDialog({
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label className="text-xs">
-                  {analysisMode === "topology" ? "Радиус привязки (м)" : "Радиус кластеризации (м)"}
-                </Label>
-                <Input
-                  type="number"
-                  value={matchRadius}
-                  onChange={e => setMatchRadius(Number(e.target.value) || 100)}
-                  min={10}
-                  max={5000}
-                  data-testid="input-match-radius"
-                />
-              </div>
+              {analysisMode === "topology" ? (
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">Радиус привязки жалобы к потребителю (м)</Label>
+                    <p className="text-[10px] text-muted-foreground mb-1">Максимальное расстояние от точки жалобы до точки потребителя</p>
+                    <Input
+                      type="number"
+                      value={matchRadius}
+                      onChange={e => setMatchRadius(Number(e.target.value) || 100)}
+                      min={10}
+                      max={5000}
+                      data-testid="input-match-radius"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Радиус кластеризации потребителей (м)</Label>
+                    <p className="text-[10px] text-muted-foreground mb-1">Максимальное расстояние между потребителями для объединения в кластер</p>
+                    <Input
+                      type="number"
+                      value={clusterRadius}
+                      onChange={e => setClusterRadius(Number(e.target.value) || 500)}
+                      min={50}
+                      max={10000}
+                      data-testid="input-cluster-radius"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-xs">Радиус кластеризации (м)</Label>
+                  <Input
+                    type="number"
+                    value={matchRadius}
+                    onChange={e => setMatchRadius(Number(e.target.value) || 350)}
+                    min={10}
+                    max={5000}
+                    data-testid="input-match-radius"
+                  />
+                </div>
+              )}
 
               <Button
                 className="w-full gap-2"

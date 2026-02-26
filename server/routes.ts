@@ -6672,7 +6672,7 @@ export async function registerRoutes(
 
   app.post("/api/complaint-analysis", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, mode, complaintLayers } = req.body;
+      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, clusterRadius, mode, complaintLayers } = req.body;
 
       let layersInput: Array<{ layerId: number; dateField: string; addressField: string }>;
       if (complaintLayers && Array.isArray(complaintLayers) && complaintLayers.length > 0) {
@@ -6715,7 +6715,8 @@ export async function registerRoutes(
       const result = await analyzeComplaints(
         layersInput,
         Number(sceneId),
-        Number(matchRadius) || 100
+        Number(matchRadius) || 100,
+        Number(clusterRadius) || 500
       );
 
       return res.json(result);
@@ -6727,7 +6728,7 @@ export async function registerRoutes(
 
   app.post("/api/complaint-analysis/export", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, complaintLayers } = req.body;
+      const { complaintLayerId, sceneId, dateFieldName, addressFieldName, matchRadius, clusterRadius, complaintLayers } = req.body;
 
       let layersInput: Array<{ layerId: number; dateField: string; addressField: string }>;
       if (complaintLayers && Array.isArray(complaintLayers) && complaintLayers.length > 0) {
@@ -6754,7 +6755,8 @@ export async function registerRoutes(
       const result = await analyzeComplaints(
         layersInput,
         Number(sceneId),
-        Number(matchRadius) || 100
+        Number(matchRadius) || 100,
+        Number(clusterRadius) || 500
       );
 
       const workbook = new ExcelJS.Workbook();
