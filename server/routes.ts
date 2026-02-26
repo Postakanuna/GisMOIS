@@ -6971,6 +6971,7 @@ export async function registerRoutes(
               date: group.date || "",
               nist: group.nist || "",
               source_name: group.sourceName || "",
+              probability: (zone as any).probability ?? null,
               confidence: confidenceMap[zone.confidence] || zone.confidence || "",
               complaint_count: zone.complaintCount || 0,
               downstream_consumer_count: zone.downstreamConsumerCount || 0,
@@ -6979,7 +6980,12 @@ export async function registerRoutes(
               segment_length_m: zone.incomingSegment?.length || 0,
               affected_segments_count: zone.affectedSegments?.length || 0,
               affected_consumers_count: zone.affectedConsumers?.length || 0,
+              affected_segments_length_m: zone.affectedSegments?.reduce((s: number, seg: any) => s + (seg.length || 0), 0) || 0,
             };
+
+            if (group.layerBreakdown) {
+              zoneProps.layer_breakdown = JSON.stringify(group.layerBreakdown);
+            }
 
             if (zone.affectedConsumers) {
               const consumerNames = zone.affectedConsumers.map((ac: any) => ac.name).filter(Boolean);

@@ -2103,3 +2103,236 @@ export async function analyzeCapacity(
     hasAdequatePipes: pipeIssues.length === 0,
   };
 }
+
+export { coordKey };
+
+export interface FailureZoneCandidate {
+  nodeKey: string;
+  nodeName: string;
+  nodeType: string;
+  nodeCoordinates: [number, number];
+  incomingEdge: SpatialGraphEdge | null;
+  downstreamConsumerCount: number;
+  complaintConsumerCount: number;
+  probability: number;
+  downstreamConsumerKeys: string[];
+  downstreamSegmentEdges: SpatialGraphEdge[];
+}
+
+function getPathToRoot(parentMap: Map<string, string | null>, key: string): string[] {
+  const path: string[] = [];
+  let current: string | null | undefined = key;
+  const visited = new Set<string>();
+  while (current !== null && current !== undefined) {
+    if (visited.has(current)) break;
+    visited.add(current);
+    path.push(current);
+    current = parentMap.get(current) ?? null;
+  }
+  return path;
+}
+
+function findLCA(parentMap: Map<string, string | null>, keys: string[]): string | null {
+  if (keys.length === 0) return null;
+  if (keys.length === 1) return keys[0];
+
+  const firstPath = getPathToRoot(parentMap, keys[0]);
+  const firstPathSet = new Set(firstPath);
+
+  let commonAncestors = firstPathSet;
+  for (let i = 1; i < keys.length; i++) {
+    const path = getPathToRoot(parentMap, keys[i]);
+    const pathSet = new Set(path);
+    const intersection = new Set<string>();
+    for (const node of commonAncestors) {
+      if (pathSet.has(node)) intersection.add(node);
+    }
+    commonAncestors = intersection;
+    if (commonAncestors.size === 0) return null;
+  }
+
+  let deepest: string | null = null;
+  let maxDepth = -1;
+  for (const ancestor of commonAncestors) {
+    const d = getDepth(parentMap, ancestor);
+    if (d > maxDepth) {
+      maxDepth = d;
+      deepest = ancestor;
+    }
+  }
+  return deepest;
+}
+
+function getDownstreamConsumerKeys(
+  graph: SpatialGraph,
+  parentMap: Map<string, string | null>,
+  failureKey: string,
+  sourceKey: string
+): string[] {
+  const downstream = getSpatialDownstream(parentMap, [failureKey], sourceKey);
+  downstream.add(failureKey);
+  const consumerKeys: string[] = [];
+  for (const key of downstream) {
+    const node = graph.nodes.get(key);
+    if (node && (node.type === "consumer" || node.type === "ctp")) {
+      consumerKeys.push(key);
+    }
+  }
+  return consumerKeys;
+}
+
+function getDownstreamEdges(
+  graph: SpatialGraph,
+  downstreamKeys: Set<string>
+): SpatialGraphEdge[] {
+  const edgeSet = new Set<number>();
+  const edges: SpatialGraphEdge[] = [];
+  for (const key of downstreamKeys) {
+    const nodeEdges = graph.edgesByNode.get(key) || [];
+    for (const edge of nodeEdges) {
+      if (edgeSet.has(edge.featureId)) continue;
+      if (downstreamKeys.has(edge.fromKey) && downstreamKeys.has(edge.toKey)) {
+        edgeSet.add(edge.featureId);
+        edges.push(edge);
+      }
+    }
+  }
+  return edges;
+}
+
+export function findFailureZonesForConsumers(
+  graph: SpatialGraph,
+  parentMap: Map<string, string | null>,
+  sourceKey: string,
+  complaintConsumerKeys: string[]
+): FailureZoneCandidate[] {
+  if (complaintConsumerKeys.length === 0) return [];
+
+  const validKeys = complaintConsumerKeys.filter(k => parentMap.has(k));
+  if (validKeys.length === 0) return [];
+
+  const candidates: FailureZoneCandidate[] = [];
+  const processedNodes = new Set<string>();
+
+  function findCandidatesForGroup(keys: string[]) {
+    if (keys.length === 0) return;
+
+    const lca = findLCA(parentMap, keys);
+    if (!lca || lca === sourceKey) {
+      if (keys.length >= 2) {
+        splitIntoBranches(keys, sourceKey);
+      }
+      return;
+    }
+
+    if (processedNodes.has(lca)) return;
+    processedNodes.add(lca);
+
+    const node = graph.nodes.get(lca);
+    if (!node) return;
+
+    const downstream = getSpatialDownstream(parentMap, [lca], sourceKey);
+    downstream.add(lca);
+
+    const allDownstreamConsumers: string[] = [];
+    for (const dk of downstream) {
+      const dn = graph.nodes.get(dk);
+      if (dn && (dn.type === "consumer" || dn.type === "ctp")) {
+        allDownstreamConsumers.push(dk);
+      }
+    }
+
+    const complaintSet = new Set(keys);
+    let complaintInDownstream = 0;
+    for (const ck of allDownstreamConsumers) {
+      if (complaintSet.has(ck)) complaintInDownstream++;
+    }
+
+    const totalDownstream = allDownstreamConsumers.length;
+    const probability = totalDownstream > 0
+      ? Math.round((complaintInDownstream / totalDownstream) * 100)
+      : 0;
+
+    let incomingEdge: SpatialGraphEdge | null = null;
+    const parentKey = parentMap.get(lca);
+    if (parentKey) {
+      const nodeEdges = graph.edgesByNode.get(lca) || [];
+      for (const edge of nodeEdges) {
+        if (
+          (edge.fromKey === parentKey && edge.toKey === lca) ||
+          (edge.toKey === parentKey && edge.fromKey === lca)
+        ) {
+          incomingEdge = edge;
+          break;
+        }
+      }
+    }
+
+    const downstreamEdges = getDownstreamEdges(graph, downstream);
+
+    candidates.push({
+      nodeKey: lca,
+      nodeName: node.name || "",
+      nodeType: node.type,
+      nodeCoordinates: node.coordinates,
+      incomingEdge,
+      downstreamConsumerCount: totalDownstream,
+      complaintConsumerCount: complaintInDownstream,
+      probability,
+      downstreamConsumerKeys: allDownstreamConsumers,
+      downstreamSegmentEdges: downstreamEdges,
+    });
+
+    const uncovered = keys.filter(k => !downstream.has(k));
+    if (uncovered.length >= 2) {
+      splitIntoBranches(uncovered, lca);
+    }
+  }
+
+  function splitIntoBranches(keys: string[], fromNode: string) {
+    const children = new Map<string, string[]>();
+    for (const [node, par] of parentMap) {
+      if (par !== null) {
+        if (!children.has(par)) children.set(par, []);
+        children.get(par)!.push(node);
+      }
+    }
+
+    const branchRoots = children.get(fromNode) || [];
+    const branches = new Map<string, string[]>();
+
+    for (const key of keys) {
+      const path = getPathToRoot(parentMap, key);
+      let branch = "unknown";
+      for (const p of path) {
+        if (branchRoots.includes(p)) {
+          branch = p;
+          break;
+        }
+      }
+      if (!branches.has(branch)) branches.set(branch, []);
+      branches.get(branch)!.push(key);
+    }
+
+    for (const [, branchKeys] of branches) {
+      if (branchKeys.length >= 2) {
+        findCandidatesForGroup(branchKeys);
+      }
+    }
+  }
+
+  findCandidatesForGroup(validKeys);
+
+  candidates.sort((a, b) => b.probability - a.probability);
+
+  return candidates;
+}
+
+export {
+  getConnectedComponent,
+  findSourceInComponent,
+  spatialBfsFromSource,
+  getSpatialDownstream,
+  getDepth,
+};
+export type { SpatialGraph, SpatialGraphNode, SpatialGraphEdge };

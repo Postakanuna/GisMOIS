@@ -58,6 +58,7 @@ interface FailureZone {
   complaintConsumers: string[];
   complaintCount: number;
   downstreamConsumerCount: number;
+  probability?: number;
   confidence: string;
   affectedSegments: Array<{
     featureId: number;
@@ -742,6 +743,16 @@ export function ComplaintAnalysisDialog({
                                     <span className="truncate">{zone.zoneName}</span>
                                     <Badge variant="outline" className="shrink-0 ml-auto">{nodeTypeLabel(zone.zoneType)}</Badge>
                                   </div>
+                                  {zone.probability !== undefined && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-medium">Вероятность:</span>
+                                      <span className={`text-sm font-bold ${
+                                        zone.probability >= 70 ? "text-red-500" :
+                                        zone.probability >= 30 ? "text-yellow-600 dark:text-yellow-400" :
+                                        "text-green-600 dark:text-green-400"
+                                      }`}>{zone.probability}%</span>
+                                    </div>
+                                  )}
                                   <div className="text-xs space-y-0.5">
                                     {zone.incomingSegment && (
                                       <div>
@@ -751,15 +762,22 @@ export function ComplaintAnalysisDialog({
                                       </div>
                                     )}
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="flex items-center gap-1">
-                                        {confidenceLabel(zone.confidence)}
-                                      </span>
+                                      {zone.probability === undefined && (
+                                        <span className="flex items-center gap-1">
+                                          {confidenceLabel(zone.confidence)}
+                                        </span>
+                                      )}
                                       <span className="text-muted-foreground">
                                         Жалоб: {zone.complaintCount}
                                       </span>
                                       <span className="text-muted-foreground">
                                         Потребителей ниже: {zone.downstreamConsumerCount}
                                       </span>
+                                      {zone.affectedSegments && zone.affectedSegments.length > 0 && (
+                                        <span className="text-muted-foreground">
+                                          Участков: {zone.affectedSegments.length} ({Math.round(zone.affectedSegments.reduce((s, seg) => s + seg.length, 0))}м)
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                   <Button

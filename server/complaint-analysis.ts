@@ -3,7 +3,14 @@ import { drawnFeatures, editableLayers } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import {
   getSceneNetworkLayers,
+  buildSpatialNetworkGraph,
+  findFailureZonesForConsumers,
+  coordKey,
+  getConnectedComponent,
+  findSourceInComponent,
+  spatialBfsFromSource,
 } from "./network-graph";
+import type { SpatialGraph } from "./network-graph";
 
 function normalizeAddress(addr: string): string {
   return addr
@@ -173,6 +180,7 @@ interface FailureZone {
   complaintConsumers: string[];
   complaintCount: number;
   downstreamConsumerCount: number;
+  probability: number;
   confidence: "high" | "medium" | "low";
   affectedSegments: Array<{
     featureId: number;
@@ -324,7 +332,7 @@ export async function analyzeComplaints(
     const name = normalizeName((props.Name as string) || "");
     const nist = props.Nist !== undefined && props.Nist !== null ? String(props.Nist) : "";
 
-    const addrCandidates = ["Adres", "adres", "Address", "address", "Адрес", "адрес"];
+    const addrCandidates = ["addr_point", "Adres", "adres", "Address", "address", "Адрес", "адрес"];
     let address = "";
     for (const field of addrCandidates) {
       if (props[field] && String(props[field]).trim()) {
@@ -437,6 +445,25 @@ export async function analyzeComplaints(
 
   console.log(`[ComplaintAnalysis] Date-Nist groups: ${dateNistGroups.size}`);
 
+  let graph: SpatialGraph | null = null;
+  try {
+    graph = await buildSpatialNetworkGraph(sceneId);
+    console.log(`[ComplaintAnalysis] Graph built: ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
+  } catch (graphErr: any) {
+    console.warn(`[ComplaintAnalysis] Failed to build graph, failureZones will be empty:`, graphErr.message);
+  }
+
+  const consumerKeyMap = new Map<number, string>();
+  if (graph) {
+    for (const consumer of consumers) {
+      const key = coordKey(consumer.lon, consumer.lat);
+      if (graph.nodes.has(key)) {
+        consumerKeyMap.set(consumer.id, key);
+      }
+    }
+    console.log(`[ComplaintAnalysis] Consumers found in graph: ${consumerKeyMap.size} / ${consumers.length}`);
+  }
+
   const resultGroups: ComplaintAnalysisResult["dateGroups"] = [];
 
   for (const [, group] of Array.from(dateNistGroups)) {
@@ -447,14 +474,133 @@ export async function analyzeComplaints(
       layerBreakdown[c.complaintLayerName] = (layerBreakdown[c.complaintLayerName] || 0) + 1;
     }
 
+    let failureZones: FailureZone[] = [];
+    let sourceName = "";
+
+    if (graph && group.complaints.length >= 1) {
+      try {
+        const uniqueConsumerIds = new Set(group.complaints.map(c => c.consumerId));
+        const consumerKeys: string[] = [];
+        for (const cid of uniqueConsumerIds) {
+          const key = consumerKeyMap.get(cid);
+          if (key) consumerKeys.push(key);
+        }
+
+        if (consumerKeys.length >= 1) {
+          const firstKey = consumerKeys[0];
+          const component = getConnectedComponent(graph, firstKey);
+          const sourceKey = findSourceInComponent(graph, component);
+
+          if (sourceKey) {
+            const sourceNode = graph.nodes.get(sourceKey);
+            if (sourceNode) {
+              sourceName = sourceNode.name || "";
+            }
+
+            const parentMap = spatialBfsFromSource(graph, sourceKey, component);
+
+            const keysInTree = consumerKeys.filter(k => parentMap.has(k));
+            if (keysInTree.length >= 1) {
+              const candidates = findFailureZonesForConsumers(
+                graph, parentMap, sourceKey, keysInTree
+              );
+
+              for (const candidate of candidates) {
+                const node = graph.nodes.get(candidate.nodeKey);
+
+                let incomingSegment: FailureZone["incomingSegment"] = null;
+                if (candidate.incomingEdge) {
+                  const e = candidate.incomingEdge;
+                  const eProps = e.properties || {};
+                  incomingSegment = {
+                    featureId: e.featureId,
+                    from: String(eProps.Begin_uch || eProps.Name || ""),
+                    to: String(eProps.End_uch || ""),
+                    length: Math.round(e.length || 0),
+                  };
+                }
+
+                const complaintConsumerNames: string[] = [];
+                for (const c of group.complaints) {
+                  const key = consumerKeyMap.get(c.consumerId);
+                  if (key && !complaintConsumerNames.includes(c.consumerName)) {
+                    complaintConsumerNames.push(c.consumerName);
+                  }
+                }
+
+                const affectedSegments: FailureZone["affectedSegments"] = candidate.downstreamSegmentEdges.map(e => {
+                  const eProps = e.properties || {};
+                  return {
+                    featureId: e.featureId,
+                    from: String(eProps.Begin_uch || eProps.Name || ""),
+                    to: String(eProps.End_uch || ""),
+                    length: Math.round(e.length || 0),
+                    coordinates: e.coordinates,
+                  };
+                });
+
+                const affectedConsumers: FailureZone["affectedConsumers"] = [];
+                for (const dk of candidate.downstreamConsumerKeys) {
+                  const dn = graph.nodes.get(dk);
+                  if (dn && (dn.type === "consumer" || dn.type === "ctp")) {
+                    const addrVal = dn.properties?.addr_point || dn.properties?.Adres || dn.properties?.Address || "";
+                    affectedConsumers.push({
+                      featureId: dn.featureId,
+                      name: dn.name || "",
+                      address: String(addrVal),
+                      coordinates: dn.coordinates,
+                    });
+                  }
+                }
+
+                const probability = candidate.probability;
+                let confidence: FailureZone["confidence"] = "low";
+                if (probability >= 70) confidence = "high";
+                else if (probability >= 30) confidence = "medium";
+
+                const nodeTypeMap: Record<string, string> = {
+                  source: "source", ctp: "ctp", consumer: "consumer",
+                  node: "node", valve: "valve", pump: "pump", other: "node",
+                };
+
+                failureZones.push({
+                  zoneName: candidate.nodeName || node?.name || `Узел (${candidate.nodeType})`,
+                  zoneType: nodeTypeMap[candidate.nodeType] || candidate.nodeType,
+                  zoneCoordinates: candidate.nodeCoordinates,
+                  incomingSegment,
+                  complaintConsumers: complaintConsumerNames,
+                  complaintCount: group.complaints.length,
+                  downstreamConsumerCount: candidate.downstreamConsumerCount,
+                  probability,
+                  confidence,
+                  affectedSegments,
+                  affectedConsumers,
+                });
+              }
+
+              console.log(`[ComplaintAnalysis] Group ${group.date}|${group.nist}: found ${failureZones.length} failure zones`);
+            } else {
+              console.log(`[ComplaintAnalysis] Group ${group.date}|${group.nist}: no consumers in BFS tree`);
+            }
+          } else {
+            console.log(`[ComplaintAnalysis] Group ${group.date}|${group.nist}: no source found in component`);
+          }
+        } else {
+          console.log(`[ComplaintAnalysis] Group ${group.date}|${group.nist}: no consumers found in graph`);
+        }
+      } catch (zoneErr: any) {
+        console.warn(`[ComplaintAnalysis] Error finding failure zones for group ${group.date}|${group.nist}:`, zoneErr.message);
+      }
+    }
+
     resultGroups.push({
       date: group.date,
       nist: group.nist,
-      sourceName: "",
+      sourceName,
       complaintCount: group.complaints.length,
       layerBreakdown,
       consumers: consumerSummary,
-      failureZones: [],
+      failureZones,
     });
   }
 
@@ -462,7 +608,7 @@ export async function analyzeComplaints(
     return a.date.localeCompare(b.date);
   });
 
-  console.log(`[ComplaintAnalysis] === End === Groups: ${resultGroups.length}`);
+  console.log(`[ComplaintAnalysis] === End === Groups: ${resultGroups.length}, Zones: ${resultGroups.reduce((s, g) => s + g.failureZones.length, 0)}`);
 
   const emptyNistCount = matches.filter(m => !m.consumerNist || m.consumerNist.trim() === "").length;
   if (emptyNistCount > 0) {
