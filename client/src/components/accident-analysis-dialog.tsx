@@ -4,7 +4,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -388,23 +387,15 @@ export function AccidentAnalysisDialog({
 
         {result && (
           <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-2">
-              <div className="text-center p-2 bg-muted/40 rounded-md border border-border">
-                <div className="text-lg font-bold">{result.totalAccidents}</div>
-                <div className="text-xs text-muted-foreground">Всего аварий</div>
-              </div>
-              <div className="text-center p-2 bg-green-50 dark:bg-green-950/20 rounded-md border border-green-200 dark:border-green-800">
-                <div className="text-lg font-bold text-green-600 dark:text-green-400">{result.boundAccidents}</div>
-                <div className="text-xs text-muted-foreground">Привязано</div>
-              </div>
-              <div className="text-center p-2 bg-red-50 dark:bg-red-950/20 rounded-md border border-red-200 dark:border-red-800">
-                <div className="text-lg font-bold text-red-600 dark:text-red-400">{result.unboundAccidents}</div>
-                <div className="text-xs text-muted-foreground">Не привязано</div>
-              </div>
+            <div className="flex items-center flex-wrap gap-2">
+              <Badge variant="outline" data-testid="badge-total">Аварий: {result.totalAccidents}</Badge>
+              <Badge variant="secondary" data-testid="badge-bound">Привязано: {result.boundAccidents}</Badge>
+              {result.unboundAccidents > 0 && (
+                <Badge variant="destructive" data-testid="badge-unbound">Не привязано: {result.unboundAccidents}</Badge>
+              )}
             </div>
-
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 Участков с авариями: {result.segmentsWithAccidents}
               </span>
               <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
@@ -419,68 +410,61 @@ export function AccidentAnalysisDialog({
                 Нет участков с привязанными авариями
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {result.segments.map((seg, idx) => (
-                  <Card
+                  <div
                     key={seg.featureId}
-                    className={`p-3 cursor-pointer transition-all hover:shadow-md border ${
+                    className={`text-xs border rounded-md p-2 space-y-1 cursor-pointer transition-colors ${
                       selectedSegmentId === seg.featureId
-                        ? "border-red-500 bg-red-50 dark:bg-red-950/20"
-                        : "border-border hover:border-muted-foreground/40"
+                        ? "bg-primary/10 border-primary/30"
+                        : "hover:bg-muted/40"
                     }`}
                     onClick={() => handleSegmentClick(seg)}
                     data-testid={`card-segment-${seg.featureId}`}
                   >
-                    <div className="flex items-start gap-2.5">
-                      <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                        idx === 0 ? "bg-red-500 text-white" :
-                        idx === 1 ? "bg-orange-400 text-white" :
-                        idx === 2 ? "bg-yellow-400 text-white" :
-                        "bg-muted text-muted-foreground"
-                      }`}>
-                        {idx + 1}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-muted-foreground shrink-0">{idx + 1}.</span>
+                        <span className="font-medium truncate">
+                          {seg.sys ? `${seg.sys} ` : ""}
+                          {seg.beginUch && seg.endUch
+                            ? `${seg.beginUch} — ${seg.endUch}`
+                            : seg.beginUch || seg.endUch || `Участок #${seg.featureId}`}
+                        </span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs font-medium truncate">
-                            {seg.sys ? `${seg.sys} ` : ""}
-                            {seg.beginUch && seg.endUch
-                              ? `${seg.beginUch} — ${seg.endUch}`
-                              : seg.beginUch || seg.endUch || `Участок #${seg.featureId}`}
-                          </div>
-                          <Badge variant="destructive" className="text-xs flex-shrink-0" data-testid={`badge-count-${seg.featureId}`}>
-                            {seg.accidentCount} ав.
-                          </Badge>
-                        </div>
-                        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                          {(seg.dpod !== null && seg.dpod !== "") && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-dpod-${seg.featureId}`}>
-                              <span className="font-medium">Dpod:</span>
-                              <span>{formatVal(seg.dpod)}</span>
-                            </div>
-                          )}
-                          {(seg.dobr !== null && seg.dobr !== "") && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-dobr-${seg.featureId}`}>
-                              <span className="font-medium">Dobr:</span>
-                              <span>{formatVal(seg.dobr)}</span>
-                            </div>
-                          )}
-                          {(seg.length !== null && seg.length !== "") && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-length-${seg.featureId}`}>
-                              <Ruler className="h-3 w-3" />
-                              <span>{formatVal(seg.length)} м</span>
-                            </div>
-                          )}
-                        </div>
-                        {selectedSegmentId === seg.featureId && (
-                          <div className="mt-1.5 flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
-                            <MapPin className="h-3 w-3" />
-                            <span>Показан на карте</span>
-                          </div>
-                        )}
-                      </div>
+                      <Badge variant="destructive" className="shrink-0" data-testid={`badge-count-${seg.featureId}`}>
+                        {seg.accidentCount} ав.
+                      </Badge>
                     </div>
-                  </Card>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground pl-4">
+                      {(seg.dpod !== null && seg.dpod !== "") && (
+                        <span data-testid={`text-dpod-${seg.featureId}`}>
+                          <span className="font-medium">Dpod:</span> {formatVal(seg.dpod)}
+                        </span>
+                      )}
+                      {(seg.dobr !== null && seg.dobr !== "") && (
+                        <span data-testid={`text-dobr-${seg.featureId}`}>
+                          <span className="font-medium">Dobr:</span> {formatVal(seg.dobr)}
+                        </span>
+                      )}
+                      {(seg.length !== null && seg.length !== "") && (
+                        <span className="flex items-center gap-0.5" data-testid={`text-length-${seg.featureId}`}>
+                          <Ruler className="h-3 w-3" />
+                          {formatVal(seg.length)} м
+                        </span>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={selectedSegmentId === seg.featureId ? "default" : "outline"}
+                      className="w-full h-6 gap-1 mt-0.5"
+                      onClick={e => { e.stopPropagation(); handleSegmentClick(seg); }}
+                      data-testid={`button-show-segment-${seg.featureId}`}
+                    >
+                      <MapPin className="h-3 w-3" />
+                      Показать на карте
+                    </Button>
+                  </div>
                 ))}
               </div>
             )}
