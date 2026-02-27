@@ -85,6 +85,7 @@ interface NetworkSimulationDialogProps {
   featureType: string;
   sceneId: number;
   onSimulationResult: (result: SimulationResult | null) => void;
+  initialResult?: SimulationResult | null;
 }
 
 export function NetworkSimulationDialog({
@@ -96,8 +97,17 @@ export function NetworkSimulationDialog({
   featureType,
   sceneId,
   onSimulationResult,
+  initialResult,
 }: NetworkSimulationDialogProps) {
-  const [result, setResult] = useState<SimulationResult | null>(null);
+  const [result, setResult] = useState<SimulationResult | null>(initialResult ?? null);
+
+  useEffect(() => {
+    if (initialResult) {
+      setResult(initialResult);
+      onSimulationResult(initialResult);
+    }
+  }, [initialResult]);
+
   const [mode, setMode] = useState<SimulationMode>("spatial");
   const [consumersOpen, setConsumersOpen] = useState(true);
   const [segmentsOpen, setSegmentsOpen] = useState(false);

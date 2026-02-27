@@ -230,6 +230,7 @@ export default function Home() {
   const [showComplaintDialog, setShowComplaintDialog] = useState(false);
   const [complaintResult, setComplaintResult] = useState<ComplaintAnalysisResult | null>(null);
   const [aiComplaintNoTopoResult, setAiComplaintNoTopoResult] = useState<any>(null);
+  const [aiSimulationResult, setAiSimulationResult] = useState<SimulationResult | null>(null);
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
   const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
@@ -482,7 +483,7 @@ export default function Home() {
             <SidebarGroup className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
               <SidebarGroupContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
                 {sidebarView === "ai-chat" ? (
-                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} />
+                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} />
                 ) : sidebarView === "layers" ? (
                   <SidebarContentPanel
                     layers={zuluConnection.layers}
@@ -544,7 +545,7 @@ export default function Home() {
                     <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
                   </Link>
                   {sidebarView === "ai-chat" ? (
-                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} />
+                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} />
                   ) : (
                     <SidebarContentPanel
                       layers={zuluConnection.layers}
@@ -892,12 +893,13 @@ export default function Home() {
             {/* Network Simulation Dialog */}
             <NetworkSimulationDialog
               open={showSimulationDialog}
-              onOpenChange={setShowSimulationDialog}
+              onOpenChange={(open) => { setShowSimulationDialog(open); if (!open) setAiSimulationResult(null); }}
               featureId={simulationFeatureInfo?.featureId || null}
               layerId={simulationFeatureInfo?.layerId || null}
               featureName={simulationFeatureInfo?.name || ""}
               featureType={simulationFeatureInfo?.featureType || ""}
               sceneId={currentSceneId || 0}
+              initialResult={aiSimulationResult}
               onSimulationResult={(result: SimulationResult | null) => {
                 if (!result) {
                   setSimulationHighlightData(null);

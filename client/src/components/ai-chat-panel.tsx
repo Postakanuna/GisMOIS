@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2, Play, BarChart3, Loader2 } from "lucide-react";
+import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export interface ChatAction {
-  type: "start_complaint_analysis" | "show_complaint_result";
+  type:
+    | "start_complaint_analysis"
+    | "show_complaint_result"
+    | "simulation_candidates"
+    | "run_simulation"
+    | "show_simulation_result";
   label: string;
   payload?: any;
   done?: boolean;
@@ -49,11 +54,13 @@ interface AiChatPanelProps {
   onMessagesChange: (messages: ChatMessage[]) => void;
   sceneId?: number | null;
   onComplaintAnalysisResult?: (result: any) => void;
+  onSimulationResult?: (result: any, featureInfo: { featureId: number; layerId: number; name: string; featureType: string }) => void;
 }
 
 const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
+const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^\]]+)\]/;
 
-export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult }: AiChatPanelProps) {
+export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult, onSimulationResult }: AiChatPanelProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -119,14 +126,15 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
       }
 
       let aiContent = data.content || "Нет ответа от модели";
-      const actionMatch = aiContent.match(ACTION_MARKER_REGEX);
+      const complaintMatch = aiContent.match(ACTION_MARKER_REGEX);
+      const simulationMatch = aiContent.match(SIMULATION_SEARCH_REGEX);
 
       const newMessages = [...updatedMessages];
 
-      if (actionMatch) {
-        const layerId = parseInt(actionMatch[1]);
-        const dateField = actionMatch[2];
-        const addressField = actionMatch[3] && actionMatch[3] !== "_none_" ? actionMatch[3] : "";
+      if (complaintMatch) {
+        const layerId = parseInt(complaintMatch[1]);
+        const dateField = complaintMatch[2];
+        const addressField = complaintMatch[3] && complaintMatch[3] !== "_none_" ? complaintMatch[3] : "";
         aiContent = aiContent.replace(ACTION_MARKER_REGEX, "").trim();
 
         const aiMsg: ChatMessage = {
@@ -149,6 +157,86 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
           },
         };
         newMessages.push(actionMsg);
+      } else if (simulationMatch) {
+        const searchQuery = simulationMatch[1].trim();
+        aiContent = aiContent.replace(SIMULATION_SEARCH_REGEX, "").trim();
+
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: "assistant",
+          content: aiContent,
+          timestamp: new Date(),
+        };
+        newMessages.push(aiMsg);
+        onMessagesChange([...newMessages]);
+
+        const searchingMsg: ChatMessage = {
+          id: `searching-${Date.now()}`,
+          role: "assistant",
+          content: `Ищу объект: "${searchQuery}"...`,
+          timestamp: new Date(),
+        };
+        onMessagesChange([...newMessages, searchingMsg]);
+
+        try {
+          const sid = sceneId || 0;
+          const searchResp = await fetch(`/api/ai/search-features?sceneId=${sid}&query=${encodeURIComponent(searchQuery)}`);
+          const candidates: Array<{ featureId: number; layerId: number; layerName: string; featureName: string; featureAddress: string }> = await searchResp.json();
+
+          const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
+
+          if (!candidates || candidates.length === 0) {
+            finalMessages.push({
+              id: `notfound-${Date.now()}`,
+              role: "assistant",
+              content: `Объект не найден по запросу "${searchQuery}". Уточните название, адрес или тип объекта.`,
+              timestamp: new Date(),
+            });
+          } else if (candidates.length === 1) {
+            const c = candidates[0];
+            const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
+            finalMessages.push({
+              id: `action-${Date.now()}`,
+              role: "assistant",
+              content: `Найден объект: ${label}`,
+              timestamp: new Date(),
+              action: {
+                type: "run_simulation",
+                label: "Запустить симуляцию",
+                payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
+              },
+            });
+          } else {
+            const candidateActions = candidates.slice(0, 5).map((c, i) => {
+              const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
+              return {
+                id: `candidate-${Date.now()}-${i}`,
+                role: "assistant" as const,
+                content: i === 0 ? `Найдено несколько объектов. Выберите нужный:` : "",
+                timestamp: new Date(),
+                action: {
+                  type: "run_simulation" as const,
+                  label,
+                  payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
+                },
+              };
+            });
+            finalMessages.push(...candidateActions);
+          }
+
+          onMessagesChange(finalMessages);
+        } catch {
+          const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
+          finalMessages.push({
+            id: `error-${Date.now()}`,
+            role: "assistant",
+            content: "Ошибка поиска объекта. Попробуйте ещё раз.",
+            timestamp: new Date(),
+          });
+          onMessagesChange(finalMessages);
+        }
+
+        return;
       } else {
         const aiMsg: ChatMessage = {
           id: `ai-${Date.now()}`,
@@ -236,6 +324,79 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
       if (onComplaintAnalysisResult && msg.action.payload) {
         onComplaintAnalysisResult(msg.action.payload);
       }
+    } else if (msg.action.type === "run_simulation") {
+      const { featureId, layerId, featureName, layerName } = msg.action.payload;
+
+      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
+      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
+
+      const loadingMsg: ChatMessage = {
+        id: `simulating-${Date.now()}`,
+        role: "assistant",
+        content: `Симулирую отключение объекта "${featureName}"...`,
+        timestamp: new Date(),
+      };
+      onMessagesChange([...currentMessages, loadingMsg]);
+      setIsAnalyzing(true);
+
+      try {
+        const sid = sceneId || 0;
+        const response = await fetch("/api/ai/run-simulation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ featureId, layerId, sceneId: sid }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Ошибка симуляции");
+        }
+
+        const consumers = data.stats?.totalConsumers ?? 0;
+        const segments = data.stats?.totalSegments ?? 0;
+        const ctps = data.stats?.totalCTPs ?? 0;
+
+        const resultMsg: ChatMessage = {
+          id: `sim-result-${Date.now()}`,
+          role: "assistant",
+          content: `Симуляция завершена. При отключении "${featureName}" (${layerName}) затронуто: потребителей — ${consumers}, участков сети — ${segments}, ЦТП — ${ctps}.`,
+          timestamp: new Date(),
+          action: {
+            type: "show_simulation_result",
+            label: "Показать результаты",
+            payload: {
+              result: data,
+              featureId,
+              layerId,
+              featureName,
+            },
+          },
+        };
+
+        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+        onMessagesChange([...finalMessages, resultMsg]);
+      } catch (error: any) {
+        const errorMsg: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: `Ошибка симуляции: ${error.message}`,
+          timestamp: new Date(),
+        };
+        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+        onMessagesChange([...finalMessages, errorMsg]);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    } else if (msg.action.type === "show_simulation_result") {
+      if (onSimulationResult && msg.action.payload) {
+        const { result, featureId, layerId, featureName } = msg.action.payload;
+        onSimulationResult(result, {
+          featureId,
+          layerId,
+          name: featureName,
+          featureType: result?.failurePoint?.type || "Point",
+        });
+      }
     }
   };
 
@@ -252,6 +413,16 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
 
   const currentProvider = providers.find(p => p.id === selectedProvider);
   const hasHistory = messages.some(m => m.id !== "welcome");
+
+  const getActionIcon = (type: ChatAction["type"]) => {
+    switch (type) {
+      case "start_complaint_analysis": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />;
+      case "show_complaint_result": return <BarChart3 className="h-3.5 w-3.5" />;
+      case "run_simulation": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />;
+      case "show_simulation_result": return <Search className="h-3.5 w-3.5" />;
+      default: return null;
+    }
+  };
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1">
@@ -336,10 +507,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
                       className="gap-1.5 text-xs"
                       data-testid={`button-action-${msg.action.type}`}
                     >
-                      {msg.action.type === "start_complaint_analysis" && (
-                        isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />
-                      )}
-                      {msg.action.type === "show_complaint_result" && <BarChart3 className="h-3.5 w-3.5" />}
+                      {getActionIcon(msg.action.type)}
                       {msg.action.done ? "Выполнено" : msg.action.label}
                     </Button>
                   </div>

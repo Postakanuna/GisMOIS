@@ -7383,6 +7383,17 @@ export async function registerRoutes(
 
 СТРОГОЕ ПРАВИЛО ФОРМАТИРОВАНИЯ: Никогда не используй двойные звёздочки (**) в своих ответах. Не используй разметку Markdown для жирного текста. Не используй заглавные буквы для выделения. Для структурирования информации используй тире или нумерованные списки.
 
+ИНСТРУМЕНТ СИМУЛЯЦИИ ОТКЛЮЧЕНИЯ:
+Если пользователь просит симулировать отключение, проверить зону аварии, узнать кого затронет отключение конкретного объекта (задвижки, трубопровода, ЦТП, узла учёта и т.д.):
+1. Определи из запроса тип объекта и его идентификатор (название, адрес, номер).
+2. Составь короткий поисковый запрос из ключевых слов: тип объекта + название/адрес/номер.
+3. Ответь пользователю что ищешь объект и готовишь симуляцию.
+4. В САМОМ КОНЦЕ добавь маркер: [ACTION:SIMULATION_SEARCH:ПОИСКОВЫЙ_ЗАПРОС]
+   Например: [ACTION:SIMULATION_SEARCH:задвижка Ленина 15]
+   Например: [ACTION:SIMULATION_SEARCH:ЦТП-12]
+   Например: [ACTION:SIMULATION_SEARCH:узел учёта Садовая 3]
+5. Если пользователь не указал конкретный объект (улицу, номер, название) — уточни у него. НЕ добавляй маркер.
+
 ИНСТРУМЕНТ АНАЛИЗА ЖАЛОБ:
 Если пользователь просит проанализировать жалобы, найти кластеры жалоб, или что-то связанное с анализом обращений/жалоб:
 1. Проанализируй список доступных слоёв (ниже) и найди слой, который содержит жалобы (по названию слоя — ключевые слова: "жалоб", "обращен", "заявк", "complaint").
@@ -7419,6 +7430,78 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("AI chat error:", error);
       return res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
+  app.get("/api/ai/search-features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { sceneId, query } = req.query;
+      if (!sceneId) return res.status(400).json({ error: "sceneId is required" });
+      if (!query || String(query).trim().length < 2) return res.json([]);
+
+      const q = String(query).trim();
+      const sceneIdNum = Number(sceneId);
+
+      const layersRows = await db.execute(sql`
+        SELECT id, name FROM editable_layers
+        WHERE scene_id = ${sceneIdNum} AND feature_count > 0
+      `);
+      const layers = (layersRows as any).rows || [];
+      if (layers.length === 0) return res.json([]);
+
+      const layerIds = layers.map((l: any) => l.id);
+      const layerMap = new Map<number, string>(layers.map((l: any) => [l.id, l.name]));
+
+      const featuresRows = await db.execute(sql`
+        SELECT id, layer_id, properties
+        FROM drawn_features
+        WHERE layer_id = ANY(${layerIds}::int[])
+          AND properties::text ILIKE ${'%' + q + '%'}
+        LIMIT 10
+      `);
+      const features = (featuresRows as any).rows || [];
+
+      const NAME_KEYS = ["name", "Наименование", "наименование", "название", "Название", "Имя", "имя", "Name"];
+      const ADDR_KEYS = ["Адрес", "адрес", "address", "Address", "addr", "Adres", "adres", "место", "Место"];
+
+      const result = features.map((f: any) => {
+        const props = typeof f.properties === "string" ? JSON.parse(f.properties) : (f.properties || {});
+        let featureName = "";
+        for (const k of NAME_KEYS) { if (props[k]) { featureName = String(props[k]); break; } }
+        if (!featureName) {
+          const keys = Object.keys(props);
+          featureName = keys.length > 0 ? String(props[keys[0]]) : `Объект #${f.id}`;
+        }
+        let featureAddress = "";
+        for (const k of ADDR_KEYS) { if (props[k]) { featureAddress = String(props[k]); break; } }
+        return {
+          featureId: f.id,
+          layerId: f.layer_id,
+          layerName: layerMap.get(f.layer_id) || "",
+          featureName,
+          featureAddress,
+        };
+      });
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error("AI search-features error:", error);
+      return res.status(500).json({ error: error.message || "Ошибка поиска" });
+    }
+  });
+
+  app.post("/api/ai/run-simulation", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { featureId, layerId, sceneId } = req.body;
+      if (!featureId || !layerId || !sceneId) {
+        return res.status(400).json({ error: "featureId, layerId и sceneId обязательны" });
+      }
+      const { simulateSpatialDisconnection } = await import("./network-graph");
+      const result = await simulateSpatialDisconnection(Number(featureId), Number(layerId), Number(sceneId));
+      return res.json(result);
+    } catch (error: any) {
+      console.error("AI run-simulation error:", error);
+      return res.status(500).json({ error: error.message || "Ошибка симуляции" });
     }
   });
 
