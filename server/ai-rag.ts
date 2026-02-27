@@ -196,6 +196,13 @@ async function searchByTerm(term: string, results: FoundObject[], limit: number,
         OR el.name ILIKE ${'%' + term + '%'}
       )
       ${sceneFilter}
+      ORDER BY
+        CASE
+          WHEN lower(df.properties->>'Name') = lower(${term}) THEN 0
+          WHEN lower(df.properties->>'Name') LIKE lower(${term + '%'}) THEN 1
+          ELSE 2
+        END,
+        df.id
       LIMIT ${limit}
     `);
 
