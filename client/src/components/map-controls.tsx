@@ -1,4 +1,4 @@
-import { Plus, Minus, Compass, Home, Maximize2, MapPin, Ruler } from "lucide-react";
+import { Plus, Minus, Compass, Home, Maximize2, MapPin, Ruler, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -13,6 +13,8 @@ interface MapControlsProps {
   onToggleTicketMode?: () => void;
   measureActive?: boolean;
   onToggleMeasure?: () => void;
+  onForceReload?: () => void;
+  isReloading?: boolean;
 }
 
 export function MapControls({
@@ -26,6 +28,8 @@ export function MapControls({
   onToggleTicketMode,
   measureActive,
   onToggleMeasure,
+  onForceReload,
+  isReloading,
 }: MapControlsProps) {
   return (
     <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
@@ -107,6 +111,26 @@ export function MapControls({
           </TooltipTrigger>
           <TooltipContent side="left">Полноэкранный режим</TooltipContent>
         </Tooltip>
+
+        {onForceReload && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onForceReload}
+                disabled={isReloading}
+                className="rounded-none border-b border-card-border"
+                data-testid="button-force-reload"
+              >
+                <RefreshCw className={`h-4 w-4 ${isReloading ? "animate-spin" : ""}`} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              {isReloading ? "Обновление..." : "Перезагрузить слои"}
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {onToggleMeasure && (
           <Tooltip>

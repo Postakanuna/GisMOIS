@@ -948,6 +948,7 @@ export function MapViewer({
   const [featureCoordinates, setFeatureCoordinates] = useState<[number, number] | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [measureActive, setMeasureActive] = useState(false);
+  const [isReloading, setIsReloading] = useState(false);
   
   // Viewport state for optimized feature loading
   // actualViewport: real map bounds (for UI components that need precise bounds)
@@ -3209,6 +3210,16 @@ export function MapViewer({
     }
   }, []);
 
+  const handleForceReload = useCallback(async () => {
+    setIsReloading(true);
+    try {
+      await fetch("/api/editable-layers/clear-viewport-cache", { method: "POST" });
+    } catch {
+    }
+    window.dispatchEvent(new CustomEvent("viewport-features-invalidate"));
+    setTimeout(() => setIsReloading(false), 1500);
+  }, []);
+
   const handleCloseFeatureInfo = useCallback(() => {
     setSelectedFeature(null);
     setFeatureCoordinates(undefined);
@@ -3554,6 +3565,8 @@ export function MapViewer({
         onToggleTicketMode={isConnected ? onToggleTicketMode : undefined}
         measureActive={measureActive}
         onToggleMeasure={() => setMeasureActive((prev) => !prev)}
+        onForceReload={handleForceReload}
+        isReloading={isReloading}
       />
 
       <CoordinateDisplay 

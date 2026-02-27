@@ -369,6 +369,11 @@ export async function registerRoutes(
   registerAuthRoutes(app);
   await seedAdminUser();
 
+  app.post("/api/editable-layers/clear-viewport-cache", isAuthenticated as any, (_req: Request, res: Response) => {
+    invalidateViewportCache();
+    res.json({ ok: true });
+  });
+
   migrateUploadsTable();
   backfillBboxColumns();
 
