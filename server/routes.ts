@@ -2505,6 +2505,173 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // ACCIDENT ANALYSIS API (Spatial binding of accidents to network segments)
+  // ============================================
+
+  app.post("/api/analytics/accident-analysis", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const {
+        networkLayerId,
+        accidentLayerId,
+        maxDistanceMeters = 50,
+        attributeFilter,
+      } = req.body;
+
+      if (!networkLayerId || !accidentLayerId) {
+        return res.status(400).json({ message: "networkLayerId and accidentLayerId are required" });
+      }
+
+      const networkLayer = await storage.getEditableLayer(networkLayerId);
+      const accidentLayer = await storage.getEditableLayer(accidentLayerId);
+
+      if (!networkLayer) {
+        return res.status(404).json({ message: "Network layer not found" });
+      }
+      if (!accidentLayer) {
+        return res.status(404).json({ message: "Accident layer not found" });
+      }
+
+      const networkFeaturesRaw = await storage.getDrawnFeatures(networkLayerId);
+      const accidentFeaturesRaw = await storage.getDrawnFeatures(accidentLayerId);
+
+      let networkFeatures = networkFeaturesRaw.map(f => ({
+        id: f.id,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
+        properties: (f.properties || {}) as Record<string, unknown>,
+      }));
+
+      const accidentFeatures = accidentFeaturesRaw.map(f => ({
+        id: f.id,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
+        properties: (f.properties || {}) as Record<string, unknown>,
+      }));
+
+      if (accidentFeatures.length === 0) {
+        return res.status(422).json({ message: "Accident layer has no features" });
+      }
+      if (networkFeatures.length === 0) {
+        return res.status(422).json({ message: "Network layer has no features" });
+      }
+
+      if (attributeFilter && attributeFilter.field && attributeFilter.value !== undefined && attributeFilter.value !== null && attributeFilter.value !== "") {
+        const { field, value } = attributeFilter;
+        networkFeatures = networkFeatures.filter(f => {
+          const propVal = f.properties[field];
+          if (propVal === undefined || propVal === null) return false;
+          return String(propVal) === String(value);
+        });
+        if (networkFeatures.length === 0) {
+          return res.status(422).json({ message: "No network features match the attribute filter" });
+        }
+      }
+
+      const segmentAccidentMap: Map<number, { feature: typeof networkFeatures[0]; accidents: typeof accidentFeatures }> = new Map();
+      let boundCount = 0;
+      let unboundCount = 0;
+
+      for (const accidentFeature of accidentFeatures) {
+        if (!accidentFeature.geometry) {
+          unboundCount++;
+          continue;
+        }
+
+        let accidentCoords: number[];
+        if (accidentFeature.geometry.type === "Point") {
+          accidentCoords = accidentFeature.geometry.coordinates as number[];
+        } else {
+          unboundCount++;
+          continue;
+        }
+
+        const accidentPoint = turf.point(accidentCoords);
+        let nearestNetworkIndex = -1;
+        let nearestDistance = Infinity;
+
+        for (let i = 0; i < networkFeatures.length; i++) {
+          const netFeature = networkFeatures[i];
+          if (!netFeature.geometry) continue;
+
+          const geomType = netFeature.geometry.type;
+          if (geomType !== "LineString" && geomType !== "MultiLineString") continue;
+
+          try {
+            let minDist = Infinity;
+            if (geomType === "LineString") {
+              const line = turf.lineString(netFeature.geometry.coordinates as number[][]);
+              const np = turf.nearestPointOnLine(line, accidentPoint);
+              if (np.properties.dist !== undefined) minDist = np.properties.dist;
+            } else {
+              const coords = netFeature.geometry.coordinates as number[][][];
+              for (const lineCoords of coords) {
+                if (lineCoords.length < 2) continue;
+                const line = turf.lineString(lineCoords);
+                const np = turf.nearestPointOnLine(line, accidentPoint);
+                if (np.properties.dist !== undefined && np.properties.dist < minDist) {
+                  minDist = np.properties.dist;
+                }
+              }
+            }
+            if (minDist < nearestDistance) {
+              nearestDistance = minDist;
+              nearestNetworkIndex = i;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        const distMeters = nearestDistance * 1000;
+        if (nearestNetworkIndex >= 0 && distMeters <= maxDistanceMeters) {
+          const netFeature = networkFeatures[nearestNetworkIndex];
+          if (!segmentAccidentMap.has(nearestNetworkIndex)) {
+            segmentAccidentMap.set(nearestNetworkIndex, { feature: netFeature, accidents: [] });
+          }
+          segmentAccidentMap.get(nearestNetworkIndex)!.accidents.push(accidentFeature);
+          boundCount++;
+        } else {
+          unboundCount++;
+        }
+      }
+
+      const segments = Array.from(segmentAccidentMap.entries())
+        .map(([, data]) => {
+          const props = data.feature.properties;
+          return {
+            featureId: data.feature.id,
+            geometry: data.feature.geometry,
+            properties: props,
+            dpod: props.Dpod ?? props.dpod ?? props.DPOD ?? null,
+            dobr: props.Dobr ?? props.dobr ?? props.DOBR ?? null,
+            length: props.L ?? props.l ?? null,
+            sys: props.Sys ?? props.sys ?? props.SYS ?? null,
+            beginUch: props.Begin_uch ?? props.begin_uch ?? null,
+            endUch: props.End_uch ?? props.end_uch ?? null,
+            accidentCount: data.accidents.length,
+            accidentFeatures: data.accidents.map(a => ({
+              id: a.id,
+              geometry: a.geometry,
+              properties: a.properties,
+            })),
+          };
+        })
+        .sort((a, b) => b.accidentCount - a.accidentCount);
+
+      return res.json({
+        networkLayerName: networkLayer.name,
+        accidentLayerName: accidentLayer.name,
+        totalAccidents: accidentFeatures.length,
+        boundAccidents: boundCount,
+        unboundAccidents: unboundCount,
+        segmentsWithAccidents: segments.length,
+        segments,
+      });
+    } catch (error) {
+      console.error("Accident analysis error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
   // GEOSPATIAL ANALYSIS API (Advanced spatial analysis with filtering)
   // ============================================
 

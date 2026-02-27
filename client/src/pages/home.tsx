@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3 } from "lucide-react";
+import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,6 +32,7 @@ import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
 import { ConsumerConnectDialog, type ConsumerFormData } from "@/components/consumer-connect-dialog";
 import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
+import { AccidentAnalysisDialog, type AccidentSegmentResult } from "@/components/accident-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 import { GeocodeDialog } from "@/components/geocode-dialog";
@@ -229,6 +230,7 @@ export default function Home() {
   } | null>(null);
   const [showComplaintDialog, setShowComplaintDialog] = useState(false);
   const [complaintResult, setComplaintResult] = useState<ComplaintAnalysisResult | null>(null);
+  const [showAccidentDialog, setShowAccidentDialog] = useState(false);
   const [aiComplaintNoTopoResult, setAiComplaintNoTopoResult] = useState<any>(null);
   const [aiSimulationResult, setAiSimulationResult] = useState<SimulationResult | null>(null);
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
@@ -633,6 +635,19 @@ export default function Home() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    variant={showAccidentDialog ? "default" : "ghost"}
+                    size="icon"
+                    onClick={() => setShowAccidentDialog(prev => !prev)}
+                    data-testid="button-open-accident-analysis"
+                  >
+                    <Zap className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Анализ аварийности</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
                     variant={showTopologyDialog ? "default" : "ghost"}
                     size="icon"
                     onClick={() => setShowTopologyDialog(prev => !prev)}
@@ -886,6 +901,36 @@ export default function Home() {
                   segments: [],
                   points: data.points.map(p => ({ coordinates: p.coordinates, type: p.type })),
                   polygons: data.polygons,
+                });
+              }}
+            />
+
+            {/* Accident Analysis Dialog */}
+            <AccidentAnalysisDialog
+              open={showAccidentDialog}
+              onOpenChange={(open) => { setShowAccidentDialog(open); if (!open) setSimulationHighlightData(null); }}
+              editableLayers={drawing.editableLayers}
+              sceneId={currentSceneId || 0}
+              onHighlightSegment={(segment: AccidentSegmentResult | null) => {
+                if (!segment) {
+                  setSimulationHighlightData(null);
+                  return;
+                }
+                const segCoords = segment.geometry.coordinates;
+                const lineCoordsList: any[] = [];
+                if (segment.geometry.type === "LineString") {
+                  lineCoordsList.push(segCoords);
+                } else if (segment.geometry.type === "MultiLineString") {
+                  for (const part of segCoords) {
+                    lineCoordsList.push(part);
+                  }
+                }
+                const accidentPoints = segment.accidentFeatures
+                  .filter(a => a.geometry && a.geometry.type === "Point")
+                  .map(a => ({ coordinates: a.geometry.coordinates, type: "accident" }));
+                setSimulationHighlightData({
+                  segments: lineCoordsList.map(coords => ({ coordinates: coords })),
+                  points: accidentPoints,
                 });
               }}
             />
