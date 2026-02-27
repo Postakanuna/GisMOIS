@@ -7449,17 +7449,19 @@ export async function registerRoutes(
       const layers = (layersRows as any).rows || [];
       if (layers.length === 0) return res.json([]);
 
-      const layerIds = layers.map((l: any) => l.id);
-      const layerMap = new Map<number, string>(layers.map((l: any) => [l.id, l.name]));
+      const layerIds: number[] = layers.map((l: any) => Number(l.id));
+      const layerMap = new Map<number, string>(layers.map((l: any) => [Number(l.id), l.name]));
 
-      const featuresRows = await db.execute(sql`
-        SELECT id, layer_id, properties
-        FROM drawn_features
-        WHERE layer_id = ANY(${layerIds}::int[])
-          AND properties::text ILIKE ${'%' + q + '%'}
-        LIMIT 10
-      `);
-      const features = (featuresRows as any).rows || [];
+      const likePattern = `%${q}%`;
+      const featuresRows = await db
+        .select({ id: drawnFeatures.id, layer_id: drawnFeatures.layerId, properties: drawnFeatures.properties })
+        .from(drawnFeatures)
+        .where(and(
+          inArray(drawnFeatures.layerId, layerIds),
+          sql`${drawnFeatures.properties}::text ILIKE ${likePattern}`
+        ))
+        .limit(10);
+      const features = featuresRows || [];
 
       const NAME_KEYS = ["name", "Наименование", "наименование", "название", "Название", "Имя", "имя", "Name"];
       const ADDR_KEYS = ["Адрес", "адрес", "address", "Address", "addr", "Adres", "adres", "место", "Место"];
