@@ -194,39 +194,57 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
               content: `Объект не найден по запросу "${searchQuery}". Уточните название, адрес или тип объекта.`,
               timestamp: new Date(),
             });
-          } else if (candidates.length === 1) {
-            const c = candidates[0];
-            const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
-            finalMessages.push({
-              id: `action-${Date.now()}`,
-              role: "assistant",
-              content: `Найден объект: ${label}`,
-              timestamp: new Date(),
-              action: {
-                type: "run_simulation",
-                label: "Запустить симуляцию",
-                payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
-              },
-            });
+            onMessagesChange(finalMessages);
           } else {
-            const candidateActions = candidates.slice(0, 5).map((c, i) => {
+            const exactMatches = candidates.filter(c =>
+              c.featureName.toLowerCase() === searchQuery.toLowerCase()
+            );
+            const displayCandidates = exactMatches.length > 0 ? exactMatches : candidates;
+
+            if (exactMatches.length === 1) {
+              const c = exactMatches[0];
+              finalMessages.push({
+                id: `autorun-${Date.now()}`,
+                role: "assistant",
+                content: `Найден объект: ${c.featureName} — ${c.layerName}. Запускаю симуляцию...`,
+                timestamp: new Date(),
+              });
+              onMessagesChange(finalMessages);
+              await runSimulation(c.featureId, c.layerId, c.featureName, c.layerName, finalMessages);
+            } else if (displayCandidates.length === 1) {
+              const c = displayCandidates[0];
               const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
-              return {
-                id: `candidate-${Date.now()}-${i}`,
-                role: "assistant" as const,
-                content: i === 0 ? `Найдено несколько объектов. Выберите нужный:` : "",
+              finalMessages.push({
+                id: `action-${Date.now()}`,
+                role: "assistant",
+                content: `Найден объект: ${label}`,
                 timestamp: new Date(),
                 action: {
-                  type: "run_simulation" as const,
-                  label,
+                  type: "run_simulation",
+                  label: "Запустить симуляцию",
                   payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
                 },
-              };
-            });
-            finalMessages.push(...candidateActions);
+              });
+              onMessagesChange(finalMessages);
+            } else {
+              const candidateActions = displayCandidates.slice(0, 5).map((c, i) => {
+                const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
+                return {
+                  id: `candidate-${Date.now()}-${i}`,
+                  role: "assistant" as const,
+                  content: i === 0 ? `Найдено несколько объектов. Выберите нужный:` : "",
+                  timestamp: new Date(),
+                  action: {
+                    type: "run_simulation" as const,
+                    label,
+                    payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
+                  },
+                };
+              });
+              finalMessages.push(...candidateActions);
+              onMessagesChange(finalMessages);
+            }
           }
-
-          onMessagesChange(finalMessages);
         } catch {
           const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
           finalMessages.push({
@@ -260,6 +278,67 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
       onMessagesChange([...updatedMessages, errorMsg]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const runSimulation = async (
+    featureId: number,
+    layerId: number,
+    featureName: string,
+    layerName: string,
+    currentMessages: ChatMessage[],
+  ) => {
+    const loadingMsg: ChatMessage = {
+      id: `simulating-${Date.now()}`,
+      role: "assistant",
+      content: `Симулирую отключение объекта "${featureName}"...`,
+      timestamp: new Date(),
+    };
+    onMessagesChange([...currentMessages, loadingMsg]);
+    setIsAnalyzing(true);
+
+    try {
+      const sid = sceneId || 0;
+      const response = await fetch("/api/ai/run-simulation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ featureId, layerId, sceneId: sid }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Ошибка симуляции");
+      }
+
+      const consumers = data.stats?.totalConsumers ?? 0;
+      const segments = data.stats?.totalSegments ?? 0;
+      const ctps = data.stats?.totalCTPs ?? 0;
+
+      const resultMsg: ChatMessage = {
+        id: `sim-result-${Date.now()}`,
+        role: "assistant",
+        content: `Симуляция завершена. При отключении "${featureName}" (${layerName}) затронуто: потребителей — ${consumers}, участков сети — ${segments}, ЦТП — ${ctps}.`,
+        timestamp: new Date(),
+        action: {
+          type: "show_simulation_result",
+          label: "Показать результаты",
+          payload: { result: data, featureId, layerId, featureName },
+        },
+      };
+
+      const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+      onMessagesChange([...finalMessages, resultMsg]);
+    } catch (error: any) {
+      const errorMsg: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: `Ошибка симуляции: ${error.message}`,
+        timestamp: new Date(),
+      };
+      const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+      onMessagesChange([...finalMessages, errorMsg]);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -328,67 +407,9 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
       }
     } else if (msg.action.type === "run_simulation") {
       const { featureId, layerId, featureName, layerName } = msg.action.payload;
-
       const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
       const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
-
-      const loadingMsg: ChatMessage = {
-        id: `simulating-${Date.now()}`,
-        role: "assistant",
-        content: `Симулирую отключение объекта "${featureName}"...`,
-        timestamp: new Date(),
-      };
-      onMessagesChange([...currentMessages, loadingMsg]);
-      setIsAnalyzing(true);
-
-      try {
-        const sid = sceneId || 0;
-        const response = await fetch("/api/ai/run-simulation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ featureId, layerId, sceneId: sid }),
-        });
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Ошибка симуляции");
-        }
-
-        const consumers = data.stats?.totalConsumers ?? 0;
-        const segments = data.stats?.totalSegments ?? 0;
-        const ctps = data.stats?.totalCTPs ?? 0;
-
-        const resultMsg: ChatMessage = {
-          id: `sim-result-${Date.now()}`,
-          role: "assistant",
-          content: `Симуляция завершена. При отключении "${featureName}" (${layerName}) затронуто: потребителей — ${consumers}, участков сети — ${segments}, ЦТП — ${ctps}.`,
-          timestamp: new Date(),
-          action: {
-            type: "show_simulation_result",
-            label: "Показать результаты",
-            payload: {
-              result: data,
-              featureId,
-              layerId,
-              featureName,
-            },
-          },
-        };
-
-        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
-        onMessagesChange([...finalMessages, resultMsg]);
-      } catch (error: any) {
-        const errorMsg: ChatMessage = {
-          id: `error-${Date.now()}`,
-          role: "assistant",
-          content: `Ошибка симуляции: ${error.message}`,
-          timestamp: new Date(),
-        };
-        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
-        onMessagesChange([...finalMessages, errorMsg]);
-      } finally {
-        setIsAnalyzing(false);
-      }
+      await runSimulation(featureId, layerId, featureName, layerName, currentMessages);
     } else if (msg.action.type === "show_simulation_result") {
       if (onSimulationResult && msg.action.payload) {
         const { result, featureId, layerId, featureName } = msg.action.payload;

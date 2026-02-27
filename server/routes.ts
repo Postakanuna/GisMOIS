@@ -7480,15 +7480,21 @@ export async function registerRoutes(
       const layerMap = new Map<number, string>(layers.map((l: any) => [Number(l.id), l.name]));
 
       const likePattern = `%${q}%`;
-      const featuresRows = await db
-        .select({ id: drawnFeatures.id, layer_id: drawnFeatures.layerId, properties: drawnFeatures.properties })
-        .from(drawnFeatures)
-        .where(and(
-          inArray(drawnFeatures.layerId, layerIds),
-          sql`${drawnFeatures.properties}::text ILIKE ${likePattern}`
-        ))
-        .limit(10);
-      const features = featuresRows || [];
+      const featuresRaw = await db.execute(sql`
+        SELECT df.id, df.layer_id, df.properties
+        FROM drawn_features df
+        WHERE df.layer_id = ANY(${layerIds}::int[])
+          AND df.properties::text ILIKE ${likePattern}
+        ORDER BY
+          CASE
+            WHEN lower(df.properties->>'Name') = lower(${q}) THEN 0
+            WHEN lower(df.properties->>'Name') LIKE lower(${q + '%'}) THEN 1
+            ELSE 2
+          END,
+          df.id
+        LIMIT 10
+      `);
+      const features = (featuresRaw as any).rows || [];
 
       const NAME_KEYS = ["name", "Наименование", "наименование", "название", "Название", "Имя", "имя", "Name"];
       const ADDR_KEYS = ["Адрес", "адрес", "address", "Address", "addr", "Adres", "adres", "место", "Место"];
