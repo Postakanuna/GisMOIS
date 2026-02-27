@@ -11,6 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,7 +28,9 @@ import {
   AlertOctagon,
   MapPin,
   Ruler,
+  Layers,
 } from "lucide-react";
+import * as turf from "@turf/turf";
 
 interface EditableLayer {
   id: number;
@@ -85,12 +92,15 @@ export function AccidentAnalysisDialog({
 
   const [networkLayerId, setNetworkLayerId] = useState<number | null>(null);
   const [accidentLayerId, setAccidentLayerId] = useState<number | null>(null);
-  const [maxDistance, setMaxDistance] = useState<number>(50);
+  const [maxDistance, setMaxDistance] = useState<number>(15);
   const [attributeFilter, setAttributeFilter] = useState<AttributeFilter>({ field: "", value: "" });
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [networkAttributes, setNetworkAttributes] = useState<string[]>([]);
   const [result, setResult] = useState<AccidentAnalysisResult | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
+  const [saveLayerId, setSaveLayerId] = useState<number | null>(null);
+  const [showSavePopover, setShowSavePopover] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [position, setPosition] = useState({ x: 20, y: 80 });
   const isDragging = useRef(false);
@@ -241,6 +251,54 @@ export function AccidentAnalysisDialog({
       toast({ title: "Ошибка экспорта", description: "Не удалось создать файл Excel", variant: "destructive" });
     }
   };
+
+  const handleSaveToLayer = async () => {
+    if (!result || !saveLayerId) return;
+    setIsSaving(true);
+    try {
+      const features = result.segments.map(seg => {
+        const geom = seg.geometry;
+        const geoFeature = turf.feature(geom as any);
+        const buffered = turf.buffer(geoFeature, 5, { units: "meters" });
+        const bufGeom = buffered?.geometry;
+        return {
+          geometryType: bufGeom?.type ?? "Polygon",
+          coordinates: bufGeom?.coordinates ?? [],
+          properties: {
+            Sys: seg.sys ?? "",
+            Begin_uch: seg.beginUch ?? "",
+            End_uch: seg.endUch ?? "",
+            Dpod: seg.dpod ?? "",
+            Dobr: seg.dobr ?? "",
+            L: seg.length ?? "",
+            AccidentCount: seg.accidentCount,
+          },
+        };
+      });
+
+      const res = await fetch(`/api/editable-layers/${saveLayerId}/features/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(features),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || `Ошибка ${res.status}`);
+      }
+      toast({ title: "Сохранено", description: `${features.length} полигонов сохранено в слой` });
+      setShowSavePopover(false);
+    } catch (e: any) {
+      toast({ title: "Ошибка сохранения", description: e.message || "Не удалось сохранить в слой", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const polygonLayers = editableLayers.filter(l =>
+    l.geometryType?.toLowerCase().includes("polygon")
+  );
+  const saveTargetLayers = polygonLayers.length > 0 ? polygonLayers : editableLayers;
 
   const canRun = networkLayerId !== null && accidentLayerId !== null;
 
@@ -406,10 +464,44 @@ export function AccidentAnalysisDialog({
               <span className="text-xs text-muted-foreground">
                 Участков с авариями: {result.segmentsWithAccidents}
               </span>
-              <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
-                <Download className="h-3 w-3" />
-                Excel
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
+                  <Download className="h-3 w-3" />
+                  Excel
+                </Button>
+                <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-6 text-xs gap-1" data-testid="button-save-to-layer">
+                      <Layers className="h-3 w-3" />
+                      В слой
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-3" align="end">
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium">Сохранить буферизованные полигоны (±5 м)</p>
+                      <Select value={saveLayerId ? String(saveLayerId) : ""} onValueChange={v => setSaveLayerId(Number(v))}>
+                        <SelectTrigger className="h-7 text-xs" data-testid="select-save-layer">
+                          <SelectValue placeholder="Выберите слой..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {saveTargetLayers.map(l => (
+                            <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        className="w-full h-7 text-xs"
+                        disabled={!saveLayerId || isSaving}
+                        onClick={handleSaveToLayer}
+                        data-testid="button-confirm-save-to-layer"
+                      >
+                        {isSaving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Сохранение...</> : "Сохранить"}
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
             {result.segments.length === 0 ? (

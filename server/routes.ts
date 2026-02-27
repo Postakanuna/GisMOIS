@@ -7819,7 +7819,7 @@ export async function registerRoutes(
         return res.status(422).json({ error: "После применения фильтров в слое сетей не осталось объектов" });
       }
 
-      const maxDistanceMeters = 50;
+      const maxDistanceMeters = 15;
       const segmentAccidentMap: Map<number, { feature: typeof networkFeatures[0]; accidents: typeof accidentFeatures }> = new Map();
       let boundCount = 0;
       let unboundCount = 0;
