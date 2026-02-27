@@ -30,7 +30,6 @@ import {
   Ruler,
   Layers,
 } from "lucide-react";
-import * as turf from "@turf/turf";
 
 interface EditableLayer {
   id: number;
@@ -256,38 +255,21 @@ export function AccidentAnalysisDialog({
     if (!result || !saveLayerId) return;
     setIsSaving(true);
     try {
-      const features = result.segments.map(seg => {
-        const geom = seg.geometry;
-        const geoFeature = turf.feature(geom as any);
-        const buffered = turf.buffer(geoFeature, 5, { units: "meters" });
-        const bufGeom = buffered?.geometry;
-        return {
-          geometryType: bufGeom?.type ?? "Polygon",
-          coordinates: bufGeom?.coordinates ?? [],
-          properties: {
-            Sys: seg.sys ?? "",
-            Begin_uch: seg.beginUch ?? "",
-            End_uch: seg.endUch ?? "",
-            Dpod: seg.dpod ?? "",
-            Dobr: seg.dobr ?? "",
-            L: seg.length ?? "",
-            AccidentCount: seg.accidentCount,
-          },
-        };
-      });
-
-      const res = await fetch(`/api/editable-layers/${saveLayerId}/features/batch`, {
+      const res = await fetch("/api/analytics/accident-analysis/save-buffer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(features),
+        body: JSON.stringify({
+          segments: result.segments,
+          targetLayerId: saveLayerId,
+          bufferMeters: 5,
+        }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || `Ошибка ${res.status}`);
-      }
-      toast({ title: "Сохранено", description: `${features.length} полигонов сохранено в слой` });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `Ошибка ${res.status}`);
+      toast({ title: "Сохранено", description: `${data.saved} полигонов сохранено в слой${data.errors > 0 ? ` (ошибок: ${data.errors})` : ""}` });
       setShowSavePopover(false);
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
     } catch (e: any) {
       toast({ title: "Ошибка сохранения", description: e.message || "Не удалось сохранить в слой", variant: "destructive" });
     } finally {

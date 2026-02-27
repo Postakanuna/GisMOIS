@@ -2671,6 +2671,74 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/analytics/accident-analysis/save-buffer", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { segments, targetLayerId, bufferMeters = 5 } = req.body;
+
+      if (!Array.isArray(segments) || segments.length === 0) {
+        return res.status(400).json({ message: "segments array is required" });
+      }
+      if (!targetLayerId) {
+        return res.status(400).json({ message: "targetLayerId is required" });
+      }
+
+      const targetLayer = await storage.getEditableLayer(Number(targetLayerId));
+      if (!targetLayer) {
+        return res.status(404).json({ message: "Target layer not found" });
+      }
+
+      const features: Array<{ layerId: number; geometryType: string; coordinates: any; properties: Record<string, unknown> }> = [];
+      let errorCount = 0;
+
+      for (const seg of segments) {
+        try {
+          const geom = seg.geometry;
+          if (!geom || !geom.type || !geom.coordinates) {
+            errorCount++;
+            continue;
+          }
+
+          const geoFeature = turf.feature(geom);
+          const buffered = turf.buffer(geoFeature, Number(bufferMeters), { units: "meters" });
+
+          if (!buffered || !buffered.geometry || !buffered.geometry.coordinates || buffered.geometry.coordinates.length === 0) {
+            console.warn(`Buffer failed for segment featureId=${seg.featureId}, geomType=${geom.type}`);
+            errorCount++;
+            continue;
+          }
+
+          features.push({
+            layerId: Number(targetLayerId),
+            geometryType: buffered.geometry.type,
+            coordinates: buffered.geometry.coordinates,
+            properties: {
+              Sys: seg.sys ?? "",
+              Begin_uch: seg.beginUch ?? "",
+              End_uch: seg.endUch ?? "",
+              Dpod: seg.dpod ?? "",
+              Dobr: seg.dobr ?? "",
+              L: seg.length ?? "",
+              AccidentCount: seg.accidentCount ?? 0,
+            },
+          });
+        } catch (segErr) {
+          console.warn("Buffer error for segment:", segErr);
+          errorCount++;
+        }
+      }
+
+      if (features.length === 0) {
+        return res.status(422).json({ message: `Не удалось буферизовать ни одного участка. Ошибок: ${errorCount}. Возможно, координаты не в WGS84.` });
+      }
+
+      const created = await storage.createDrawnFeaturesBatch(features);
+      return res.json({ saved: created.length, errors: errorCount });
+    } catch (error: any) {
+      console.error("Buffer-save error:", error);
+      return res.status(500).json({ message: error.message || "Internal server error" });
+    }
+  });
+
   // ============================================
   // GEOSPATIAL ANALYSIS API (Advanced spatial analysis with filtering)
   // ============================================
