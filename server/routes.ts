@@ -7384,15 +7384,26 @@ export async function registerRoutes(
 СТРОГОЕ ПРАВИЛО ФОРМАТИРОВАНИЯ: Никогда не используй двойные звёздочки (**) в своих ответах. Не используй разметку Markdown для жирного текста. Не используй заглавные буквы для выделения. Для структурирования информации используй тире или нумерованные списки.
 
 ИНСТРУМЕНТ СИМУЛЯЦИИ ОТКЛЮЧЕНИЯ:
-Если пользователь просит симулировать отключение, проверить зону аварии, узнать кого затронет отключение конкретного объекта (задвижки, трубопровода, ЦТП, узла учёта и т.д.):
-1. Определи из запроса тип объекта и его идентификатор (название, адрес, номер).
-2. Составь короткий поисковый запрос из ключевых слов: тип объекта + название/адрес/номер.
-3. Ответь пользователю что ищешь объект и готовишь симуляцию.
-4. В САМОМ КОНЦЕ добавь маркер: [ACTION:SIMULATION_SEARCH:ПОИСКОВЫЙ_ЗАПРОС]
-   Например: [ACTION:SIMULATION_SEARCH:задвижка Ленина 15]
-   Например: [ACTION:SIMULATION_SEARCH:ЦТП-12]
-   Например: [ACTION:SIMULATION_SEARCH:узел учёта Садовая 3]
-5. Если пользователь не указал конкретный объект (улицу, номер, название) — уточни у него. НЕ добавляй маркер.
+Если пользователь просит симулировать отключение, проверить зону аварии, узнать кого затронет отключение конкретного объекта:
+1. Определи из запроса тип объекта и сопоставь с кодом типа сети (бейджем слоя):
+   - котельная / ТЭЦ / ГРЭС / источник / бойлерная → source
+   - ЦТП / ИТП / тепловой пункт / теплопункт → ctp
+   - потребитель / абонент / здание / жилой дом / дом → consumer
+   - участок / трубопровод / труба / магистраль / сеть → segment
+   - задвижка / вентиль / кран / запорная арматура → valve
+   - узел / камера / узловая точка → node
+   - насос / насосная → pump
+   - если тип объекта не ясен → _any_
+2. Определи идентификатор объекта: название, номер, адрес (улица, дом).
+3. Составь краткий поисковый запрос только из идентификатора (без слова "задвижка" и т.п. — оно учтено в типе).
+4. Ответь пользователю что ищешь объект и готовишь симуляцию.
+5. В САМОМ КОНЦЕ добавь маркер: [ACTION:SIMULATION_SEARCH:ПОИСКОВЫЙ_ЗАПРОС:NETWORK_TYPE_КОД]
+   Например: [ACTION:SIMULATION_SEARCH:Котельная №1:source]
+   Например: [ACTION:SIMULATION_SEARCH:ЦТП-12:ctp]
+   Например: [ACTION:SIMULATION_SEARCH:Ленина 15:valve]
+   Например: [ACTION:SIMULATION_SEARCH:насосная №3:pump]
+   Например: [ACTION:SIMULATION_SEARCH:объект:_any_]
+6. Если пользователь не указал конкретный объект (улицу, номер, название) — уточни у него. НЕ добавляй маркер.
 
 ИНСТРУМЕНТ АНАЛИЗА ЖАЛОБ:
 Если пользователь просит проанализировать жалобы, найти кластеры жалоб, или что-то связанное с анализом обращений/жалоб:
@@ -7435,17 +7446,23 @@ export async function registerRoutes(
 
   app.get("/api/ai/search-features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { sceneId, query } = req.query;
+      const { sceneId, query, networkType } = req.query;
       if (!sceneId) return res.status(400).json({ error: "sceneId is required" });
       if (!query || String(query).trim().length < 2) return res.json([]);
 
       const q = String(query).trim();
       const sceneIdNum = Number(sceneId);
+      const nt = networkType && String(networkType) !== "_any_" ? String(networkType) : null;
 
-      const layersRows = await db.execute(sql`
-        SELECT id, name FROM editable_layers
-        WHERE scene_id = ${sceneIdNum} AND feature_count > 0
-      `);
+      const layersRows = nt
+        ? await db.execute(sql`
+            SELECT id, name, network_type FROM editable_layers
+            WHERE scene_id = ${sceneIdNum} AND feature_count > 0 AND network_type = ${nt}
+          `)
+        : await db.execute(sql`
+            SELECT id, name, network_type FROM editable_layers
+            WHERE scene_id = ${sceneIdNum} AND feature_count > 0
+          `);
       const layers = (layersRows as any).rows || [];
       if (layers.length === 0) return res.json([]);
 

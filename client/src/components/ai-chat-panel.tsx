@@ -58,7 +58,7 @@ interface AiChatPanelProps {
 }
 
 const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
-const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^\]]+)\]/;
+const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^:\]]+):([^\]]*)\]/;
 
 export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult, onSimulationResult }: AiChatPanelProps) {
   const [input, setInput] = useState("");
@@ -159,6 +159,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
         newMessages.push(actionMsg);
       } else if (simulationMatch) {
         const searchQuery = simulationMatch[1].trim();
+        const networkType = simulationMatch[2] && simulationMatch[2] !== "_any_" ? simulationMatch[2].trim() : "";
         aiContent = aiContent.replace(SIMULATION_SEARCH_REGEX, "").trim();
 
         const aiMsg: ChatMessage = {
@@ -180,7 +181,8 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
 
         try {
           const sid = sceneId || 0;
-          const searchResp = await fetch(`/api/ai/search-features?sceneId=${sid}&query=${encodeURIComponent(searchQuery)}`);
+          const ntParam = networkType ? `&networkType=${encodeURIComponent(networkType)}` : "";
+          const searchResp = await fetch(`/api/ai/search-features?sceneId=${sid}&query=${encodeURIComponent(searchQuery)}${ntParam}`);
           const candidates: Array<{ featureId: number; layerId: number; layerName: string; featureName: string; featureAddress: string }> = await searchResp.json();
 
           const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
