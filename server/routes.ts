@@ -2687,22 +2687,78 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Target layer not found" });
       }
 
+      const GEOM_TYPE_MAP: Record<string, string> = {
+        linestring: "LineString", multilinestring: "MultiLineString",
+        point: "Point", multipoint: "MultiPoint",
+        polygon: "Polygon", multipolygon: "MultiPolygon",
+      };
+
       const features: Array<{ layerId: number; geometryType: string; coordinates: any; properties: Record<string, unknown> }> = [];
       let errorCount = 0;
 
       for (const seg of segments) {
         try {
           const geom = seg.geometry;
-          if (!geom || !geom.type || !geom.coordinates) {
+          if (!geom || !geom.type) {
+            console.warn(`[save-buffer] featureId=${seg.featureId}: missing geometry, skip`);
             errorCount++;
             continue;
           }
 
-          const geoFeature = turf.feature(geom);
+          // 1. Нормализовать тип геометрии
+          const normalizedType = GEOM_TYPE_MAP[geom.type.toLowerCase()] ?? geom.type;
+
+          // 2. Распарсить координаты, если строка
+          let coords = geom.coordinates;
+          if (typeof coords === "string") {
+            try { coords = JSON.parse(coords); } catch { coords = []; }
+          }
+          if (!coords || (Array.isArray(coords) && coords.length === 0)) {
+            console.warn(`[save-buffer] featureId=${seg.featureId}: empty coordinates, skip`);
+            errorCount++;
+            continue;
+          }
+
+          // 3. Нормализовать геометрию под буферизацию
+          const isValidPt = (p: any) => Array.isArray(p) && p.length >= 2 && p.every((n: any) => typeof n === "number" && isFinite(n));
+          let geomToBuffer: any;
+
+          if (normalizedType === "LineString") {
+            const cleaned = (coords as any[]).filter(isValidPt);
+            if (cleaned.length === 0) {
+              console.warn(`[save-buffer] featureId=${seg.featureId}: LineString no valid points, skip`);
+              errorCount++;
+              continue;
+            }
+            geomToBuffer = cleaned.length === 1
+              ? { type: "Point", coordinates: cleaned[0] }
+              : { type: "LineString", coordinates: cleaned };
+          } else if (normalizedType === "MultiLineString") {
+            const cleanedParts = (coords as any[][])
+              .map(part => (Array.isArray(part) ? part : []).filter(isValidPt))
+              .filter(part => part.length >= 2);
+            if (cleanedParts.length === 0) {
+              const firstPt = (coords as any[][])?.[0]?.[0];
+              if (firstPt && isValidPt(firstPt)) {
+                geomToBuffer = { type: "Point", coordinates: firstPt };
+              } else {
+                console.warn(`[save-buffer] featureId=${seg.featureId}: MultiLineString no valid parts, skip`);
+                errorCount++;
+                continue;
+              }
+            } else {
+              geomToBuffer = { type: "MultiLineString", coordinates: cleanedParts };
+            }
+          } else {
+            geomToBuffer = { type: normalizedType, coordinates: coords };
+          }
+
+          // 4. Буферизация
+          const geoFeature = turf.feature(geomToBuffer);
           const buffered = turf.buffer(geoFeature, Number(bufferMeters), { units: "meters" });
 
-          if (!buffered || !buffered.geometry || !buffered.geometry.coordinates || buffered.geometry.coordinates.length === 0) {
-            console.warn(`Buffer failed for segment featureId=${seg.featureId}, geomType=${geom.type}`);
+          if (!buffered || !buffered.geometry || !Array.isArray(buffered.geometry.coordinates) || buffered.geometry.coordinates.length === 0) {
+            console.warn(`[save-buffer] featureId=${seg.featureId}, type=${normalizedType}, coordsLen=${Array.isArray(coords) ? coords.length : "n/a"}: buffer returned empty`);
             errorCount++;
             continue;
           }
@@ -2721,8 +2777,8 @@ export async function registerRoutes(
               AccidentCount: seg.accidentCount ?? 0,
             },
           });
-        } catch (segErr) {
-          console.warn("Buffer error for segment:", segErr);
+        } catch (segErr: any) {
+          console.warn(`[save-buffer] Unexpected error featureId=${seg.featureId}:`, segErr.message);
           errorCount++;
         }
       }
