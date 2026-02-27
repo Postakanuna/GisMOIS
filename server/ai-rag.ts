@@ -42,6 +42,19 @@ const IMPORTANT_FIELDS = [
   "ZType", "ZMode",
 ];
 
+function normalizeRussianAdjective(word: string): string | null {
+  const lower = word.toLowerCase();
+  if (lower.endsWith("ой") && lower.length > 4)
+    return lower.slice(0, -2) + "ая";
+  if (lower.endsWith("ей") && lower.length > 4)
+    return lower.slice(0, -2) + "ья";
+  if (lower.endsWith("ого") && lower.length > 5)
+    return lower.slice(0, -3) + "ый";
+  if (lower.endsWith("его") && lower.length > 5)
+    return lower.slice(0, -3) + "ий";
+  return null;
+}
+
 const STOP_WORDS = new Set([
   "что", "как", "где", "кто", "для", "при", "это", "тот", "его", "она", "они",
   "все", "или", "так", "уже", "ещё", "еще", "мне", "мой", "моя", "мои",
@@ -74,6 +87,12 @@ function extractSearchTerms(userMessage: string): string[] {
         terms.push(`${prefix} №${numMatch[0]}`);
         terms.push(`${prefix}-${numMatch[0]}`);
         terms.push(`${prefix} ${numMatch[0]}`);
+
+        const normalized = normalizeRussianAdjective(prefix);
+        if (normalized && normalized !== prefix.toLowerCase()) {
+          terms.push(`${normalized} №${numMatch[0]}`);
+          terms.push(`${normalized} ${numMatch[0]}`);
+        }
       }
     }
   }
