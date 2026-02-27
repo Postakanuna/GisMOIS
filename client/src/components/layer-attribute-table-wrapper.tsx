@@ -35,7 +35,7 @@ export function LayerAttributeTableWrapper({
 
   const updateFeatureMutation = useMutation({
     mutationFn: async ({ featureId, properties }: { featureId: number; properties: Record<string, unknown> }) => {
-      const res = await apiRequest("PATCH", `/api/drawn-features/${featureId}`, { properties });
+      const res = await apiRequest("PATCH", `/api/features/${featureId}`, { properties });
       return res.json();
     },
     onSuccess: () => {
@@ -46,7 +46,7 @@ export function LayerAttributeTableWrapper({
 
   const batchUpdateMutation = useMutation({
     mutationFn: async (updates: { id: number; properties: Record<string, unknown> }[]) => {
-      const res = await apiRequest("PATCH", "/api/drawn-features/batch", { updates });
+      const res = await apiRequest("PATCH", "/api/features/batch", { updates });
       return res.json();
     },
     onSuccess: () => {
@@ -57,7 +57,7 @@ export function LayerAttributeTableWrapper({
 
   const batchDeleteMutation = useMutation({
     mutationFn: async (ids: number[]) => {
-      const res = await apiRequest("DELETE", "/api/drawn-features/batch", { ids });
+      const res = await apiRequest("POST", "/api/features/batch-delete", { ids });
       return res.json();
     },
     onSuccess: () => {
