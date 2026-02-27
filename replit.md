@@ -107,6 +107,18 @@ The AI agent can automatically trigger complaint analysis (no-topology mode) whe
 5. Results are displayed with a "Показать результат" button that opens the `ComplaintAnalysisDialog` with pre-loaded results via `initialNoTopoResult` prop.
 Chat messages support an `action` field (`ChatAction` type) for interactive buttons.
 
+## Security (Pre-Production Hardening v1.0.0-rc.1)
+
+Applied as part of pre-publication security audit:
+
+- **Helmet**: HTTP security headers (X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, etc.). CSP disabled to allow external map tiles.
+- **Rate Limiting**: Login endpoint limited to 20 attempts per 15 minutes per IP (`express-rate-limit`). Returns 429 with Russian-language message.
+- **Session Security**: `sameSite: "lax"` added to session cookie (CSRF protection). `SESSION_SECRET` stored as Replit secret (persistent across restarts).
+- **Body Limit**: `express.json()` limit reduced from 1 GB to 100 MB. File uploads (shapefile/Excel) use multer with independent limits (1 GB / 200 MB) — not affected.
+- **Error Handler**: Global error handler no longer re-throws after sending response (prevents server crash on unhandled errors).
+- **Input Validation**: `parseIntParam(value, res)` helper added to `routes.ts`. All `parseInt(req.params.X)` calls (60 routes) replaced — invalid non-numeric params return 400 immediately.
+- **Production Log Suppression**: Operational `console.log` in `network-graph.ts`, `geocoder.ts`, and `routes.ts` (AutoTrace, BboxBackfill, Migration, SpatialGraph, NetworkGraph, CapacityAnalysis) guarded with `if (process.env.NODE_ENV !== "production")`. `console.error`/`console.warn` remain active in all environments.
+
 ## External Dependencies
 
 ### Third-Party Services

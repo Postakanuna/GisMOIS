@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -13,16 +14,18 @@ declare module "http" {
   }
 }
 
+app.use(helmet({ contentSecurityPolicy: false }));
+
 app.use(
   express.json({
-    limit: "1gb",
+    limit: "100mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false, limit: "1gb" }));
+app.use(express.urlencoded({ extended: false, limit: "100mb" }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -57,7 +60,7 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    console.error("[UnhandledError]", err.message || err);
   });
 
   // importantly only setup vite in development and after

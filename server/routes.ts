@@ -25,6 +25,15 @@ import crypto from "crypto";
 const VIEWPORT_CACHE_MAX = 200;
 const VIEWPORT_CACHE_TTL_MS = 30_000;
 
+function parseIntParam(value: string | undefined, res: Response): number | null {
+  const n = parseInt(value ?? "", 10);
+  if (isNaN(n)) {
+    res.status(400).json({ message: "Некорректный параметр ID" });
+    return null;
+  }
+  return n;
+}
+
 const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB
 const LARGE_EXCEL_THRESHOLD = 50 * 1024 * 1024; // 50MB
 
@@ -309,7 +318,7 @@ async function migrateUploadsTable() {
     await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS processed_features INTEGER NOT NULL DEFAULT 0`);
     await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS scene_id INTEGER`);
     await db.execute(sql`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS color TEXT`);
-    console.log("[Migration] uploads table columns OK");
+    if (process.env.NODE_ENV !== "production") console.log("[Migration] uploads table columns OK");
   } catch (error) {
     console.error("[Migration] uploads table error:", error);
   }
@@ -320,10 +329,10 @@ async function backfillBboxColumns() {
     const result = await db.execute(sql`SELECT COUNT(*) as cnt FROM drawn_features WHERE bbox_min_x IS NULL`);
     const count = Number((result as any).rows?.[0]?.cnt || 0);
     if (count === 0) {
-      console.log("[Bbox Backfill] All features already have bbox values");
+      if (process.env.NODE_ENV !== "production") console.log("[Bbox Backfill] All features already have bbox values");
       return;
     }
-    console.log(`[Bbox Backfill] Backfilling ${count} features...`);
+    if (process.env.NODE_ENV !== "production") console.log(`[Bbox Backfill] Backfilling ${count} features...`);
     const batchSize = 500;
     let processed = 0;
     while (processed < count) {
@@ -338,9 +347,9 @@ async function backfillBboxColumns() {
         }
       }
       processed += features.length;
-      console.log(`[Bbox Backfill] ${processed}/${count} features processed`);
+      if (process.env.NODE_ENV !== "production") console.log(`[Bbox Backfill] ${processed}/${count} features processed`);
     }
-    console.log("[Bbox Backfill] Complete");
+    if (process.env.NODE_ENV !== "production") console.log("[Bbox Backfill] Complete");
   } catch (error) {
     console.error("[Bbox Backfill] Error:", error);
   }
@@ -1085,7 +1094,7 @@ export async function registerRoutes(
 
       const { consumerCoords, sceneId, consumer } = parseResult.data;
 
-      console.log(`[AutoTrace] Starting auto-trace for consumer "${consumer.name}" at [${consumerCoords}] in scene ${sceneId}`);
+      if (process.env.NODE_ENV !== "production") console.log(`[AutoTrace] Starting auto-trace for consumer "${consumer.name}" at [${consumerCoords}] in scene ${sceneId}`);
 
       const { findNearestConnectionPoint, analyzeRouteGeometry, placeHeatChambers, analyzeCapacity } = await import("./network-graph");
 
@@ -1098,7 +1107,7 @@ export async function registerRoutes(
         });
       }
 
-      console.log(`[AutoTrace] Found connection point: "${connectionPoint.name}" (${connectionPoint.type}) at distance ${Math.round(connectionPoint.distance)}m`);
+      if (process.env.NODE_ENV !== "production") console.log(`[AutoTrace] Found connection point: "${connectionPoint.name}" (${connectionPoint.type}) at distance ${Math.round(connectionPoint.distance)}m`);
 
       let routeCoords: [number, number][] = [consumerCoords, connectionPoint.coordinates];
       let routeDistance = connectionPoint.distance;
@@ -1122,7 +1131,7 @@ export async function registerRoutes(
             routeCoords = osrmRoute.geometry.coordinates as [number, number][];
             routeDistance = osrmRoute.distance;
             usedOsrm = true;
-            console.log(`[AutoTrace] OSRM route: ${Math.round(routeDistance)}m, ${routeCoords.length} points`);
+            if (process.env.NODE_ENV !== "production") console.log(`[AutoTrace] OSRM route: ${Math.round(routeDistance)}m, ${routeCoords.length} points`);
           }
         }
       } catch (osrmErr: any) {
@@ -1133,7 +1142,7 @@ export async function registerRoutes(
 
       const heatChambers = placeHeatChambers(route);
 
-      console.log(`[AutoTrace] Route: ${Math.round(route.totalLength)}m, ${route.segments.length} segments, ${route.turningAngles.length} turns, ${heatChambers.length} heat chambers, OSRM=${usedOsrm}`);
+      if (process.env.NODE_ENV !== "production") console.log(`[AutoTrace] Route: ${Math.round(route.totalLength)}m, ${route.segments.length} segments, ${route.turningAngles.length} turns, ${heatChambers.length} heat chambers, OSRM=${usedOsrm}`);
 
       let capacityAnalysis = null;
       const totalLoad = (consumer.qo || 0) + (consumer.qgv || 0) + (consumer.qsv || 0);
@@ -1199,7 +1208,7 @@ export async function registerRoutes(
   "recommendations": ["рекомендация 1", "рекомендация 2"]
 }`;
 
-            console.log(`[AutoTrace] Requesting AI calculation via provider "${aiProvider.name}" (model: ${aiProvider.model})...`);
+            if (process.env.NODE_ENV !== "production") console.log(`[AutoTrace] Requesting AI calculation via provider "${aiProvider.name}" (model: ${aiProvider.model})...`);
 
             const completion = await openai.chat.completions.create({
               model: aiProvider.model,
@@ -1212,7 +1221,7 @@ export async function registerRoutes(
             });
 
             const aiText = completion.choices?.[0]?.message?.content || "";
-            console.log("[AutoTrace] AI response received");
+            if (process.env.NODE_ENV !== "production") console.log("[AutoTrace] AI response received");
 
             try {
               const cleaned = aiText.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
@@ -1221,7 +1230,7 @@ export async function registerRoutes(
               console.error("[AutoTrace] Failed to parse AI response:", aiText.substring(0, 200));
             }
           } else {
-            console.log("[AutoTrace] No active AI provider configured, using heuristic calculation");
+            if (process.env.NODE_ENV !== "production") console.log("[AutoTrace] No active AI provider configured, using heuristic calculation");
             aiParams = calculateHeuristicParams(totalLoad, route.totalLength, route.turningAngles.length);
           }
         } catch (aiError: any) {
@@ -2143,7 +2152,8 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const parsed = joinPreviewSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Некорректные параметры", errors: parsed.error.issues });
@@ -2221,7 +2231,8 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const parsed = joinExcelSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Некорректные параметры", errors: parsed.error.issues });
@@ -3605,7 +3616,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (!membership && user.role !== "admin") {
@@ -3626,7 +3638,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
 
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (!membership && user.role !== "admin") {
@@ -3674,7 +3687,8 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       const folders = await storage.getLayerFolders(sceneId);
       return res.json(folders);
     } catch (error) {
@@ -3687,7 +3701,8 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       const { name } = req.body;
       if (!name || typeof name !== "string" || !name.trim()) {
         return res.status(400).json({ message: "Name is required" });
@@ -3704,7 +3719,8 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const folderId = parseInt(req.params.folderId);
+      const folderId = parseIntParam(req.params.folderId, res);
+      if (folderId === null) return;
       const { name, visible } = req.body;
       const updates: Partial<{ name: string; visible: number }> = {};
       if (name !== undefined) updates.name = name;
@@ -3722,7 +3738,8 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const folderId = parseInt(req.params.folderId);
+      const folderId = parseIntParam(req.params.folderId, res);
+      if (folderId === null) return;
       const deleted = await storage.deleteLayerFolder(folderId);
       if (!deleted) return res.status(404).json({ message: "Folder not found" });
       return res.json({ success: true });
@@ -3736,7 +3753,8 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const folderId = parseInt(req.params.folderId);
+      const folderId = parseIntParam(req.params.folderId, res);
+      if (folderId === null) return;
       const { visible } = req.body;
       await storage.toggleFolderVisibility(folderId, !!visible);
       return res.json({ success: true });
@@ -3750,7 +3768,8 @@ export async function registerRoutes(
     try {
       const user = await getUserFromSession(req);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const layerId = parseInt(req.params.id);
+      const layerId = parseIntParam(req.params.id, res);
+      if (layerId === null) return;
       const { folderId, displayOrder } = req.body;
       const layer = await storage.setLayerFolder(layerId, folderId ?? null, displayOrder);
       if (!layer) return res.status(404).json({ message: "Layer not found" });
@@ -3883,7 +3902,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:id/field-stats", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const field = req.query.field as string;
       if (!field) {
         return res.status(400).json({ message: "Missing field parameter" });
@@ -3914,7 +3934,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:id/unique-values", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const field = req.query.field as string;
       if (!field) {
         return res.status(400).json({ message: "Missing field parameter" });
@@ -3937,7 +3958,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const layer = await storage.getEditableLayer(id);
       if (!layer) {
         return res.status(404).json({ message: "Layer not found" });
@@ -3966,7 +3988,8 @@ export async function registerRoutes(
 
   app.patch("/api/editable-layers/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       if (req.body.styleConfig !== undefined) {
         const parsed = styleConfigSchema.safeParse(req.body.styleConfig);
         if (!parsed.success) {
@@ -3994,7 +4017,8 @@ export async function registerRoutes(
 
   app.delete("/api/editable-layers/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const deleted = await storage.deleteEditableLayer(id);
       if (!deleted) {
         return res.status(404).json({ message: "Layer not found" });
@@ -4013,7 +4037,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:layerId/features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const features = await storage.getDrawnFeatures(layerId);
       return res.json(features);
     } catch (error) {
@@ -4024,7 +4049,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:layerId/attributes", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const features = await storage.getDrawnFeatures(layerId);
       const attrSet = new Set<string>();
       const sampleSize = Math.min(features.length, 100);
@@ -4042,7 +4068,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:layerId/attribute-values", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const features = await storage.getDrawnFeatures(layerId);
       const attrSet = new Set<string>();
       const valuesMap: Record<string, Set<string>> = {};
@@ -4078,7 +4105,8 @@ export async function registerRoutes(
 
   app.post("/api/editable-layers/:layerId/count-filtered", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const { filters = [] } = req.body;
       const featuresRaw = await storage.getDrawnFeatures(layerId);
       const features = featuresRaw.map(f => ({
@@ -4095,7 +4123,8 @@ export async function registerRoutes(
 
   app.get("/api/features/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const source = req.query.source as string | undefined;
       
       if (source === "dataset") {
@@ -4116,7 +4145,8 @@ export async function registerRoutes(
 
   app.post("/api/editable-layers/:layerId/features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const parsed = insertDrawnFeatureSchema.safeParse({ ...req.body, layerId });
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid feature data", errors: parsed.error.errors });
@@ -4173,7 +4203,8 @@ export async function registerRoutes(
 
   app.patch("/api/features/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const feature = await storage.updateDrawnFeature(id, req.body);
       if (!feature) {
         return res.status(404).json({ message: "Feature not found" });
@@ -4189,7 +4220,8 @@ export async function registerRoutes(
 
   app.delete("/api/features/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const deleted = await storage.deleteDrawnFeature(id);
       if (!deleted) {
         return res.status(404).json({ message: "Feature not found" });
@@ -4206,7 +4238,8 @@ export async function registerRoutes(
   // Delete feature by layerId and featureId (alternative endpoint for map-viewer)
   app.delete("/api/editable-layers/:layerId/features/:featureId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const featureId = parseInt(req.params.featureId);
       
       if (isNaN(layerId) || isNaN(featureId)) {
@@ -4231,7 +4264,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:layerId/schema", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const schema = await storage.getLayerSchema(layerId);
       if (!schema) {
         // Return empty fields if no schema defined yet
@@ -4246,7 +4280,8 @@ export async function registerRoutes(
 
   app.put("/api/editable-layers/:layerId/schema", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const fieldsSchema = z.array(attributeFieldSchema);
       const parsed = fieldsSchema.safeParse(req.body.fields);
       if (!parsed.success) {
@@ -4274,7 +4309,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:layerId/export/:format", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const format = req.params.format.toLowerCase();
       
       const layer = await storage.getEditableLayer(layerId);
@@ -4691,7 +4727,8 @@ export async function registerRoutes(
   const activeGeocodeLayers = new Set<number>();
 
   app.post("/api/editable-layers/:layerId/geocode", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
-    const layerId = parseInt(req.params.layerId);
+    const layerId = parseIntParam(req.params.layerId, res);
+    if (layerId === null) return;
     let keepaliveInterval: ReturnType<typeof setInterval> | undefined;
 
     try {
@@ -5010,7 +5047,8 @@ export async function registerRoutes(
 
   app.get("/api/editable-layers/:layerId/geocode-info", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const layer = await storage.getEditableLayer(layerId);
       if (!layer) {
         return res.status(404).json({ message: "Слой не найден" });
@@ -5148,7 +5186,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const folderId = parseInt(req.params.id);
+      const folderId = parseIntParam(req.params.id, res);
+      if (folderId === null) return;
       const existingFolder = await storage.getSceneFolder(folderId);
       if (!existingFolder) {
         return res.status(404).json({ message: "Folder not found" });
@@ -5174,7 +5213,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const folderId = parseInt(req.params.id);
+      const folderId = parseIntParam(req.params.id, res);
+      if (folderId === null) return;
       const existingFolder = await storage.getSceneFolder(folderId);
       if (!existingFolder) {
         return res.status(404).json({ message: "Folder not found" });
@@ -5227,7 +5267,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.id);
+      const sceneId = parseIntParam(req.params.id, res);
+      if (sceneId === null) return;
       
       const scene = await storage.getScene(sceneId);
       if (!scene) {
@@ -5275,7 +5316,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.id);
+      const sceneId = parseIntParam(req.params.id, res);
+      if (sceneId === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (!membership && user.role !== "admin") {
@@ -5305,7 +5347,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.id);
+      const sceneId = parseIntParam(req.params.id, res);
+      if (sceneId === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (membership?.role !== "owner" && user.role !== "admin") {
@@ -5332,7 +5375,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (!membership && user.role !== "admin") {
@@ -5354,7 +5398,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (membership?.role !== "owner" && user.role !== "admin") {
@@ -5387,7 +5432,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       const memberId = req.params.memberId;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
@@ -5411,7 +5457,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       const memberId = req.params.memberId;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
@@ -5733,7 +5780,8 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const layerId = parseInt(req.params.id);
+      const layerId = parseIntParam(req.params.id, res);
+      if (layerId === null) return;
       const { minX, minY, maxX, maxY, zoom, limit } = req.query;
       const featureLimit = limit ? parseInt(limit as string) : 5000; // Default limit 5000 features
 
@@ -5818,7 +5866,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const datasetId = parseInt(req.params.id);
+      const datasetId = parseIntParam(req.params.id, res);
+      if (datasetId === null) return;
       const dataset = await storage.getDataset(datasetId);
       if (!dataset) {
         return res.status(404).json({ message: "Dataset not found" });
@@ -5837,7 +5886,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const datasetId = parseInt(req.params.id);
+      const datasetId = parseIntParam(req.params.id, res);
+      if (datasetId === null) return;
       await storage.deleteDataset(datasetId);
       return res.json({ success: true });
     } catch (error) {
@@ -5853,7 +5903,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const datasetId = parseInt(req.params.id);
+      const datasetId = parseIntParam(req.params.id, res);
+      if (datasetId === null) return;
       const features = await storage.getDatasetFeatures(datasetId);
       return res.json(features);
     } catch (error) {
@@ -5870,7 +5921,8 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const datasetId = parseInt(req.params.id);
+      const datasetId = parseIntParam(req.params.id, res);
+      if (datasetId === null) return;
       const { minX, minY, maxX, maxY, zoom, limit } = req.query;
       const featureLimit = limit ? parseInt(limit as string) : 5000; // Default limit 5000 features
 
@@ -5953,7 +6005,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const datasetId = parseInt(req.params.id);
+      const datasetId = parseIntParam(req.params.id, res);
+      if (datasetId === null) return;
       const { geometryType, coordinates, properties } = req.body;
       
       if (!geometryType || !coordinates) {
@@ -5980,7 +6033,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const featureId = parseInt(req.params.featureId);
+      const featureId = parseIntParam(req.params.featureId, res);
+      if (featureId === null) return;
       const { geometryType, coordinates, properties } = req.body;
       
       // Validate that if coordinates are being updated, geometryType must also be provided
@@ -6006,7 +6060,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const featureId = parseInt(req.params.featureId);
+      const featureId = parseIntParam(req.params.featureId, res);
+      if (featureId === null) return;
       
       const result = await storage.deleteDatasetFeature(featureId);
       if (!result.deleted) {
@@ -6030,7 +6085,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (!membership && user.role !== "admin") {
@@ -6052,7 +6108,8 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (!membership && user.role !== "admin") {
@@ -6082,8 +6139,10 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
-      const id = parseInt(req.params.id);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (!membership && user.role !== "admin") {
@@ -6108,8 +6167,10 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      const sceneId = parseInt(req.params.sceneId);
-      const id = parseInt(req.params.id);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       
       const membership = await storage.getSceneMember(sceneId, user.id);
       if (!membership && user.role !== "admin") {
@@ -6214,7 +6275,8 @@ export async function registerRoutes(
   app.delete("/api/api-keys/:id", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
       const user = req.user!;
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       
       const apiKey = await storage.getApiKey(id);
       if (!apiKey) {
@@ -6248,7 +6310,8 @@ export async function registerRoutes(
 
   app.get("/api/custom-icons/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const icon = await storage.getCustomIcon(id);
       if (!icon) {
         return res.status(404).json({ message: "Icon not found" });
@@ -6262,7 +6325,8 @@ export async function registerRoutes(
 
   app.get("/api/custom-icons/:id/svg", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const color = (req.query.color as string) || "#000000";
       const icon = await storage.getCustomIcon(id);
       if (!icon) {
@@ -6303,7 +6367,8 @@ export async function registerRoutes(
 
   app.delete("/api/custom-icons/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const deleted = await storage.deleteCustomIcon(id);
       if (!deleted) {
         return res.status(404).json({ message: "Icon not found" });
@@ -6349,7 +6414,8 @@ export async function registerRoutes(
     try {
       const apiKey = req.apiKey!;
       const apiUser = req.apiUser!;
-      const sceneId = parseInt(req.params.sceneId);
+      const sceneId = parseIntParam(req.params.sceneId, res);
+      if (sceneId === null) return;
 
       if (apiKey.sceneId && apiKey.sceneId !== sceneId) {
         return res.status(403).json({ error: "Forbidden", message: "API key restricted to different scene" });
@@ -6452,7 +6518,8 @@ export async function registerRoutes(
   app.get("/api/external/layers/:layerId/features-in-polygon/:featureId", isApiAuthenticated("spatial_query"), async (req: ApiAuthenticatedRequest, res: Response) => {
     try {
       const apiKey = req.apiKey!;
-      const layerId = parseInt(req.params.layerId);
+      const layerId = parseIntParam(req.params.layerId, res);
+      if (layerId === null) return;
       const featureIdParam = req.params.featureId;
 
       if (isNaN(layerId)) {
@@ -8380,7 +8447,8 @@ export async function registerRoutes(
       if (req.user!.role !== "admin") {
         return res.status(403).json({ message: "Доступ запрещён" });
       }
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const { status } = req.body;
       if (!status || !(bugReportStatusEnum as readonly string[]).includes(status)) {
         return res.status(400).json({ message: "Недопустимый статус" });
@@ -8401,7 +8469,8 @@ export async function registerRoutes(
       if (req.user!.role !== "admin") {
         return res.status(403).json({ message: "Доступ запрещён" });
       }
-      const id = parseInt(req.params.id);
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
       const report = await storage.getBugReport(id);
       if (!report || !report.screenshotPath) {
         return res.status(404).json({ message: "Скриншот не найден" });

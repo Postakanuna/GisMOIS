@@ -178,7 +178,7 @@ export async function getSceneNetworkLayers(sceneId: number) {
 
     if (layer.networkType) {
       layerType = layer.networkType;
-      console.log(`[NetworkGraph] Layer "${layer.name}" (id=${layer.id}) => manual type: ${layerType}`);
+      if (process.env.NODE_ENV !== "production") console.log(`[NetworkGraph] Layer "${layer.name}" (id=${layer.id}) => manual type: ${layerType}`);
     } else {
       const sampleFeatures = await db
         .select({ properties: drawnFeatures.properties })
@@ -196,7 +196,7 @@ export async function getSceneNetworkLayers(sceneId: number) {
       });
 
       layerType = classifyLayerByContentSync(propKeys, layer.geometryType, sampleNames);
-      console.log(`[NetworkGraph] Layer "${layer.name}" (id=${layer.id}, geom=${layer.geometryType}) => auto type: ${layerType}`);
+      if (process.env.NODE_ENV !== "production") console.log(`[NetworkGraph] Layer "${layer.name}" (id=${layer.id}, geom=${layer.geometryType}) => auto type: ${layerType}`);
     }
 
     switch (layerType) {
@@ -224,7 +224,7 @@ export async function getSceneNetworkLayers(sceneId: number) {
     }
   }
 
-  console.log(`[NetworkGraph] Classification: segments=${result.segmentLayerIds.length}, nodes=${result.nodeLayerIds.length}, consumers=${result.consumerLayerIds.length}, ctps=${result.ctpLayerIds.length}, sources=${result.sourceLayerIds.length}, valves=${result.valveLayerIds.length}, pumps=${result.pumpLayerIds.length}`);
+  if (process.env.NODE_ENV !== "production") console.log(`[NetworkGraph] Classification: segments=${result.segmentLayerIds.length}, nodes=${result.nodeLayerIds.length}, consumers=${result.consumerLayerIds.length}, ctps=${result.ctpLayerIds.length}, sources=${result.sourceLayerIds.length}, valves=${result.valveLayerIds.length}, pumps=${result.pumpLayerIds.length}`);
 
   return result;
 }
@@ -900,7 +900,7 @@ export async function buildSpatialNetworkGraph(sceneId: number): Promise<Spatial
     .from(drawnFeatures)
     .where(inArray(drawnFeatures.layerId, layerConfig.segmentLayerIds));
 
-  console.log(`[SpatialGraph] Total segments loaded: ${segments.length}`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Total segments loaded: ${segments.length}`);
 
   let skippedDisabled = 0;
 
@@ -1051,14 +1051,14 @@ export async function buildSpatialNetworkGraph(sceneId: number): Promise<Spatial
   for (const [, node] of graph.nodes) {
     nodeTypes.set(node.type, (nodeTypes.get(node.type) || 0) + 1);
   }
-  console.log(`[SpatialGraph] Graph built: ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Graph built: ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
   if (skippedDisabled > 0) {
-    console.log(`[SpatialGraph] Skipped ${skippedDisabled} disabled segments (ZMode=2)`);
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Skipped ${skippedDisabled} disabled segments (ZMode=2)`);
   }
   if (closedValves > 0) {
-    console.log(`[SpatialGraph] Disconnected ${closedValves} closed valves (ZMode=2)`);
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Disconnected ${closedValves} closed valves (ZMode=2)`);
   }
-  console.log(`[SpatialGraph] Node types:`, Object.fromEntries(nodeTypes));
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Node types:`, Object.fromEntries(nodeTypes));
 
   return graph;
 }
@@ -1242,8 +1242,8 @@ export async function simulateSpatialDisconnection(
   const props = feat.properties as Record<string, unknown>;
   const featName = (props.Name as string) || (props.Begin_uch as string) || "";
 
-  console.log(`[SpatialGraph] === Spatial Simulation Start ===`);
-  console.log(`[SpatialGraph] Feature: id=${featureId}, layer=${layerId}, name="${featName}", geom=${feat.geometryType}`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] === Spatial Simulation Start ===`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Feature: id=${featureId}, layer=${layerId}, name="${featName}", geom=${feat.geometryType}`);
 
   const graph = await buildSpatialNetworkGraph(sceneId);
 
@@ -1253,27 +1253,27 @@ export async function simulateSpatialDisconnection(
     throw new Error(`Объект "${featName}" (id=${featureId}) не найден в пространственном графе. Граф содержит ${graph.nodes.size} узлов и ${graph.edges.length} рёбер.`);
   }
 
-  console.log(`[SpatialGraph] Found ${found.nodeKeys.length} node keys, isEdge=${found.isEdge}`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Found ${found.nodeKeys.length} node keys, isEdge=${found.isEdge}`);
 
   const startKey = found.nodeKeys[0];
   const componentNodes = getConnectedComponent(graph, startKey);
-  console.log(`[SpatialGraph] Connected component: ${componentNodes.size} nodes`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Connected component: ${componentNodes.size} nodes`);
 
   const sourceKey = findSourceInComponent(graph, componentNodes);
-  console.log(`[SpatialGraph] Source in component: ${sourceKey ? graph.nodes.get(sourceKey)?.name : "NOT FOUND"}`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Source in component: ${sourceKey ? graph.nodes.get(sourceKey)?.name : "NOT FOUND"}`);
 
   let targetNodes: Set<string>;
 
   if (!sourceKey) {
     targetNodes = componentNodes;
-    console.log(`[SpatialGraph] No source found, using entire component as affected zone`);
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] No source found, using entire component as affected zone`);
   } else {
     const parentMap = spatialBfsFromSource(graph, sourceKey, componentNodes);
-    console.log(`[SpatialGraph] BFS tree: ${parentMap.size} nodes reachable from source`);
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] BFS tree: ${parentMap.size} nodes reachable from source`);
 
     if (found.nodeKeys.includes(sourceKey)) {
       targetNodes = componentNodes;
-      console.log(`[SpatialGraph] Failure at source, entire component affected`);
+      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Failure at source, entire component affected`);
     } else if (found.isEdge && found.nodeKeys.length === 2) {
       const [keyA, keyB] = found.nodeKeys;
       const parentA = parentMap.get(keyA);
@@ -1290,14 +1290,14 @@ export async function simulateSpatialDisconnection(
         downstreamKey = depthA > depthB ? keyA : keyB;
       }
 
-      console.log(`[SpatialGraph] Edge failure: downstream endpoint = ${downstreamKey}`);
+      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Edge failure: downstream endpoint = ${downstreamKey}`);
 
       if (downstreamKey && parentMap.has(downstreamKey)) {
         targetNodes = getSpatialDownstream(parentMap, [downstreamKey], sourceKey);
       } else {
         targetNodes = new Set(found.nodeKeys);
       }
-      console.log(`[SpatialGraph] Downstream nodes: ${targetNodes.size}`);
+      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Downstream nodes: ${targetNodes.size}`);
     } else {
       const failureKeys = found.nodeKeys.filter(k => k !== sourceKey);
       const downstreamKeys = failureKeys.filter(k => parentMap.has(k));
@@ -1306,7 +1306,7 @@ export async function simulateSpatialDisconnection(
       } else {
         targetNodes = getSpatialDownstream(parentMap, downstreamKeys, sourceKey);
       }
-      console.log(`[SpatialGraph] Downstream nodes: ${targetNodes.size}`);
+      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Downstream nodes: ${targetNodes.size}`);
     }
   }
 
@@ -1385,8 +1385,8 @@ export async function simulateSpatialDisconnection(
   const sourceNode = sourceKey ? graph.nodes.get(sourceKey) : null;
   const nist = props.Nist !== undefined && props.Nist !== null ? String(props.Nist) : "";
 
-  console.log(`[SpatialGraph] Results: ${affectedConsumers.length} consumers, ${affectedSegments.length} segments, ${affectedCTPs.length} CTPs, ${affectedNodes.length} nodes`);
-  console.log(`[SpatialGraph] === Spatial Simulation End ===`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Results: ${affectedConsumers.length} consumers, ${affectedSegments.length} segments, ${affectedCTPs.length} CTPs, ${affectedNodes.length} nodes`);
+  if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] === Spatial Simulation End ===`);
 
   return {
     mode: "spatial" as SimulationMode,
@@ -2032,9 +2032,9 @@ export async function analyzeCapacity(
   let consumers: Array<{ name: string; load: number; featureId: number; layerId: number }> = [];
 
   if (ctpNode) {
-    console.log(`[CapacityAnalysis] Found ${ctpNode.type}: "${ctpNode.name}", featureId=${ctpNode.featureId}, layerId=${ctpNode.layerId}`);
+    if (process.env.NODE_ENV !== "production") console.log(`[CapacityAnalysis] Found ${ctpNode.type}: "${ctpNode.name}", featureId=${ctpNode.featureId}, layerId=${ctpNode.layerId}`);
     const propKeys = Object.keys(ctpNode.properties);
-    console.log(`[CapacityAnalysis] Properties keys: ${propKeys.join(", ")}`);
+    if (process.env.NODE_ENV !== "production") console.log(`[CapacityAnalysis] Properties keys: ${propKeys.join(", ")}`);
     const relevantProps: Record<string, unknown> = {};
     for (const k of propKeys) {
       const v = ctpNode.properties[k];
@@ -2042,7 +2042,7 @@ export async function analyzeCapacity(
         relevantProps[k] = v;
       }
     }
-    console.log(`[CapacityAnalysis] Relevant properties: ${Object.keys(relevantProps).join(", ")}`);
+    if (process.env.NODE_ENV !== "production") console.log(`[CapacityAnalysis] Relevant properties: ${Object.keys(relevantProps).join(", ")}`);
 
     installedCapacity = extractInstalledCapacity(ctpNode.properties, ctpNode.type);
     connectedLoadFromAttributes = extractConnectedLoadFromAttributes(ctpNode.properties, ctpNode.type);
@@ -2051,9 +2051,9 @@ export async function analyzeCapacity(
     currentLoadFromConsumers = downstream.totalLoad;
     consumers = downstream.consumers;
 
-    console.log(`[CapacityAnalysis] CTP: "${ctpNode.name}" (${ctpNode.type}), installed: ${installedCapacity ?? "NOT FOUND"} Гкал/ч, loadFromAttributes: ${connectedLoadFromAttributes ?? "NOT FOUND"} Гкал/ч, loadFromConsumers: ${currentLoadFromConsumers.toFixed(3)} Гкал/ч, consumers: ${consumers.length}`);
+    if (process.env.NODE_ENV !== "production") console.log(`[CapacityAnalysis] CTP: "${ctpNode.name}" (${ctpNode.type}), installed: ${installedCapacity ?? "NOT FOUND"} Гкал/ч, loadFromAttributes: ${connectedLoadFromAttributes ?? "NOT FOUND"} Гкал/ч, loadFromConsumers: ${currentLoadFromConsumers.toFixed(3)} Гкал/ч, consumers: ${consumers.length}`);
   } else {
-    console.log(`[CapacityAnalysis] No CTP/source found upstream from connection point`);
+    if (process.env.NODE_ENV !== "production") console.log(`[CapacityAnalysis] No CTP/source found upstream from connection point`);
   }
 
   const currentLoad = connectedLoadFromAttributes !== null
@@ -2079,7 +2079,7 @@ export async function analyzeCapacity(
   const totalLoadAfterConnection = currentLoad + requestedLoad;
   const pipeIssues = checkPipeCapacity(graph, path, totalLoadAfterConnection);
 
-  console.log(`[CapacityAnalysis] Requested: ${requestedLoad.toFixed(3)} Гкал/ч, currentLoad: ${currentLoad.toFixed(3)}, surplus: ${surplus.toFixed(3)} Гкал/ч, capacityUnknown: ${capacityUnknown}, pipe issues: ${pipeIssues.length}`);
+  if (process.env.NODE_ENV !== "production") console.log(`[CapacityAnalysis] Requested: ${requestedLoad.toFixed(3)} Гкал/ч, currentLoad: ${currentLoad.toFixed(3)}, surplus: ${surplus.toFixed(3)} Гкал/ч, capacityUnknown: ${capacityUnknown}, pipe issues: ${pipeIssues.length}`);
 
   return {
     ctp: ctpNode ? {

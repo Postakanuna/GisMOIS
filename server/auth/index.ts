@@ -2,10 +2,19 @@ import type { Express, Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import bcrypt from "bcrypt";
+import rateLimit from "express-rate-limit";
 import { db } from "../db";
 import { users, type SafeUser } from "@shared/models/auth";
 import { eq, and } from "drizzle-orm";
 import { logAction } from "../audit";
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Слишком много попыток входа. Попробуйте через 15 минут." },
+});
 
 declare module "express-session" {
   interface SessionData {
@@ -44,6 +53,7 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
       maxAge: sessionTtl,
     },
   });
@@ -82,7 +92,7 @@ export async function isAdmin(req: AuthRequest, res: Response, next: NextFunctio
 }
 
 export function registerAuthRoutes(app: Express): void {
-  app.post("/api/auth/login", async (req: Request, res: Response) => {
+  app.post("/api/auth/login", loginLimiter, async (req: Request, res: Response) => {
     try {
       const { username, password } = req.body;
 

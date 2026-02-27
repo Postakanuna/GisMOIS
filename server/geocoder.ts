@@ -355,7 +355,7 @@ export async function reverseGeocodeBatch(
   let consecutiveTimeouts = 0;
   const maxConsecutiveTimeouts = 5;
 
-  console.log(`[Geocoder] Starting reverse geocode batch: ${totalCoords} coords, provider=${provider}`);
+  if (process.env.NODE_ENV !== "production") console.log(`[Geocoder] Starting reverse geocode batch: ${totalCoords} coords, provider=${provider}`);
 
   for (const item of items) {
     if (abortSignal?.aborted) break;
@@ -423,7 +423,7 @@ export async function reverseGeocodeBatch(
       }
 
       if (processedCoords % 50 === 0) {
-        console.log(`[Geocoder] Progress: ${processedCoords}/${totalCoords} (${Math.round(processedCoords / totalCoords * 100)}%)`);
+        if (process.env.NODE_ENV !== "production") console.log(`[Geocoder] Progress: ${processedCoords}/${totalCoords} (${Math.round(processedCoords / totalCoords * 100)}%)`);
       }
     }
 
@@ -435,7 +435,7 @@ export async function reverseGeocodeBatch(
     });
   }
 
-  console.log(`[Geocoder] Batch complete: ${processedCoords}/${totalCoords} processed`);
+  if (process.env.NODE_ENV !== "production") console.log(`[Geocoder] Batch complete: ${processedCoords}/${totalCoords} processed`);
   return results;
 }
 
@@ -453,7 +453,7 @@ export async function geocodeBatch(
   let consecutiveTimeouts = 0;
   const maxConsecutiveTimeouts = 5;
 
-  console.log(`[Geocoder] Starting forward geocode batch: ${addresses.length} addresses, provider=${provider}`);
+  if (process.env.NODE_ENV !== "production") console.log(`[Geocoder] Starting forward geocode batch: ${addresses.length} addresses, provider=${provider}`);
 
   for (let i = 0; i < addresses.length; i++) {
     const { index, address } = addresses[i];
@@ -526,10 +526,10 @@ export async function geocodeBatch(
     }
 
     if ((i + 1) % 50 === 0) {
-      console.log(`[Geocoder] Progress: ${i + 1}/${addresses.length} (${Math.round((i + 1) / addresses.length * 100)}%)`);
+      if (process.env.NODE_ENV !== "production") console.log(`[Geocoder] Progress: ${i + 1}/${addresses.length} (${Math.round((i + 1) / addresses.length * 100)}%)`);
     }
   }
 
-  console.log(`[Geocoder] Forward batch complete: ${results.length}/${addresses.length} processed`);
+  if (process.env.NODE_ENV !== "production") console.log(`[Geocoder] Forward batch complete: ${results.length}/${addresses.length} processed`);
   return results;
 }
