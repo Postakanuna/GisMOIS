@@ -7595,6 +7595,35 @@ export async function registerRoutes(
    Если столбец адреса не найден, используй _none_: [ACTION:COMPLAINT_ANALYSIS:42:Дата_жалобы:_none_]
 5. Если подходящий слой не найден — сообщи об этом и попроси пользователя уточнить название слоя. НЕ добавляй маркер в этом случае.
 
+ИНСТРУМЕНТ АНАЛИЗА АВАРИЙНОСТИ:
+Если пользователь просит проанализировать аварии на сетях, найти проблемные участки по авариям, узнать где больше всего аварий на трубопроводах — запусти следующий сценарий (строго по шагам, не пропускай шаги):
+
+Шаг 1. Уточни тип сети (если пользователь не указал явно):
+"Вас интересуют тепловые сети (ТС), горячее водоснабжение (ГВС) или все сети сразу?"
+- Ответ ТС / тепловые → zMode = "1"
+- Ответ ГВС / горячее водоснабжение → zMode = "2"
+- Ответ все / без разницы → zMode = "" (пустая строка)
+
+Шаг 2. Уточни фильтр по диаметру подачи (поле Dpod, значения в метрах):
+"Нужен ли фильтр по диаметру подачи? Например, анализировать только участки с Dpod свыше 100 мм (0,1 м)?"
+- Если пользователь указал диаметр в мм (например "100 мм") → dpodMin = значение/1000 (т.е. 0.1)
+- Если пользователь указал в метрах (например "0,1 м") → dpodMin = 0.1
+- Если фильтр не нужен → dpodMin = "" (пустая строка)
+
+Шаг 3. Запроси подтверждение:
+"Хотите, чтобы я выполнил анализ аварийности?"
+
+Шаг 4. Только после положительного ответа пользователя — в САМОМ КОНЦЕ ответа добавь маркер:
+[ACTION:ACCIDENT_ANALYSIS:zMode:dpodMin]
+Примеры:
+[ACTION:ACCIDENT_ANALYSIS:1:]     - ТС, без фильтра диаметра
+[ACTION:ACCIDENT_ANALYSIS:2:0.1]  - ГВС, Dpod > 0.1 м
+[ACTION:ACCIDENT_ANALYSIS::]      - все сети, без фильтра
+[ACTION:ACCIDENT_ANALYSIS::0.2]   - все сети, Dpod > 0.2 м
+
+НЕ добавляй маркер [ACTION:ACCIDENT_ANALYSIS] если пользователь ещё не подтвердил запуск.
+НЕ используй этот инструмент для справочных вопросов об авариях (сроки устранения, нормативы и т.д.).
+
 ВАЖНО: Если ниже приведены данные из базы — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${ragContext}`,
       };
 
@@ -7727,6 +7756,164 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("AI complaint analysis error:", error);
       return res.status(500).json({ error: error.message || "Ошибка анализа жалоб" });
+    }
+  });
+
+  app.post("/api/ai/run-accident-analysis", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { zMode, dpodMin, sceneId } = req.body;
+
+      if (!sceneId) {
+        return res.status(400).json({ error: "sceneId is required" });
+      }
+
+      const sceneLayers = await storage.getEditableLayersByScene(Number(sceneId));
+
+      const networkLayer = sceneLayers.find(l => l.networkType === "segment");
+      const accidentLayer = sceneLayers.find(l => l.networkType === "accident");
+
+      if (!networkLayer) {
+        return res.status(422).json({ error: "Не найден слой с типом «Участок» (networkType=segment). Назначьте тип слою сетей в настройках слоёв." });
+      }
+      if (!accidentLayer) {
+        return res.status(422).json({ error: "Не найден слой с типом «Авария» (networkType=accident). Назначьте тип слою аварий в настройках слоёв." });
+      }
+
+      const networkFeaturesRaw = await storage.getDrawnFeatures(networkLayer.id);
+      const accidentFeaturesRaw = await storage.getDrawnFeatures(accidentLayer.id);
+
+      let networkFeatures = networkFeaturesRaw.map(f => ({
+        id: f.id,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
+        properties: (f.properties || {}) as Record<string, unknown>,
+      }));
+
+      const accidentFeatures = accidentFeaturesRaw.map(f => ({
+        id: f.id,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
+        properties: (f.properties || {}) as Record<string, unknown>,
+      }));
+
+      if (accidentFeatures.length === 0) {
+        return res.status(422).json({ error: "Слой аварий не содержит объектов" });
+      }
+
+      if (zMode && zMode !== "") {
+        networkFeatures = networkFeatures.filter(f => {
+          const val = f.properties["ZMode"] ?? f.properties["zMode"] ?? f.properties["ZMODE"];
+          return val !== undefined && String(val) === String(zMode);
+        });
+      }
+
+      if (dpodMin !== undefined && dpodMin !== "" && dpodMin !== null) {
+        const dpodMinNum = Number(dpodMin);
+        if (!isNaN(dpodMinNum) && dpodMinNum > 0) {
+          networkFeatures = networkFeatures.filter(f => {
+            const val = f.properties["Dpod"] ?? f.properties["dpod"] ?? f.properties["DPOD"];
+            return val !== undefined && Number(val) > dpodMinNum;
+          });
+        }
+      }
+
+      if (networkFeatures.length === 0) {
+        return res.status(422).json({ error: "После применения фильтров в слое сетей не осталось объектов" });
+      }
+
+      const maxDistanceMeters = 50;
+      const segmentAccidentMap: Map<number, { feature: typeof networkFeatures[0]; accidents: typeof accidentFeatures }> = new Map();
+      let boundCount = 0;
+      let unboundCount = 0;
+
+      for (const accidentFeature of accidentFeatures) {
+        if (!accidentFeature.geometry || accidentFeature.geometry.type !== "Point") {
+          unboundCount++;
+          continue;
+        }
+
+        const accidentPoint = turf.point(accidentFeature.geometry.coordinates as number[]);
+        let nearestNetworkIndex = -1;
+        let nearestDistance = Infinity;
+
+        for (let i = 0; i < networkFeatures.length; i++) {
+          const netFeature = networkFeatures[i];
+          if (!netFeature.geometry) continue;
+          const geomType = netFeature.geometry.type;
+          if (geomType !== "LineString" && geomType !== "MultiLineString") continue;
+
+          try {
+            let minDist = Infinity;
+            if (geomType === "LineString") {
+              const line = turf.lineString(netFeature.geometry.coordinates as number[][]);
+              const np = turf.nearestPointOnLine(line, accidentPoint);
+              if (np.properties.dist !== undefined) minDist = np.properties.dist;
+            } else {
+              const coords = netFeature.geometry.coordinates as number[][][];
+              for (const lineCoords of coords) {
+                if (lineCoords.length < 2) continue;
+                const line = turf.lineString(lineCoords);
+                const np = turf.nearestPointOnLine(line, accidentPoint);
+                if (np.properties.dist !== undefined && np.properties.dist < minDist) {
+                  minDist = np.properties.dist;
+                }
+              }
+            }
+            if (minDist < nearestDistance) {
+              nearestDistance = minDist;
+              nearestNetworkIndex = i;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        const distMeters = nearestDistance * 1000;
+        if (nearestNetworkIndex >= 0 && distMeters <= maxDistanceMeters) {
+          const netFeature = networkFeatures[nearestNetworkIndex];
+          if (!segmentAccidentMap.has(nearestNetworkIndex)) {
+            segmentAccidentMap.set(nearestNetworkIndex, { feature: netFeature, accidents: [] });
+          }
+          segmentAccidentMap.get(nearestNetworkIndex)!.accidents.push(accidentFeature);
+          boundCount++;
+        } else {
+          unboundCount++;
+        }
+      }
+
+      const segments = Array.from(segmentAccidentMap.entries())
+        .map(([, data]) => {
+          const props = data.feature.properties;
+          return {
+            featureId: data.feature.id,
+            geometry: data.feature.geometry,
+            properties: props,
+            dpod: props.Dpod ?? props.dpod ?? props.DPOD ?? null,
+            dobr: props.Dobr ?? props.dobr ?? props.DOBR ?? null,
+            length: props.L ?? props.l ?? null,
+            sys: props.Sys ?? props.sys ?? props.SYS ?? null,
+            beginUch: props.Begin_uch ?? props.begin_uch ?? null,
+            endUch: props.End_uch ?? props.end_uch ?? null,
+            accidentCount: data.accidents.length,
+            accidentFeatures: data.accidents.map(a => ({
+              id: a.id,
+              geometry: a.geometry,
+              properties: a.properties,
+            })),
+          };
+        })
+        .sort((a, b) => b.accidentCount - a.accidentCount);
+
+      return res.json({
+        networkLayerName: networkLayer.name,
+        accidentLayerName: accidentLayer.name,
+        totalAccidents: accidentFeatures.length,
+        boundAccidents: boundCount,
+        unboundAccidents: unboundCount,
+        segmentsWithAccidents: segments.length,
+        segments,
+      });
+    } catch (error: any) {
+      console.error("AI accident analysis error:", error);
+      return res.status(500).json({ error: error.message || "Ошибка анализа аварийности" });
     }
   });
 

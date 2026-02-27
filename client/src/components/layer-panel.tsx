@@ -65,6 +65,7 @@ const NETWORK_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   valve: { label: "Задвижка", color: "#f4511e" },
   node: { label: "Узел", color: "#6d4c41" },
   pump: { label: "Насос", color: "#00acc1" },
+  accident: { label: "Авария", color: "#e65100" },
 };
 
 type LayerGeometryType = "point" | "line" | "polygon" | "unknown";
@@ -682,6 +683,7 @@ export function LayerPanel({
                                 <SelectItem value="valve">Задвижка</SelectItem>
                                 <SelectItem value="node">Узел</SelectItem>
                                 <SelectItem value="pump">Насос</SelectItem>
+                                <SelectItem value="accident">Авария</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>

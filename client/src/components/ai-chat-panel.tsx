@@ -15,7 +15,9 @@ export interface ChatAction {
     | "show_complaint_result"
     | "simulation_candidates"
     | "run_simulation"
-    | "show_simulation_result";
+    | "show_simulation_result"
+    | "start_accident_analysis"
+    | "show_accident_result";
   label: string;
   payload?: any;
   done?: boolean;
@@ -55,12 +57,14 @@ interface AiChatPanelProps {
   sceneId?: number | null;
   onComplaintAnalysisResult?: (result: any) => void;
   onSimulationResult?: (result: any, featureInfo: { featureId: number; layerId: number; name: string; featureType: string }) => void;
+  onAccidentAnalysisResult?: (result: any) => void;
 }
 
 const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
 const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^:\]]+):([^\]]*)\]/;
+const ACCIDENT_ANALYSIS_REGEX = /\[ACTION:ACCIDENT_ANALYSIS:([^:\]]*):([^\]]*)\]/;
 
-export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult, onSimulationResult }: AiChatPanelProps) {
+export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult }: AiChatPanelProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -128,6 +132,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
       let aiContent = data.content || "Нет ответа от модели";
       const complaintMatch = aiContent.match(ACTION_MARKER_REGEX);
       const simulationMatch = aiContent.match(SIMULATION_SEARCH_REGEX);
+      const accidentMatch = aiContent.match(ACCIDENT_ANALYSIS_REGEX);
 
       const newMessages = [...updatedMessages];
 
@@ -257,6 +262,31 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
         }
 
         return;
+      } else if (accidentMatch) {
+        const zMode = accidentMatch[1] || "";
+        const dpodMin = accidentMatch[2] || "";
+        aiContent = aiContent.replace(ACCIDENT_ANALYSIS_REGEX, "").trim();
+
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: "assistant",
+          content: aiContent,
+          timestamp: new Date(),
+        };
+        newMessages.push(aiMsg);
+
+        const actionMsg: ChatMessage = {
+          id: `action-${Date.now()}`,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+          action: {
+            type: "start_accident_analysis",
+            label: "Запустить анализ аварийности",
+            payload: { zMode, dpodMin },
+          },
+        };
+        newMessages.push(actionMsg);
       } else {
         const aiMsg: ChatMessage = {
           id: `ai-${Date.now()}`,
@@ -420,6 +450,61 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
           featureType: result?.failurePoint?.type || "Point",
         });
       }
+    } else if (msg.action.type === "start_accident_analysis") {
+      const { zMode, dpodMin } = msg.action.payload || {};
+      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
+      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
+      setIsAnalyzing(true);
+      try {
+        const res = await fetch("/api/ai/run-accident-analysis", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ zMode, dpodMin, sceneId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
+
+        const top = data.segments?.[0];
+        const topInfo = top
+          ? `. Наиболее проблемный участок: ${top.beginUch ?? "—"}–${top.endUch ?? "—"}, ${top.accidentCount} аварий`
+          : "";
+        const summaryText = `Анализ завершён. Аварий: ${data.totalAccidents}. Привязано: ${data.boundAccidents}${topInfo}.`;
+
+        const summaryMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: "assistant",
+          content: summaryText,
+          timestamp: new Date(),
+        };
+        const resultActionMsg: ChatMessage = {
+          id: `action-${Date.now() + 1}`,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+          action: {
+            type: "show_accident_result",
+            label: "Показать результаты",
+            payload: data,
+          },
+        };
+        onMessagesChange([...currentMessages, summaryMsg, resultActionMsg]);
+      } catch (err: any) {
+        const errMsg: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: `Ошибка анализа аварийности: ${err.message}`,
+          timestamp: new Date(),
+        };
+        onMessagesChange([...currentMessages, errMsg]);
+      } finally {
+        setIsAnalyzing(false);
+      }
+      return;
+    } else if (msg.action.type === "show_accident_result") {
+      if (onAccidentAnalysisResult && msg.action.payload) {
+        onAccidentAnalysisResult(msg.action.payload);
+      }
     }
   };
 
@@ -443,6 +528,8 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
       case "show_complaint_result": return <BarChart3 className="h-3.5 w-3.5" />;
       case "run_simulation": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />;
       case "show_simulation_result": return <Search className="h-3.5 w-3.5" />;
+      case "start_accident_analysis": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />;
+      case "show_accident_result": return <BarChart3 className="h-3.5 w-3.5" />;
       default: return null;
     }
   };

@@ -71,6 +71,7 @@ interface AccidentAnalysisDialogProps {
   editableLayers: EditableLayer[];
   sceneId: number;
   onHighlightSegment: (segment: AccidentSegmentResult | null) => void;
+  initialResult?: AccidentAnalysisResult | null;
 }
 
 export function AccidentAnalysisDialog({
@@ -78,6 +79,7 @@ export function AccidentAnalysisDialog({
   onOpenChange,
   editableLayers,
   onHighlightSegment,
+  initialResult,
 }: AccidentAnalysisDialogProps) {
   const { toast } = useToast();
 
@@ -119,6 +121,12 @@ export function AccidentAnalysisDialog({
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, []);
+
+  useEffect(() => {
+    if (initialResult && open) {
+      setResult(initialResult);
+    }
+  }, [initialResult, open]);
 
   useEffect(() => {
     if (!networkLayerId) {

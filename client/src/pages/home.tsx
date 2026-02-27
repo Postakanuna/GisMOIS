@@ -32,7 +32,7 @@ import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
 import { ConsumerConnectDialog, type ConsumerFormData } from "@/components/consumer-connect-dialog";
 import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
-import { AccidentAnalysisDialog, type AccidentSegmentResult } from "@/components/accident-analysis-dialog";
+import { AccidentAnalysisDialog, type AccidentSegmentResult, type AccidentAnalysisResult } from "@/components/accident-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 import { GeocodeDialog } from "@/components/geocode-dialog";
@@ -231,6 +231,7 @@ export default function Home() {
   const [showComplaintDialog, setShowComplaintDialog] = useState(false);
   const [complaintResult, setComplaintResult] = useState<ComplaintAnalysisResult | null>(null);
   const [showAccidentDialog, setShowAccidentDialog] = useState(false);
+  const [aiAccidentResult, setAiAccidentResult] = useState<AccidentAnalysisResult | null>(null);
   const [aiComplaintNoTopoResult, setAiComplaintNoTopoResult] = useState<any>(null);
   const [aiSimulationResult, setAiSimulationResult] = useState<SimulationResult | null>(null);
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
@@ -485,7 +486,7 @@ export default function Home() {
             <SidebarGroup className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
               <SidebarGroupContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
                 {sidebarView === "ai-chat" ? (
-                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} />
+                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />
                 ) : sidebarView === "layers" ? (
                   <SidebarContentPanel
                     layers={zuluConnection.layers}
@@ -547,7 +548,7 @@ export default function Home() {
                     <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
                   </Link>
                   {sidebarView === "ai-chat" ? (
-                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} />
+                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />
                   ) : (
                     <SidebarContentPanel
                       layers={zuluConnection.layers}
@@ -908,7 +909,8 @@ export default function Home() {
             {/* Accident Analysis Dialog */}
             <AccidentAnalysisDialog
               open={showAccidentDialog}
-              onOpenChange={(open) => { setShowAccidentDialog(open); if (!open) setSimulationHighlightData(null); }}
+              onOpenChange={(open) => { setShowAccidentDialog(open); if (!open) { setSimulationHighlightData(null); setAiAccidentResult(null); } }}
+              initialResult={aiAccidentResult}
               editableLayers={drawing.editableLayers}
               sceneId={currentSceneId || 0}
               onHighlightSegment={(segment: AccidentSegmentResult | null) => {

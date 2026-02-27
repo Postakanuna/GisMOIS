@@ -251,7 +251,7 @@ export type FeatureHistory = z.infer<typeof featureHistorySchema>;
 export const insertFeatureHistorySchema = featureHistorySchema.omit({ id: true, createdAt: true });
 export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
 
-export const networkTypeSchema = z.enum(["source", "ctp", "consumer", "segment", "valve", "node", "pump"]);
+export const networkTypeSchema = z.enum(["source", "ctp", "consumer", "segment", "valve", "node", "pump", "accident"]);
 export type NetworkType = z.infer<typeof networkTypeSchema>;
 
 // Editable layer (user-created layer for drawing or imported from shapefile)
