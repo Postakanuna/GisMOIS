@@ -1,1256 +1,1256 @@
 ЛИСТИНГ ИСХОДНОГО КОДА
 ГИС МО «Инженерные сети» (ГИС МО «ИС»)
 Депонируемые материалы — Первые 25 страниц (50 строк на страницу)
-Общий объём: 46 855 строк исходного кода (собственная разработка, подсистемы 1–6)
+Общий объём: 48 597 строк исходного кода (собственная разработка, подсистемы 1–6)
 
 
-     1  
-     2  // ============================================================
-     3  // Файл: client/src/App.tsx
-     4  // ============================================================
-     5  
-     6  import { Switch, Route } from "wouter";
-     7  import { queryClient } from "./lib/queryClient";
-     8  import { QueryClientProvider } from "@tanstack/react-query";
-     9  import { Toaster } from "@/components/ui/toaster";
-    10  import { TooltipProvider } from "@/components/ui/tooltip";
-    11  import { ZuluConnectionProvider } from "@/contexts/zulu-connection-context";
-    12  import { SceneProvider } from "@/contexts/scene-context";
-    13  import { BaseLayersProvider } from "@/contexts/base-layers-context";
-    14  import { ProjectionProvider } from "@/contexts/projection-context";
-    15  import { ProtectedRoute } from "@/components/protected-route";
-    16  import NotFound from "@/pages/not-found";
-    17  import LandingPage from "@/pages/landing";
-    18  import Home from "@/pages/home";
-    19  import AdminUsers from "@/pages/admin-users";
-    20  import AdminLayerManager from "@/pages/admin-layer-manager";
-    21  import LoginPage from "@/pages/login";
-    22  import ScenesPage from "@/pages/scenes";
-    23  import ProfilePage from "@/pages/profile";
-    24  
-    25  function Router() {
-    26    return (
-    27      <Switch>
-    28        <Route path="/" component={LandingPage} />
-    29        <Route path="/gis/login" component={LoginPage} />
-    30        <Route path="/gis/scenes">
-    31          <ProtectedRoute>
-    32            <ScenesPage />
-    33          </ProtectedRoute>
-    34        </Route>
-    35        <Route path="/gis/app">
-    36          <ProtectedRoute>
-    37            <Home />
-    38          </ProtectedRoute>
-    39        </Route>
-    40        <Route path="/gis/profile">
-    41          <ProtectedRoute>
-    42            <ProfilePage />
-    43          </ProtectedRoute>
-    44        </Route>
-    45        <Route path="/gis/admin/settings">
-    46          <ProtectedRoute requireAdmin>
-    47            <AdminUsers />
-    48          </ProtectedRoute>
-    49        </Route>
-    50        <Route path="/gis/admin/layers">
-    51          <ProtectedRoute requireAdmin>
-    52            <AdminLayerManager />
-    53          </ProtectedRoute>
-    54        </Route>
-    55        <Route path="/gis/admin">
-    56          <ProtectedRoute requireAdmin>
-    57            <AdminUsers />
-    58          </ProtectedRoute>
-    59        </Route>
-    60        <Route component={NotFound} />
-    61      </Switch>
-    62    );
-    63  }
-    64  
-    65  function App() {
-    66    return (
-    67      <QueryClientProvider client={queryClient}>
-    68        <TooltipProvider>
-    69          <SceneProvider>
-    70            <ProjectionProvider>
-    71              <BaseLayersProvider>
-    72                <ZuluConnectionProvider>
-    73                <Toaster />
-    74                <Router />
-    75              </ZuluConnectionProvider>
-    76              </BaseLayersProvider>
-    77            </ProjectionProvider>
-    78          </SceneProvider>
-    79        </TooltipProvider>
-    80      </QueryClientProvider>
-    81    );
-    82  }
-    83  
-    84  export default App;
-    85  
-    86  // ============================================================
-    87  // Файл: client/src/components/ai-chat-panel.tsx
-    88  // ============================================================
-    89  
-    90  import { useState, useRef, useEffect } from "react";
-    91  import { Button } from "@/components/ui/button";
-    92  import { Textarea } from "@/components/ui/textarea";
-    93  import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2 } from "lucide-react";
-    94  import {
-    95    DropdownMenu,
-    96    DropdownMenuContent,
-    97    DropdownMenuItem,
-    98    DropdownMenuTrigger,
-    99  } from "@/components/ui/dropdown-menu";
-   100  
-   101  export interface ChatMessage {
-   102    id: string;
-   103    role: "user" | "assistant";
-   104    content: string;
-   105    timestamp: Date;
-   106  }
-   107  
-   108  interface AiProvider {
-   109    id: string;
-   110    name: string;
-   111    available: boolean;
-   112  }
-   113  
-   114  interface ProvidersResponse {
-   115    enabled: boolean;
-   116    providers: AiProvider[];
-   117    default: string | null;
-   118  }
-   119  
-   120  const WELCOME_MESSAGE: ChatMessage = {
-   121    id: "welcome",
-   122    role: "assistant",
-   123    content: "Здравствуйте! Я ИИ-ассистент ГИС теплосетей. Задайте вопрос о сетях, объектах или аналитике.",
-   124    timestamp: new Date(),
-   125  };
-   126  
-   127  interface AiChatPanelProps {
-   128    onBack: () => void;
-   129    messages: ChatMessage[];
-   130    onMessagesChange: (messages: ChatMessage[]) => void;
-   131  }
-   132  
-   133  export function AiChatPanel({ onBack, messages, onMessagesChange }: AiChatPanelProps) {
-   134    const [input, setInput] = useState("");
-   135    const [isLoading, setIsLoading] = useState(false);
-   136    const [providers, setProviders] = useState<AiProvider[]>([]);
-   137    const [selectedProvider, setSelectedProvider] = useState<string>("");
-   138    const [aiEnabled, setAiEnabled] = useState(true);
-   139    const [providersLoaded, setProvidersLoaded] = useState(false);
-   140    const scrollRef = useRef<HTMLDivElement>(null);
-   141    const textareaRef = useRef<HTMLTextAreaElement>(null);
-   142  
-   143    useEffect(() => {
-   144      fetch("/api/ai/providers")
-   145        .then(r => r.json())
-   146        .then((data: ProvidersResponse) => {
-   147          setAiEnabled(data.enabled);
-   148          if (data.providers) setProviders(data.providers);
-   149          if (data.default) setSelectedProvider(data.default);
-   150          setProvidersLoaded(true);
-   151        })
-   152        .catch(() => {
-   153          setProvidersLoaded(true);
-   154        });
-   155    }, []);
-   156  
-   157    useEffect(() => {
-   158      if (scrollRef.current) {
-   159        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-   160      }
-   161    }, [messages]);
-   162  
-   163    const isDisabled = !aiEnabled || providers.length === 0;
-   164  
-   165    const handleSend = async () => {
-   166      const text = input.trim();
-   167      if (!text || isLoading || isDisabled) return;
-   168  
-   169      const userMsg: ChatMessage = {
-   170        id: `user-${Date.now()}`,
-   171        role: "user",
-   172        content: text,
-   173        timestamp: new Date(),
-   174      };
-   175      const updatedMessages = [...messages, userMsg];
-   176      onMessagesChange(updatedMessages);
-   177      setInput("");
-   178      setIsLoading(true);
-   179  
-   180      try {
-   181        const allMessages = updatedMessages.filter(m => m.id !== "welcome");
-   182        const apiMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
-   183  
-   184        const response = await fetch("/api/ai/chat", {
-   185          method: "POST",
-   186          headers: { "Content-Type": "application/json" },
-   187          body: JSON.stringify({ messages: apiMessages, provider: selectedProvider }),
-   188        });
-   189        const data = await response.json();
-   190        if (!response.ok) {
-   191          if (response.status === 403) {
-   192            throw new Error(data.error || "ИИ-агент отключён администратором системы");
-   193          }
-   194          throw new Error(data.error || `Ошибка сервера: ${response.status}`);
-   195        }
-   196  
-   197        const aiMsg: ChatMessage = {
-   198          id: `ai-${Date.now()}`,
-   199          role: "assistant",
-   200          content: data.content || "Нет ответа от модели",
-   201          timestamp: new Date(),
-   202        };
-   203        onMessagesChange([...updatedMessages, aiMsg]);
-   204      } catch (error: any) {
-   205        const errorMsg: ChatMessage = {
-   206          id: `error-${Date.now()}`,
-   207          role: "assistant",
-   208          content: `Ошибка: ${error.message || "Не удалось получить ответ от ИИ"}`,
-   209          timestamp: new Date(),
-   210        };
-   211        onMessagesChange([...updatedMessages, errorMsg]);
-   212      } finally {
-   213        setIsLoading(false);
-   214      }
-   215    };
-   216  
-   217    const handleClearChat = () => {
-   218      onMessagesChange([WELCOME_MESSAGE]);
-   219    };
-   220  
-   221    const handleKeyDown = (e: React.KeyboardEvent) => {
-   222      if (e.key === "Enter" && !e.shiftKey) {
-   223        e.preventDefault();
-   224        handleSend();
-   225      }
-   226    };
-   227  
-   228    const currentProvider = providers.find(p => p.id === selectedProvider);
-   229    const hasHistory = messages.some(m => m.id !== "welcome");
-   230  
-   231    return (
-   232      <div className="flex flex-col h-full min-h-0 flex-1">
-   233        <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
-   234          <Button size="icon" variant="ghost" onClick={onBack} data-testid="button-back-to-layers">
-   235            <ArrowLeft className="h-4 w-4" />
-   236          </Button>
-   237          <Bot className="h-4 w-4 text-primary" />
-   238          <span className="text-sm font-semibold">ИИ-ассистент</span>
-   239          {!isDisabled && (
-   240            <div className="ml-auto flex items-center gap-1">
-   241              {hasHistory && (
-   242                <Button
-   243                  size="icon"
-   244                  variant="ghost"
-   245                  onClick={handleClearChat}
-   246                  className="h-7 w-7"
-   247                  title="Очистить чат"
-   248                  data-testid="button-clear-chat"
-   249                >
-   250                  <Trash2 className="h-3.5 w-3.5" />
-   251                </Button>
-   252              )}
-   253              <DropdownMenu>
-   254                <DropdownMenuTrigger asChild>
-   255                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
-   256                    {currentProvider?.name || "Модель"}
-   257                    <ChevronDown className="h-3 w-3" />
-   258                  </Button>
-   259                </DropdownMenuTrigger>
-   260                <DropdownMenuContent align="end">
-   261                  {providers.map(p => (
-   262                    <DropdownMenuItem
-   263                      key={p.id}
-   264                      onClick={() => setSelectedProvider(p.id)}
-   265                      disabled={!p.available}
-   266                      data-testid={`provider-option-${p.id}`}
-   267                    >
-   268                      <span className={selectedProvider === p.id ? "font-semibold" : ""}>
-   269                        {p.name}
-   270                      </span>
-   271                      {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
-   272                    </DropdownMenuItem>
-   273                  ))}
-   274                </DropdownMenuContent>
-   275              </DropdownMenu>
-   276            </div>
-   277          )}
-   278        </div>
-   279  
-   280        {isDisabled && providersLoaded ? (
-   281          <div className="flex-1 flex items-center justify-center p-6" data-testid="ai-disabled-message">
-   282            <div className="text-center space-y-3">
-   283              <Bot className="h-12 w-12 text-muted-foreground mx-auto" />
-   284              <p className="text-sm text-muted-foreground max-w-xs">
-   285                ИИ-агент отключён администратором системы, обратитесь в техническую поддержку.
-   286              </p>
-   287            </div>
-   288          </div>
-   289        ) : (
-   290          <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
-   291            {messages.map((msg) => (
-   292              <div
-   293                key={msg.id}
-   294                className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-   295                data-testid={`chat-message-${msg.id}`}
-   296              >
-   297                {msg.role === "assistant" && (
-   298                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
-   299                    <Bot className="h-3.5 w-3.5 text-primary" />
-   300                  </div>
-   301                )}
-   302                <div
-   303                  className={`rounded-md px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap ${
-   304                    msg.role === "user"
-   305                      ? "bg-primary text-primary-foreground"
-   306                      : "bg-muted"
-   307                  }`}
-   308                >
-   309                  {msg.content}
-   310                </div>
-   311                {msg.role === "user" && (
-   312                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
-   313                    <User className="h-3.5 w-3.5" />
-   314                  </div>
-   315                )}
-   316              </div>
-   317            ))}
-   318            {isLoading && (
-   319              <div className="flex gap-2 justify-start" data-testid="chat-loading">
-   320                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
-   321                  <Bot className="h-3.5 w-3.5 text-primary" />
-   322                </div>
-   323                <div className="rounded-md px-3 py-2 text-sm bg-muted">
-   324                  <span className="inline-flex gap-1">
-   325                    <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
-   326                    <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
-   327                    <span className="animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
-   328                  </span>
-   329                </div>
-   330              </div>
-   331            )}
-   332          </div>
-   333        )}
-   334  
-   335        <div className="border-t p-3 shrink-0">
-   336          <div className="flex gap-2">
-   337            <Textarea
-   338              ref={textareaRef}
-   339              value={input}
-   340              onChange={(e) => setInput(e.target.value)}
-   341              onKeyDown={handleKeyDown}
-   342              placeholder={isDisabled ? "ИИ-агент недоступен" : "Задайте вопрос..."}
-   343              className="resize-none min-h-[40px] max-h-[120px] text-sm"
-   344              rows={1}
-   345              disabled={isLoading || isDisabled}
-   346              data-testid="input-ai-chat"
-   347            />
-   348            <Button
-   349              size="icon"
-   350              onClick={handleSend}
-   351              disabled={!input.trim() || isLoading || isDisabled}
-   352              data-testid="button-send-ai-chat"
-   353            >
-   354              <Send className="h-4 w-4" />
-   355            </Button>
-   356          </div>
-   357        </div>
-   358      </div>
-   359    );
-   360  }
-   361  
-   362  export { WELCOME_MESSAGE };
-   363  
-   364  // ============================================================
-   365  // Файл: client/src/components/api-keys-manager.tsx
-   366  // ============================================================
-   367  
-   368  import { useState } from "react";
-   369  import { useQuery, useMutation } from "@tanstack/react-query";
-   370  import { Key, Plus, Trash2, Copy, CheckCircle, AlertCircle } from "lucide-react";
-   371  import { Button } from "@/components/ui/button";
-   372  import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-   373  import { Input } from "@/components/ui/input";
-   374  import { Label } from "@/components/ui/label";
-   375  import { Badge } from "@/components/ui/badge";
-   376  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-   377  import { Checkbox } from "@/components/ui/checkbox";
-   378  import { Alert, AlertDescription } from "@/components/ui/alert";
-   379  import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-   380  import { queryClient, apiRequest } from "@/lib/queryClient";
-   381  import { useToast } from "@/hooks/use-toast";
-   382  
-   383  interface ApiKey {
-   384    id: number;
-   385    name: string;
-   386    sceneId: number | null;
-   387    permissions: string[];
-   388    isActive: boolean;
-   389    lastUsedAt: string | null;
-   390    createdAt: string;
-   391  }
-   392  
-   393  interface Scene {
-   394    id: number;
-   395    name: string;
-   396  }
-   397  
-   398  type Permission = "create_point" | "read_scenes" | "read_layers" | "spatial_query";
-   399  
-   400  const PERMISSIONS: { value: Permission; label: string }[] = [
-   401    { value: "create_point", label: "Создание точек" },
-   402    { value: "read_scenes", label: "Чтение сцен" },
-   403    { value: "read_layers", label: "Чтение слоёв" },
-   404    { value: "spatial_query", label: "Пространственный запрос" },
-   405  ];
-   406  
-   407  export function ApiKeysManager() {
-   408    const { toast } = useToast();
-   409    const [isCreateOpen, setIsCreateOpen] = useState(false);
-   410    const [newKeyName, setNewKeyName] = useState("");
-   411    const [newKeySceneId, setNewKeySceneId] = useState<string>("");
-   412    const [selectedPermissions, setSelectedPermissions] = useState<Permission[]>(["create_point", "read_scenes", "read_layers"]);
-   413    const [createdToken, setCreatedToken] = useState<string | null>(null);
-   414    const [tokenCopied, setTokenCopied] = useState(false);
-   415  
-   416    const { data: apiKeys = [], isLoading: isLoadingKeys } = useQuery<ApiKey[]>({
-   417      queryKey: ["/api/api-keys"],
-   418    });
-   419  
-   420    const { data: scenes = [] } = useQuery<Scene[]>({
-   421      queryKey: ["/api/scenes"],
-   422    });
-   423  
-   424    const createMutation = useMutation({
-   425      mutationFn: async (data: { name: string; sceneId?: number; permissions: string[] }) => {
-   426        const res = await apiRequest("POST", "/api/api-keys", data);
-   427        return res.json();
-   428      },
-   429      onSuccess: (response) => {
-   430        setCreatedToken(response.token);
-   431        setNewKeyName("");
-   432        setNewKeySceneId("");
-   433        queryClient.invalidateQueries({ queryKey: ["/api/api-keys"] });
-   434        toast({
-   435          title: "API ключ создан",
-   436          description: "Скопируйте токен, он больше не будет показан!",
-   437        });
-   438      },
-   439      onError: (error: Error) => {
-   440        toast({
-   441          title: "Ошибка создания ключа",
-   442          description: error.message,
-   443          variant: "destructive",
-   444        });
-   445      },
-   446    });
-   447  
-   448    const revokeMutation = useMutation({
-   449      mutationFn: async (id: number) => {
-   450        const res = await apiRequest("DELETE", `/api/api-keys/${id}`);
-   451        return res.json();
-   452      },
-   453      onSuccess: () => {
-   454        queryClient.invalidateQueries({ queryKey: ["/api/api-keys"] });
-   455        toast({
-   456          title: "API ключ отозван",
-   457          description: "Ключ больше не может использоваться",
-   458        });
-   459      },
-   460      onError: (error: Error) => {
-   461        toast({
-   462          title: "Ошибка отзыва ключа",
-   463          description: error.message,
-   464          variant: "destructive",
-   465        });
-   466      },
-   467    });
-   468  
-   469    const handleCreate = () => {
-   470      if (!newKeyName.trim()) return;
-   471      const sceneIdValue = newKeySceneId && newKeySceneId !== "all" ? parseInt(newKeySceneId) : undefined;
-   472      createMutation.mutate({
-   473        name: newKeyName.trim(),
-   474        sceneId: isNaN(sceneIdValue as number) ? undefined : sceneIdValue,
-   475        permissions: selectedPermissions,
-   476      });
-   477    };
-   478  
-   479    const handleCopyToken = async () => {
-   480      if (createdToken) {
-   481        await navigator.clipboard.writeText(createdToken);
-   482        setTokenCopied(true);
-   483        setTimeout(() => setTokenCopied(false), 2000);
-   484      }
-   485    };
-   486  
-   487    const handleCloseDialog = () => {
-   488      setIsCreateOpen(false);
-   489      setCreatedToken(null);
-   490      setTokenCopied(false);
-   491      setSelectedPermissions(["create_point", "read_scenes", "read_layers"]);
-   492    };
-   493  
-   494    const togglePermission = (permission: Permission) => {
-   495      setSelectedPermissions(prev => 
-   496        prev.includes(permission) 
-   497          ? prev.filter(p => p !== permission)
-   498          : [...prev, permission]
-   499      );
-   500    };
-   501  
-   502    const formatDate = (dateStr: string | null) => {
-   503      if (!dateStr) return "Никогда";
-   504      return new Date(dateStr).toLocaleString("ru-RU", {
-   505        day: "2-digit",
-   506        month: "2-digit",
-   507        year: "numeric",
-   508        hour: "2-digit",
-   509        minute: "2-digit",
-   510      });
-   511    };
-   512  
-   513    return (
-   514      <Card>
-   515        <CardHeader>
-   516          <div className="flex items-center justify-between gap-4 flex-wrap">
-   517            <div className="flex items-center gap-2">
-   518              <Key className="h-5 w-5" />
-   519              <CardTitle>API ключи</CardTitle>
-   520            </div>
-   521            <Dialog open={isCreateOpen} onOpenChange={(open) => {
-   522              if (!open) handleCloseDialog();
-   523              else setIsCreateOpen(true);
-   524            }}>
-   525              <DialogTrigger asChild>
-   526                <Button size="sm" data-testid="button-create-api-key">
-   527                  <Plus className="h-4 w-4 mr-1" />
-   528                  Создать ключ
-   529                </Button>
-   530              </DialogTrigger>
-   531              <DialogContent className="sm:max-w-md">
-   532                <DialogHeader>
-   533                  <DialogTitle>Создать API ключ</DialogTitle>
-   534                  <DialogDescription>
-   535                    API ключ позволяет внешним приложениям (например, Telegram бот) создавать точки на карте.
-   536                  </DialogDescription>
-   537                </DialogHeader>
-   538  
-   539                {createdToken ? (
-   540                  <div className="space-y-4">
-   541                    <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
-   542                      <AlertCircle className="h-4 w-4 text-yellow-600" />
-   543                      <AlertDescription className="text-yellow-800 dark:text-yellow-200">
-   544                        Сохраните токен! Он показывается только один раз.
-   545                      </AlertDescription>
-   546                    </Alert>
-   547                    <div className="flex items-center gap-2">
-   548                      <Input 
-   549                        value={createdToken} 
-   550                        readOnly 
-   551                        className="font-mono text-sm"
-   552                        data-testid="input-created-token"
-   553                      />
-   554                      <Button 
-   555                        size="icon" 
-   556                        variant="outline" 
-   557                        onClick={handleCopyToken}
-   558                        data-testid="button-copy-token"
-   559                      >
-   560                        {tokenCopied ? (
-   561                          <CheckCircle className="h-4 w-4 text-green-500" />
-   562                        ) : (
-   563                          <Copy className="h-4 w-4" />
-   564                        )}
-   565                      </Button>
-   566                    </div>
-   567                    <DialogFooter>
-   568                      <Button onClick={handleCloseDialog} data-testid="button-close-token-dialog">
-   569                        Готово
-   570                      </Button>
-   571                    </DialogFooter>
-   572                  </div>
-   573                ) : (
-   574                  <div className="space-y-4">
-   575                    <div className="space-y-2">
-   576                      <Label htmlFor="api-key-name">Название</Label>
-   577                      <Input
-   578                        id="api-key-name"
-   579                        placeholder="Например: Telegram бот"
-   580                        value={newKeyName}
-   581                        onChange={(e) => setNewKeyName(e.target.value)}
-   582                        data-testid="input-api-key-name"
-   583                      />
-   584                    </div>
-   585  
-   586                    <div className="space-y-2">
-   587                      <Label htmlFor="api-key-scene">Ограничить сценой (опционально)</Label>
-   588                      <Select value={newKeySceneId} onValueChange={setNewKeySceneId}>
-   589                        <SelectTrigger data-testid="select-api-key-scene">
-   590                          <SelectValue placeholder="Все сцены" />
-   591                        </SelectTrigger>
-   592                        <SelectContent>
-   593                          <SelectItem value="all">Все сцены</SelectItem>
-   594                          {scenes.map((scene) => (
-   595                            <SelectItem key={scene.id} value={scene.id.toString()}>
-   596                              {scene.name}
-   597                            </SelectItem>
-   598                          ))}
-   599                        </SelectContent>
-   600                      </Select>
-   601                    </div>
-   602  
-   603                    <div className="space-y-2">
-   604                      <Label>Разрешения</Label>
-   605                      <div className="space-y-2">
-   606                        {PERMISSIONS.map((perm) => (
-   607                          <div key={perm.value} className="flex items-center space-x-2">
-   608                            <Checkbox
-   609                              id={`perm-${perm.value}`}
-   610                              checked={selectedPermissions.includes(perm.value)}
-   611                              onCheckedChange={() => togglePermission(perm.value)}
-   612                              data-testid={`checkbox-permission-${perm.value}`}
-   613                            />
-   614                            <label
-   615                              htmlFor={`perm-${perm.value}`}
-   616                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-   617                            >
-   618                              {perm.label}
-   619                            </label>
-   620                          </div>
-   621                        ))}
-   622                      </div>
-   623                    </div>
-   624  
-   625                    <DialogFooter>
-   626                      <Button 
-   627                        variant="outline" 
-   628                        onClick={() => setIsCreateOpen(false)}
-   629                        data-testid="button-cancel-create-key"
-   630                      >
-   631                        Отмена
-   632                      </Button>
-   633                      <Button 
-   634                        onClick={handleCreate} 
-   635                        disabled={!newKeyName.trim() || createMutation.isPending || selectedPermissions.length === 0}
-   636                        data-testid="button-confirm-create-key"
-   637                      >
-   638                        Создать
-   639                      </Button>
-   640                    </DialogFooter>
-   641                  </div>
-   642                )}
-   643              </DialogContent>
-   644            </Dialog>
-   645          </div>
-   646          <CardDescription>
-   647            Управление токенами доступа для внешних интеграций
-   648          </CardDescription>
-   649        </CardHeader>
-   650        <CardContent>
-   651          {isLoadingKeys ? (
-   652            <div className="text-center py-4 text-muted-foreground">Загрузка...</div>
-   653          ) : apiKeys.length === 0 ? (
-   654            <div className="text-center py-4 text-muted-foreground">
-   655              Нет API ключей. Создайте первый ключ для интеграции с внешними сервисами.
-   656            </div>
-   657          ) : (
-   658            <div className="space-y-3">
-   659              {apiKeys.map((key) => (
-   660                <div
-   661                  key={key.id}
-   662                  className="flex items-center justify-between gap-4 p-3 border rounded-md bg-card flex-wrap"
-   663                  data-testid={`api-key-item-${key.id}`}
-   664                >
-   665                  <div className="flex-1 min-w-0">
-   666                    <div className="flex items-center gap-2 flex-wrap">
-   667                      <span className="font-medium truncate">{key.name}</span>
-   668                      {!key.isActive && (
-   669                        <Badge variant="secondary" className="text-muted-foreground">
-   670                          Отозван
-   671                        </Badge>
-   672                      )}
-   673                    </div>
-   674                    <div className="text-sm text-muted-foreground mt-1">
-   675                      {key.sceneId 
-   676                        ? `Сцена: ${scenes.find(s => s.id === key.sceneId)?.name || key.sceneId}`
-   677                        : "Все сцены"
-   678                      }
-   679                    </div>
-   680                    <div className="flex flex-wrap gap-1 mt-1">
-   681                      {key.permissions.map((perm) => (
-   682                        <Badge key={perm} variant="outline" className="text-xs">
-   683                          {PERMISSIONS.find(p => p.value === perm)?.label || perm}
-   684                        </Badge>
-   685                      ))}
-   686                    </div>
-   687                    <div className="text-xs text-muted-foreground mt-1">
-   688                      Последнее использование: {formatDate(key.lastUsedAt)}
-   689                    </div>
-   690                  </div>
-   691                  <div className="flex items-center gap-2">
-   692                    {key.isActive && (
-   693                      <Button
-   694                        size="sm"
-   695                        variant="ghost"
-   696                        className="text-destructive hover:text-destructive"
-   697                        onClick={() => revokeMutation.mutate(key.id)}
-   698                        disabled={revokeMutation.isPending}
-   699                        data-testid={`button-revoke-key-${key.id}`}
-   700                      >
-   701                        <Trash2 className="h-4 w-4" />
-   702                      </Button>
-   703                    )}
-   704                  </div>
-   705                </div>
-   706              ))}
-   707            </div>
-   708          )}
-   709        </CardContent>
-   710      </Card>
-   711    );
-   712  }
-   713  
-   714  // ============================================================
-   715  // Файл: client/src/components/attribute-table.tsx
-   716  // ============================================================
-   717  
-   718  import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-   719  import { useVirtualizer } from "@tanstack/react-virtual";
-   720  import { getFieldLabel } from "@shared/field-labels";
-   721  import { Button } from "@/components/ui/button";
-   722  import { Input } from "@/components/ui/input";
-   723  import { Label } from "@/components/ui/label";
-   724  import { ScrollArea } from "@/components/ui/scroll-area";
-   725  import { Badge } from "@/components/ui/badge";
-   726  import { Checkbox } from "@/components/ui/checkbox";
-   727  import { DraggableModal } from "@/components/ui/draggable-modal";
-   728  import {
-   729    Tooltip,
-   730    TooltipContent,
-   731    TooltipTrigger,
-   732  } from "@/components/ui/tooltip";
-   733  import {
-   734    Select,
-   735    SelectContent,
-   736    SelectItem,
-   737    SelectTrigger,
-   738    SelectValue,
-   739  } from "@/components/ui/select";
-   740  import {
-   741    Popover,
-   742    PopoverContent,
-   743    PopoverTrigger,
-   744  } from "@/components/ui/popover";
-   745  import {
-   746    AlertDialog,
-   747    AlertDialogAction,
-   748    AlertDialogCancel,
-   749    AlertDialogContent,
-   750    AlertDialogDescription,
-   751    AlertDialogFooter,
-   752    AlertDialogHeader,
-   753    AlertDialogTitle,
-   754  } from "@/components/ui/alert-dialog";
-   755  import { Switch } from "@/components/ui/switch";
-   756  import { Settings2, Plus, Trash2, Save, X, Search, ArrowDown, ArrowUpDown, ArrowUp, Filter, CheckSquare, Square, Undo2, Crosshair } from "lucide-react";
-   757  import type { DrawnFeature, AttributeField, AttributeFieldType, LayerSchemaDefinition } from "@shared/schema";
-   758  
-   759  interface PendingEdit {
-   760    featureId: number;
-   761    originalProperties: Record<string, unknown>;
-   762    newProperties: Record<string, unknown>;
-   763  }
-   764  
-   765  interface AttributeTableCloseRef {
-   766    tryClose: () => boolean;
-   767  }
-   768  
-   769  interface AttributeTableProps {
-   770    features: DrawnFeature[];
-   771    selectedFeatureIds: number[];
-   772    layerSchema: LayerSchemaDefinition | null;
-   773    onFeatureSelect: (featureId: number, multi?: boolean) => void;
-   774    onFeatureUpdate: (featureId: number, properties: Record<string, unknown>) => void;
-   775    onBatchUpdate?: (updates: { id: number; properties: Record<string, unknown> }[]) => Promise<void>;
-   776    onBatchDelete?: (ids: number[]) => void;
-   777    onSchemaUpdate: (fields: AttributeField[]) => void;
-   778    onSelectAll?: (featureIds: number[]) => void;
-   779    onClearSelection?: () => void;
-   780    onZoomToFeature?: (feature: DrawnFeature) => void;
-   781    onRequestClose?: (hasUnsavedChanges: boolean) => void;
-   782    closeRef?: React.MutableRefObject<AttributeTableCloseRef | null>;
-   783    layerName: string;
-   784  }
-   785  
-   786  type SortDirection = "asc" | "desc" | null;
-   787  type SortConfig = { column: string; direction: SortDirection };
-   788  type ColumnFilters = Record<string, string>;
-   789  
-   790  const FIELD_TYPE_LABELS: Record<AttributeFieldType, string> = {
-   791    text: "Текст",
-   792    number: "Число",
-   793    date: "Дата",
-   794    boolean: "Да/Нет",
-   795    select: "Список",
-   796  };
-   797  
-   798  const ROW_HEIGHT = 36;
-   799  
-   800  export function AttributeTable({
-   801    features,
-   802    selectedFeatureIds,
-   803    layerSchema,
-   804    onFeatureSelect,
-   805    onFeatureUpdate,
-   806    onBatchUpdate,
-   807    onBatchDelete,
-   808    onSchemaUpdate,
-   809    onSelectAll,
-   810    onClearSelection,
-   811    onZoomToFeature,
-   812    onRequestClose,
-   813    closeRef,
-   814    layerName,
-   815  }: AttributeTableProps) {
-   816    const [showSchemaDialog, setShowSchemaDialog] = useState(false);
-   817    const [editingFields, setEditingFields] = useState<AttributeField[]>([]);
-   818    const [editingCell, setEditingCell] = useState<{ featureId: number; field: string } | null>(null);
-   819    const [editValue, setEditValue] = useState<string>("");
-   820    const [searchQuery, setSearchQuery] = useState("");
-   821    const [hasScrolledToSelected, setHasScrolledToSelected] = useState(false);
-   822    const [sortConfig, setSortConfig] = useState<SortConfig>({ column: "", direction: null });
-   823    const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
-   824    
-   825    const [pendingEdits, setPendingEdits] = useState<Map<number, PendingEdit>>(new Map());
-   826    const [undoStack, setUndoStack] = useState<PendingEdit[]>([]);
-   827    const [isSaving, setIsSaving] = useState(false);
-   828    const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-   829    
-   830    const hasPendingChanges = pendingEdits.size > 0;
-   831    const canUndo = undoStack.length > 0;
-   832    
-   833    const handleCloseRequest = useCallback(() => {
-   834      if (hasPendingChanges) {
-   835        setShowCloseConfirm(true);
-   836      } else {
-   837        onRequestClose?.(false);
-   838      }
-   839    }, [hasPendingChanges, onRequestClose]);
-   840    
-   841    const handleDiscardAndClose = useCallback(() => {
-   842      setPendingEdits(new Map());
-   843      setUndoStack([]);
-   844      setShowCloseConfirm(false);
-   845      onRequestClose?.(false);
-   846    }, [onRequestClose]);
-   847    
-   848    const handleSaveAndClose = useCallback(async () => {
-   849      if (onBatchUpdate && pendingEdits.size > 0) {
-   850        setIsSaving(true);
-   851        try {
-   852          const updates = Array.from(pendingEdits.values())
-   853            .filter(edit => typeof edit.featureId === 'number' && !isNaN(edit.featureId))
-   854            .map(edit => ({
-   855              id: edit.featureId,
-   856              properties: edit.newProperties,
-   857            }));
-   858          if (updates.length > 0) {
-   859            await onBatchUpdate(updates);
-   860          }
-   861          setPendingEdits(new Map());
-   862          setUndoStack([]);
-   863          setShowCloseConfirm(false);
-   864          onRequestClose?.(false);
-   865        } finally {
-   866          setIsSaving(false);
-   867        }
-   868      }
-   869    }, [onBatchUpdate, pendingEdits, onRequestClose]);
-   870  
-   871    useEffect(() => {
-   872      if (closeRef) {
-   873        closeRef.current = {
-   874          tryClose: () => {
-   875            if (hasPendingChanges) {
-   876              setShowCloseConfirm(true);
-   877              return true;
-   878            }
-   879            return false;
-   880          },
-   881        };
-   882      }
-   883      return () => {
-   884        if (closeRef) {
-   885          closeRef.current = null;
-   886        }
-   887      };
-   888    }, [closeRef, hasPendingChanges]);
-   889  
-   890    const fields = layerSchema?.fields || [];
-   891    
-   892    const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
-   893      _checkbox: 40,
-   894      _id: 60,
-   895      _type: 80,
-   896    });
-   897    const resizingRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null);
-   898    const parentRef = useRef<HTMLDivElement>(null);
-   899  
-   900    const filteredAndSortedFeatures = useMemo(() => {
-   901      let result = [...features];
-   902      
-   903      // Apply global search filter
-   904      if (searchQuery.trim()) {
-   905        const query = searchQuery.toLowerCase();
-   906        result = result.filter(feature => {
-   907          if (feature.id.toString().includes(query)) return true;
-   908          if (feature.geometryType.toLowerCase().includes(query)) return true;
-   909          
-   910          for (const value of Object.values(feature.properties)) {
-   911            if (value !== null && value !== undefined) {
-   912              if (value.toString().toLowerCase().includes(query)) {
-   913                return true;
-   914              }
-   915            }
-   916          }
-   917          return false;
-   918        });
-   919      }
-   920      
-   921      // Apply column filters
-   922      Object.entries(columnFilters).forEach(([column, filterValue]) => {
-   923        if (!filterValue.trim()) return;
-   924        
-   925        const filter = filterValue.toLowerCase();
-   926        result = result.filter(feature => {
-   927          if (column === "_id") {
-   928            return feature.id.toString().includes(filter);
-   929          }
-   930          if (column === "_type") {
-   931            const typeLabel = feature.geometryType === "Point" ? "точка" : 
-   932                             feature.geometryType === "LineString" ? "линия" : "полигон";
-   933            return typeLabel.includes(filter) || feature.geometryType.toLowerCase().includes(filter);
-   934          }
-   935          const value = feature.properties[column];
-   936          if (value === null || value === undefined) return false;
-   937          return value.toString().toLowerCase().includes(filter);
-   938        });
-   939      });
-   940      
-   941      // Apply sorting
-   942      if (sortConfig.column && sortConfig.direction) {
-   943        result.sort((a, b) => {
-   944          let aVal: unknown;
-   945          let bVal: unknown;
-   946          
-   947          if (sortConfig.column === "_id") {
-   948            aVal = a.id;
-   949            bVal = b.id;
-   950          } else if (sortConfig.column === "_type") {
-   951            aVal = a.geometryType;
-   952            bVal = b.geometryType;
-   953          } else {
-   954            aVal = a.properties[sortConfig.column];
-   955            bVal = b.properties[sortConfig.column];
-   956          }
-   957          
-   958          // Handle null/undefined
-   959          if (aVal === null || aVal === undefined) aVal = "";
-   960          if (bVal === null || bVal === undefined) bVal = "";
-   961          
-   962          // Compare
-   963          let comparison = 0;
-   964          if (typeof aVal === "number" && typeof bVal === "number") {
-   965            comparison = aVal - bVal;
-   966          } else {
-   967            comparison = String(aVal).localeCompare(String(bVal), "ru");
-   968          }
-   969          
-   970          return sortConfig.direction === "desc" ? -comparison : comparison;
-   971        });
-   972      }
-   973      
-   974      return result;
-   975    }, [features, searchQuery, columnFilters, sortConfig]);
-   976  
-   977    const filteredFeatures = filteredAndSortedFeatures;
-   978    
-   979    const handleSort = useCallback((column: string) => {
-   980      setSortConfig(prev => {
-   981        if (prev.column !== column) {
-   982          return { column, direction: "asc" };
-   983        }
-   984        if (prev.direction === "asc") {
-   985          return { column, direction: "desc" };
-   986        }
-   987        return { column: "", direction: null };
-   988      });
-   989    }, []);
-   990    
-   991    const handleColumnFilterChange = useCallback((column: string, value: string) => {
-   992      setColumnFilters(prev => ({
-   993        ...prev,
-   994        [column]: value
-   995      }));
-   996    }, []);
-   997    
-   998    const handleSelectAll = useCallback(() => {
-   999      if (onSelectAll) {
-  1000        const allIds = filteredFeatures.map(f => f.id);
-  1001        onSelectAll(allIds);
-  1002      }
-  1003    }, [filteredFeatures, onSelectAll]);
-  1004    
-  1005    const handleClearSelection = useCallback(() => {
-  1006      if (onClearSelection) {
-  1007        onClearSelection();
-  1008      }
-  1009    }, [onClearSelection]);
-  1010    
-  1011    const handleCheckboxChange = useCallback((featureId: number, checked: boolean) => {
-  1012      // Use multi=true mode for checkbox behavior
-  1013      onFeatureSelect(featureId, true);
-  1014    }, [onFeatureSelect]);
-  1015  
-  1016    const rowVirtualizer = useVirtualizer({
-  1017      count: filteredFeatures.length,
-  1018      getScrollElement: () => parentRef.current,
-  1019      estimateSize: () => ROW_HEIGHT,
-  1020      overscan: 10,
-  1021    });
-  1022  
-  1023    const [currentSelectedIndex, setCurrentSelectedIndex] = useState(0);
-  1024  
-  1025    const scrollToSelectedByIndex = useCallback((indexInSelection: number) => {
-  1026      if (selectedFeatureIds.length === 0) return;
-  1027      
-  1028      const safeIndex = indexInSelection % selectedFeatureIds.length;
-  1029      const targetId = selectedFeatureIds[safeIndex];
-  1030      const rowIndex = filteredFeatures.findIndex(f => f.id === targetId);
-  1031      
-  1032      if (rowIndex !== -1) {
-  1033        rowVirtualizer.scrollToIndex(rowIndex, { align: "center" });
-  1034      }
-  1035    }, [selectedFeatureIds, filteredFeatures, rowVirtualizer]);
-  1036  
-  1037    const scrollToNextSelected = useCallback(() => {
-  1038      if (selectedFeatureIds.length === 0) return;
-  1039      
-  1040      const nextIndex = (currentSelectedIndex + 1) % selectedFeatureIds.length;
-  1041      setCurrentSelectedIndex(nextIndex);
-  1042      scrollToSelectedByIndex(nextIndex);
-  1043    }, [selectedFeatureIds.length, currentSelectedIndex, scrollToSelectedByIndex]);
-  1044  
-  1045    const prevSelectedRef = useRef<number[]>([]);
-  1046    
-  1047    useEffect(() => {
-  1048      const selectedChanged = JSON.stringify(prevSelectedRef.current) !== JSON.stringify(selectedFeatureIds);
-  1049      
-  1050      if (selectedChanged) {
-  1051        prevSelectedRef.current = selectedFeatureIds;
-  1052        setCurrentSelectedIndex(0);
-  1053        setHasScrolledToSelected(false);
-  1054      }
-  1055    }, [selectedFeatureIds]);
-  1056  
-  1057    useEffect(() => {
-  1058      if (!hasScrolledToSelected && selectedFeatureIds.length > 0 && filteredFeatures.length > 0) {
-  1059        const timer = setTimeout(() => {
-  1060          scrollToSelectedByIndex(0);
-  1061          setHasScrolledToSelected(true);
-  1062        }, 100);
-  1063        return () => clearTimeout(timer);
-  1064      }
-  1065    }, [hasScrolledToSelected, selectedFeatureIds, filteredFeatures, scrollToSelectedByIndex]);
-  1066  
-  1067    useEffect(() => {
-  1068      const newWidths: Record<string, number> = { _checkbox: 40, _id: 60, _type: 80 };
-  1069      fields.forEach((field) => {
-  1070        if (!columnWidths[field.name]) {
-  1071          newWidths[field.name] = 120;
-  1072        } else {
-  1073          newWidths[field.name] = columnWidths[field.name];
-  1074        }
-  1075      });
-  1076      setColumnWidths(newWidths);
-  1077    }, [fields]);
-  1078  
-  1079    const handleResizeStart = useCallback((e: React.MouseEvent, column: string) => {
-  1080      e.preventDefault();
-  1081      e.stopPropagation();
-  1082      resizingRef.current = {
-  1083        column,
-  1084        startX: e.clientX,
-  1085        startWidth: columnWidths[column] || 100,
-  1086      };
-  1087      
-  1088      const handleMouseMove = (moveEvent: MouseEvent) => {
-  1089        if (!resizingRef.current) return;
-  1090        const delta = moveEvent.clientX - resizingRef.current.startX;
-  1091        const newWidth = Math.max(40, resizingRef.current.startWidth + delta);
-  1092        setColumnWidths(prev => ({ ...prev, [resizingRef.current!.column]: newWidth }));
-  1093      };
-  1094      
-  1095      const handleMouseUp = () => {
-  1096        resizingRef.current = null;
-  1097        document.removeEventListener("mousemove", handleMouseMove);
-  1098        document.removeEventListener("mouseup", handleMouseUp);
-  1099      };
-  1100      
-  1101      document.addEventListener("mousemove", handleMouseMove);
-  1102      document.addEventListener("mouseup", handleMouseUp);
-  1103    }, [columnWidths]);
-  1104  
-  1105    useEffect(() => {
-  1106      if (showSchemaDialog) {
-  1107        setEditingFields(fields.length > 0 ? [...fields] : []);
-  1108      }
-  1109    }, [showSchemaDialog, fields]);
-  1110  
-  1111    const handleAddField = () => {
-  1112      setEditingFields([
-  1113        ...editingFields,
-  1114        { name: "", type: "text", required: false },
-  1115      ]);
-  1116    };
-  1117  
-  1118    const handleRemoveField = (index: number) => {
-  1119      setEditingFields(editingFields.filter((_, i) => i !== index));
-  1120    };
-  1121  
-  1122    const handleFieldChange = (index: number, updates: Partial<AttributeField>) => {
-  1123      setEditingFields(editingFields.map((field, i) => 
-  1124        i === index ? { ...field, ...updates } : field
-  1125      ));
-  1126    };
-  1127  
-  1128    const handleSaveSchema = () => {
-  1129      const validFields = editingFields.filter(f => f.name.trim() !== "");
-  1130      onSchemaUpdate(validFields);
-  1131      setShowSchemaDialog(false);
-  1132    };
-  1133  
-  1134    const startEditing = (featureId: number, field: string, currentValue: unknown) => {
-  1135      setEditingCell({ featureId, field });
-  1136      setEditValue(currentValue?.toString() || "");
-  1137    };
-  1138  
-  1139    const getFeatureProperties = useCallback((featureId: number): Record<string, unknown> => {
-  1140      const pending = pendingEdits.get(featureId);
-  1141      if (pending) {
-  1142        return pending.newProperties;
-  1143      }
-  1144      const feature = features.find(f => f.id === featureId);
-  1145      return feature?.properties || {};
-  1146    }, [pendingEdits, features]);
-  1147  
-  1148    const saveEdit = useCallback(() => {
-  1149      if (!editingCell) return;
-  1150      if (typeof editingCell.featureId !== 'number' || isNaN(editingCell.featureId)) return;
-  1151      
-  1152      const feature = features.find(f => f.id === editingCell.featureId);
-  1153      if (!feature) return;
-  1154  
-  1155      const fieldDef = fields.find(f => f.name === editingCell.field);
-  1156      let parsedValue: unknown = editValue;
-  1157      
-  1158      if (fieldDef?.type === "number") {
-  1159        parsedValue = parseFloat(editValue) || 0;
-  1160      } else if (fieldDef?.type === "boolean") {
-  1161        parsedValue = editValue === "true";
-  1162      }
-  1163  
-  1164      const currentProps = getFeatureProperties(editingCell.featureId);
-  1165      const newProperties = {
-  1166        ...currentProps,
-  1167        [editingCell.field]: parsedValue,
-  1168      };
-  1169  
-  1170      const existingPending = pendingEdits.get(editingCell.featureId);
-  1171      const originalProperties = existingPending?.originalProperties || feature.properties;
-  1172      
-  1173      setPendingEdits(prev => {
-  1174        const newMap = new Map(prev);
-  1175        newMap.set(editingCell.featureId, {
-  1176          featureId: editingCell.featureId,
-  1177          originalProperties,
-  1178          newProperties,
-  1179        });
-  1180        return newMap;
-  1181      });
-  1182      
-  1183      setUndoStack(prev => [...prev, {
-  1184        featureId: editingCell.featureId,
-  1185        originalProperties: currentProps,
-  1186        newProperties,
-  1187      }]);
-  1188      
-  1189      setEditingCell(null);
-  1190      setEditValue("");
-  1191    }, [editingCell, features, fields, editValue, getFeatureProperties, pendingEdits]);
-  1192  
-  1193    const cancelEdit = () => {
-  1194      setEditingCell(null);
-  1195      setEditValue("");
-  1196    };
-  1197  
-  1198    const handleSaveAllChanges = useCallback(async () => {
-  1199      if (!onBatchUpdate || pendingEdits.size === 0) return;
-  1200      
-  1201      setIsSaving(true);
-  1202      try {
-  1203        const allEdits = Array.from(pendingEdits.values());
-  1204        
-  1205        const updates = allEdits
-  1206          .filter(edit => typeof edit.featureId === 'number' && !isNaN(edit.featureId) && edit.featureId > 0)
-  1207          .map(edit => ({
-  1208            id: edit.featureId,
-  1209            properties: edit.newProperties,
-  1210          }));
-  1211        
-  1212        if (updates.length > 0) {
-  1213          await onBatchUpdate(updates);
-  1214        }
-  1215        setPendingEdits(new Map());
-  1216        setUndoStack([]);
-  1217      } finally {
-  1218        setIsSaving(false);
-  1219      }
-  1220    }, [onBatchUpdate, pendingEdits]);
-  1221  
-  1222    const handleUndo = useCallback(() => {
-  1223      if (undoStack.length === 0) return;
-  1224      
-  1225      const lastAction = undoStack[undoStack.length - 1];
-  1226      setUndoStack(prev => prev.slice(0, -1));
-  1227      
-  1228      setPendingEdits(prev => {
-  1229        const newMap = new Map(prev);
-  1230        const existingPending = newMap.get(lastAction.featureId);
-  1231        
-  1232        if (existingPending) {
-  1233          const feature = features.find(f => f.id === lastAction.featureId);
-  1234          if (JSON.stringify(lastAction.originalProperties) === JSON.stringify(feature?.properties)) {
-  1235            newMap.delete(lastAction.featureId);
-  1236          } else {
-  1237            newMap.set(lastAction.featureId, {
-  1238              ...existingPending,
-  1239              newProperties: lastAction.originalProperties,
-  1240            });
-  1241          }
-  1242        }
-  1243        return newMap;
-  1244      });
-  1245    }, [undoStack, features]);
-  1246  
-  1247    const handleDeleteSelected = useCallback(() => {
-  1248      if (!onBatchDelete || selectedFeatureIds.length === 0) return;
-  1249      onBatchDelete(selectedFeatureIds);
-  1250    }, [onBatchDelete, selectedFeatureIds]);
+000001	<!DOCTYPE html>
+000002	<html lang="ru">
+000003	  <head>
+000004	    <meta charset="UTF-8" />
+000005	    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+000006	    <meta name="description" content="ГИС МО Инженерные сети - веб-приложение для управления инженерной инфраструктурой" />
+000007	    <title>ГИС МО "Инженерные сети"</title>
+000008	    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+000009	    <link rel="preconnect" href="https://fonts.googleapis.com">
+000010	    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+000011	    <link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Fira+Code:wght@300..700&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400..700;1,400..700&family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@100..900&family=Oxanium:wght@200..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Roboto:ital,wght@0,100..900;1,100..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+000012	  </head>
+000013	  <body>
+000014	    <div id="root"></div>
+000015	    <script type="module" src="/src/main.tsx"></script>
+000016	  </body>
+000017	</html>
+000018	// ============================================================
+000019	// Файл: client/src/App.tsx
+000020	// ============================================================
+000021	import { Switch, Route } from "wouter";
+000022	import { queryClient } from "./lib/queryClient";
+000023	import { QueryClientProvider } from "@tanstack/react-query";
+000024	import { Toaster } from "@/components/ui/toaster";
+000025	import { TooltipProvider } from "@/components/ui/tooltip";
+000026	import { ZuluConnectionProvider } from "@/contexts/zulu-connection-context";
+000027	import { SceneProvider } from "@/contexts/scene-context";
+000028	import { BaseLayersProvider } from "@/contexts/base-layers-context";
+000029	import { ProjectionProvider } from "@/contexts/projection-context";
+000030	import { ProtectedRoute } from "@/components/protected-route";
+000031	import NotFound from "@/pages/not-found";
+000032	import LandingPage from "@/pages/landing";
+000033	import Home from "@/pages/home";
+000034	import AdminUsers from "@/pages/admin-users";
+000035	import AdminLayerManager from "@/pages/admin-layer-manager";
+000036	import LoginPage from "@/pages/login";
+000037	import ScenesPage from "@/pages/scenes";
+000038	import ProfilePage from "@/pages/profile";
+000039	
+000040	function Router() {
+000041	  return (
+000042	    <Switch>
+000043	      <Route path="/" component={LandingPage} />
+000044	      <Route path="/gis/login" component={LoginPage} />
+000045	      <Route path="/gis/scenes">
+000046	        <ProtectedRoute>
+000047	          <ScenesPage />
+000048	        </ProtectedRoute>
+000049	      </Route>
+000050	      <Route path="/gis/app">
+000051	        <ProtectedRoute>
+000052	          <Home />
+000053	        </ProtectedRoute>
+000054	      </Route>
+000055	      <Route path="/gis/profile">
+000056	        <ProtectedRoute>
+000057	          <ProfilePage />
+000058	        </ProtectedRoute>
+000059	      </Route>
+000060	      <Route path="/gis/admin/settings">
+000061	        <ProtectedRoute requireAdmin>
+000062	          <AdminUsers />
+000063	        </ProtectedRoute>
+000064	      </Route>
+000065	      <Route path="/gis/admin/layers">
+000066	        <ProtectedRoute requireAdmin>
+000067	          <AdminLayerManager />
+000068	        </ProtectedRoute>
+000069	      </Route>
+000070	      <Route path="/gis/admin">
+000071	        <ProtectedRoute requireAdmin>
+000072	          <AdminUsers />
+000073	        </ProtectedRoute>
+000074	      </Route>
+000075	      <Route component={NotFound} />
+000076	    </Switch>
+000077	  );
+000078	}
+000079	
+000080	function App() {
+000081	  return (
+000082	    <QueryClientProvider client={queryClient}>
+000083	      <TooltipProvider>
+000084	        <SceneProvider>
+000085	          <ProjectionProvider>
+000086	            <BaseLayersProvider>
+000087	              <ZuluConnectionProvider>
+000088	              <Toaster />
+000089	              <Router />
+000090	            </ZuluConnectionProvider>
+000091	            </BaseLayersProvider>
+000092	          </ProjectionProvider>
+000093	        </SceneProvider>
+000094	      </TooltipProvider>
+000095	    </QueryClientProvider>
+000096	  );
+000097	}
+000098	
+000099	export default App;
+000100	
+000101	// ============================================================
+000102	// Файл: client/src/components/accident-analysis-dialog.tsx
+000103	// ============================================================
+000104	import { useState, useRef, useCallback, useEffect } from "react";
+000105	import { useMutation } from "@tanstack/react-query";
+000106	import { apiRequest } from "@/lib/queryClient";
+000107	import { Button } from "@/components/ui/button";
+000108	import { Badge } from "@/components/ui/badge";
+000109	import { useToast } from "@/hooks/use-toast";
+000110	import {
+000111	  Select,
+000112	  SelectContent,
+000113	  SelectItem,
+000114	  SelectTrigger,
+000115	  SelectValue,
+000116	} from "@/components/ui/select";
+000117	import {
+000118	  Popover,
+000119	  PopoverContent,
+000120	  PopoverTrigger,
+000121	} from "@/components/ui/popover";
+000122	import { Input } from "@/components/ui/input";
+000123	import { Label } from "@/components/ui/label";
+000124	import {
+000125	  Zap,
+000126	  Download,
+000127	  GripHorizontal,
+000128	  Loader2,
+000129	  X,
+000130	  Filter,
+000131	  AlertOctagon,
+000132	  MapPin,
+000133	  Ruler,
+000134	  Layers,
+000135	} from "lucide-react";
+000136	
+000137	interface EditableLayer {
+000138	  id: number;
+000139	  name: string;
+000140	  geometryType: string;
+000141	  visible?: boolean;
+000142	}
+000143	
+000144	interface AccidentSegmentResult {
+000145	  featureId: number;
+000146	  geometry: { type: string; coordinates: any };
+000147	  properties: Record<string, unknown>;
+000148	  dpod: string | number | null;
+000149	  dobr: string | number | null;
+000150	  length: string | number | null;
+000151	  sys: string | null;
+000152	  beginUch: string | null;
+000153	  endUch: string | null;
+000154	  accidentCount: number;
+000155	  accidentFeatures: Array<{
+000156	    id: number;
+000157	    geometry: { type: string; coordinates: any };
+000158	    properties: Record<string, unknown>;
+000159	  }>;
+000160	}
+000161	
+000162	interface AccidentAnalysisResult {
+000163	  networkLayerName: string;
+000164	  accidentLayerName: string;
+000165	  totalAccidents: number;
+000166	  boundAccidents: number;
+000167	  unboundAccidents: number;
+000168	  segmentsWithAccidents: number;
+000169	  segments: AccidentSegmentResult[];
+000170	}
+000171	
+000172	interface AttributeFilter {
+000173	  field: string;
+000174	  value: string;
+000175	}
+000176	
+000177	interface AccidentAnalysisDialogProps {
+000178	  open: boolean;
+000179	  onOpenChange: (open: boolean) => void;
+000180	  editableLayers: EditableLayer[];
+000181	  sceneId: number;
+000182	  onHighlightSegment: (segment: AccidentSegmentResult | null) => void;
+000183	  initialResult?: AccidentAnalysisResult | null;
+000184	}
+000185	
+000186	export function AccidentAnalysisDialog({
+000187	  open,
+000188	  onOpenChange,
+000189	  editableLayers,
+000190	  onHighlightSegment,
+000191	  initialResult,
+000192	}: AccidentAnalysisDialogProps) {
+000193	  const { toast } = useToast();
+000194	
+000195	  const [networkLayerId, setNetworkLayerId] = useState<number | null>(null);
+000196	  const [accidentLayerId, setAccidentLayerId] = useState<number | null>(null);
+000197	  const [maxDistance, setMaxDistance] = useState<number>(15);
+000198	  const [attributeFilter, setAttributeFilter] = useState<AttributeFilter>({ field: "", value: "" });
+000199	  const [filterEnabled, setFilterEnabled] = useState(false);
+000200	  const [networkAttributes, setNetworkAttributes] = useState<string[]>([]);
+000201	  const [result, setResult] = useState<AccidentAnalysisResult | null>(null);
+000202	  const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
+000203	  const [saveLayerId, setSaveLayerId] = useState<number | null>(null);
+000204	  const [showSavePopover, setShowSavePopover] = useState(false);
+000205	  const [isSaving, setIsSaving] = useState(false);
+000206	
+000207	  const [position, setPosition] = useState({ x: 20, y: 80 });
+000208	  const isDragging = useRef(false);
+000209	  const dragStart = useRef({ x: 0, y: 0 });
+000210	
+000211	  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+000212	    isDragging.current = true;
+000213	    dragStart.current = {
+000214	      x: e.clientX - position.x,
+000215	      y: e.clientY - position.y,
+000216	    };
+000217	    e.preventDefault();
+000218	  }, [position]);
+000219	
+000220	  useEffect(() => {
+000221	    const handleMouseMove = (e: MouseEvent) => {
+000222	      if (!isDragging.current) return;
+000223	      setPosition({
+000224	        x: e.clientX - dragStart.current.x,
+000225	        y: e.clientY - dragStart.current.y,
+000226	      });
+000227	    };
+000228	    const handleMouseUp = () => { isDragging.current = false; };
+000229	    window.addEventListener("mousemove", handleMouseMove);
+000230	    window.addEventListener("mouseup", handleMouseUp);
+000231	    return () => {
+000232	      window.removeEventListener("mousemove", handleMouseMove);
+000233	      window.removeEventListener("mouseup", handleMouseUp);
+000234	    };
+000235	  }, []);
+000236	
+000237	  useEffect(() => {
+000238	    if (initialResult && open) {
+000239	      setResult(initialResult);
+000240	    }
+000241	  }, [initialResult, open]);
+000242	
+000243	  useEffect(() => {
+000244	    if (!networkLayerId) {
+000245	      setNetworkAttributes([]);
+000246	      setFilterEnabled(false);
+000247	      setAttributeFilter({ field: "", value: "" });
+000248	      return;
+000249	    }
+000250	    fetch(`/api/editable-layers/${networkLayerId}/attributes`)
+000251	      .then(r => r.ok ? r.json() : [])
+000252	      .then((attrs: string[]) => setNetworkAttributes(attrs))
+000253	      .catch(() => setNetworkAttributes([]));
+000254	  }, [networkLayerId]);
+000255	
+000256	  useEffect(() => {
+000257	    if (!open) {
+000258	      setResult(null);
+000259	      setSelectedSegmentId(null);
+000260	      onHighlightSegment(null);
+000261	    }
+000262	  }, [open]);
+000263	
+000264	  const lineLayerTypes = ["LineString", "MultiLineString", "line", "polyline"];
+000265	  const pointLayerTypes = ["Point", "MultiPoint", "point"];
+000266	
+000267	  const networkLayers = editableLayers.filter(l =>
+000268	    lineLayerTypes.some(t => l.geometryType?.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase() === l.geometryType?.toLowerCase())
+000269	  );
+000270	  const accidentLayers = editableLayers.filter(l =>
+000271	    pointLayerTypes.some(t => l.geometryType?.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase() === l.geometryType?.toLowerCase())
+000272	  );
+000273	
+000274	  const analysisMutation = useMutation({
+000275	    mutationFn: async () => {
+000276	      const body: Record<string, unknown> = {
+000277	        networkLayerId,
+000278	        accidentLayerId,
+000279	        maxDistanceMeters: maxDistance,
+000280	      };
+000281	      if (filterEnabled && attributeFilter.field && attributeFilter.value) {
+000282	        body.attributeFilter = attributeFilter;
+000283	      }
+000284	      const res = await apiRequest("POST", "/api/analytics/accident-analysis", body);
+000285	      return res.json();
+000286	    },
+000287	    onSuccess: (data: AccidentAnalysisResult) => {
+000288	      setResult(data);
+000289	      setSelectedSegmentId(null);
+000290	      onHighlightSegment(null);
+000291	      if (data.segments.length === 0) {
+000292	        toast({ title: "Аварии не привязаны", description: "Ни одна авария не попала в зону привязки к сетям.", variant: "destructive" });
+000293	      }
+000294	    },
+000295	    onError: (err: any) => {
+000296	      toast({ title: "Ошибка анализа", description: err.message || "Не удалось выполнить анализ", variant: "destructive" });
+000297	    },
+000298	  });
+000299	
+000300	  const handleSegmentClick = (segment: AccidentSegmentResult) => {
+000301	    setSelectedSegmentId(segment.featureId);
+000302	    onHighlightSegment(segment);
+000303	  };
+000304	
+000305	  const handleExportExcel = async () => {
+000306	    if (!result) return;
+000307	    try {
+000308	      const ExcelJS = await import("exceljs");
+000309	      const workbook = new ExcelJS.Workbook();
+000310	      const ws = workbook.addWorksheet("Анализ аварийности");
+000311	      ws.columns = [
+000312	        { header: "№", key: "rank", width: 6 },
+000313	        { header: "Sys", key: "sys", width: 14 },
+000314	        { header: "Участок (от)", key: "begin", width: 20 },
+000315	        { header: "Участок (до)", key: "end", width: 20 },
+000316	        { header: "L (м)", key: "l", width: 12 },
+000317	        { header: "Dpod", key: "dpod", width: 12 },
+000318	        { header: "Dobr", key: "dobr", width: 12 },
+000319	        { header: "Кол-во аварий", key: "count", width: 15 },
+000320	      ];
+000321	      ws.getRow(1).font = { bold: true };
+000322	      result.segments.forEach((seg, idx) => {
+000323	        ws.addRow({
+000324	          rank: idx + 1,
+000325	          sys: seg.sys ?? "",
+000326	          begin: seg.beginUch ?? "",
+000327	          end: seg.endUch ?? "",
+000328	          l: seg.length ?? "",
+000329	          dpod: seg.dpod ?? "",
+000330	          dobr: seg.dobr ?? "",
+000331	          count: seg.accidentCount,
+000332	        });
+000333	      });
+000334	      const metaWs = workbook.addWorksheet("Метаданные");
+000335	      metaWs.columns = [{ header: "Параметр", key: "p", width: 30 }, { header: "Значение", key: "v", width: 40 }];
+000336	      metaWs.getRow(1).font = { bold: true };
+000337	      metaWs.addRow({ p: "Дата анализа", v: new Date().toLocaleString("ru-RU") });
+000338	      metaWs.addRow({ p: "Слой сетей", v: result.networkLayerName });
+000339	      metaWs.addRow({ p: "Слой аварий", v: result.accidentLayerName });
+000340	      metaWs.addRow({ p: "Порог расстояния (м)", v: maxDistance });
+000341	      metaWs.addRow({ p: "Всего аварий", v: result.totalAccidents });
+000342	      metaWs.addRow({ p: "Привязано", v: result.boundAccidents });
+000343	      metaWs.addRow({ p: "Не привязано", v: result.unboundAccidents });
+000344	      const buf = await workbook.xlsx.writeBuffer();
+000345	      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+000346	      const url = URL.createObjectURL(blob);
+000347	      const a = document.createElement("a");
+000348	      a.href = url;
+000349	      a.download = `accident_analysis_${Date.now()}.xlsx`;
+000350	      a.click();
+000351	      URL.revokeObjectURL(url);
+000352	    } catch (e) {
+000353	      toast({ title: "Ошибка экспорта", description: "Не удалось создать файл Excel", variant: "destructive" });
+000354	    }
+000355	  };
+000356	
+000357	  const handleSaveToLayer = async () => {
+000358	    if (!result || !saveLayerId) return;
+000359	    setIsSaving(true);
+000360	    try {
+000361	      const res = await fetch("/api/analytics/accident-analysis/save-buffer", {
+000362	        method: "POST",
+000363	        headers: { "Content-Type": "application/json" },
+000364	        credentials: "include",
+000365	        body: JSON.stringify({
+000366	          segments: result.segments,
+000367	          targetLayerId: saveLayerId,
+000368	          bufferMeters: 5,
+000369	        }),
+000370	      });
+000371	      const data = await res.json().catch(() => ({}));
+000372	      if (!res.ok) throw new Error(data.message || `Ошибка ${res.status}`);
+000373	      toast({ title: "Сохранено", description: `${data.saved} полигонов сохранено в слой${data.errors > 0 ? ` (ошибок: ${data.errors})` : ""}` });
+000374	      setShowSavePopover(false);
+000375	      window.dispatchEvent(new Event("viewport-features-invalidate"));
+000376	    } catch (e: any) {
+000377	      toast({ title: "Ошибка сохранения", description: e.message || "Не удалось сохранить в слой", variant: "destructive" });
+000378	    } finally {
+000379	      setIsSaving(false);
+000380	    }
+000381	  };
+000382	
+000383	  const polygonLayers = editableLayers.filter(l =>
+000384	    l.geometryType?.toLowerCase().includes("polygon")
+000385	  );
+000386	  const saveTargetLayers = polygonLayers.length > 0 ? polygonLayers : editableLayers;
+000387	
+000388	  const canRun = networkLayerId !== null && accidentLayerId !== null;
+000389	
+000390	  if (!open) return null;
+000391	
+000392	  const formatVal = (val: string | number | null) => {
+000393	    if (val === null || val === undefined || val === "") return "—";
+000394	    return String(val);
+000395	  };
+000396	
+000397	  return (
+000398	    <div
+000399	      className="fixed z-50 w-[420px] bg-background border border-border rounded-lg shadow-2xl flex flex-col"
+000400	      style={{ left: position.x, top: position.y, maxHeight: "calc(100vh - 100px)" }}
+000401	      data-testid="accident-analysis-dialog"
+000402	    >
+000403	      <div
+000404	        className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40 rounded-t-lg cursor-grab select-none"
+000405	        onMouseDown={handleMouseDown}
+000406	      >
+000407	        <div className="flex items-center gap-2">
+000408	          <GripHorizontal className="h-4 w-4 text-muted-foreground" />
+000409	          <Zap className="h-4 w-4 text-orange-500" />
+000410	          <span className="font-semibold text-sm">Анализ аварийности</span>
+000411	        </div>
+000412	        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onOpenChange(false)} data-testid="button-close-accident-dialog">
+000413	          <X className="h-3.5 w-3.5" />
+000414	        </Button>
+000415	      </div>
+000416	
+000417	      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+000418	        <div className="space-y-3">
+000419	          <div className="space-y-1.5">
+000420	            <Label className="text-xs font-medium">Слой сетей (линии)</Label>
+000421	            <Select
+000422	              value={networkLayerId !== null ? String(networkLayerId) : ""}
+000423	              onValueChange={v => { setNetworkLayerId(Number(v)); setResult(null); setSelectedSegmentId(null); onHighlightSegment(null); }}
+000424	            >
+000425	              <SelectTrigger data-testid="select-network-layer" className="h-8 text-xs">
+000426	                <SelectValue placeholder="Выберите слой сетей..." />
+000427	              </SelectTrigger>
+000428	              <SelectContent>
+000429	                {networkLayers.length === 0 && (
+000430	                  <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>
+000431	                )}
+000432	                {networkLayers.map(l => (
+000433	                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+000434	                ))}
+000435	              </SelectContent>
+000436	            </Select>
+000437	          </div>
+000438	
+000439	          {networkLayerId !== null && (
+000440	            <div className="space-y-1.5 border border-border rounded-md p-2.5 bg-muted/20">
+000441	              <div className="flex items-center justify-between">
+000442	                <div className="flex items-center gap-1.5">
+000443	                  <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+000444	                  <span className="text-xs font-medium text-muted-foreground">Фильтр объектов сети</span>
+000445	                </div>
+000446	                <Button
+000447	                  variant={filterEnabled ? "default" : "outline"}
+000448	                  size="sm"
+000449	                  className="h-6 text-xs px-2"
+000450	                  onClick={() => {
+000451	                    setFilterEnabled(prev => !prev);
+000452	                    if (filterEnabled) setAttributeFilter({ field: "", value: "" });
+000453	                  }}
+000454	                  data-testid="button-toggle-filter"
+000455	                >
+000456	                  {filterEnabled ? "Убрать фильтр" : "Добавить фильтр"}
+000457	                </Button>
+000458	              </div>
+000459	              {filterEnabled && (
+000460	                <div className="flex gap-2 mt-2">
+000461	                  <div className="flex-1 space-y-1">
+000462	                    <Label className="text-xs">Столбец</Label>
+000463	                    <Select
+000464	                      value={attributeFilter.field}
+000465	                      onValueChange={v => setAttributeFilter(prev => ({ ...prev, field: v }))}
+000466	                    >
+000467	                      <SelectTrigger className="h-7 text-xs" data-testid="select-filter-field">
+000468	                        <SelectValue placeholder="Атрибут..." />
+000469	                      </SelectTrigger>
+000470	                      <SelectContent>
+000471	                        {networkAttributes.map(attr => (
+000472	                          <SelectItem key={attr} value={attr}>{attr}</SelectItem>
+000473	                        ))}
+000474	                      </SelectContent>
+000475	                    </Select>
+000476	                  </div>
+000477	                  <div className="w-28 space-y-1">
+000478	                    <Label className="text-xs">Значение</Label>
+000479	                    <Input
+000480	                      className="h-7 text-xs"
+000481	                      placeholder="например: 1"
+000482	                      value={attributeFilter.value}
+000483	                      onChange={e => setAttributeFilter(prev => ({ ...prev, value: e.target.value }))}
+000484	                      data-testid="input-filter-value"
+000485	                    />
+000486	                  </div>
+000487	                </div>
+000488	              )}
+000489	            </div>
+000490	          )}
+000491	
+000492	          <div className="space-y-1.5">
+000493	            <Label className="text-xs font-medium">Слой аварий (точки)</Label>
+000494	            <Select
+000495	              value={accidentLayerId !== null ? String(accidentLayerId) : ""}
+000496	              onValueChange={v => { setAccidentLayerId(Number(v)); setResult(null); setSelectedSegmentId(null); onHighlightSegment(null); }}
+000497	            >
+000498	              <SelectTrigger data-testid="select-accident-layer" className="h-8 text-xs">
+000499	                <SelectValue placeholder="Выберите слой аварий..." />
+000500	              </SelectTrigger>
+000501	              <SelectContent>
+000502	                {accidentLayers.length === 0 && (
+000503	                  <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>
+000504	                )}
+000505	                {accidentLayers.map(l => (
+000506	                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+000507	                ))}
+000508	              </SelectContent>
+000509	            </Select>
+000510	          </div>
+000511	
+000512	          <div className="space-y-1.5">
+000513	            <Label className="text-xs font-medium">Макс. расстояние привязки (м)</Label>
+000514	            <Input
+000515	              type="number"
+000516	              min={1}
+000517	              max={5000}
+000518	              value={maxDistance}
+000519	              onChange={e => setMaxDistance(Number(e.target.value))}
+000520	              className="h-8 text-xs"
+000521	              data-testid="input-max-distance"
+000522	            />
+000523	          </div>
+000524	        </div>
+000525	
+000526	        <Button
+000527	          className="w-full h-8 text-xs"
+000528	          disabled={!canRun || analysisMutation.isPending}
+000529	          onClick={() => analysisMutation.mutate()}
+000530	          data-testid="button-run-accident-analysis"
+000531	        >
+000532	          {analysisMutation.isPending ? (
+000533	            <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Анализ...</>
+000534	          ) : (
+000535	            <><Zap className="h-3.5 w-3.5 mr-2" />Запустить анализ</>
+000536	          )}
+000537	        </Button>
+000538	
+000539	        {result && (
+000540	          <div className="space-y-3">
+000541	            <div className="flex items-center flex-wrap gap-2">
+000542	              <Badge variant="outline" data-testid="badge-total">Аварий: {result.totalAccidents}</Badge>
+000543	              <Badge variant="secondary" data-testid="badge-bound">Привязано: {result.boundAccidents}</Badge>
+000544	              {result.unboundAccidents > 0 && (
+000545	                <Badge variant="destructive" data-testid="badge-unbound">Не привязано: {result.unboundAccidents}</Badge>
+000546	              )}
+000547	            </div>
+000548	            <div className="flex items-center justify-between">
+000549	              <span className="text-xs text-muted-foreground">
+000550	                Участков с авариями: {result.segmentsWithAccidents}
+000551	              </span>
+000552	              <div className="flex items-center gap-1">
+000553	                <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
+000554	                  <Download className="h-3 w-3" />
+000555	                  Excel
+000556	                </Button>
+000557	                <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
+000558	                  <PopoverTrigger asChild>
+000559	                    <Button variant="outline" size="sm" className="h-6 text-xs gap-1" data-testid="button-save-to-layer">
+000560	                      <Layers className="h-3 w-3" />
+000561	                      В слой
+000562	                    </Button>
+000563	                  </PopoverTrigger>
+000564	                  <PopoverContent className="w-64 p-3" align="end">
+000565	                    <div className="space-y-2">
+000566	                      <p className="text-xs font-medium">Сохранить буферизованные полигоны (±5 м)</p>
+000567	                      <Select value={saveLayerId ? String(saveLayerId) : ""} onValueChange={v => setSaveLayerId(Number(v))}>
+000568	                        <SelectTrigger className="h-7 text-xs" data-testid="select-save-layer">
+000569	                          <SelectValue placeholder="Выберите слой..." />
+000570	                        </SelectTrigger>
+000571	                        <SelectContent>
+000572	                          {saveTargetLayers.map(l => (
+000573	                            <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+000574	                          ))}
+000575	                        </SelectContent>
+000576	                      </Select>
+000577	                      <Button
+000578	                        size="sm"
+000579	                        className="w-full h-7 text-xs"
+000580	                        disabled={!saveLayerId || isSaving}
+000581	                        onClick={handleSaveToLayer}
+000582	                        data-testid="button-confirm-save-to-layer"
+000583	                      >
+000584	                        {isSaving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Сохранение...</> : "Сохранить"}
+000585	                      </Button>
+000586	                    </div>
+000587	                  </PopoverContent>
+000588	                </Popover>
+000589	              </div>
+000590	            </div>
+000591	
+000592	            {result.segments.length === 0 ? (
+000593	              <div className="text-center py-6 text-muted-foreground text-xs">
+000594	                <AlertOctagon className="h-8 w-8 mx-auto mb-2 opacity-40" />
+000595	                Нет участков с привязанными авариями
+000596	              </div>
+000597	            ) : (
+000598	              <div className="space-y-1.5">
+000599	                {result.segments.map((seg, idx) => (
+000600	                  <div
+000601	                    key={seg.featureId}
+000602	                    className={`text-xs border rounded-md p-2 space-y-1 cursor-pointer transition-colors ${
+000603	                      selectedSegmentId === seg.featureId
+000604	                        ? "bg-primary/10 border-primary/30"
+000605	                        : "hover:bg-muted/40"
+000606	                    }`}
+000607	                    onClick={() => handleSegmentClick(seg)}
+000608	                    data-testid={`card-segment-${seg.featureId}`}
+000609	                  >
+000610	                    <div className="flex items-center justify-between gap-2">
+000611	                      <div className="flex items-center gap-1.5 min-w-0">
+000612	                        <span className="text-muted-foreground shrink-0">{idx + 1}.</span>
+000613	                        <span className="font-medium truncate">
+000614	                          {seg.sys ? `${seg.sys} ` : ""}
+000615	                          {seg.beginUch && seg.endUch
+000616	                            ? `${seg.beginUch} — ${seg.endUch}`
+000617	                            : seg.beginUch || seg.endUch || `Участок #${seg.featureId}`}
+000618	                        </span>
+000619	                      </div>
+000620	                      <Badge variant="destructive" className="shrink-0" data-testid={`badge-count-${seg.featureId}`}>
+000621	                        {seg.accidentCount} ав.
+000622	                      </Badge>
+000623	                    </div>
+000624	                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground pl-4">
+000625	                      {(seg.dpod !== null && seg.dpod !== "") && (
+000626	                        <span data-testid={`text-dpod-${seg.featureId}`}>
+000627	                          <span className="font-medium">Dpod:</span> {formatVal(seg.dpod)}
+000628	                        </span>
+000629	                      )}
+000630	                      {(seg.dobr !== null && seg.dobr !== "") && (
+000631	                        <span data-testid={`text-dobr-${seg.featureId}`}>
+000632	                          <span className="font-medium">Dobr:</span> {formatVal(seg.dobr)}
+000633	                        </span>
+000634	                      )}
+000635	                      {(seg.length !== null && seg.length !== "") && (
+000636	                        <span className="flex items-center gap-0.5" data-testid={`text-length-${seg.featureId}`}>
+000637	                          <Ruler className="h-3 w-3" />
+000638	                          {formatVal(seg.length)} м
+000639	                        </span>
+000640	                      )}
+000641	                    </div>
+000642	                    <Button
+000643	                      size="sm"
+000644	                      variant={selectedSegmentId === seg.featureId ? "default" : "outline"}
+000645	                      className="w-full h-6 gap-1 mt-0.5"
+000646	                      onClick={e => { e.stopPropagation(); handleSegmentClick(seg); }}
+000647	                      data-testid={`button-show-segment-${seg.featureId}`}
+000648	                    >
+000649	                      <MapPin className="h-3 w-3" />
+000650	                      Показать на карте
+000651	                    </Button>
+000652	                  </div>
+000653	                ))}
+000654	              </div>
+000655	            )}
+000656	          </div>
+000657	        )}
+000658	      </div>
+000659	    </div>
+000660	  );
+000661	}
+000662	
+000663	export type { AccidentSegmentResult, AccidentAnalysisResult };
+000664	
+000665	// ============================================================
+000666	// Файл: client/src/components/ai-chat-panel.tsx
+000667	// ============================================================
+000668	import { useState, useRef, useEffect } from "react";
+000669	import { Button } from "@/components/ui/button";
+000670	import { Textarea } from "@/components/ui/textarea";
+000671	import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search } from "lucide-react";
+000672	import {
+000673	  DropdownMenu,
+000674	  DropdownMenuContent,
+000675	  DropdownMenuItem,
+000676	  DropdownMenuTrigger,
+000677	} from "@/components/ui/dropdown-menu";
+000678	
+000679	export interface ChatAction {
+000680	  type:
+000681	    | "start_complaint_analysis"
+000682	    | "show_complaint_result"
+000683	    | "simulation_candidates"
+000684	    | "run_simulation"
+000685	    | "show_simulation_result"
+000686	    | "start_accident_analysis"
+000687	    | "show_accident_result";
+000688	  label: string;
+000689	  payload?: any;
+000690	  done?: boolean;
+000691	}
+000692	
+000693	export interface ChatMessage {
+000694	  id: string;
+000695	  role: "user" | "assistant";
+000696	  content: string;
+000697	  timestamp: Date;
+000698	  action?: ChatAction;
+000699	}
+000700	
+000701	interface AiProvider {
+000702	  id: string;
+000703	  name: string;
+000704	  available: boolean;
+000705	}
+000706	
+000707	interface ProvidersResponse {
+000708	  enabled: boolean;
+000709	  providers: AiProvider[];
+000710	  default: string | null;
+000711	}
+000712	
+000713	const WELCOME_MESSAGE: ChatMessage = {
+000714	  id: "welcome",
+000715	  role: "assistant",
+000716	  content: "Здравствуйте! Я ИИ-агент ГИС МО \"Инженерные сети\". Задайте интересующий вас вопрос.",
+000717	  timestamp: new Date(),
+000718	};
+000719	
+000720	interface AiChatPanelProps {
+000721	  onBack: () => void;
+000722	  messages: ChatMessage[];
+000723	  onMessagesChange: (messages: ChatMessage[]) => void;
+000724	  sceneId?: number | null;
+000725	  onComplaintAnalysisResult?: (result: any) => void;
+000726	  onSimulationResult?: (result: any, featureInfo: { featureId: number; layerId: number; name: string; featureType: string }) => void;
+000727	  onAccidentAnalysisResult?: (result: any) => void;
+000728	}
+000729	
+000730	const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
+000731	const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^:\]]+):([^\]]*)\]/;
+000732	const ACCIDENT_ANALYSIS_REGEX = /\[ACTION:ACCIDENT_ANALYSIS:([^:\]]*):([^\]]*)\]/;
+000733	
+000734	export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult }: AiChatPanelProps) {
+000735	  const [input, setInput] = useState("");
+000736	  const [isLoading, setIsLoading] = useState(false);
+000737	  const [isAnalyzing, setIsAnalyzing] = useState(false);
+000738	  const [providers, setProviders] = useState<AiProvider[]>([]);
+000739	  const [selectedProvider, setSelectedProvider] = useState<string>("");
+000740	  const [aiEnabled, setAiEnabled] = useState(true);
+000741	  const [providersLoaded, setProvidersLoaded] = useState(false);
+000742	  const scrollRef = useRef<HTMLDivElement>(null);
+000743	  const textareaRef = useRef<HTMLTextAreaElement>(null);
+000744	
+000745	  useEffect(() => {
+000746	    fetch("/api/ai/providers")
+000747	      .then(r => r.json())
+000748	      .then((data: ProvidersResponse) => {
+000749	        setAiEnabled(data.enabled);
+000750	        if (data.providers) setProviders(data.providers);
+000751	        if (data.default) setSelectedProvider(data.default);
+000752	        setProvidersLoaded(true);
+000753	      })
+000754	      .catch(() => {
+000755	        setProvidersLoaded(true);
+000756	      });
+000757	  }, []);
+000758	
+000759	  useEffect(() => {
+000760	    if (scrollRef.current) {
+000761	      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+000762	    }
+000763	  }, [messages]);
+000764	
+000765	  const isDisabled = !aiEnabled || providers.length === 0;
+000766	
+000767	  const handleSend = async () => {
+000768	    const text = input.trim();
+000769	    if (!text || isLoading || isDisabled) return;
+000770	
+000771	    const userMsg: ChatMessage = {
+000772	      id: `user-${Date.now()}`,
+000773	      role: "user",
+000774	      content: text,
+000775	      timestamp: new Date(),
+000776	    };
+000777	    const updatedMessages = [...messages, userMsg];
+000778	    onMessagesChange(updatedMessages);
+000779	    setInput("");
+000780	    setIsLoading(true);
+000781	
+000782	    try {
+000783	      const allMessages = updatedMessages.filter(m => m.id !== "welcome" && !m.action);
+000784	      const apiMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
+000785	
+000786	      const response = await fetch("/api/ai/chat", {
+000787	        method: "POST",
+000788	        headers: { "Content-Type": "application/json" },
+000789	        body: JSON.stringify({ messages: apiMessages, provider: selectedProvider, sceneId: sceneId || undefined }),
+000790	      });
+000791	      const data = await response.json();
+000792	      if (!response.ok) {
+000793	        if (response.status === 403) {
+000794	          throw new Error(data.error || "ИИ-агент отключён администратором системы");
+000795	        }
+000796	        throw new Error(data.error || `Ошибка сервера: ${response.status}`);
+000797	      }
+000798	
+000799	      let aiContent = data.content || "Нет ответа от модели";
+000800	      const complaintMatch = aiContent.match(ACTION_MARKER_REGEX);
+000801	      const simulationMatch = aiContent.match(SIMULATION_SEARCH_REGEX);
+000802	      const accidentMatch = aiContent.match(ACCIDENT_ANALYSIS_REGEX);
+000803	
+000804	      const newMessages = [...updatedMessages];
+000805	
+000806	      if (complaintMatch) {
+000807	        const layerId = parseInt(complaintMatch[1]);
+000808	        const dateField = complaintMatch[2];
+000809	        const addressField = complaintMatch[3] && complaintMatch[3] !== "_none_" ? complaintMatch[3] : "";
+000810	        aiContent = aiContent.replace(ACTION_MARKER_REGEX, "").trim();
+000811	
+000812	        const aiMsg: ChatMessage = {
+000813	          id: `ai-${Date.now()}`,
+000814	          role: "assistant",
+000815	          content: aiContent,
+000816	          timestamp: new Date(),
+000817	        };
+000818	        newMessages.push(aiMsg);
+000819	
+000820	        const actionMsg: ChatMessage = {
+000821	          id: `action-${Date.now()}`,
+000822	          role: "assistant",
+000823	          content: "",
+000824	          timestamp: new Date(),
+000825	          action: {
+000826	            type: "start_complaint_analysis",
+000827	            label: "Начать анализ",
+000828	            payload: { layerId, dateField, addressField },
+000829	          },
+000830	        };
+000831	        newMessages.push(actionMsg);
+000832	      } else if (simulationMatch) {
+000833	        const searchQuery = simulationMatch[1].trim();
+000834	        const networkType = simulationMatch[2] && simulationMatch[2] !== "_any_" ? simulationMatch[2].trim() : "";
+000835	        aiContent = aiContent.replace(SIMULATION_SEARCH_REGEX, "").trim();
+000836	
+000837	        const aiMsg: ChatMessage = {
+000838	          id: `ai-${Date.now()}`,
+000839	          role: "assistant",
+000840	          content: aiContent,
+000841	          timestamp: new Date(),
+000842	        };
+000843	        newMessages.push(aiMsg);
+000844	        onMessagesChange([...newMessages]);
+000845	
+000846	        const searchingMsg: ChatMessage = {
+000847	          id: `searching-${Date.now()}`,
+000848	          role: "assistant",
+000849	          content: `Ищу объект: "${searchQuery}"...`,
+000850	          timestamp: new Date(),
+000851	        };
+000852	        onMessagesChange([...newMessages, searchingMsg]);
+000853	
+000854	        try {
+000855	          const sid = sceneId || 0;
+000856	          const ntParam = networkType ? `&networkType=${encodeURIComponent(networkType)}` : "";
+000857	          const searchResp = await fetch(`/api/ai/search-features?sceneId=${sid}&query=${encodeURIComponent(searchQuery)}${ntParam}`);
+000858	          const candidates: Array<{ featureId: number; layerId: number; layerName: string; featureName: string; featureAddress: string }> = await searchResp.json();
+000859	
+000860	          const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
+000861	
+000862	          if (!candidates || candidates.length === 0) {
+000863	            finalMessages.push({
+000864	              id: `notfound-${Date.now()}`,
+000865	              role: "assistant",
+000866	              content: `Объект не найден по запросу "${searchQuery}". Уточните название, адрес или тип объекта.`,
+000867	              timestamp: new Date(),
+000868	            });
+000869	            onMessagesChange(finalMessages);
+000870	          } else {
+000871	            const exactMatches = candidates.filter(c =>
+000872	              c.featureName.toLowerCase() === searchQuery.toLowerCase()
+000873	            );
+000874	            const displayCandidates = exactMatches.length > 0 ? exactMatches : candidates;
+000875	
+000876	            if (exactMatches.length === 1) {
+000877	              const c = exactMatches[0];
+000878	              finalMessages.push({
+000879	                id: `autorun-${Date.now()}`,
+000880	                role: "assistant",
+000881	                content: `Найден объект: ${c.featureName} — ${c.layerName}. Запускаю симуляцию...`,
+000882	                timestamp: new Date(),
+000883	              });
+000884	              onMessagesChange(finalMessages);
+000885	              await runSimulation(c.featureId, c.layerId, c.featureName, c.layerName, finalMessages);
+000886	            } else if (displayCandidates.length === 1) {
+000887	              const c = displayCandidates[0];
+000888	              const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
+000889	              finalMessages.push({
+000890	                id: `action-${Date.now()}`,
+000891	                role: "assistant",
+000892	                content: `Найден объект: ${label}`,
+000893	                timestamp: new Date(),
+000894	                action: {
+000895	                  type: "run_simulation",
+000896	                  label: "Запустить симуляцию",
+000897	                  payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
+000898	                },
+000899	              });
+000900	              onMessagesChange(finalMessages);
+000901	            } else {
+000902	              const candidateActions = displayCandidates.slice(0, 5).map((c, i) => {
+000903	                const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
+000904	                return {
+000905	                  id: `candidate-${Date.now()}-${i}`,
+000906	                  role: "assistant" as const,
+000907	                  content: i === 0 ? `Найдено несколько объектов. Выберите нужный:` : "",
+000908	                  timestamp: new Date(),
+000909	                  action: {
+000910	                    type: "run_simulation" as const,
+000911	                    label,
+000912	                    payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
+000913	                  },
+000914	                };
+000915	              });
+000916	              finalMessages.push(...candidateActions);
+000917	              onMessagesChange(finalMessages);
+000918	            }
+000919	          }
+000920	        } catch {
+000921	          const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
+000922	          finalMessages.push({
+000923	            id: `error-${Date.now()}`,
+000924	            role: "assistant",
+000925	            content: "Ошибка поиска объекта. Попробуйте ещё раз.",
+000926	            timestamp: new Date(),
+000927	          });
+000928	          onMessagesChange(finalMessages);
+000929	        }
+000930	
+000931	        return;
+000932	      } else if (accidentMatch) {
+000933	        const zMode = accidentMatch[1] || "";
+000934	        const dpodMin = accidentMatch[2] || "";
+000935	        aiContent = aiContent.replace(ACCIDENT_ANALYSIS_REGEX, "").trim();
+000936	
+000937	        const aiMsg: ChatMessage = {
+000938	          id: `ai-${Date.now()}`,
+000939	          role: "assistant",
+000940	          content: aiContent,
+000941	          timestamp: new Date(),
+000942	        };
+000943	        newMessages.push(aiMsg);
+000944	
+000945	        const actionMsg: ChatMessage = {
+000946	          id: `action-${Date.now()}`,
+000947	          role: "assistant",
+000948	          content: "",
+000949	          timestamp: new Date(),
+000950	          action: {
+000951	            type: "start_accident_analysis",
+000952	            label: "Запустить анализ аварийности",
+000953	            payload: { zMode, dpodMin },
+000954	          },
+000955	        };
+000956	        newMessages.push(actionMsg);
+000957	      } else {
+000958	        const aiMsg: ChatMessage = {
+000959	          id: `ai-${Date.now()}`,
+000960	          role: "assistant",
+000961	          content: aiContent,
+000962	          timestamp: new Date(),
+000963	        };
+000964	        newMessages.push(aiMsg);
+000965	      }
+000966	
+000967	      onMessagesChange(newMessages);
+000968	    } catch (error: any) {
+000969	      const errorMsg: ChatMessage = {
+000970	        id: `error-${Date.now()}`,
+000971	        role: "assistant",
+000972	        content: `Ошибка: ${error.message || "Не удалось получить ответ от ИИ"}`,
+000973	        timestamp: new Date(),
+000974	      };
+000975	      onMessagesChange([...updatedMessages, errorMsg]);
+000976	    } finally {
+000977	      setIsLoading(false);
+000978	    }
+000979	  };
+000980	
+000981	  const runSimulation = async (
+000982	    featureId: number,
+000983	    layerId: number,
+000984	    featureName: string,
+000985	    layerName: string,
+000986	    currentMessages: ChatMessage[],
+000987	  ) => {
+000988	    const loadingMsg: ChatMessage = {
+000989	      id: `simulating-${Date.now()}`,
+000990	      role: "assistant",
+000991	      content: `Симулирую отключение объекта "${featureName}"...`,
+000992	      timestamp: new Date(),
+000993	    };
+000994	    onMessagesChange([...currentMessages, loadingMsg]);
+000995	    setIsAnalyzing(true);
+000996	
+000997	    try {
+000998	      const sid = sceneId || 0;
+000999	      const response = await fetch("/api/ai/run-simulation", {
+001000	        method: "POST",
+001001	        headers: { "Content-Type": "application/json" },
+001002	        body: JSON.stringify({ featureId, layerId, sceneId: sid }),
+001003	      });
+001004	      const data = await response.json();
+001005	
+001006	      if (!response.ok) {
+001007	        throw new Error(data.error || "Ошибка симуляции");
+001008	      }
+001009	
+001010	      const consumers = data.stats?.totalConsumers ?? 0;
+001011	      const segments = data.stats?.totalSegments ?? 0;
+001012	      const ctps = data.stats?.totalCTPs ?? 0;
+001013	
+001014	      const resultMsg: ChatMessage = {
+001015	        id: `sim-result-${Date.now()}`,
+001016	        role: "assistant",
+001017	        content: `Симуляция завершена. При отключении "${featureName}" (${layerName}) затронуто: потребителей — ${consumers}, участков сети — ${segments}, ЦТП — ${ctps}.`,
+001018	        timestamp: new Date(),
+001019	        action: {
+001020	          type: "show_simulation_result",
+001021	          label: "Показать результаты",
+001022	          payload: { result: data, featureId, layerId, featureName },
+001023	        },
+001024	      };
+001025	
+001026	      const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+001027	      onMessagesChange([...finalMessages, resultMsg]);
+001028	    } catch (error: any) {
+001029	      const errorMsg: ChatMessage = {
+001030	        id: `error-${Date.now()}`,
+001031	        role: "assistant",
+001032	        content: `Ошибка симуляции: ${error.message}`,
+001033	        timestamp: new Date(),
+001034	      };
+001035	      const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+001036	      onMessagesChange([...finalMessages, errorMsg]);
+001037	    } finally {
+001038	      setIsAnalyzing(false);
+001039	    }
+001040	  };
+001041	
+001042	  const handleActionClick = async (msg: ChatMessage) => {
+001043	    if (!msg.action || msg.action.done) return;
+001044	
+001045	    if (msg.action.type === "start_complaint_analysis") {
+001046	      const { layerId, dateField, addressField } = msg.action.payload;
+001047	
+001048	      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
+001049	      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
+001050	
+001051	      const loadingMsg: ChatMessage = {
+001052	        id: `analyzing-${Date.now()}`,
+001053	        role: "assistant",
+001054	        content: "Анализирую жалобы...",
+001055	        timestamp: new Date(),
+001056	      };
+001057	      onMessagesChange([...currentMessages, loadingMsg]);
+001058	      setIsAnalyzing(true);
+001059	
+001060	      try {
+001061	        const response = await fetch("/api/ai/run-complaint-analysis", {
+001062	          method: "POST",
+001063	          headers: { "Content-Type": "application/json" },
+001064	          body: JSON.stringify({ layerId, dateField, addressField }),
+001065	        });
+001066	        const data = await response.json();
+001067	
+001068	        if (!response.ok) {
+001069	          throw new Error(data.error || "Ошибка анализа");
+001070	        }
+001071	
+001072	        const clusterCount = data.clusters?.length || 0;
+001073	        const totalComplaints = data.totalComplaints || 0;
+001074	
+001075	        const resultMsg: ChatMessage = {
+001076	          id: `result-${Date.now()}`,
+001077	          role: "assistant",
+001078	          content: `Анализ завершён. Обработано жалоб: ${totalComplaints}. Найдено кластеров: ${clusterCount}.`,
+001079	          timestamp: new Date(),
+001080	          action: {
+001081	            type: "show_complaint_result",
+001082	            label: "Показать результат",
+001083	            payload: data,
+001084	          },
+001085	        };
+001086	
+001087	        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+001088	        onMessagesChange([...finalMessages, resultMsg]);
+001089	      } catch (error: any) {
+001090	        const errorMsg: ChatMessage = {
+001091	          id: `error-${Date.now()}`,
+001092	          role: "assistant",
+001093	          content: `Ошибка анализа: ${error.message}`,
+001094	          timestamp: new Date(),
+001095	        };
+001096	        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+001097	        onMessagesChange([...finalMessages, errorMsg]);
+001098	      } finally {
+001099	        setIsAnalyzing(false);
+001100	      }
+001101	    } else if (msg.action.type === "show_complaint_result") {
+001102	      if (onComplaintAnalysisResult && msg.action.payload) {
+001103	        onComplaintAnalysisResult(msg.action.payload);
+001104	      }
+001105	    } else if (msg.action.type === "run_simulation") {
+001106	      const { featureId, layerId, featureName, layerName } = msg.action.payload;
+001107	      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
+001108	      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
+001109	      await runSimulation(featureId, layerId, featureName, layerName, currentMessages);
+001110	    } else if (msg.action.type === "show_simulation_result") {
+001111	      if (onSimulationResult && msg.action.payload) {
+001112	        const { result, featureId, layerId, featureName } = msg.action.payload;
+001113	        onSimulationResult(result, {
+001114	          featureId,
+001115	          layerId,
+001116	          name: featureName,
+001117	          featureType: result?.failurePoint?.type || "Point",
+001118	        });
+001119	      }
+001120	    } else if (msg.action.type === "start_accident_analysis") {
+001121	      const { zMode, dpodMin } = msg.action.payload || {};
+001122	      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
+001123	      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
+001124	      setIsAnalyzing(true);
+001125	      try {
+001126	        const res = await fetch("/api/ai/run-accident-analysis", {
+001127	          method: "POST",
+001128	          headers: { "Content-Type": "application/json" },
+001129	          credentials: "include",
+001130	          body: JSON.stringify({ zMode, dpodMin, sceneId }),
+001131	        });
+001132	        const data = await res.json();
+001133	        if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
+001134	
+001135	        const top = data.segments?.[0];
+001136	        const topInfo = top
+001137	          ? `. Наиболее проблемный участок: ${top.beginUch ?? "—"}–${top.endUch ?? "—"}, ${top.accidentCount} аварий`
+001138	          : "";
+001139	        const summaryText = `Анализ завершён. Аварий: ${data.totalAccidents}. Привязано: ${data.boundAccidents}${topInfo}.`;
+001140	
+001141	        const summaryMsg: ChatMessage = {
+001142	          id: `ai-${Date.now()}`,
+001143	          role: "assistant",
+001144	          content: summaryText,
+001145	          timestamp: new Date(),
+001146	        };
+001147	        const resultActionMsg: ChatMessage = {
+001148	          id: `action-${Date.now() + 1}`,
+001149	          role: "assistant",
+001150	          content: "",
+001151	          timestamp: new Date(),
+001152	          action: {
+001153	            type: "show_accident_result",
+001154	            label: "Показать результаты",
+001155	            payload: data,
+001156	          },
+001157	        };
+001158	        onMessagesChange([...currentMessages, summaryMsg, resultActionMsg]);
+001159	      } catch (err: any) {
+001160	        const errMsg: ChatMessage = {
+001161	          id: `error-${Date.now()}`,
+001162	          role: "assistant",
+001163	          content: `Ошибка анализа аварийности: ${err.message}`,
+001164	          timestamp: new Date(),
+001165	        };
+001166	        onMessagesChange([...currentMessages, errMsg]);
+001167	      } finally {
+001168	        setIsAnalyzing(false);
+001169	      }
+001170	      return;
+001171	    } else if (msg.action.type === "show_accident_result") {
+001172	      if (onAccidentAnalysisResult && msg.action.payload) {
+001173	        onAccidentAnalysisResult(msg.action.payload);
+001174	      }
+001175	    }
+001176	  };
+001177	
+001178	  const handleClearChat = () => {
+001179	    onMessagesChange([WELCOME_MESSAGE]);
+001180	  };
+001181	
+001182	  const handleKeyDown = (e: React.KeyboardEvent) => {
+001183	    if (e.key === "Enter" && !e.shiftKey) {
+001184	      e.preventDefault();
+001185	      handleSend();
+001186	    }
+001187	  };
+001188	
+001189	  const currentProvider = providers.find(p => p.id === selectedProvider);
+001190	  const hasHistory = messages.some(m => m.id !== "welcome");
+001191	
+001192	  const getActionIcon = (type: ChatAction["type"]) => {
+001193	    switch (type) {
+001194	      case "start_complaint_analysis": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />;
+001195	      case "show_complaint_result": return <BarChart3 className="h-3.5 w-3.5" />;
+001196	      case "run_simulation": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />;
+001197	      case "show_simulation_result": return <Search className="h-3.5 w-3.5" />;
+001198	      case "start_accident_analysis": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />;
+001199	      case "show_accident_result": return <BarChart3 className="h-3.5 w-3.5" />;
+001200	      default: return null;
+001201	    }
+001202	  };
+001203	
+001204	  return (
+001205	    <div className="flex flex-col h-full min-h-0 flex-1">
+001206	      <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
+001207	        <Button size="icon" variant="ghost" onClick={onBack} data-testid="button-back-to-layers">
+001208	          <ArrowLeft className="h-4 w-4" />
+001209	        </Button>
+001210	        <Bot className="h-4 w-4 text-primary" />
+001211	        <span className="text-sm font-semibold">ИИ-ассистент</span>
+001212	        {!isDisabled && (
+001213	          <div className="ml-auto flex items-center gap-1">
+001214	            {hasHistory && (
+001215	              <Button
+001216	                size="icon"
+001217	                variant="ghost"
+001218	                onClick={handleClearChat}
+001219	                className="h-7 w-7"
+001220	                title="Очистить чат"
+001221	                data-testid="button-clear-chat"
+001222	              >
+001223	                <Trash2 className="h-3.5 w-3.5" />
+001224	              </Button>
+001225	            )}
+001226	            <DropdownMenu>
+001227	              <DropdownMenuTrigger asChild>
+001228	                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
+001229	                  {currentProvider?.name || "Модель"}
+001230	                  <ChevronDown className="h-3 w-3" />
+001231	                </Button>
+001232	              </DropdownMenuTrigger>
+001233	              <DropdownMenuContent align="end">
+001234	                {providers.map(p => (
+001235	                  <DropdownMenuItem
+001236	                    key={p.id}
+001237	                    onClick={() => setSelectedProvider(p.id)}
+001238	                    disabled={!p.available}
+001239	                    data-testid={`provider-option-${p.id}`}
+001240	                  >
+001241	                    <span className={selectedProvider === p.id ? "font-semibold" : ""}>
+001242	                      {p.name}
+001243	                    </span>
+001244	                    {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
+001245	                  </DropdownMenuItem>
+001246	                ))}
+001247	              </DropdownMenuContent>
+001248	            </DropdownMenu>
+001249	          </div>
+001250	        )}
