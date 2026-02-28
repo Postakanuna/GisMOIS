@@ -1203,21 +1203,38 @@ export function MapViewer({
   }, []);
 
   const deleteFeaturesMutation = useMutation({
-    mutationFn: async (data: { layerId: number; featureIds: number[] }) => {
-      // Delete features one by one (could be optimized with a batch endpoint)
-      for (const featureId of data.featureIds) {
-        await apiRequest("DELETE", `/api/editable-layers/${data.layerId}/features/${featureId}`);
-      }
+    mutationFn: async (data: { featureIds: number[]; layerFeatureMap: Map<number, number[]> }) => {
+      const res = await apiRequest("POST", "/api/features/batch-delete", { ids: data.featureIds });
+      return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
-      featureCacheRef.current.clear();
-      lastFetchKeyRef.current = null;
-      setFeatureVersion(v => v + 1);
+    onMutate: (data) => {
+      // Optimistic update: immediately remove from cache and state
+      data.featureIds.forEach(featureId => {
+        data.layerFeatureMap.forEach((_, layerId) => {
+          featureCacheRef.current.delete(`${layerId}_${featureId}`);
+        });
+        // Also try deleting by scanning all cache keys
+        featureCacheRef.current.forEach((f, key) => {
+          if (f.id === featureId) featureCacheRef.current.delete(key);
+        });
+      });
+      setAllLayerFeatures(prev => {
+        const next = { ...prev };
+        data.layerFeatureMap.forEach((fids, layerId) => {
+          if (next[layerId]) {
+            next[layerId] = next[layerId].filter(f => !fids.includes(f.id));
+          }
+        });
+        return next;
+      });
       setSelectedMapFeatures([]);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      setFeatureVersion(v => v + 1);
+      const count = variables.featureIds.length;
       toast({
-        title: "Объекты удалены",
-        description: "Выбранные объекты успешно удалены из слоя",
+        title: count === 1 ? "Объект удалён" : `Удалено объектов: ${count}`,
       });
     },
     onError: () => {
@@ -2525,19 +2542,20 @@ export function MapViewer({
   const handleDeleteSelectedFeatures = useCallback(() => {
     if (selectedMapFeatures.length === 0) return;
     
-    const featuresByLayer = new Map<number, number[]>();
+    const layerFeatureMap = new Map<number, number[]>();
+    const allFeatureIds: number[] = [];
     selectedMapFeatures.forEach(({ layerId, feature }) => {
       const realId = feature.get("featureId") as number | undefined;
       if (realId) {
-        const existing = featuresByLayer.get(layerId) || [];
+        const existing = layerFeatureMap.get(layerId) || [];
         existing.push(realId);
-        featuresByLayer.set(layerId, existing);
+        layerFeatureMap.set(layerId, existing);
+        allFeatureIds.push(realId);
       }
     });
     
-    featuresByLayer.forEach((featureIds, layerId) => {
-      deleteFeaturesMutation.mutate({ layerId, featureIds });
-    });
+    if (allFeatureIds.length === 0) return;
+    deleteFeaturesMutation.mutate({ featureIds: allFeatureIds, layerFeatureMap });
   }, [selectedMapFeatures, deleteFeaturesMutation]);
 
   const clearSelection = useCallback(() => {

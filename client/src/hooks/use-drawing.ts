@@ -197,10 +197,14 @@ export function useDrawing(options: UseDrawingOptions = {}) {
       const res = await apiRequest("POST", "/api/features/batch-delete", { ids });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       window.dispatchEvent(new Event("viewport-features-invalidate"));
+      const count = variables.length;
+      toast({
+        title: count === 1 ? "Объект удалён" : `Удалено объектов: ${count}`,
+      });
     },
   });
 
