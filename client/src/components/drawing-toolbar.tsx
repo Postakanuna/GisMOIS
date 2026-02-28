@@ -10,6 +10,7 @@ import {
   Minus, 
   Pentagon, 
   Move, 
+  MousePointer2,
   Trash2,
   Undo2,
   Redo2,
@@ -56,6 +57,7 @@ interface DrawingToolbarProps {
 }
 
 const ALL_TOOL_BUTTONS: { mode: DrawingMode; icon: typeof Circle; label: string; tooltip: string; geometryType?: string }[] = [
+  { mode: "select", icon: MousePointer2, label: "Выбор", tooltip: "Режим выбора (V)" },
   { mode: "point", icon: Circle, label: "Точка", tooltip: "Создать точку (P)", geometryType: "Point" },
   { mode: "line", icon: Minus, label: "Линия", tooltip: "Создать линию (L)", geometryType: "LineString" },
   { mode: "polygon", icon: Pentagon, label: "Полигон", tooltip: "Создать полигон (G)", geometryType: "Polygon" },
@@ -90,7 +92,6 @@ export function DrawingToolbar({
   onToggleSnap,
   snapLayers = [],
 }: DrawingToolbarProps) {
-  const isDrawingMode = mode === "point" || mode === "line" || mode === "polygon";
   const canDraw = activeLayer !== null;
 
   // Filter tool buttons based on active layer's geometry type
@@ -111,7 +112,7 @@ export function DrawingToolbar({
         {/* Drawing tools - icon only */}
         {toolButtons.map(({ mode: toolMode, icon: Icon, tooltip }) => {
           const isActive = mode === toolMode;
-          const isDisabled = !canDraw;
+          const isDisabled = !canDraw && toolMode !== "select";
           
           return (
             <span key={toolMode} className="contents">
@@ -311,25 +312,6 @@ export function DrawingToolbar({
             </TooltipTrigger>
             <TooltipContent>Повторить (Ctrl+Y)</TooltipContent>
           </Tooltip>
-
-
-          {/* Cancel drawing */}
-          {isDrawingMode && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={() => onModeChange("select")}
-                  data-testid="button-cancel-draw"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Отменить рисование (Esc)</TooltipContent>
-            </Tooltip>
-          )}
         </div>
       </Card>
 

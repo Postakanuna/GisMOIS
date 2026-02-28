@@ -168,9 +168,6 @@ export function useDrawing(options: UseDrawingOptions = {}) {
       redoStack.current = [];
       setCanUndo(true);
       setCanRedo(false);
-
-      // Auto-return to select mode after placing a feature
-      setDrawingMode("select");
     },
   });
 
