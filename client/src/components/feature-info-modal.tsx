@@ -1,5 +1,6 @@
 import { DraggableModal } from "@/components/ui/draggable-modal";
 import type { SelectedFeatureData } from "@/components/map-viewer";
+import { getFieldLabel } from "@shared/field-labels";
 
 interface FeatureInfoModalProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export function FeatureInfoModal({ isOpen, onClose, feature }: FeatureInfoModalP
                     data-testid={`feature-info-row-${key}`}
                   >
                     <td className="px-3 py-2 font-medium text-foreground align-top break-words border-b border-border/50">
-                      {key}
+                      {getFieldLabel(key)}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground align-top break-words border-b border-border/50">
                       {value === null || value === undefined
