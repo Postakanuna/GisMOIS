@@ -202,7 +202,11 @@ export default function Home() {
   const [showFeatureInfo, setShowFeatureInfo] = useState(false);
   const [showDataManager, setShowDataManager] = useState(false);
   const [showGeoAnalysis, setShowGeoAnalysis] = useState(false);
-  const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
+  const selectionActionsRef = useRef<{
+    clearSelection: () => void;
+    deleteSelected: () => void;
+    deleteFeatures: (ids: number[]) => void;
+  } | null>(null);
   const drawActionsRef = useRef<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>(null);
   const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void } | null>(null);
   const drawing = useDrawing({ drawActionsRef });
@@ -690,9 +694,13 @@ export default function Home() {
                 activeLayer={drawing.activeLayer}
                 onDeleteSelected={() => {
                   if (drawing.drawingMode === 'select' && selectedFeatures.length > 0) {
+                    // Map selection mode: unified deletion via map-viewer
                     selectionActionsRef.current?.deleteSelected();
                   } else if (drawing.selectedFeatureIds.length > 0) {
-                    drawing.deleteSelectedFeatures();
+                    // Drawing/editing mode: record undo then use unified deletion
+                    const ids = drawing.selectedFeatureIds;
+                    drawing.recordDeleteForUndo(ids);
+                    selectionActionsRef.current?.deleteFeatures(ids);
                   }
                 }}
                 hasSelection={drawing.selectedFeatureIds.length > 0 || selectedFeatures.length > 0}
@@ -702,7 +710,7 @@ export default function Home() {
                 onRedo={drawing.redo}
                 onSave={drawing.save}
                 isSaving={drawing.isSaving}
-                selectedCount={drawing.drawingMode === 'select' ? selectedFeatures.length : 0}
+                selectedCount={selectedFeatures.length}
                 onClearSelection={() => selectionActionsRef.current?.clearSelection()}
                 showAttributeTable={showAttributeTable}
                 onToggleAttributeTable={() => setShowAttributeTable(prev => !prev)}
@@ -793,7 +801,10 @@ export default function Home() {
                     drawing.updateFeature(featureId, { properties });
                   }}
                   onBatchUpdate={drawing.batchUpdateFeatures}
-                  onBatchDelete={drawing.batchDeleteFeatures}
+                  onBatchDelete={(ids) => {
+                    drawing.recordDeleteForUndo(ids);
+                    selectionActionsRef.current?.deleteFeatures(ids);
+                  }}
                   onSchemaUpdate={drawing.updateSchema}
                   onSelectAll={drawing.selectAllFeatures}
                   onClearSelection={drawing.clearSelection}

@@ -117,7 +117,11 @@ interface MapViewerProps {
   onClearEditableSelection?: () => void;
   onSelectEditableLayer?: (layer: EditableLayer) => void;
   // Selection callbacks exposed for external control
-  selectionActionsRef?: React.MutableRefObject<{ clearSelection: () => void; deleteSelected: () => void } | null>;
+  selectionActionsRef?: React.MutableRefObject<{
+    clearSelection: () => void;
+    deleteSelected: () => void;
+    deleteFeatures: (ids: number[]) => void;
+  } | null>;
   // Drawing actions exposed for external control (undo last point during drawing)
   drawActionsRef?: React.MutableRefObject<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>;
   // Scene dataset editing props
@@ -1203,34 +1207,35 @@ export function MapViewer({
   }, []);
 
   const deleteFeaturesMutation = useMutation({
-    mutationFn: async (data: { featureIds: number[]; layerFeatureMap: Map<number, number[]> }) => {
+    mutationFn: async (data: { featureIds: number[] }) => {
       const res = await apiRequest("POST", "/api/features/batch-delete", { ids: data.featureIds });
       return res.json();
     },
     onMutate: (data) => {
-      // Optimistic update: immediately remove from cache and state
-      data.featureIds.forEach(featureId => {
-        data.layerFeatureMap.forEach((_, layerId) => {
-          featureCacheRef.current.delete(`${layerId}_${featureId}`);
-        });
-        // Also try deleting by scanning all cache keys
-        featureCacheRef.current.forEach((f, key) => {
-          if (f.id === featureId) featureCacheRef.current.delete(key);
-        });
+      const idSet = new Set(data.featureIds);
+      // 1. Remove from viewport cache
+      featureCacheRef.current.forEach((f, key) => {
+        if (idSet.has(f.id)) featureCacheRef.current.delete(key);
       });
+      // 2. Remove from rendered map state (covers both viewport and attribute table sources)
       setAllLayerFeatures(prev => {
         const next = { ...prev };
-        data.layerFeatureMap.forEach((fids, layerId) => {
-          if (next[layerId]) {
-            next[layerId] = next[layerId].filter(f => !fids.includes(f.id));
-          }
-        });
+        for (const layerId of Object.keys(next)) {
+          next[Number(layerId)] = next[Number(layerId)].filter(f => !idSet.has(f.id));
+        }
         return next;
       });
-      setSelectedMapFeatures([]);
+      // 3. Clear map selection glow for deleted features
+      setSelectedMapFeatures(prev =>
+        prev.filter(({ feature }) => {
+          const fid = feature.get("featureId") as number | undefined;
+          return fid === undefined || !idSet.has(fid);
+        })
+      );
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       setFeatureVersion(v => v + 1);
       const count = variables.featureIds.length;
       toast({
@@ -2541,26 +2546,25 @@ export function MapViewer({
 
   const handleDeleteSelectedFeatures = useCallback(() => {
     if (selectedMapFeatures.length === 0) return;
-    
-    const layerFeatureMap = new Map<number, number[]>();
-    const allFeatureIds: number[] = [];
-    selectedMapFeatures.forEach(({ layerId, feature }) => {
+    const featureIds: number[] = [];
+    selectedMapFeatures.forEach(({ feature }) => {
       const realId = feature.get("featureId") as number | undefined;
-      if (realId) {
-        const existing = layerFeatureMap.get(layerId) || [];
-        existing.push(realId);
-        layerFeatureMap.set(layerId, existing);
-        allFeatureIds.push(realId);
-      }
+      if (realId) featureIds.push(realId);
     });
-    
-    if (allFeatureIds.length === 0) return;
-    deleteFeaturesMutation.mutate({ featureIds: allFeatureIds, layerFeatureMap });
+    if (featureIds.length === 0) return;
+    deleteFeaturesMutation.mutate({ featureIds });
   }, [selectedMapFeatures, deleteFeaturesMutation]);
 
   const clearSelection = useCallback(() => {
     setSelectedMapFeatures([]);
   }, []);
+
+  // Unified deletion by feature IDs — works regardless of how features were selected.
+  // Optimistic update (cache + glow) and API call are handled inside deleteFeaturesMutation.
+  const deleteFeatures = useCallback((ids: number[]) => {
+    if (ids.length === 0) return;
+    deleteFeaturesMutation.mutate({ featureIds: ids });
+  }, [deleteFeaturesMutation]);
 
   // Expose selection actions via ref for external control
   useEffect(() => {
@@ -2568,6 +2572,7 @@ export function MapViewer({
       selectionActionsRef.current = {
         clearSelection,
         deleteSelected: handleDeleteSelectedFeatures,
+        deleteFeatures,
       };
     }
     return () => {
@@ -2575,7 +2580,7 @@ export function MapViewer({
         selectionActionsRef.current = null;
       }
     };
-  }, [selectionActionsRef, clearSelection, handleDeleteSelectedFeatures]);
+  }, [selectionActionsRef, clearSelection, handleDeleteSelectedFeatures, deleteFeatures]);
 
   // Expose drawing actions via ref for external control (undo last point during drawing)
   useEffect(() => {

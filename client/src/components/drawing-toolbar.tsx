@@ -6,7 +6,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { 
-  MousePointer2, 
   Circle, 
   Minus, 
   Pentagon, 
@@ -59,8 +58,7 @@ interface DrawingToolbarProps {
   snapLayers?: { id: number; name: string; visible: boolean }[];
 }
 
-const ALL_TOOL_BUTTONS: { mode: DrawingMode; icon: typeof MousePointer2; label: string; tooltip: string; geometryType?: string }[] = [
-  { mode: "select", icon: MousePointer2, label: "Выбор", tooltip: "Выбор объектов (V)" },
+const ALL_TOOL_BUTTONS: { mode: DrawingMode; icon: typeof Circle; label: string; tooltip: string; geometryType?: string }[] = [
   { mode: "point", icon: Circle, label: "Точка", tooltip: "Создать точку (P)", geometryType: "Point" },
   { mode: "line", icon: Minus, label: "Линия", tooltip: "Создать линию (L)", geometryType: "LineString" },
   { mode: "polygon", icon: Pentagon, label: "Полигон", tooltip: "Создать полигон (G)", geometryType: "Polygon" },
@@ -99,11 +97,10 @@ export function DrawingToolbar({
 }: DrawingToolbarProps) {
   const isDrawingMode = mode === "point" || mode === "line" || mode === "polygon";
   const canDraw = activeLayer !== null;
-  const isSelectMode = mode === "select";
 
   // Filter tool buttons based on active layer's geometry type
   const toolButtons = ALL_TOOL_BUTTONS.filter(tool => {
-    // Always show select and modify
+    // Always show modify
     if (!tool.geometryType) return true;
     // Only show geometry tool matching layer type
     if (activeLayer) {
@@ -119,7 +116,7 @@ export function DrawingToolbar({
         {/* Drawing tools - icon only */}
         {toolButtons.map(({ mode: toolMode, icon: Icon, tooltip }) => {
           const isActive = mode === toolMode;
-          const isDisabled = !canDraw && toolMode !== "select";
+          const isDisabled = !canDraw;
           
           return (
             <span key={toolMode} className="contents">
@@ -139,44 +136,6 @@ export function DrawingToolbar({
                 <TooltipContent>{tooltip}</TooltipContent>
               </Tooltip>
               
-              {/* Insert attribute table button after select */}
-              {toolMode === "select" && onToggleAttributeTable && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant={showAttributeTable ? "default" : "ghost"}
-                      className="h-8 w-8"
-                      onClick={onToggleAttributeTable}
-                      disabled={featureCount === 0}
-                      data-testid="button-toggle-attribute-table"
-                    >
-                      <Table2 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Таблица атрибутов (T)</TooltipContent>
-                </Tooltip>
-              )}
-
-              {/* Feature info button after attribute table */}
-              {toolMode === "select" && onToggleFeatureInfo && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant={showFeatureInfo ? "default" : "ghost"}
-                      className="h-8 w-8"
-                      onClick={onToggleFeatureInfo}
-                      disabled={!hasSelectedFeature}
-                      data-testid="button-toggle-feature-info"
-                    >
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Информация об объекте (I)</TooltipContent>
-                </Tooltip>
-              )}
-              
               {/* Insert snap button after modify tool */}
               {toolMode === "modify" && snapSettings && onToggleSnap && onUpdateSnapSettings && (
                 <SnapSettingsPopover
@@ -190,8 +149,46 @@ export function DrawingToolbar({
           );
         })}
 
-        {/* Selection info when in select mode */}
-        {isSelectMode && selectedCount > 0 && (
+        {/* Attribute table button */}
+        {onToggleAttributeTable && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={showAttributeTable ? "default" : "ghost"}
+                className="h-8 w-8"
+                onClick={onToggleAttributeTable}
+                disabled={featureCount === 0}
+                data-testid="button-toggle-attribute-table"
+              >
+                <Table2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Таблица атрибутов (T)</TooltipContent>
+          </Tooltip>
+        )}
+
+        {/* Feature info button */}
+        {onToggleFeatureInfo && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={showFeatureInfo ? "default" : "ghost"}
+                className="h-8 w-8"
+                onClick={onToggleFeatureInfo}
+                disabled={!hasSelectedFeature}
+                data-testid="button-toggle-feature-info"
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Информация об объекте (I)</TooltipContent>
+          </Tooltip>
+        )}
+
+        {/* Selection info */}
+        {selectedCount > 0 && (
           <div className="border-l pl-1 ml-1 flex items-center gap-1">
             <span className="text-xs px-2 whitespace-nowrap" data-testid="text-selected-count">
               Выбрано: {selectedCount}

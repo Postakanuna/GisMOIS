@@ -167,6 +167,9 @@ export function useDrawing(options: UseDrawingOptions = {}) {
       redoStack.current = [];
       setCanUndo(true);
       setCanRedo(false);
+
+      // Auto-return to select mode after placing a feature
+      setDrawingMode("select");
     },
   });
 
@@ -321,6 +324,27 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     batchDeleteMutation.mutate(ids);
     setSelectedFeatureIds(prev => prev.filter(id => !ids.includes(id)));
   }, [features, batchDeleteMutation]);
+
+  // Records deletion to undo stack and clears selection WITHOUT making API call.
+  // Used when the actual API deletion is handled externally (e.g. via unified map deletion).
+  const recordDeleteForUndo = useCallback((ids: number[]) => {
+    if (ids.length === 0) return;
+    ids.forEach(id => {
+      const feature = features.find(f => f.id === id);
+      if (feature) {
+        undoStack.current.push({
+          type: "delete",
+          featureId: id,
+          layerId: feature.layerId,
+          previousData: { ...feature },
+        });
+      }
+    });
+    redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+    setSelectedFeatureIds(prev => prev.filter(id => !ids.includes(id)));
+  }, [features]);
 
   const batchUpdateFeatures = useCallback((updates: { id: number; properties: Record<string, unknown> }[]) => {
     if (updates.length === 0) return Promise.resolve();
@@ -521,6 +545,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     updateFeature,
     deleteSelectedFeatures,
     batchDeleteFeatures,
+    recordDeleteForUndo,
     batchUpdateFeatures,
     selectFeature,
     clearSelection,
