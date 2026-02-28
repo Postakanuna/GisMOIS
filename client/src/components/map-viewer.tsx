@@ -1319,6 +1319,31 @@ export function MapViewer({
   }, [cancelPrefetch]);
 
   useEffect(() => {
+    const handler = (e: Event) => {
+      const { ids } = (e as CustomEvent<{ ids: number[] }>).detail;
+      const idSet = new Set(ids);
+      setSelectedMapFeatures(prev =>
+        prev.filter(({ feature }) => {
+          const fid = feature.get("featureId") as number | undefined;
+          return fid === undefined || !idSet.has(fid);
+        })
+      );
+      featureCacheRef.current.forEach((f, key) => {
+        if (idSet.has(f.id)) featureCacheRef.current.delete(key);
+      });
+      setAllLayerFeatures(prev => {
+        const next = { ...prev };
+        for (const layerId of Object.keys(next)) {
+          next[Number(layerId)] = next[Number(layerId)].filter(f => !idSet.has(f.id));
+        }
+        return next;
+      });
+    };
+    window.addEventListener("features-batch-deleted", handler);
+    return () => window.removeEventListener("features-batch-deleted", handler);
+  }, []);
+
+  useEffect(() => {
     if (!fetchViewport || allEditableLayers.length === 0) {
       setAllLayerFeatures({});
       return;
