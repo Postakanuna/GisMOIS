@@ -150,6 +150,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     onSuccess: (newFeature: DrawnFeature) => {
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
+      window.dispatchEvent(new CustomEvent("feature-created", { detail: { feature: newFeature } }));
       window.dispatchEvent(new Event("viewport-features-invalidate"));
       
       // Add to undo stack

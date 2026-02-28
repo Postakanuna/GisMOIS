@@ -1312,11 +1312,26 @@ export function MapViewer({
       featureCacheRef.current.clear();
       lastFetchKeyRef.current = null;
       cancelPrefetch();
+      editableLayerRef.current?.getSource()?.clear();
       setFeatureVersion(v => v + 1);
     };
     window.addEventListener("viewport-features-invalidate", handler);
     return () => window.removeEventListener("viewport-features-invalidate", handler);
   }, [cancelPrefetch]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { feature } = (e as CustomEvent<{ feature: DrawnFeature }>).detail;
+      featureCacheRef.current.set(`${feature.layerId}_${feature.id}`, feature);
+      setAllLayerFeatures(prev => {
+        const layerFeatures = prev[feature.layerId] || [];
+        if (layerFeatures.some(f => f.id === feature.id)) return prev;
+        return { ...prev, [feature.layerId]: [...layerFeatures, feature] };
+      });
+    };
+    window.addEventListener("feature-created", handler);
+    return () => window.removeEventListener("feature-created", handler);
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -2798,14 +2813,11 @@ export function MapViewer({
         else if (drawingMode === "polygon") geoType = "Polygon";
 
         // Call the callback to create the feature in the database
+        // The feature stays in editableSource until viewport-features-invalidate fires
+        // (which happens in createFeatureMutation.onSuccess) to avoid any visual gap
         if (onFeatureCreatedRef.current && activeEditableLayerRef.current) {
           onFeatureCreatedRef.current(geoType, geoJsonGeom.coordinates, {});
         }
-
-        // Remove the feature from the source (it will be re-added from the database)
-        setTimeout(() => {
-          editableSource.removeFeature(feature);
-        }, 100);
       });
 
       map.addInteraction(draw);
