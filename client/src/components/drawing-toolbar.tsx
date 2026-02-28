@@ -13,7 +13,6 @@ import {
   Trash2,
   Undo2,
   Redo2,
-  Save,
   X,
   Table2,
   Route,
@@ -37,8 +36,6 @@ interface DrawingToolbarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onSave: () => void;
-  isSaving: boolean;
   selectedCount?: number;
   onClearSelection?: () => void;
   isDeleting?: boolean;
@@ -76,8 +73,6 @@ export function DrawingToolbar({
   canRedo,
   onUndo,
   onRedo,
-  onSave,
-  isSaving,
   selectedCount = 0,
   onClearSelection,
   isDeleting = false,
@@ -317,22 +312,6 @@ export function DrawingToolbar({
             <TooltipContent>Повторить (Ctrl+Y)</TooltipContent>
           </Tooltip>
 
-          {/* Save */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                onClick={onSave}
-                disabled={isSaving}
-                data-testid="button-save"
-              >
-                <Save className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Сохранить (Ctrl+S)</TooltipContent>
-          </Tooltip>
 
           {/* Cancel drawing */}
           {isDrawingMode && (

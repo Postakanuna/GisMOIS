@@ -708,8 +708,6 @@ export default function Home() {
                 canRedo={drawing.canRedo}
                 onUndo={handleUndo}
                 onRedo={drawing.redo}
-                onSave={drawing.save}
-                isSaving={drawing.isSaving}
                 selectedCount={selectedFeatures.length}
                 onClearSelection={() => selectionActionsRef.current?.clearSelection()}
                 showAttributeTable={showAttributeTable}
@@ -757,7 +755,6 @@ export default function Home() {
               editMode={editMode}
               drawingMode={drawing.drawingMode}
               activeEditableLayer={drawing.activeLayer}
-              editableFeatures={drawing.features}
               onFeatureCreated={drawing.createFeature}
               onFeatureUpdated={drawing.updateFeature}
               selectedEditableFeatureIds={drawing.selectedFeatureIds}

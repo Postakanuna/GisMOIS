@@ -109,7 +109,6 @@ interface MapViewerProps {
   editMode?: boolean;
   drawingMode?: DrawingMode;
   activeEditableLayer?: EditableLayer | null;
-  editableFeatures?: DrawnFeature[];
   onFeatureCreated?: (geometryType: GeometryType, coordinates: unknown, properties?: Record<string, unknown>) => void;
   onFeatureUpdated?: (featureId: number, updates: Partial<InsertDrawnFeature>) => void;
   selectedEditableFeatureIds?: number[];
@@ -908,7 +907,6 @@ export function MapViewer({
   editMode = false,
   drawingMode,
   activeEditableLayer,
-  editableFeatures = [],
   onFeatureCreated,
   onFeatureUpdated,
   selectedEditableFeatureIds = [],
@@ -2897,45 +2895,6 @@ export function MapViewer({
     };
   }, [editMode, drawingMode, snapSettings?.enabled, snapSettings?.snapRadius, snapSettings?.snapToVertices, snapSettings?.snapToEdges, snapSettings?.snapLayerIds, visibleLayersKey]);
 
-  // Sync editable features to the map layer
-  useEffect(() => {
-    if (!editableLayerRef.current) return;
-    const source = editableLayerRef.current.getSource();
-    if (!source) return;
-
-    source.clear();
-    
-    const format = new GeoJSON();
-    
-    editableFeatures.forEach((drawnFeature) => {
-      try {
-        const geoJsonFeature = {
-          type: "Feature" as const,
-          geometry: {
-            type: drawnFeature.geometryType,
-            coordinates: drawnFeature.coordinates,
-          },
-          properties: {
-            featureId: drawnFeature.id,
-            ...drawnFeature.properties,
-          },
-        };
-        
-        const olFeatures = format.readFeatures(geoJsonFeature, {
-          featureProjection: currentProjectionRef.current,
-          dataProjection: "EPSG:4326",
-        });
-        
-        olFeatures.forEach((f) => {
-          f.set("featureId", drawnFeature.id);
-          // Selection is now visualized via pulsating glow layer, no need to change feature style
-          source.addFeature(f);
-        });
-      } catch (err) {
-        console.error("Error adding editable feature to map:", err);
-      }
-    });
-  }, [editableFeatures]);
 
   // Scene dataset modify interaction
   useEffect(() => {

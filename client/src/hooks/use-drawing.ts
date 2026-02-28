@@ -464,13 +464,6 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     setCanUndo(true);
   }, [createFeatureMutation, deleteFeatureMutation]);
 
-  const save = useCallback(() => {
-    // Data is auto-saved, this is just for UX
-    toast({
-      title: "Изменения сохранены",
-    });
-  }, [toast]);
-
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -508,11 +501,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "y") {
         e.preventDefault();
         redo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        save();
       } else if (e.key === "s" || e.key === "S") {
-        // Toggle snap (only when not Ctrl+S for save)
         if (!e.ctrlKey && !e.metaKey) {
           toggleSnap();
         }
@@ -521,7 +510,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeLayer, deleteSelectedFeatures, clearSelection, undo, redo, save, toggleSnap, drawingMode, drawActionsRef]);
+  }, [activeLayer, deleteSelectedFeatures, clearSelection, undo, redo, toggleSnap, drawingMode, drawActionsRef]);
 
   return {
     // State
@@ -538,7 +527,6 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     
     // Loading states
     isLoading: layersLoading || featuresLoading,
-    isSaving: createFeatureMutation.isPending || updateFeatureMutation.isPending || batchUpdateMutation.isPending,
     isDeleting: batchDeleteMutation.isPending,
     
     // Actions
@@ -557,7 +545,6 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     updateSchema,
     undo,
     redo,
-    save,
     deleteLayer: deleteLayerMutation.mutate,
     toggleSnap,
     updateSnapSettings,
