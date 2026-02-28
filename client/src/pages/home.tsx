@@ -35,6 +35,7 @@ import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/compone
 import { AccidentAnalysisDialog, type AccidentSegmentResult, type AccidentAnalysisResult } from "@/components/accident-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
+import { FeatureInfoModal } from "@/components/feature-info-modal";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage } from "@/components/ai-chat-panel";
@@ -198,6 +199,7 @@ export default function Home() {
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
+  const [showFeatureInfo, setShowFeatureInfo] = useState(false);
   const [showDataManager, setShowDataManager] = useState(false);
   const [showGeoAnalysis, setShowGeoAnalysis] = useState(false);
   const selectionActionsRef = useRef<{ clearSelection: () => void; deleteSelected: () => void } | null>(null);
@@ -459,6 +461,13 @@ export default function Home() {
     }
   }, [showAttributeTable, editMode, drawing.activeLayer, drawing.features.length]);
 
+  // Auto-close feature info modal when no feature is selected
+  useEffect(() => {
+    if (showFeatureInfo && selectedFeatures.length === 0) {
+      setShowFeatureInfo(false);
+    }
+  }, [showFeatureInfo, selectedFeatures.length]);
+
   const sidebarStyle = {
     "--sidebar-width": "24rem",
     "--sidebar-width-icon": "4rem",
@@ -698,6 +707,9 @@ export default function Home() {
                 showAttributeTable={showAttributeTable}
                 onToggleAttributeTable={() => setShowAttributeTable(prev => !prev)}
                 featureCount={drawing.features.length}
+                showFeatureInfo={showFeatureInfo}
+                onToggleFeatureInfo={() => setShowFeatureInfo(prev => !prev)}
+                hasSelectedFeature={selectedFeatures.length > 0}
                 onTraceRoute={handleOpenTraceDialog}
                 onSimulation={handleOpenSimulationDialog}
                 onConsumerConnect={handleConsumerConnect}
@@ -792,6 +804,13 @@ export default function Home() {
                 />
               )}
             </DraggableModal>
+
+            {/* Feature Info Modal */}
+            <FeatureInfoModal
+              isOpen={showFeatureInfo && selectedFeatures.length > 0}
+              onClose={() => setShowFeatureInfo(false)}
+              feature={selectedFeatures[0] ?? null}
+            />
 
             {/* Data Manager */}
             {showDataManager && (

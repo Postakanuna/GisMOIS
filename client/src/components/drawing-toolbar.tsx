@@ -20,6 +20,7 @@ import {
   Route,
   Zap,
   Building2,
+  Info,
 } from "lucide-react";
 import type { EditableLayer } from "@shared/schema";
 import type { SnapSettings } from "@/hooks/use-drawing";
@@ -45,6 +46,9 @@ interface DrawingToolbarProps {
   showAttributeTable?: boolean;
   onToggleAttributeTable?: () => void;
   featureCount?: number;
+  showFeatureInfo?: boolean;
+  onToggleFeatureInfo?: () => void;
+  hasSelectedFeature?: boolean;
   onTraceRoute?: () => void;
   onSimulation?: () => void;
   onConsumerConnect?: () => void;
@@ -82,6 +86,9 @@ export function DrawingToolbar({
   showAttributeTable = false,
   onToggleAttributeTable,
   featureCount = 0,
+  showFeatureInfo = false,
+  onToggleFeatureInfo,
+  hasSelectedFeature = false,
   onTraceRoute,
   onSimulation,
   onConsumerConnect,
@@ -148,6 +155,25 @@ export function DrawingToolbar({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Таблица атрибутов (T)</TooltipContent>
+                </Tooltip>
+              )}
+
+              {/* Feature info button after attribute table */}
+              {toolMode === "select" && onToggleFeatureInfo && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant={showFeatureInfo ? "default" : "ghost"}
+                      className="h-8 w-8"
+                      onClick={onToggleFeatureInfo}
+                      disabled={!hasSelectedFeature}
+                      data-testid="button-toggle-feature-info"
+                    >
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Информация об объекте (I)</TooltipContent>
                 </Tooltip>
               )}
               
