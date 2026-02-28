@@ -39,10 +39,10 @@ export function FeatureInfoModal({ isOpen, onClose, feature }: FeatureInfoModalP
             <table className="w-full text-sm border-collapse" data-testid="feature-info-table">
               <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
                 <tr>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground border-b w-1/2">
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground border-b w-2/3">
                     Атрибут
                   </th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground border-b w-1/2">
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground border-b w-1/3">
                     Значение
                   </th>
                 </tr>
