@@ -1333,6 +1333,20 @@ export function MapViewer({
 
   useEffect(() => {
     const handler = (e: Event) => {
+      const { feature } = (e as CustomEvent<{ feature: DrawnFeature }>).detail;
+      featureCacheRef.current.set(`${feature.layerId}_${feature.id}`, feature);
+      setAllLayerFeatures(prev => {
+        const layerFeatures = prev[feature.layerId] || [];
+        if (layerFeatures.some(f => f.id === feature.id)) return prev;
+        return { ...prev, [feature.layerId]: [...layerFeatures, feature] };
+      });
+    };
+    window.addEventListener("feature-restored", handler);
+    return () => window.removeEventListener("feature-restored", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
       const { ids } = (e as CustomEvent<{ ids: number[] }>).detail;
       const idSet = new Set(ids);
       setSelectedMapFeatures(prev =>

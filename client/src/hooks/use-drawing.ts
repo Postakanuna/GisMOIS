@@ -59,6 +59,9 @@ export function useDrawing(options: UseDrawingOptions = {}) {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
+  // Session trash: deleted features waiting for flush on edit-mode exit
+  const sessionTrashRef = useRef<Map<number, DrawnFeature>>(new Map());
+
   // Queries - load editable layers for current scene
   const { data: editableLayers = [], isLoading: layersLoading } = useQuery<EditableLayer[]>({
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
@@ -198,10 +201,8 @@ export function useDrawing(options: UseDrawingOptions = {}) {
       const res = await apiRequest("POST", "/api/features/batch-delete", { ids });
       return res.json();
     },
-    onMutate: (ids) => {
-      window.dispatchEvent(new CustomEvent("features-batch-deleted", { detail: { ids } }));
-    },
     onSuccess: (_, variables) => {
+      sessionTrashRef.current.clear();
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", activeLayerId, "features"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       window.dispatchEvent(new Event("viewport-features-invalidate"));
@@ -279,73 +280,71 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     updateFeatureMutation.mutate({ id: featureId, ...updates });
   }, [features, updateFeatureMutation]);
 
-  const deleteSelectedFeatures = useCallback(() => {
-    if (selectedFeatureIds.length === 0) return;
-
-    // Store for undo
-    selectedFeatureIds.forEach(id => {
-      const feature = features.find(f => f.id === id);
-      if (feature) {
-        undoStack.current.push({
-          type: "delete",
-          featureId: id,
-          layerId: feature.layerId,
-          previousData: { ...feature },
-        });
-      }
+  // Adds features to the session trash bin and records undo entries.
+  // No API call is made — deletion is deferred until flushSessionDeletes().
+  const addToSessionTrash = useCallback((featuresToTrash: DrawnFeature[]) => {
+    featuresToTrash.forEach(feature => {
+      sessionTrashRef.current.set(feature.id, feature);
+      undoStack.current.push({
+        type: "delete",
+        featureId: feature.id,
+        layerId: feature.layerId,
+        previousData: { ...feature },
+      });
     });
     redoStack.current = [];
     setCanUndo(true);
     setCanRedo(false);
+  }, []);
 
-    // Use batch delete for efficiency
-    batchDeleteMutation.mutate(selectedFeatureIds);
+  // Unified deletion: moves features to session trash and updates UI immediately.
+  // No API call — physical deletion happens on edit-mode exit via flushSessionDeletes().
+  const deleteFromSession = useCallback((ids: number[]) => {
+    if (ids.length === 0) return;
+    const found = ids.map(id => features.find(f => f.id === id) || sessionTrashRef.current.get(id)).filter((f): f is DrawnFeature => !!f);
+    if (found.length > 0) {
+      addToSessionTrash(found);
+    }
+    window.dispatchEvent(new CustomEvent("features-batch-deleted", { detail: { ids } }));
     setSelectedFeatureIds([]);
-  }, [selectedFeatureIds, features, batchDeleteMutation]);
+  }, [features, addToSessionTrash]);
+
+  // Sends all session-trashed features to the server in one batch request.
+  const flushSessionDeletes = useCallback(() => {
+    const ids = Array.from(sessionTrashRef.current.keys());
+    if (ids.length === 0) return;
+    batchDeleteMutation.mutate(ids);
+  }, [batchDeleteMutation]);
+
+  // Clears session state (undo/redo stacks, trash, selection).
+  // Call when entering or exiting edit mode.
+  const clearSession = useCallback(() => {
+    sessionTrashRef.current.clear();
+    undoStack.current = [];
+    redoStack.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+    setSelectedFeatureIds([]);
+  }, []);
+
+  const deleteSelectedFeatures = useCallback(() => {
+    if (selectedFeatureIds.length === 0) return;
+    deleteFromSession(selectedFeatureIds);
+  }, [selectedFeatureIds, deleteFromSession]);
 
   const batchDeleteFeatures = useCallback((ids: number[]) => {
     if (ids.length === 0) return;
+    deleteFromSession(ids);
+  }, [deleteFromSession]);
 
-    // Store for undo
-    ids.forEach(id => {
-      const feature = features.find(f => f.id === id);
-      if (feature) {
-        undoStack.current.push({
-          type: "delete",
-          featureId: id,
-          layerId: feature.layerId,
-          previousData: { ...feature },
-        });
-      }
-    });
-    redoStack.current = [];
-    setCanUndo(true);
-    setCanRedo(false);
-
-    batchDeleteMutation.mutate(ids);
-    setSelectedFeatureIds(prev => prev.filter(id => !ids.includes(id)));
-  }, [features, batchDeleteMutation]);
-
-  // Records deletion to undo stack and clears selection WITHOUT making API call.
-  // Used when the actual API deletion is handled externally (e.g. via unified map deletion).
+  // Records deletion to undo stack and updates UI without API call.
+  // For backward-compat with paths that call this externally.
   const recordDeleteForUndo = useCallback((ids: number[]) => {
     if (ids.length === 0) return;
-    ids.forEach(id => {
-      const feature = features.find(f => f.id === id);
-      if (feature) {
-        undoStack.current.push({
-          type: "delete",
-          featureId: id,
-          layerId: feature.layerId,
-          previousData: { ...feature },
-        });
-      }
-    });
-    redoStack.current = [];
-    setCanUndo(true);
-    setCanRedo(false);
+    const found = ids.map(id => features.find(f => f.id === id)).filter((f): f is DrawnFeature => !!f);
+    addToSessionTrash(found);
     setSelectedFeatureIds(prev => prev.filter(id => !ids.includes(id)));
-  }, [features]);
+  }, [features, addToSessionTrash]);
 
   const batchUpdateFeatures = useCallback((updates: { id: number; properties: Record<string, unknown> }[]) => {
     if (updates.length === 0) return Promise.resolve();
@@ -420,13 +419,12 @@ export function useDrawing(options: UseDrawingOptions = {}) {
       deleteFeatureMutation.mutate(action.featureId);
       redoStack.current.push(action);
     } else if (action.type === "delete" && action.previousData) {
-      // Undo deletion = recreate
-      createFeatureMutation.mutate({
-        layerId: action.previousData.layerId,
-        geometryType: action.previousData.geometryType as GeometryType,
-        coordinates: action.previousData.coordinates,
-        properties: action.previousData.properties,
-      });
+      // Undo deletion = restore from session trash (no API, original ID preserved)
+      const feature = sessionTrashRef.current.get(action.featureId);
+      if (feature) {
+        sessionTrashRef.current.delete(action.featureId);
+        window.dispatchEvent(new CustomEvent("feature-restored", { detail: { feature } }));
+      }
       redoStack.current.push(action);
     } else if (action.type === "update" && action.previousData) {
       // Undo update = restore previous
@@ -440,7 +438,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
 
     setCanUndo(undoStack.current.length > 0);
     setCanRedo(true);
-  }, [createFeatureMutation, updateFeatureMutation, deleteFeatureMutation]);
+  }, [updateFeatureMutation, deleteFeatureMutation]);
 
   const redo = useCallback(() => {
     const action = redoStack.current.pop();
@@ -449,8 +447,10 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     if (action.type === "create" && action.newData) {
       createFeatureMutation.mutate(action.newData);
       undoStack.current.push(action);
-    } else if (action.type === "delete") {
-      deleteFeatureMutation.mutate(action.featureId);
+    } else if (action.type === "delete" && action.previousData) {
+      // Redo deletion = put back into session trash and remove from map
+      addToSessionTrash([action.previousData]);
+      window.dispatchEvent(new CustomEvent("features-batch-deleted", { detail: { ids: [action.featureId] } }));
       undoStack.current.push(action);
     } else if (action.type === "update" && action.previousData) {
       // Already have the new state, just need to swap
@@ -459,7 +459,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
 
     setCanRedo(redoStack.current.length > 0);
     setCanUndo(true);
-  }, [createFeatureMutation, deleteFeatureMutation]);
+  }, [createFeatureMutation, addToSessionTrash]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -534,6 +534,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     updateFeature,
     deleteSelectedFeatures,
     batchDeleteFeatures,
+    deleteFromSession,
     recordDeleteForUndo,
     batchUpdateFeatures,
     selectFeature,
@@ -542,6 +543,8 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     updateSchema,
     undo,
     redo,
+    flushSessionDeletes,
+    clearSession,
     deleteLayer: deleteLayerMutation.mutate,
     toggleSnap,
     updateSnapSettings,

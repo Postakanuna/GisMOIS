@@ -281,10 +281,16 @@ export default function Home() {
   }, []);
 
   const toggleEditMode = useCallback(() => {
-    setEditMode(prev => !prev);
     if (editMode) {
+      // Exiting edit mode: flush session trash to server, then reset
+      drawing.flushSessionDeletes();
+      drawing.clearSession();
       drawing.setDrawingMode("select");
+    } else {
+      // Entering edit mode: start a fresh session
+      drawing.clearSession();
     }
+    setEditMode(prev => !prev);
   }, [editMode, drawing]);
 
   const handleCreateEditableLayer = useCallback((name: string, geometryType: GeometryType) => {
@@ -693,14 +699,9 @@ export default function Home() {
                 onModeChange={drawing.setDrawingMode}
                 activeLayer={drawing.activeLayer}
                 onDeleteSelected={() => {
-                  if (drawing.drawingMode === 'select' && selectedFeatures.length > 0) {
-                    // Map selection mode: unified deletion via map-viewer
-                    selectionActionsRef.current?.deleteSelected();
-                  } else if (drawing.selectedFeatureIds.length > 0) {
-                    // Drawing/editing mode: record undo then use unified deletion
-                    const ids = drawing.selectedFeatureIds;
-                    drawing.recordDeleteForUndo(ids);
-                    selectionActionsRef.current?.deleteFeatures(ids);
+                  const ids = drawing.selectedFeatureIds;
+                  if (ids.length > 0) {
+                    drawing.deleteFromSession(ids);
                   }
                 }}
                 hasSelection={drawing.selectedFeatureIds.length > 0 || selectedFeatures.length > 0}
@@ -799,8 +800,7 @@ export default function Home() {
                   }}
                   onBatchUpdate={drawing.batchUpdateFeatures}
                   onBatchDelete={(ids) => {
-                    drawing.recordDeleteForUndo(ids);
-                    selectionActionsRef.current?.deleteFeatures(ids);
+                    drawing.deleteFromSession(ids);
                   }}
                   onSchemaUpdate={drawing.updateSchema}
                   onSelectAll={drawing.selectAllFeatures}
