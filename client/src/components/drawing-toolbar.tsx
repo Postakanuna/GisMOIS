@@ -37,6 +37,8 @@ interface DrawingToolbarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  undoDescription?: string | null;
+  redoDescription?: string | null;
   selectedCount?: number;
   onClearSelection?: () => void;
   isDeleting?: boolean;
@@ -75,6 +77,8 @@ export function DrawingToolbar({
   canRedo,
   onUndo,
   onRedo,
+  undoDescription,
+  redoDescription,
   selectedCount = 0,
   onClearSelection,
   isDeleting = false,
@@ -294,7 +298,9 @@ export function DrawingToolbar({
                 <Undo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Отменить (Ctrl+Z)</TooltipContent>
+            <TooltipContent>
+              {undoDescription ? `Отменить: ${undoDescription}` : "Отменить (Ctrl+Z)"}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -310,7 +316,9 @@ export function DrawingToolbar({
                 <Redo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Повторить (Ctrl+Y)</TooltipContent>
+            <TooltipContent>
+              {redoDescription ? `Повторить: ${redoDescription}` : "Повторить (Ctrl+Y)"}
+            </TooltipContent>
           </Tooltip>
         </div>
       </Card>

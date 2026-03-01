@@ -15,11 +15,16 @@ import type {
 import type { DrawingMode } from "@/components/drawing-toolbar";
 
 interface UndoAction {
-  type: "create" | "update" | "delete";
+  type: "create" | "update" | "delete" | "field-update";
   featureId: number;
   layerId: number;
+  layerName: string;
+  description: string;
   previousData?: DrawnFeature;
   newData?: InsertDrawnFeature;
+  fieldName?: string;
+  oldFieldValue?: unknown;
+  newFieldValue?: unknown;
 }
 
 export interface SnapSettings {
@@ -69,6 +74,10 @@ export function useDrawing(options: UseDrawingOptions = {}) {
   });
 
   const activeLayer = editableLayers.find(l => l.id === activeLayerId) || null;
+
+  const getLayerName = useCallback((layerId: number): string =>
+    editableLayers.find(l => l.id === layerId)?.name ?? `Слой ${layerId}`,
+  [editableLayers]);
 
   const { data: features = [], isLoading: featuresLoading } = useQuery<DrawnFeature[]>({
     queryKey: ["/api/editable-layers", activeLayerId, "features"],
@@ -161,6 +170,8 @@ export function useDrawing(options: UseDrawingOptions = {}) {
         type: "create",
         featureId: newFeature.id,
         layerId: newFeature.layerId,
+        layerName: getLayerName(newFeature.layerId),
+        description: "Создан объект",
         newData: {
           layerId: newFeature.layerId,
           geometryType: newFeature.geometryType as GeometryType,
@@ -271,6 +282,8 @@ export function useDrawing(options: UseDrawingOptions = {}) {
       type: "update",
       featureId,
       layerId: feature.layerId,
+      layerName: getLayerName(feature.layerId),
+      description: "Изменена геометрия",
       previousData: { ...feature },
     });
     redoStack.current = [];
@@ -278,7 +291,7 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     setCanRedo(false);
 
     updateFeatureMutation.mutate({ id: featureId, ...updates });
-  }, [features, updateFeatureMutation]);
+  }, [features, updateFeatureMutation, getLayerName]);
 
   // Adds features to the session trash bin and records undo entries.
   // No API call is made — deletion is deferred until flushSessionDeletes().
@@ -289,13 +302,15 @@ export function useDrawing(options: UseDrawingOptions = {}) {
         type: "delete",
         featureId: feature.id,
         layerId: feature.layerId,
+        layerName: getLayerName(feature.layerId),
+        description: "Удалён объект",
         previousData: { ...feature },
       });
     });
     redoStack.current = [];
     setCanUndo(true);
     setCanRedo(false);
-  }, []);
+  }, [getLayerName]);
 
   // Unified deletion: moves features to session trash and updates UI immediately.
   // No API call — physical deletion happens on edit-mode exit via flushSessionDeletes().
@@ -357,24 +372,33 @@ export function useDrawing(options: UseDrawingOptions = {}) {
       return Promise.resolve();
     }
 
-    // Store for undo
+    // Store per-field undo actions
     validUpdates.forEach(update => {
       const feature = features.find(f => f.id === update.id);
-      if (feature) {
-        undoStack.current.push({
-          type: "update",
-          featureId: update.id,
-          layerId: feature.layerId,
-          previousData: { ...feature },
-        });
-      }
+      if (!feature) return;
+      const oldProps = (feature.properties ?? {}) as Record<string, unknown>;
+      Object.entries(update.properties).forEach(([fieldName, newValue]) => {
+        const oldValue = oldProps[fieldName];
+        if (oldValue !== newValue) {
+          undoStack.current.push({
+            type: "field-update",
+            featureId: update.id,
+            layerId: feature.layerId,
+            layerName: getLayerName(feature.layerId),
+            description: `Изменено поле «${fieldName}»: «${String(oldValue ?? '')}» → «${String(newValue ?? '')}»`,
+            fieldName,
+            oldFieldValue: oldValue,
+            newFieldValue: newValue,
+          });
+        }
+      });
     });
     redoStack.current = [];
-    setCanUndo(true);
+    setCanUndo(undoStack.current.length > 0);
     setCanRedo(false);
 
     return batchUpdateMutation.mutateAsync(validUpdates);
-  }, [features, batchUpdateMutation]);
+  }, [features, batchUpdateMutation, getLayerName]);
 
   const selectFeature = useCallback((featureId: number, multi = false) => {
     if (multi) {
@@ -434,6 +458,16 @@ export function useDrawing(options: UseDrawingOptions = {}) {
         properties: action.previousData.properties,
       });
       redoStack.current.push(action);
+    } else if (action.type === "field-update" && action.fieldName !== undefined) {
+      // Undo field change = restore just that field using current server state
+      const currentFeaturesData = queryClient.getQueryData<DrawnFeature[]>(["/api/editable-layers", action.layerId, "features"]) ?? [];
+      const currentFeature = currentFeaturesData.find(f => f.id === action.featureId);
+      const currentProps = (currentFeature?.properties ?? {}) as Record<string, unknown>;
+      updateFeatureMutation.mutate({
+        id: action.featureId,
+        properties: { ...currentProps, [action.fieldName]: action.oldFieldValue },
+      });
+      redoStack.current.push(action);
     }
 
     setCanUndo(undoStack.current.length > 0);
@@ -455,11 +489,21 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     } else if (action.type === "update" && action.previousData) {
       // Already have the new state, just need to swap
       undoStack.current.push(action);
+    } else if (action.type === "field-update" && action.fieldName !== undefined) {
+      // Redo field change = re-apply new value using current server state
+      const currentFeaturesData = queryClient.getQueryData<DrawnFeature[]>(["/api/editable-layers", action.layerId, "features"]) ?? [];
+      const currentFeature = currentFeaturesData.find(f => f.id === action.featureId);
+      const currentProps = (currentFeature?.properties ?? {}) as Record<string, unknown>;
+      updateFeatureMutation.mutate({
+        id: action.featureId,
+        properties: { ...currentProps, [action.fieldName]: action.newFieldValue },
+      });
+      undoStack.current.push(action);
     }
 
     setCanRedo(redoStack.current.length > 0);
     setCanUndo(true);
-  }, [createFeatureMutation, addToSessionTrash]);
+  }, [createFeatureMutation, addToSessionTrash, updateFeatureMutation]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -509,6 +553,14 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeLayer, deleteSelectedFeatures, clearSelection, undo, redo, toggleSnap, drawingMode, drawActionsRef]);
 
+  // Computed descriptions for undo/redo tooltips (derived during render, canUndo/canRedo trigger re-render)
+  const undoDescription = canUndo && undoStack.current.length > 0
+    ? `${undoStack.current[undoStack.current.length - 1].description} (${undoStack.current[undoStack.current.length - 1].layerName})`
+    : null;
+  const redoDescription = canRedo && redoStack.current.length > 0
+    ? `${redoStack.current[redoStack.current.length - 1].description} (${redoStack.current[redoStack.current.length - 1].layerName})`
+    : null;
+
   return {
     // State
     editableLayers,
@@ -520,6 +572,8 @@ export function useDrawing(options: UseDrawingOptions = {}) {
     selectedFeatureIds,
     canUndo,
     canRedo,
+    undoDescription,
+    redoDescription,
     snapSettings,
     
     // Loading states

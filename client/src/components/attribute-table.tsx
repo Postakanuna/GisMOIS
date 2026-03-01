@@ -61,9 +61,11 @@ interface AttributeTableProps {
   onSelectAll?: (featureIds: number[]) => void;
   onClearSelection?: () => void;
   onZoomToFeature?: (feature: DrawnFeature) => void;
+  onFeatureSelectWithPan?: (feature: DrawnFeature) => void;
   onRequestClose?: (hasUnsavedChanges: boolean) => void;
   closeRef?: React.MutableRefObject<AttributeTableCloseRef | null>;
   layerName: string;
+  readOnly?: boolean;
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -92,9 +94,11 @@ export function AttributeTable({
   onSelectAll,
   onClearSelection,
   onZoomToFeature,
+  onFeatureSelectWithPan,
   onRequestClose,
   closeRef,
   layerName,
+  readOnly = false,
 }: AttributeTableProps) {
   const [showSchemaDialog, setShowSchemaDialog] = useState(false);
   const [editingFields, setEditingFields] = useState<AttributeField[]>([]);
@@ -112,6 +116,14 @@ export function AttributeTable({
   
   const hasPendingChanges = pendingEdits.size > 0;
   const canUndo = undoStack.length > 0;
+
+  // Clear any active edit cell when transitioning to read-only mode
+  useEffect(() => {
+    if (readOnly) {
+      setEditingCell(null);
+      setEditValue("");
+    }
+  }, [readOnly]);
   
   const handleCloseRequest = useCallback(() => {
     if (hasPendingChanges) {
@@ -294,7 +306,14 @@ export function AttributeTable({
   const handleCheckboxChange = useCallback((featureId: number, checked: boolean) => {
     // Use multi=true mode for checkbox behavior
     onFeatureSelect(featureId, true);
-  }, [onFeatureSelect]);
+    // A4: pan to feature if outside viewport when checking
+    if (checked) {
+      const feature = features.find(f => f.id === featureId);
+      if (feature && onFeatureSelectWithPan) {
+        onFeatureSelectWithPan(feature);
+      }
+    }
+  }, [onFeatureSelect, features, onFeatureSelectWithPan]);
 
   const rowVirtualizer = useVirtualizer({
     count: filteredFeatures.length,
@@ -544,7 +563,7 @@ export function AttributeTable({
   const renderCellValue = (feature: DrawnFeature, field: AttributeField) => {
     const pendingEdit = pendingEdits.get(feature.id);
     const displayValue = pendingEdit ? pendingEdit.newProperties[field.name] : feature.properties[field.name];
-    const isEditing = editingCell?.featureId === feature.id && editingCell?.field === field.name;
+    const isEditing = !readOnly && editingCell?.featureId === feature.id && editingCell?.field === field.name;
     const hasChange = pendingEdit && pendingEdit.newProperties[field.name] !== pendingEdit.originalProperties[field.name];
 
     if (isEditing) {
@@ -602,8 +621,8 @@ export function AttributeTable({
       return (
         <Badge 
           variant={displayValue ? "default" : "secondary"} 
-          className={`cursor-pointer ${hasChange ? "ring-2 ring-primary ring-offset-1" : ""}`}
-          onClick={() => startEditing(feature.id, field.name, displayValue)}
+          className={readOnly ? "" : `cursor-pointer ${hasChange ? "ring-2 ring-primary ring-offset-1" : ""}`}
+          onClick={readOnly ? undefined : () => startEditing(feature.id, field.name, displayValue)}
         >
           {displayValue ? "Да" : "Нет"}
         </Badge>
@@ -612,8 +631,8 @@ export function AttributeTable({
 
     return (
       <span 
-        className={`cursor-pointer hover:bg-muted px-1 rounded truncate block ${hasChange ? "bg-primary/10 ring-1 ring-primary/30" : ""}`}
-        onClick={() => startEditing(feature.id, field.name, displayValue)}
+        className={readOnly ? "px-1 truncate block text-muted-foreground" : `cursor-pointer hover:bg-muted px-1 rounded truncate block ${hasChange ? "bg-primary/10 ring-1 ring-primary/30" : ""}`}
+        onClick={readOnly ? undefined : () => startEditing(feature.id, field.name, displayValue)}
       >
         {displayValue?.toString() || "-"}
       </span>
@@ -708,6 +727,11 @@ export function AttributeTable({
                 Выбрано: {selectedFeatureIds.length}
               </Badge>
             )}
+            {readOnly && (
+              <Badge variant="outline" className="text-xs text-muted-foreground" data-testid="badge-read-only">
+                Только просмотр
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-1">
             {onSelectAll && (
@@ -742,7 +766,7 @@ export function AttributeTable({
                 <TooltipContent>Снять выделение</TooltipContent>
               </Tooltip>
             )}
-            {onBatchDelete && selectedFeatureIds.length > 0 && (
+            {!readOnly && onBatchDelete && selectedFeatureIds.length > 0 && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -854,20 +878,22 @@ export function AttributeTable({
                 </TooltipContent>
               </Tooltip>
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => setShowSchemaDialog(true)}
-                  data-testid="button-edit-schema"
-                >
-                  <Settings2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Настройка атрибутов</TooltipContent>
-            </Tooltip>
+            {!readOnly && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => setShowSchemaDialog(true)}
+                    data-testid="button-edit-schema"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Настройка атрибутов</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
         

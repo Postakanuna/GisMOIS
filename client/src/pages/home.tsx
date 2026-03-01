@@ -208,7 +208,7 @@ export default function Home() {
     deleteFeatures: (ids: number[]) => void;
   } | null>(null);
   const drawActionsRef = useRef<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>(null);
-  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void } | null>(null);
+  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void } | null>(null);
   const drawing = useDrawing({ drawActionsRef });
   const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
@@ -464,12 +464,13 @@ export default function Home() {
     drawing.undo();
   }, [drawing.drawingMode, drawing]);
 
-  // Auto-close attribute table modal when prerequisites are no longer met
+  // Auto-close attribute table modal only when the layer disappears or has no features
+  // (NOT when editMode changes — table stays open in read-only mode)
   useEffect(() => {
-    if (showAttributeTable && (!editMode || !drawing.activeLayer || drawing.features.length === 0)) {
+    if (showAttributeTable && (!drawing.activeLayer || drawing.features.length === 0)) {
       setShowAttributeTable(false);
     }
-  }, [showAttributeTable, editMode, drawing.activeLayer, drawing.features.length]);
+  }, [showAttributeTable, drawing.activeLayer, drawing.features.length]);
 
   // Auto-close feature info modal when no feature is selected
   useEffect(() => {
@@ -524,7 +525,13 @@ export default function Home() {
                     activeSceneDataset={activeSceneDataset}
                     onSelectSceneDataset={handleSelectSceneDataset}
                     onOpenAttributeTable={(layerId, layerName) => {
-                      setImportedLayerTable({ layerId, layerName });
+                      const editableLayer = drawing.editableLayers.find(l => l.id === layerId);
+                      if (editableLayer) {
+                        drawing.selectLayer(editableLayer);
+                        setShowAttributeTable(true);
+                      } else {
+                        setImportedLayerTable({ layerId, layerName });
+                      }
                     }}
                     onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
@@ -709,6 +716,8 @@ export default function Home() {
                 canRedo={drawing.canRedo}
                 onUndo={handleUndo}
                 onRedo={drawing.redo}
+                undoDescription={drawing.undoDescription}
+                redoDescription={drawing.redoDescription}
                 selectedCount={selectedFeatures.length}
                 onClearSelection={() => selectionActionsRef.current?.clearSelection()}
                 showAttributeTable={showAttributeTable}
@@ -775,7 +784,7 @@ export default function Home() {
 
             {/* Attribute Table Modal */}
             <DraggableModal
-              isOpen={showAttributeTable && editMode && drawing.activeLayer !== null && drawing.features.length > 0}
+              isOpen={showAttributeTable && drawing.activeLayer !== null && drawing.features.length > 0}
               onClose={() => setShowAttributeTable(false)}
               onBeforeClose={() => {
                 if (attributeTableCloseRef.current?.tryClose()) {
@@ -806,9 +815,11 @@ export default function Home() {
                   onSelectAll={drawing.selectAllFeatures}
                   onClearSelection={drawing.clearSelection}
                   onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
+                  onFeatureSelectWithPan={(feature) => mapActionsRef.current?.panToFeatureIfOutsideViewport(feature)}
                   onRequestClose={() => setShowAttributeTable(false)}
                   closeRef={attributeTableCloseRef}
                   layerName={drawing.activeLayer.name}
+                  readOnly={!editMode}
                 />
               )}
             </DraggableModal>

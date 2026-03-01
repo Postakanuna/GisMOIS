@@ -146,7 +146,7 @@ interface MapViewerProps {
     snapRadius: number;
     snapLayerIds: number[];
   };
-  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void } | null>;
+  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void } | null>;
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -974,7 +974,7 @@ export function MapViewer({
   const [selectedMapFeatures, setSelectedMapFeatures] = useState<Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }>>([]);
   const selectedMapFeaturesRef = useRef(selectedMapFeatures);
   const [selectionCandidates, setSelectionCandidates] = useState<SelectionCandidate[]>([]);
-  const [pendingClickEvent, setPendingClickEvent] = useState<{ ctrlKey: boolean; metaKey: boolean } | null>(null);
+  const [pendingClickEvent, setPendingClickEvent] = useState<{ shiftKey: boolean } | null>(null);
   const pendingClickEventRef = useRef(pendingClickEvent);
   // Selection animation refs for pulsating glow effect (using refs to avoid React re-renders)
   const selectionAnimRef = useRef<number | null>(null);
@@ -1192,7 +1192,7 @@ export function MapViewer({
   // Handle selection from the layer selection dialog
   const handleCandidateSelect = useCallback((candidate: SelectionCandidate) => {
     const clickEvent = pendingClickEventRef.current;
-    const isMultiSelect = clickEvent?.ctrlKey || clickEvent?.metaKey || false;
+    const isMultiSelect = clickEvent?.shiftKey ?? false;
     confirmFeatureSelectionInternal(candidate, isMultiSelect);
     setSelectionCandidates([]);
     setPendingClickEvent(null);
@@ -1762,18 +1762,23 @@ export function MapViewer({
       const extent = dragBox.getGeometry().getExtent();
       const newSelectedFeatures: Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }> = [];
       
-      allEditableLayersRef.current.forEach((layer, layerId) => {
-        const source = layer.getSource();
-        if (!source || !layer.getVisible()) return;
-        
-        const features = source.getFeatures();
-        features.forEach((feature, index) => {
-          const geom = feature.getGeometry();
-          if (geom && geom.intersectsExtent(extent)) {
-            newSelectedFeatures.push({ layerId, featureIndex: index, feature: feature as Feature<Geometry> });
+      // A2: Only search in the active editable layer
+      const activeLayerIdForBox = activeEditableLayerRef.current?.id;
+      if (activeLayerIdForBox !== undefined) {
+        const activeOLLayer = allEditableLayersRef.current.get(activeLayerIdForBox);
+        if (activeOLLayer && activeOLLayer.getVisible()) {
+          const source = activeOLLayer.getSource();
+          if (source) {
+            const features = source.getFeatures();
+            features.forEach((feature, index) => {
+              const geom = feature.getGeometry();
+              if (geom && geom.intersectsExtent(extent)) {
+                newSelectedFeatures.push({ layerId: activeLayerIdForBox, featureIndex: index, feature: feature as Feature<Geometry> });
+              }
+            });
           }
-        });
-      });
+        }
+      }
       
       setSelectedMapFeatures(prev => [...prev, ...newSelectedFeatures]);
     });
@@ -1941,31 +1946,22 @@ export function MapViewer({
         );
 
         if (candidates.length === 0) {
-          // No features found - clear selection if not multi-select
-          if (!evt.originalEvent.ctrlKey && !evt.originalEvent.metaKey) {
-            setSelectedMapFeatures([]);
-            // Also clear drawing.selectedFeatureIds
-            if (onClearEditableSelectionRef.current) {
-              onClearEditableSelectionRef.current();
-            }
-          }
+          // A3: Click on empty space does NOT clear selection.
+          // Selection is cleared only via Escape key or the "×" button in the toolbar.
         } else if (candidates.length === 1) {
-          // Single candidate - select directly
+          // Single candidate - select directly (A1: Shift for multi-select)
           const candidate = candidates[0];
-          confirmFeatureSelectionRef.current(candidate, evt.originalEvent.ctrlKey || evt.originalEvent.metaKey);
+          confirmFeatureSelectionRef.current(candidate, evt.originalEvent.shiftKey);
         } else {
           // Multiple candidates from different layers - check if they're from the same layer
           const uniqueLayerIds = new Set(candidates.map(c => c.layerId));
           if (uniqueLayerIds.size === 1) {
             // All from same layer - select the first (topmost by geometry priority)
-            confirmFeatureSelectionRef.current(candidates[0], evt.originalEvent.ctrlKey || evt.originalEvent.metaKey);
+            confirmFeatureSelectionRef.current(candidates[0], evt.originalEvent.shiftKey);
           } else {
             // Multiple layers - show selection dialog
             setSelectionCandidates(candidates);
-            setPendingClickEvent({ 
-              ctrlKey: evt.originalEvent.ctrlKey, 
-              metaKey: evt.originalEvent.metaKey 
-            });
+            setPendingClickEvent({ shiftKey: evt.originalEvent.shiftKey });
           }
         }
         return;
@@ -2746,6 +2742,35 @@ export function MapViewer({
             zoom: zoom ?? 16,
             duration: 500,
           });
+        },
+        panToFeatureIfOutsideViewport: (feature: DrawnFeature) => {
+          const map = mapRef.current;
+          if (!map) return;
+          const geojsonFormat = new GeoJSON();
+          const geojsonObj = {
+            type: "Feature" as const,
+            geometry: { type: feature.geometryType, coordinates: feature.coordinates },
+            properties: {},
+          };
+          try {
+            const olFeature = geojsonFormat.readFeature(geojsonObj, {
+              dataProjection: "EPSG:4326",
+              featureProjection: map.getView().getProjection(),
+            });
+            const geom = olFeature.getGeometry();
+            if (!geom) return;
+            const extent = geom.getExtent();
+            const featureCenter = [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2];
+            const viewExtent = map.getView().calculateExtent(map.getSize());
+            const isInView =
+              featureCenter[0] >= viewExtent[0] && featureCenter[0] <= viewExtent[2] &&
+              featureCenter[1] >= viewExtent[1] && featureCenter[1] <= viewExtent[3];
+            if (!isInView) {
+              map.getView().animate({ center: featureCenter, duration: 400 });
+            }
+          } catch (e) {
+            console.error("[PAN TO FEATURE] Error:", e);
+          }
         },
       };
     }
