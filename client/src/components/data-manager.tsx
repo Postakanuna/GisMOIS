@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, Fragment } from "react";
+import { useState, useRef, useCallback, useEffect, createContext, useContext, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,6 @@ import {
   Palette,
   Pencil,
   Check,
-  FileText,
   ChevronDown,
   ChevronRight,
   FileSpreadsheet,
@@ -52,6 +51,25 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { JoinExcelDialog } from "@/components/join-excel-dialog";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragStartEvent,
+  type DragEndEvent,
+  defaultDropAnimationSideEffects,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface Folder {
   id: number;
@@ -84,6 +102,9 @@ interface EditableLayer {
   styleConfig?: any;
 }
 
+type FlatItem =
+  | { type: "folder"; folderId: number; displayOrder: number; layers: number[] }
+  | { type: "layer"; layerId: number; displayOrder: number };
 
 interface DataManagerProps {
   onClose: () => void;
@@ -93,6 +114,630 @@ interface DataManagerProps {
 const MIN_WIDTH = 500;
 const MIN_HEIGHT = 300;
 
+interface LayerRowCtx {
+  expandedLayerId: number | null;
+  setExpandedLayerId: (id: number | null) => void;
+  legendLayerId: number | null;
+  setLegendLayerId: (id: number | null) => void;
+  editingLayerId: number | null;
+  editingName: string;
+  setEditingName: (name: string) => void;
+  handleKeyDown: (e: React.KeyboardEvent, layerId: number) => void;
+  handleSaveName: (layerId: number) => void;
+  handleStartEditing: (layer: EditableLayer) => void;
+  setStyleConfigLayerId: (id: number | null) => void;
+  onOpenAttributeTable?: (layerId: number, layerName: string) => void;
+  toggleVisibilityMutation: any;
+  setGeocodeLayerId: (id: number | null) => void;
+  setJoinLayerId: (id: number | null) => void;
+  deleteLayerMutation: any;
+  toast: any;
+  canEdit: boolean;
+  getGeometryIcon: (type: string) => string;
+}
+
+const LayerRowContext = createContext<LayerRowCtx | null>(null);
+
+function useLayerRowCtx() {
+  const ctx = useContext(LayerRowContext);
+  if (!ctx) throw new Error("LayerRowContext not provided");
+  return ctx;
+}
+
+function LayerRowContent({ layer, dragListeners }: { layer: EditableLayer; dragListeners?: Record<string, any> }) {
+  const {
+    expandedLayerId, setExpandedLayerId,
+    legendLayerId, setLegendLayerId,
+    editingLayerId, editingName, setEditingName,
+    handleKeyDown, handleSaveName, handleStartEditing,
+    setStyleConfigLayerId,
+    onOpenAttributeTable,
+    toggleVisibilityMutation,
+    setGeocodeLayerId,
+    setJoinLayerId,
+    deleteLayerMutation,
+    toast,
+    canEdit,
+    getGeometryIcon,
+  } = useLayerRowCtx();
+
+  return (
+    <>
+      <div
+        className={`flex items-center gap-1.5 px-2 py-1 ${layer.styleConfig && layer.styleConfig.renderer !== "single" ? "cursor-pointer" : ""}`}
+        onClick={() => {
+          const sc = layer.styleConfig;
+          if (sc && sc.renderer !== "single") {
+            setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
+          }
+        }}
+      >
+        {canEdit && dragListeners && (
+          <span
+            {...dragListeners}
+            className="cursor-grab touch-none shrink-0 flex items-center"
+            data-no-drag
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-3 w-3 text-muted-foreground/50" />
+          </span>
+        )}
+        {((layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0) || (layer as any).metadata) && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id); }}
+            className="shrink-0 hover:bg-muted rounded"
+            data-testid={`button-expand-${layer.id}`}
+            data-no-drag
+          >
+            {expandedLayerId === layer.id ? (
+              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            )}
+          </button>
+        )}
+        <div
+          className="w-2.5 h-2.5 rounded-sm shrink-0"
+          style={{ backgroundColor: layer.color }}
+        />
+        <span className="text-sm shrink-0" title={layer.geometryType}>
+          {getGeometryIcon(layer.geometryType)}
+        </span>
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          {editingLayerId === layer.id ? (
+            <div className="flex items-center gap-1 flex-1">
+              <Input
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, layer.id)}
+                className="h-5 text-xs"
+                autoFocus
+                data-no-drag
+                data-testid={`input-layer-name-${layer.id}`}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0"
+                onClick={() => handleSaveName(layer.id)}
+                data-testid={`button-save-name-${layer.id}`}
+                data-no-drag
+              >
+                <Check className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <span
+                className="text-xs font-medium truncate"
+                data-testid={`label-layer-name-${layer.id}`}
+              >
+                {layer.name}
+              </span>
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                ({layer.featureCount})
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="text-[10px] text-muted-foreground/60 shrink-0 cursor-pointer"
+                    data-no-drag
+                    data-testid={`label-layer-id-${layer.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const idStr = String(layer.id);
+                      if (navigator.clipboard?.writeText) {
+                        navigator.clipboard.writeText(idStr).then(() => {
+                          toast({ title: "ID скопирован", description: `ID слоя: ${idStr}` });
+                        }).catch(() => {
+                          toast({ title: "ID слоя", description: idStr });
+                        });
+                      } else {
+                        toast({ title: "ID слоя", description: idStr });
+                      }
+                    }}
+                  >
+                    ID:{layer.id}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Нажмите, чтобы скопировать ID слоя</p>
+                </TooltipContent>
+              </Tooltip>
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
+                  onClick={(e) => { e.stopPropagation(); handleStartEditing(layer); }}
+                  data-testid={`button-edit-name-${layer.id}`}
+                  data-no-drag
+                >
+                  <Pencil className="h-2.5 w-2.5" />
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={(e) => { e.stopPropagation(); setStyleConfigLayerId(layer.id); }}
+              data-testid={`button-layer-style-${layer.id}`}
+              data-no-drag
+            >
+              <Palette className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p className="text-xs">Стилизация слоя</p>
+          </TooltipContent>
+        </Tooltip>
+
+        {onOpenAttributeTable && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => { e.stopPropagation(); onOpenAttributeTable(layer.id, layer.name); }}
+                data-testid={`button-attribute-table-${layer.id}`}
+                data-no-drag
+              >
+                <Table2 className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Таблица атрибутов</TooltipContent>
+          </Tooltip>
+        )}
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => { e.stopPropagation(); toggleVisibilityMutation.mutate({ id: layer.id, visible: !layer.visible }); }}
+              data-testid={`button-toggle-visibility-${layer.id}`}
+              data-no-drag
+            >
+              {layer.visible ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => { e.stopPropagation(); setGeocodeLayerId(layer.id); }}
+              data-testid={`button-geocode-layer-${layer.id}`}
+              data-no-drag
+            >
+              <MapPin className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Геокодировать (адресные ориентиры)</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => { e.stopPropagation(); setJoinLayerId(layer.id); }}
+              data-testid={`button-join-layer-${layer.id}`}
+              data-no-drag
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Обогатить из XLSX</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => {
+                e.stopPropagation();
+                const url = `/api/editable-layers/${layer.id}/export/shapefile`;
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${layer.name}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                toast({ title: "Экспорт", description: `Слой "${layer.name}" экспортируется в Shapefile...` });
+              }}
+              data-testid={`button-export-layer-${layer.id}`}
+              data-no-drag
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Экспорт в Shapefile</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-destructive"
+              onClick={(e) => { e.stopPropagation(); deleteLayerMutation.mutate(layer.id); }}
+              data-testid={`button-delete-layer-${layer.id}`}
+              data-no-drag
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Удалить слой</TooltipContent>
+        </Tooltip>
+      </div>
+
+      {expandedLayerId === layer.id && layer.sourceFiles && layer.sourceFiles.length > 0 && (
+        <div className="px-2 py-1.5 border-t bg-muted/30">
+          <div className="flex flex-wrap gap-1 items-center">
+            <span className="text-[10px] text-muted-foreground">SHP:</span>
+            {layer.sourceFiles.map((file, idx) => (
+              <Badge key={idx} variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                {file}
+              </Badge>
+            ))}
+            {layer.crs && (
+              <span className="text-[10px] text-muted-foreground ml-1">
+                CRS: {layer.crs}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {expandedLayerId === layer.id && (layer as any).metadata && (layer as any).metadata.analysisType === "complaint_analysis" && (() => {
+        const meta = (layer as any).metadata as Record<string, unknown>;
+        const metaLabelMap: Record<string, string> = {
+          analysisMode: "Режим анализа",
+          analysisDate: "Дата анализа",
+          totalComplaints: "Всего жалоб",
+          totalMatched: "Сопоставлено",
+          totalUnmatched: "Не сопоставлено",
+          emptyNistCount: "Пустой НИСТ",
+          dateGroupCount: "Групп по дате/НИСТ",
+          failureZoneCount: "Зон отказа",
+          totalClustered: "В кластерах",
+          totalUnclustered: "Вне кластеров",
+          clusterCount: "Кластеров",
+          complaintLayerName: "Слой жалоб",
+          matchRadius: "Радиус привязки (м)",
+          dateFieldName: "Поле даты",
+          addressFieldName: "Поле адреса",
+        };
+        const displayKeys = Object.keys(meta).filter(k => k !== "analysisType" && metaLabelMap[k]);
+        return (
+          <div className="px-2 py-1.5 border-t bg-muted/30 space-y-0.5" data-testid={`metadata-layer-${layer.id}`}>
+            <div className="flex items-center gap-1 mb-1">
+              <AlertTriangle className="h-3 w-3 text-orange-500 shrink-0" />
+              <span className="text-[10px] font-medium text-muted-foreground">
+                {String(meta.analysisMode || "Анализ жалоб")}
+              </span>
+            </div>
+            {displayKeys.map(key => {
+              let value = meta[key];
+              if (key === "analysisDate" && typeof value === "string") {
+                try {
+                  const d = new Date(value);
+                  value = `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getFullYear()} ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+                } catch {}
+              }
+              return (
+                <div key={key} className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted-foreground shrink-0">{metaLabelMap[key]}:</span>
+                  <span className="text-[10px] font-medium truncate">{String(value ?? "")}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {legendLayerId === layer.id && layer.styleConfig && layer.styleConfig.renderer !== "single" && (() => {
+        const sc = layer.styleConfig;
+        return (
+          <div className="px-3 py-2 border-t bg-muted/20 space-y-1" data-testid={`legend-layer-${layer.id}`}>
+            <p className="text-[10px] text-muted-foreground font-medium mb-1">
+              {sc.renderer === "categorized" ? "Категории" : "Градация"}: {sc.field}
+            </p>
+            {sc.renderer === "categorized" && sc.categorizedClasses && (
+              <div className="space-y-0.5">
+                {sc.categorizedClasses.map((cls: any, i: number) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <span
+                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                      style={{ backgroundColor: cls.style.color }}
+                    />
+                    <span className="text-[11px] truncate">{cls.label || String(cls.value)}</span>
+                  </div>
+                ))}
+                {sc.defaultStyle && (
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                      style={{ backgroundColor: sc.defaultStyle.color }}
+                    />
+                    <span className="text-[11px] truncate text-muted-foreground">Прочее</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {sc.renderer === "graduated" && sc.graduatedClasses && (
+              <div className="space-y-0.5">
+                {sc.graduatedClasses.map((cls: any, i: number) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <span
+                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
+                      style={{ backgroundColor: cls.style.color }}
+                    />
+                    <span className="text-[11px] truncate">{cls.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </>
+  );
+}
+
+function SortableLayerRow({ layer }: { layer: EditableLayer }) {
+  const { canEdit } = useLayerRowCtx();
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `layer-${layer.id}`,
+    data: { type: "layer", layerId: layer.id, folderId: layer.folderId ?? null },
+    disabled: !canEdit,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      className="rounded border bg-background"
+      data-testid={`scene-layer-${layer.id}`}
+    >
+      <LayerRowContent layer={layer} dragListeners={canEdit ? listeners : undefined} />
+    </div>
+  );
+}
+
+function SortableFolderRow({
+  folder,
+  folderLayers,
+  expandedFolderIds,
+  toggleFolderExpanded,
+  editingFolderId,
+  editingFolderName,
+  setEditingFolderId,
+  setEditingFolderName,
+  renameFolderMutation,
+  toggleFolderVisibilityMutation,
+  deleteFolderMutation,
+  canEdit,
+  dndActiveType,
+}: {
+  folder: Folder;
+  folderLayers: EditableLayer[];
+  expandedFolderIds: Set<number>;
+  toggleFolderExpanded: (id: number) => void;
+  editingFolderId: number | null;
+  editingFolderName: string;
+  setEditingFolderId: (id: number | null) => void;
+  setEditingFolderName: (name: string) => void;
+  renameFolderMutation: any;
+  toggleFolderVisibilityMutation: any;
+  deleteFolderMutation: any;
+  canEdit: boolean;
+  dndActiveType: "layer" | "folder" | null;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `folder-${folder.id}`,
+    data: { type: "folder", folderId: folder.id },
+    disabled: !canEdit,
+  });
+
+  const isExpanded = expandedFolderIds.has(folder.id);
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  const folderLayerIds = useMemo(
+    () => folderLayers.map((l) => `layer-${l.id}`),
+    [folderLayers]
+  );
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} data-testid={`folder-${folder.id}`}>
+      <Collapsible open={isExpanded} onOpenChange={() => toggleFolderExpanded(folder.id)}>
+        <div className={`rounded border transition-colors bg-muted/30`}>
+          <div className="flex items-center gap-1.5 px-2 py-1">
+            {canEdit && (
+              <span
+                {...listeners}
+                className="cursor-grab touch-none shrink-0"
+                data-no-drag
+              >
+                <GripVertical className="h-3 w-3 text-muted-foreground/50" />
+              </span>
+            )}
+            <CollapsibleTrigger asChild>
+              <button className="shrink-0 hover:bg-muted rounded p-0.5" data-testid={`button-toggle-folder-${folder.id}`} data-no-drag>
+                {isExpanded ? (
+                  <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                ) : (
+                  <FolderClosed className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+              </button>
+            </CollapsibleTrigger>
+            <div className="flex-1 min-w-0 flex items-center gap-1.5">
+              {editingFolderId === folder.id ? (
+                <div className="flex items-center gap-1 flex-1">
+                  <Input
+                    value={editingFolderName}
+                    onChange={(e) => setEditingFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && editingFolderName.trim()) {
+                        renameFolderMutation.mutate({ folderId: folder.id, name: editingFolderName.trim() });
+                      } else if (e.key === "Escape") {
+                        setEditingFolderId(null);
+                      }
+                    }}
+                    className="h-5 text-xs"
+                    autoFocus
+                    data-no-drag
+                    data-testid={`input-folder-name-${folder.id}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (editingFolderName.trim()) {
+                        renameFolderMutation.mutate({ folderId: folder.id, name: editingFolderName.trim() });
+                      }
+                    }}
+                    data-testid={`button-save-folder-name-${folder.id}`}
+                    data-no-drag
+                  >
+                    <Check className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <span className="text-xs font-medium truncate" data-testid={`label-folder-name-${folder.id}`}>
+                    {folder.name}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    ({folderLayers.length})
+                  </span>
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingFolderId(folder.id);
+                        setEditingFolderName(folder.name);
+                      }}
+                      data-testid={`button-edit-folder-name-${folder.id}`}
+                      data-no-drag
+                    >
+                      <Pencil className="h-2.5 w-2.5" />
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFolderVisibilityMutation.mutate({ folderId: folder.id, visible: folder.visible !== 1 });
+              }}
+              data-testid={`button-toggle-folder-visibility-${folder.id}`}
+              data-no-drag
+            >
+              {folder.visible === 1 ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </Button>
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteFolderMutation.mutate(folder.id);
+                }}
+                data-testid={`button-delete-folder-${folder.id}`}
+                data-no-drag
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+          <CollapsibleContent>
+            <div className="space-y-1 px-2 pb-1.5">
+              {folderLayers.length === 0 ? (
+                <div
+                  className="text-[10px] text-muted-foreground text-center py-2"
+                  data-testid={`folder-empty-${folder.id}`}
+                >
+                  {dndActiveType === "layer" ? "Перетащите слой сюда" : "Пусто"}
+                </div>
+              ) : (
+                <SortableContext items={folderLayerIds} strategy={verticalListSortingStrategy}>
+                  {folderLayers.map((layer) => (
+                    <SortableLayerRow key={layer.id} layer={layer} />
+                  ))}
+                </SortableContext>
+              )}
+            </div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
+    </div>
+  );
+}
+
 export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps) {
   const { toast } = useToast();
   const { currentSceneId, canEdit } = useScene();
@@ -100,11 +745,11 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const { currentProjection, setProjection, projectionInfo } = useProjection();
   const { connect, connectZws, connectCustomZws, disconnect, status: zuluStatus, error: zuluError } = useZuluConnectionContext();
-  type FlatItem = { type: "folder"; folderId: number; displayOrder: number; layers: number[] } | { type: "layer"; layerId: number; displayOrder: number };
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [size, setSize] = useState({ width: 700, height: 450 });
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingWindow, setIsDraggingWindow] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -129,15 +774,12 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [editingFolderId, setEditingFolderId] = useState<number | null>(null);
   const [editingFolderName, setEditingFolderName] = useState("");
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<number>>(new Set());
-  const [dragLayerId, setDragLayerId] = useState<number | null>(null);
-  const [dropTargetFolderId, setDropTargetFolderId] = useState<number | "ungrouped" | null>(null);
-  const [dragType, setDragType] = useState<"layer" | "folder" | null>(null);
-  const [dragFolderId, setDragFolderId] = useState<number | null>(null);
-  const [dropInsertIndex, setDropInsertIndex] = useState<{ scope: number | "ungrouped"; index: number } | null>(null);
-  const currentFlatOrderRef = useRef<FlatItem[]>([]);
+
+  const [dndActiveId, setDndActiveId] = useState<string | null>(null);
+  const [dndActiveType, setDndActiveType] = useState<"layer" | "folder" | null>(null);
+
   const isSavingRef = useRef(false);
   const pendingSaveRef = useRef<{ flatItems: FlatItem[]; movedLayerId?: number; sourceFolderId?: number | null; targetFolderId?: number | null } | null>(null);
-  const dropHandledRef = useRef(false);
 
   const foldersQueryKey = ["/api/scenes", currentSceneId, "folders"];
 
@@ -150,12 +792,15 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     queryKey: ["/api/scenes", currentSceneId, "editable-layers"],
     enabled: !!currentSceneId,
   });
-  
-  // Sort layers by id to maintain consistent order
+
   const sceneLayers = [...sceneLayersRaw].sort((a, b) => a.displayOrder - b.displayOrder);
 
-  // Single query key for all editable layers operations
   const editableLayersQueryKey = ["/api/scenes", currentSceneId, "editable-layers"];
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const deleteLayerMutation = useMutation({
     mutationFn: async (layerId: number) => {
@@ -165,7 +810,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     onMutate: async (layerId: number) => {
       await queryClient.cancelQueries({ queryKey: editableLayersQueryKey });
       const previousLayers = queryClient.getQueryData<EditableLayer[]>(editableLayersQueryKey);
-      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => 
+      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) =>
         old ? old.filter(layer => layer.id !== layerId) : []
       );
       return { previousLayers };
@@ -193,7 +838,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey: editableLayersQueryKey });
       const previousLayers = queryClient.getQueryData<EditableLayer[]>(editableLayersQueryKey);
-      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => 
+      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) =>
         old?.map(layer => layer.id === variables.id ? { ...layer, visible: variables.visible } : layer) ?? []
       );
       return { previousLayers };
@@ -216,7 +861,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey: editableLayersQueryKey });
       const previousLayers = queryClient.getQueryData<EditableLayer[]>(editableLayersQueryKey);
-      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) => 
+      queryClient.setQueryData<EditableLayer[]>(editableLayersQueryKey, (old) =>
         old?.map(layer => layer.id === variables.id ? { ...layer, ...variables } : layer) ?? []
       );
       return { previousLayers };
@@ -356,7 +1001,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isMobile) return;
     if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
-    setIsDragging(true);
+    setIsDraggingWindow(true);
     dragOffset.current = {
       x: e.clientX - position.x,
       y: e.clientY - position.y,
@@ -375,7 +1020,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
+      if (isDraggingWindow) {
         setPosition({
           x: Math.max(0, e.clientX - dragOffset.current.x),
           y: Math.max(0, e.clientY - dragOffset.current.y),
@@ -392,11 +1037,11 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     };
 
     const handleMouseUp = () => {
-      setIsDragging(false);
+      setIsDraggingWindow(false);
       setIsResizing(false);
     };
 
-    if (isDragging || isResizing) {
+    if (isDraggingWindow || isResizing) {
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
     }
@@ -405,7 +1050,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, isResizing]);
+  }, [isDraggingWindow, isResizing]);
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
@@ -424,23 +1069,23 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         const file = files[i];
         const fileSize = file.size;
         const fileSizeMB = (fileSize / 1024 / 1024).toFixed(1);
-        
+
         if (fileSize > SERVER_UPLOAD_THRESHOLD) {
           setUploadProgress(`Загрузка ${file.name} (${fileSizeMB} МБ) на сервер...`);
           setUploadPercent(0);
-          
+
           const formData = new FormData();
           formData.append("file", file);
           if (currentSceneId) {
             formData.append("sceneId", currentSceneId.toString());
           }
-          
+
           const res = await fetch("/api/datasets/upload", {
             method: "POST",
             body: formData,
             credentials: "include",
           });
-          
+
           if (!res.ok) {
             let errorMessage = "Ошибка загрузки на сервер";
             try {
@@ -451,27 +1096,27 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
             }
             throw new Error(errorMessage);
           }
-          
+
           let responseData: { uploadId?: number } = {};
           try {
             responseData = await res.json();
           } catch {
             console.warn("Could not parse upload response as JSON");
           }
-          
+
           if (responseData.uploadId) {
             setUploadProgress(`Обработка ${file.name}...`);
             setUploadPercent(5);
-            
+
             await new Promise<void>((resolve, reject) => {
               const eventSource = new EventSource(`/api/uploads/${responseData.uploadId}/progress`);
-              
+
               eventSource.onmessage = (event) => {
                 try {
                   const data = JSON.parse(event.data);
                   requestAnimationFrame(() => {
                     setUploadPercent(data.progress || 0);
-                    
+
                     if (data.status === "processing") {
                       if (data.totalFeatures && data.processedFeatures) {
                         setUploadProgress(`Запись в БД: ${data.processedFeatures} / ${data.totalFeatures} объектов`);
@@ -483,14 +1128,14 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                         setUploadProgress(`Обработка ${file.name}...`);
                       }
                     }
-                    
+
                     if (data.status === "completed") {
                       setUploadProgress("Обработка завершена");
                       setUploadPercent(100);
                       eventSource.close();
                       resolve();
                     }
-                    
+
                     if (data.status === "failed") {
                       eventSource.close();
                       reject(new Error(data.error || "Ошибка обработки файла"));
@@ -500,7 +1145,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                   console.error("SSE parse error:", e);
                 }
               };
-              
+
               eventSource.onerror = () => {
                 eventSource.close();
                 reject(new Error("Потеряно соединение с сервером"));
@@ -512,21 +1157,21 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         } else {
           setUploadProgress(`Обработка ${file.name}...`);
           const arrayBuffer = await file.arrayBuffer();
-          
+
           const parsedLayers = await parseShapefileWithEncoding(arrayBuffer, file.name);
-          
+
           if (parsedLayers.length === 0) {
             throw new Error("Не найдено слоёв в архиве");
           }
-          
+
           for (const layer of parsedLayers) {
             if (!layer.geojson.features || layer.geojson.features.length === 0) {
               continue;
             }
-            
+
             const firstFeature = layer.geojson.features[0];
             const geometryType = firstFeature.geometry?.type || "Unknown";
-            
+
             const res = await apiRequest("POST", "/api/datasets/import", {
               name: layer.name,
               geometryType,
@@ -608,57 +1253,10 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
 
   const getGeometryIcon = (type: string) => {
     switch (type) {
-      case "Point":
-        return "●";
-      case "LineString":
-        return "—";
-      case "Polygon":
-        return "▢";
-      default:
-        return "◎";
-    }
-  };
-
-  const handleLayerDragStart = (e: React.DragEvent, layerId: number) => {
-    e.stopPropagation();
-    e.dataTransfer.setData("text/layer", String(layerId));
-    e.dataTransfer.effectAllowed = "move";
-    setDragLayerId(layerId);
-    setDragType("layer");
-  };
-
-  const handleFolderDragStart = (e: React.DragEvent, folderId: number) => {
-    e.dataTransfer.setData("text/folder", String(folderId));
-    e.dataTransfer.effectAllowed = "move";
-    setDragFolderId(folderId);
-    setDragType("folder");
-  };
-
-  const handleDragEnd = () => {
-    if (dropHandledRef.current) {
-      dropHandledRef.current = false;
-      return;
-    }
-    setDragLayerId(null);
-    setDragFolderId(null);
-    setDragType(null);
-    setDropTargetFolderId(null);
-    setDropInsertIndex(null);
-  };
-
-  const handleLayerDragOverInsert = (e: React.DragEvent, scope: number | "ungrouped", index: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-    setDropInsertIndex({ scope, index });
-    setDropTargetFolderId(null);
-  };
-
-  const handleInsertDragLeave = (e: React.DragEvent) => {
-    e.stopPropagation();
-    const related = e.relatedTarget as HTMLElement | null;
-    if (!related || !e.currentTarget.contains(related)) {
-      setDropInsertIndex(null);
+      case "Point": return "●";
+      case "LineString": return "—";
+      case "Polygon": return "▢";
+      default: return "◎";
     }
   };
 
@@ -679,18 +1277,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     }
     items.sort((a, b) => a.displayOrder - b.displayOrder);
     return items;
-  };
-
-  const flattenToGlobalOrder = (flatItems: ReturnType<typeof buildFlatItems>): number[] => {
-    const result: number[] = [];
-    for (const item of flatItems) {
-      if (item.type === "folder") {
-        result.push(...item.layers);
-      } else {
-        result.push(item.layerId);
-      }
-    }
-    return result;
   };
 
   const applyOptimisticUpdate = (flatItems: FlatItem[], movedLayerId?: number, sourceFolderId?: number | null, targetFolderId?: number | null) => {
@@ -775,7 +1361,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   };
 
   const persistFlatOrder = async (flatItems: FlatItem[], movedLayerId?: number, sourceFolderId?: number | null, targetFolderId?: number | null) => {
-    currentFlatOrderRef.current = flatItems;
     applyOptimisticUpdate(flatItems, movedLayerId, sourceFolderId, targetFolderId);
 
     if (isSavingRef.current) {
@@ -805,521 +1390,131 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     queryClient.invalidateQueries({ queryKey: editableLayersQueryKey });
   };
 
-  const handleDropAtIndex = (e: React.DragEvent, scope: number | "ungrouped", index: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const layerIdStr = e.dataTransfer.getData("text/layer");
-    const folderIdStr = e.dataTransfer.getData("text/folder");
-    
-    if (folderIdStr && dragType === "folder") {
-      const movedFolderId = Number(folderIdStr);
-      const flatItems: FlatItem[] = currentFlatOrderRef.current.map(it => 
-        it.type === "folder" ? { ...it, layers: [...it.layers] } : { ...it }
-      );
-      const fromIdx = flatItems.findIndex(it => it.type === "folder" && it.folderId === movedFolderId);
-      if (fromIdx >= 0) {
-        const [removed] = flatItems.splice(fromIdx, 1);
-        const insertAt = index > fromIdx ? index - 1 : index;
-        flatItems.splice(Math.min(insertAt, flatItems.length), 0, removed);
-        persistFlatOrder(flatItems);
-      }
-    } else if (layerIdStr && dragType === "layer") {
-      const movedLayerId = Number(layerIdStr);
-      const layer = sceneLayers.find(l => l.id === movedLayerId);
-      if (!layer) {
-        dropHandledRef.current = true;
-        setDragLayerId(null);
-        setDragFolderId(null);
-        setDragType(null);
-        setDropTargetFolderId(null);
-        setDropInsertIndex(null);
-        return;
-      }
-      
-      const sourceFolderId = layer.folderId ?? null;
-      const flatItems: FlatItem[] = currentFlatOrderRef.current.map(it => 
-        it.type === "folder" ? { ...it, layers: [...it.layers] } : { ...it }
-      );
-      
-      if (scope === "ungrouped") {
-        const fromIdx = flatItems.findIndex(it => 
-          (it.type === "layer" && it.layerId === movedLayerId) ||
-          (it.type === "folder" && it.layers.includes(movedLayerId))
-        );
-        let wasSplicedOut = false;
-        if (fromIdx >= 0) {
-          const fromItem = flatItems[fromIdx];
-          if (fromItem.type === "folder") {
-            fromItem.layers = fromItem.layers.filter(id => id !== movedLayerId);
-          } else {
-            flatItems.splice(fromIdx, 1);
-            wasSplicedOut = true;
-          }
-        }
-        const adjustedIndex = wasSplicedOut && fromIdx < index ? index - 1 : index;
-        const insertAt = Math.min(adjustedIndex, flatItems.length);
-        flatItems.splice(insertAt, 0, { type: "layer", layerId: movedLayerId, displayOrder: 0 });
-        persistFlatOrder(flatItems, movedLayerId, sourceFolderId, null);
-      } else {
-        const targetFolderId = scope as number;
-        
-        if (sourceFolderId) {
-          const srcFolder = flatItems.find(it => it.type === "folder" && it.folderId === sourceFolderId);
-          if (srcFolder && srcFolder.type === "folder") {
-            srcFolder.layers = srcFolder.layers.filter(id => id !== movedLayerId);
-          }
-        } else {
-          const layerIdx = flatItems.findIndex(it => it.type === "layer" && it.layerId === movedLayerId);
-          if (layerIdx >= 0) flatItems.splice(layerIdx, 1);
-        }
-        
-        const tgtFolder = flatItems.find(it => it.type === "folder" && it.folderId === targetFolderId);
-        if (tgtFolder && tgtFolder.type === "folder") {
-          const filteredLayers = tgtFolder.layers.filter(id => id !== movedLayerId);
-          const insertAt = Math.min(index, filteredLayers.length);
-          filteredLayers.splice(insertAt, 0, movedLayerId);
-          tgtFolder.layers = filteredLayers;
-        }
-        persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
-      }
-    }
-    
-    dropHandledRef.current = true;
-    setDragLayerId(null);
-    setDragFolderId(null);
-    setDragType(null);
-    setDropTargetFolderId(null);
-    setDropInsertIndex(null);
+  const handleDndStart = ({ active }: DragStartEvent) => {
+    const id = active.id as string;
+    setDndActiveId(id);
+    setDndActiveType(id.startsWith("folder-") ? "folder" : "layer");
   };
 
-  const handleFolderDrop = (e: React.DragEvent, targetFolderId: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const layerIdStr = e.dataTransfer.getData("text/layer");
-    if (layerIdStr && dragType === "layer") {
-      const movedLayerId = Number(layerIdStr);
-      const layer = sceneLayers.find(l => l.id === movedLayerId);
-      if (layer && layer.folderId !== targetFolderId) {
-        const sourceFolderId = layer.folderId ?? null;
-        const flatItems: FlatItem[] = currentFlatOrderRef.current.map(it => 
-          it.type === "folder" ? { ...it, layers: [...it.layers] } : { ...it }
-        );
+  const handleDndEnd = ({ active, over }: DragEndEvent) => {
+    setDndActiveId(null);
+    setDndActiveType(null);
+
+    if (!over || active.id === over.id) return;
+
+    const activeIdStr = active.id as string;
+    const overIdStr = over.id as string;
+
+    const flatItems = buildFlatItems(folders, sceneLayers).map(fi =>
+      fi.type === "folder" ? { ...fi, layers: [...fi.layers] } : { ...fi }
+    );
+
+    if (activeIdStr.startsWith("folder-")) {
+      const movedFolderId = parseInt(activeIdStr.replace("folder-", ""));
+      const fromIdx = flatItems.findIndex(fi => fi.type === "folder" && fi.folderId === movedFolderId);
+      let toIdx = -1;
+      if (overIdStr.startsWith("folder-")) {
+        const overFolderId = parseInt(overIdStr.replace("folder-", ""));
+        toIdx = flatItems.findIndex(fi => fi.type === "folder" && fi.folderId === overFolderId);
+      } else if (overIdStr.startsWith("layer-")) {
+        const overLayerId = parseInt(overIdStr.replace("layer-", ""));
+        toIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === overLayerId);
+      }
+      if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
+        const [removed] = flatItems.splice(fromIdx, 1);
+        const adjustedTo = toIdx > fromIdx ? toIdx - 1 : toIdx;
+        flatItems.splice(adjustedTo, 0, removed);
+        persistFlatOrder(flatItems);
+      }
+      return;
+    }
+
+    if (activeIdStr.startsWith("layer-")) {
+      const movedLayerId = parseInt(activeIdStr.replace("layer-", ""));
+      const movedLayer = sceneLayers.find(l => l.id === movedLayerId);
+      if (!movedLayer) return;
+
+      const sourceFolderId = movedLayer.folderId ?? null;
+
+      if (overIdStr.startsWith("folder-")) {
+        const targetFolderId = parseInt(overIdStr.replace("folder-", ""));
+        if (sourceFolderId === targetFolderId) return;
         if (sourceFolderId) {
-          const srcFolder = flatItems.find(it => it.type === "folder" && it.folderId === sourceFolderId);
+          const srcFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === sourceFolderId);
           if (srcFolder && srcFolder.type === "folder") {
             srcFolder.layers = srcFolder.layers.filter(id => id !== movedLayerId);
           }
         } else {
-          const layerIdx = flatItems.findIndex(it => it.type === "layer" && it.layerId === movedLayerId);
-          if (layerIdx >= 0) flatItems.splice(layerIdx, 1);
+          const idx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === movedLayerId);
+          if (idx >= 0) flatItems.splice(idx, 1);
         }
-        const tgtFolder = flatItems.find(it => it.type === "folder" && it.folderId === targetFolderId);
+        const tgtFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === targetFolderId);
         if (tgtFolder && tgtFolder.type === "folder") {
           tgtFolder.layers.push(movedLayerId);
         }
         persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
+        return;
       }
-    }
-    dropHandledRef.current = true;
-    setDragLayerId(null);
-    setDragFolderId(null);
-    setDragType(null);
-    setDropTargetFolderId(null);
-    setDropInsertIndex(null);
-  };
 
-  const handleFolderDragOver = (e: React.DragEvent, targetId: number) => {
-    if (dragType === "layer" || dragType === "folder") {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      if (dragType === "layer") {
-        setDropTargetFolderId(targetId);
-        setDropInsertIndex(null);
-      }
-    }
-  };
+      if (overIdStr.startsWith("layer-")) {
+        const overLayerId = parseInt(overIdStr.replace("layer-", ""));
+        const overLayer = sceneLayers.find(l => l.id === overLayerId);
+        if (!overLayer) return;
 
-  const handleDragLeave = () => {
-    setDropTargetFolderId(null);
-  };
+        const targetFolderId = overLayer.folderId ?? null;
 
-  const renderInsertZone = (scope: number | "ungrouped", index: number) => {
-    const isDragging = dragLayerId !== null || dragFolderId !== null;
-    const isActive = dropInsertIndex?.scope === scope && dropInsertIndex?.index === index;
-    if (!isDragging) return null;
-    return (
-      <div
-        key={`insert-${scope}-${index}`}
-        className="relative"
-        style={{ height: isActive ? 12 : 8, transition: "height 0.1s" }}
-        onDragOver={(e) => handleLayerDragOverInsert(e, scope, index)}
-        onDragLeave={handleInsertDragLeave}
-        onDrop={(e) => handleDropAtIndex(e, scope, index)}
-        data-testid={`drop-zone-${scope}-${index}`}
-      >
-        {isActive && (
-          <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-1 bg-primary rounded-full shadow-sm" />
-        )}
-      </div>
-    );
-  };
-
-  const renderLayerRow = (layer: EditableLayer) => (
-    <div
-      key={layer.id}
-      className={`rounded border bg-background ${dragLayerId === layer.id ? "opacity-50" : ""}`}
-      draggable={canEdit}
-      onDragStart={(e) => handleLayerDragStart(e, layer.id)}
-      onDragEnd={handleDragEnd}
-      data-testid={`scene-layer-${layer.id}`}
-    >
-      <div 
-        className={`flex items-center gap-1.5 px-2 py-1 ${layer.styleConfig && layer.styleConfig.renderer !== "single" ? "cursor-pointer" : ""}`}
-        onClick={() => {
-          const sc = layer.styleConfig;
-          if (sc && sc.renderer !== "single") {
-            setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
-          }
-        }}
-      >
-        {canEdit && (
-          <GripVertical className="h-3 w-3 text-muted-foreground/50 shrink-0 cursor-grab" />
-        )}
-        {((layer.source === "import" && layer.sourceFiles && layer.sourceFiles.length > 0) || (layer as any).metadata) && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setExpandedLayerId(expandedLayerId === layer.id ? null : layer.id); }}
-            className="shrink-0 hover:bg-muted rounded"
-            data-testid={`button-expand-${layer.id}`}
-          >
-            {expandedLayerId === layer.id ? (
-              <ChevronDown className="h-3 w-3 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-3 w-3 text-muted-foreground" />
-            )}
-          </button>
-        )}
-        <div 
-          className="w-2.5 h-2.5 rounded-sm shrink-0" 
-          style={{ backgroundColor: layer.color }}
-        />
-        <span className="text-sm shrink-0" title={layer.geometryType}>
-          {getGeometryIcon(layer.geometryType)}
-        </span>
-        <div className="flex-1 min-w-0 flex items-center gap-1.5">
-          {editingLayerId === layer.id ? (
-            <div className="flex items-center gap-1 flex-1">
-              <Input
-                value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, layer.id)}
-                className="h-5 text-xs"
-                autoFocus
-                data-no-drag
-                data-testid={`input-layer-name-${layer.id}`}
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 shrink-0"
-                onClick={() => handleSaveName(layer.id)}
-                data-testid={`button-save-name-${layer.id}`}
-              >
-                <Check className="h-3 w-3" />
-              </Button>
-            </div>
-          ) : (
-            <>
-              <span 
-                className="text-xs font-medium truncate"
-                data-testid={`label-layer-name-${layer.id}`}
-              >
-                {layer.name}
-              </span>
-              <span className="text-[10px] text-muted-foreground shrink-0">
-                ({layer.featureCount})
-              </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    className="text-[10px] text-muted-foreground/60 shrink-0 cursor-pointer"
-                    data-no-drag
-                    data-testid={`label-layer-id-${layer.id}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const idStr = String(layer.id);
-                      if (navigator.clipboard?.writeText) {
-                        navigator.clipboard.writeText(idStr).then(() => {
-                          toast({ title: "ID скопирован", description: `ID слоя: ${idStr}` });
-                        }).catch(() => {
-                          toast({ title: "ID слоя", description: idStr });
-                        });
-                      } else {
-                        toast({ title: "ID слоя", description: idStr });
-                      }
-                    }}
-                  >
-                    ID:{layer.id}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">Нажмите, чтобы скопировать ID слоя</p>
-                </TooltipContent>
-              </Tooltip>
-              {canEdit && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
-                  onClick={(e) => { e.stopPropagation(); handleStartEditing(layer); }}
-                  data-testid={`button-edit-name-${layer.id}`}
-                >
-                  <Pencil className="h-2.5 w-2.5" />
-                </Button>
-              )}
-            </>
-          )}
-        </div>
-      
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => { e.stopPropagation(); setStyleConfigLayerId(layer.id); }}
-              data-testid={`button-layer-style-${layer.id}`}
-            >
-              <Palette className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p className="text-xs">Стилизация слоя</p>
-          </TooltipContent>
-        </Tooltip>
-      
-        {onOpenAttributeTable && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={(e) => { e.stopPropagation(); onOpenAttributeTable(layer.id, layer.name); }}
-                data-testid={`button-attribute-table-${layer.id}`}
-              >
-                <Table2 className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Таблица атрибутов</TooltipContent>
-          </Tooltip>
-        )}
-      
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => { e.stopPropagation(); toggleVisibilityMutation.mutate({
-                id: layer.id,
-                visible: !layer.visible,
-              }); }}
-              data-testid={`button-toggle-visibility-${layer.id}`}
-            >
-              {layer.visible ? (
-                <Eye className="h-3.5 w-3.5" />
-              ) : (
-                <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
-        </Tooltip>
-      
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => { e.stopPropagation(); setGeocodeLayerId(layer.id); }}
-              data-testid={`button-geocode-layer-${layer.id}`}
-            >
-              <MapPin className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Геокодировать (адресные ориентиры)</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => { e.stopPropagation(); setJoinLayerId(layer.id); }}
-              data-testid={`button-join-layer-${layer.id}`}
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Обогатить из XLSX</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => {
-                e.stopPropagation();
-                const url = `/api/editable-layers/${layer.id}/export/shapefile`;
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `${layer.name}.zip`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                toast({ title: "Экспорт", description: `Слой "${layer.name}" экспортируется в Shapefile...` });
-              }}
-              data-testid={`button-export-layer-${layer.id}`}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Экспорт в Shapefile</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-destructive"
-              onClick={(e) => { e.stopPropagation(); deleteLayerMutation.mutate(layer.id); }}
-              data-testid={`button-delete-layer-${layer.id}`}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Удалить слой</TooltipContent>
-        </Tooltip>
-      </div>
-
-      
-      {expandedLayerId === layer.id && layer.sourceFiles && layer.sourceFiles.length > 0 && (
-        <div className="px-2 py-1.5 border-t bg-muted/30">
-          <div className="flex flex-wrap gap-1 items-center">
-            <span className="text-[10px] text-muted-foreground">SHP:</span>
-            {layer.sourceFiles.map((file, idx) => (
-              <Badge key={idx} variant="secondary" className="text-[9px] px-1 py-0 h-4">
-                {file}
-              </Badge>
-            ))}
-            {layer.crs && (
-              <span className="text-[10px] text-muted-foreground ml-1">
-                CRS: {layer.crs}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {expandedLayerId === layer.id && (layer as any).metadata && (layer as any).metadata.analysisType === "complaint_analysis" && (() => {
-        const meta = (layer as any).metadata as Record<string, unknown>;
-        const metaLabelMap: Record<string, string> = {
-          analysisMode: "Режим анализа",
-          analysisDate: "Дата анализа",
-          totalComplaints: "Всего жалоб",
-          totalMatched: "Сопоставлено",
-          totalUnmatched: "Не сопоставлено",
-          emptyNistCount: "Пустой НИСТ",
-          dateGroupCount: "Групп по дате/НИСТ",
-          failureZoneCount: "Зон отказа",
-          totalClustered: "В кластерах",
-          totalUnclustered: "Вне кластеров",
-          clusterCount: "Кластеров",
-          complaintLayerName: "Слой жалоб",
-          matchRadius: "Радиус привязки (м)",
-          dateFieldName: "Поле даты",
-          addressFieldName: "Поле адреса",
-        };
-        const displayKeys = Object.keys(meta).filter(k => k !== "analysisType" && metaLabelMap[k]);
-        return (
-          <div className="px-2 py-1.5 border-t bg-muted/30 space-y-0.5" data-testid={`metadata-layer-${layer.id}`}>
-            <div className="flex items-center gap-1 mb-1">
-              <AlertTriangle className="h-3 w-3 text-orange-500 shrink-0" />
-              <span className="text-[10px] font-medium text-muted-foreground">
-                {String(meta.analysisMode || "Анализ жалоб")}
-              </span>
-            </div>
-            {displayKeys.map(key => {
-              let value = meta[key];
-              if (key === "analysisDate" && typeof value === "string") {
-                try {
-                  const d = new Date(value);
-                  value = `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getFullYear()} ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-                } catch {}
+        if (sourceFolderId === targetFolderId) {
+          if (sourceFolderId !== null) {
+            const folderItem = flatItems.find(fi => fi.type === "folder" && fi.folderId === sourceFolderId);
+            if (folderItem && folderItem.type === "folder") {
+              const fromLayerIdx = folderItem.layers.indexOf(movedLayerId);
+              const toLayerIdx = folderItem.layers.indexOf(overLayerId);
+              if (fromLayerIdx >= 0 && toLayerIdx >= 0 && fromLayerIdx !== toLayerIdx) {
+                folderItem.layers.splice(fromLayerIdx, 1);
+                const adjustedTo = toLayerIdx > fromLayerIdx ? toLayerIdx - 1 : toLayerIdx;
+                folderItem.layers.splice(adjustedTo, 0, movedLayerId);
               }
-              return (
-                <div key={key} className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-muted-foreground shrink-0">{metaLabelMap[key]}:</span>
-                  <span className="text-[10px] font-medium truncate">{String(value ?? "")}</span>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })()}
+            }
+          } else {
+            const fromIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === movedLayerId);
+            const toIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === overLayerId);
+            if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
+              const [removed] = flatItems.splice(fromIdx, 1);
+              const adjustedTo = toIdx > fromIdx ? toIdx - 1 : toIdx;
+              flatItems.splice(adjustedTo, 0, removed);
+            }
+          }
+          persistFlatOrder(flatItems);
+        } else {
+          if (sourceFolderId !== null) {
+            const srcFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === sourceFolderId);
+            if (srcFolder && srcFolder.type === "folder") {
+              srcFolder.layers = srcFolder.layers.filter(id => id !== movedLayerId);
+            }
+          } else {
+            const idx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === movedLayerId);
+            if (idx >= 0) flatItems.splice(idx, 1);
+          }
+          if (targetFolderId !== null) {
+            const tgtFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === targetFolderId);
+            if (tgtFolder && tgtFolder.type === "folder") {
+              const toLayerIdx = tgtFolder.layers.indexOf(overLayerId);
+              tgtFolder.layers.splice(toLayerIdx >= 0 ? toLayerIdx : tgtFolder.layers.length, 0, movedLayerId);
+            }
+          } else {
+            const toIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === overLayerId);
+            flatItems.splice(toIdx >= 0 ? toIdx : flatItems.length, 0, { type: "layer", layerId: movedLayerId, displayOrder: 0 });
+          }
+          persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
+        }
+      }
+    }
+  };
 
-      {legendLayerId === layer.id && layer.styleConfig && layer.styleConfig.renderer !== "single" && (() => {
-        const sc = layer.styleConfig;
-        return (
-          <div className="px-3 py-2 border-t bg-muted/20 space-y-1" data-testid={`legend-layer-${layer.id}`}>
-            <p className="text-[10px] text-muted-foreground font-medium mb-1">
-              {sc.renderer === "categorized" ? "Категории" : "Градация"}: {sc.field}
-            </p>
-            {sc.renderer === "categorized" && sc.categorizedClasses && (
-              <div className="space-y-0.5">
-                {sc.categorizedClasses.map((cls: any, i: number) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <span
-                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                      style={{ backgroundColor: cls.style.color }}
-                    />
-                    <span className="text-[11px] truncate">{cls.label || String(cls.value)}</span>
-                  </div>
-                ))}
-                {sc.defaultStyle && (
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                      style={{ backgroundColor: sc.defaultStyle.color }}
-                    />
-                    <span className="text-[11px] truncate text-muted-foreground">Прочее</span>
-                  </div>
-                )}
-              </div>
-            )}
-            {sc.renderer === "graduated" && sc.graduatedClasses && (
-              <div className="space-y-0.5">
-                {sc.graduatedClasses.map((cls: any, i: number) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <span
-                      className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                      style={{ backgroundColor: cls.style.color }}
-                    />
-                    <span className="text-[11px] truncate">{cls.label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-    </div>
-  );
+  const topLevelIds = useMemo(() => {
+    return buildFlatItems(folders, sceneLayers)
+      .map(fi => fi.type === "folder" ? `folder-${fi.folderId}` : `layer-${fi.layerId}`);
+  }, [folders, sceneLayers]);
 
   const containerClasses = isMobile
     ? "fixed inset-0 bg-card flex flex-col z-50"
@@ -1328,11 +1523,62 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const containerStyle = isMobile
     ? {}
     : {
-        left: position.x,
-        top: position.y,
-        width: size.width,
-        height: size.height,
-      };
+      left: position.x,
+      top: position.y,
+      width: size.width,
+      height: size.height,
+    };
+
+  const layerRowCtxValue = useMemo<LayerRowCtx>(() => ({
+    expandedLayerId,
+    setExpandedLayerId,
+    legendLayerId,
+    setLegendLayerId,
+    editingLayerId,
+    editingName,
+    setEditingName,
+    handleKeyDown,
+    handleSaveName,
+    handleStartEditing,
+    setStyleConfigLayerId,
+    onOpenAttributeTable,
+    toggleVisibilityMutation,
+    setGeocodeLayerId,
+    setJoinLayerId,
+    deleteLayerMutation,
+    toast,
+    canEdit,
+    getGeometryIcon,
+  }), [
+    expandedLayerId, legendLayerId, editingLayerId, editingName,
+    canEdit, onOpenAttributeTable,
+    toggleVisibilityMutation, deleteLayerMutation,
+  ]);
+
+  const renderItems = useMemo(() => {
+    const rawFlat = buildFlatItems(folders, sceneLayers);
+    return rawFlat.map(fi => {
+      if (fi.type === "folder") {
+        const folder = folders.find(f => f.id === fi.folderId);
+        if (!folder) return null;
+        const folderLayers = fi.layers
+          .map(lid => sceneLayers.find(l => l.id === lid))
+          .filter((l): l is EditableLayer => !!l);
+        return { type: "folder" as const, folder, folderLayers };
+      } else {
+        const layer = sceneLayers.find(l => l.id === fi.layerId);
+        if (!layer) return null;
+        return { type: "layer" as const, layer };
+      }
+    }).filter((x): x is NonNullable<typeof x> => x !== null);
+  }, [folders, sceneLayers]);
+
+  const activeLayer = dndActiveId?.startsWith("layer-")
+    ? sceneLayers.find(l => `layer-${l.id}` === dndActiveId)
+    : null;
+  const activeFolder = dndActiveId?.startsWith("folder-")
+    ? folders.find(f => `folder-${f.id}` === dndActiveId)
+    : null;
 
   return (
     <div
@@ -1342,7 +1588,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       data-testid="data-manager-window"
     >
       <div
-        className={`flex items-center justify-between px-3 py-2 border-b bg-muted/50 ${isMobile ? '' : 'cursor-move rounded-t-lg'}`}
+        className={`flex items-center justify-between px-3 py-2 border-b bg-muted/50 ${isMobile ? "" : "cursor-move rounded-t-lg"}`}
         onMouseDown={handleMouseDown}
       >
         <div className="flex items-center gap-2">
@@ -1489,7 +1735,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 </Button>
               </div>
             )}
-            
+
             {uploadProgress && (
               <div className="mb-3 p-2 bg-muted rounded text-sm text-muted-foreground" data-testid="upload-progress-container">
                 <div className="flex items-center gap-2 mb-1">
@@ -1508,7 +1754,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 )}
               </div>
             )}
-            
+
             <ScrollArea className="flex-1">
               {sceneLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Загрузка...</div>
@@ -1519,201 +1765,65 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                   <p className="text-xs mt-1">Импортируйте shapefile или создайте слой</p>
                 </div>
               ) : (
-                <div className="space-y-1">
-                  {(() => {
-                    const rawFlatOrder = buildFlatItems(folders, sceneLayers);
-                    const validFlatOrder: FlatItem[] = [];
-                    type RenderItem = { type: "folder"; folder: Folder; layers: EditableLayer[]; flatIndex: number } | { type: "layer"; layer: EditableLayer; flatIndex: number };
-                    const renderItems: RenderItem[] = [];
-                    for (const fi of rawFlatOrder) {
-                      if (fi.type === "folder") {
-                        const folder = folders.find(f => f.id === fi.folderId);
-                        if (!folder) continue;
-                        const idx = validFlatOrder.length;
-                        validFlatOrder.push(fi);
-                        const folderLayers = fi.layers.map(lid => sceneLayers.find(l => l.id === lid)).filter((l): l is EditableLayer => !!l);
-                        renderItems.push({ type: "folder" as const, folder, layers: folderLayers, flatIndex: idx });
-                      } else {
-                        const layer = sceneLayers.find(l => l.id === fi.layerId);
-                        if (!layer) continue;
-                        const idx = validFlatOrder.length;
-                        validFlatOrder.push(fi);
-                        renderItems.push({ type: "layer" as const, layer, flatIndex: idx });
-                      }
-                    }
-                    currentFlatOrderRef.current = validFlatOrder;
-
-                    return (
-                      <>
-                        {renderItems.map((item, _renderIdx) => {
+                <LayerRowContext.Provider value={layerRowCtxValue}>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDndStart}
+                    onDragEnd={handleDndEnd}
+                  >
+                    <SortableContext items={topLevelIds} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-1">
+                        {renderItems.map((item) => {
                           if (item.type === "folder") {
-                            const { folder, layers: folderLayers, flatIndex } = item;
-                            const isExpanded = expandedFolderIds.has(folder.id);
-                            const isDragTarget = dropTargetFolderId === folder.id && dragLayerId !== null;
                             return (
-                              <Fragment key={`folder-${folder.id}`}>
-                                {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", flatIndex)}
-                                <Collapsible
-                                  open={isExpanded}
-                                  onOpenChange={() => toggleFolderExpanded(folder.id)}
-                                  data-testid={`folder-${folder.id}`}
-                                >
-                          <div
-                            className={`rounded border transition-colors ${dragFolderId === folder.id ? "opacity-50" : ""} ${isDragTarget ? "border-primary bg-primary/10" : "bg-muted/30"}`}
-                            draggable={canEdit}
-                            onDragStart={(e) => handleFolderDragStart(e, folder.id)}
-                            onDragEnd={handleDragEnd}
-                            onDragOver={(e) => handleFolderDragOver(e, folder.id)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleFolderDrop(e, folder.id)}
-                          >
-                          <div className="flex items-center gap-1.5 px-2 py-1">
-                            {canEdit && (
-                              <GripVertical className="h-3 w-3 text-muted-foreground/50 shrink-0 cursor-grab" />
-                            )}
-                            <CollapsibleTrigger asChild>
-                              <button className="shrink-0 hover:bg-muted rounded p-0.5" data-testid={`button-toggle-folder-${folder.id}`}>
-                                {isExpanded ? (
-                                  <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                                ) : (
-                                  <FolderClosed className="h-3.5 w-3.5 text-muted-foreground" />
-                                )}
-                              </button>
-                            </CollapsibleTrigger>
-                            <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                              {editingFolderId === folder.id ? (
-                                <div className="flex items-center gap-1 flex-1">
-                                  <Input
-                                    value={editingFolderName}
-                                    onChange={(e) => setEditingFolderName(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter" && editingFolderName.trim()) {
-                                        renameFolderMutation.mutate({ folderId: folder.id, name: editingFolderName.trim() });
-                                      } else if (e.key === "Escape") {
-                                        setEditingFolderId(null);
-                                      }
-                                    }}
-                                    className="h-5 text-xs"
-                                    autoFocus
-                                    data-no-drag
-                                    data-testid={`input-folder-name-${folder.id}`}
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      if (editingFolderName.trim()) {
-                                        renameFolderMutation.mutate({ folderId: folder.id, name: editingFolderName.trim() });
-                                      }
-                                    }}
-                                    data-testid={`button-save-folder-name-${folder.id}`}
-                                  >
-                                    <Check className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                <>
-                                  <span className="text-xs font-medium truncate" data-testid={`label-folder-name-${folder.id}`}>
-                                    {folder.name}
-                                  </span>
-                                  <span className="text-[10px] text-muted-foreground shrink-0">
-                                    ({folderLayers.length})
-                                  </span>
-                                  {canEdit && (
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-4 w-4 shrink-0 opacity-40 hover:opacity-100"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingFolderId(folder.id);
-                                        setEditingFolderName(folder.name);
-                                      }}
-                                      data-testid={`button-edit-folder-name-${folder.id}`}
-                                    >
-                                      <Pencil className="h-2.5 w-2.5" />
-                                    </Button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleFolderVisibilityMutation.mutate({ folderId: folder.id, visible: folder.visible !== 1 });
-                              }}
-                              data-testid={`button-toggle-folder-visibility-${folder.id}`}
-                            >
-                              {folder.visible === 1 ? (
-                                <Eye className="h-3.5 w-3.5" />
-                              ) : (
-                                <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-                              )}
-                            </Button>
-                            {canEdit && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-destructive"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteFolderMutation.mutate(folder.id);
-                                }}
-                                data-testid={`button-delete-folder-${folder.id}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                          <CollapsibleContent>
-                            <div
-                              className="space-y-0 px-2 pb-1.5"
-                              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            >
-                              {folderLayers.length === 0 ? (
-                                <div
-                                  className="text-[10px] text-muted-foreground text-center py-2"
-                                  onDragOver={(e) => { e.preventDefault(); handleLayerDragOverInsert(e, folder.id, 0); }}
-                                  onDrop={(e) => handleDropAtIndex(e, folder.id, 0)}
-                                  data-testid={`folder-empty-${folder.id}`}
-                                >
-                                  {dragLayerId !== null ? "Перетащите слой сюда" : "Пусто"}
-                                </div>
-                              ) : (
-                                <>
-                                  {folderLayers.map((layer, idx) => (
-                                    <Fragment key={layer.id}>
-                                      {dragType === "layer" && renderInsertZone(folder.id, idx)}
-                                      {renderLayerRow(layer)}
-                                    </Fragment>
-                                  ))}
-                                  {dragType === "layer" && renderInsertZone(folder.id, folderLayers.length)}
-                                </>
-                              )}
-                            </div>
-                          </CollapsibleContent>
-                        </div>
-                      </Collapsible>
-                              </Fragment>
+                              <SortableFolderRow
+                                key={`folder-${item.folder.id}`}
+                                folder={item.folder}
+                                folderLayers={item.folderLayers}
+                                expandedFolderIds={expandedFolderIds}
+                                toggleFolderExpanded={toggleFolderExpanded}
+                                editingFolderId={editingFolderId}
+                                editingFolderName={editingFolderName}
+                                setEditingFolderId={setEditingFolderId}
+                                setEditingFolderName={setEditingFolderName}
+                                renameFolderMutation={renameFolderMutation}
+                                toggleFolderVisibilityMutation={toggleFolderVisibilityMutation}
+                                deleteFolderMutation={deleteFolderMutation}
+                                canEdit={canEdit}
+                                dndActiveType={dndActiveType}
+                              />
                             );
                           } else {
                             return (
-                              <Fragment key={`layer-${item.layer.id}`}>
-                                {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", item.flatIndex)}
-                                {renderLayerRow(item.layer)}
-                              </Fragment>
+                              <SortableLayerRow key={`layer-${item.layer.id}`} layer={item.layer} />
                             );
                           }
                         })}
-                        {(dragType === "folder" || dragType === "layer") && renderInsertZone("ungrouped", currentFlatOrderRef.current.length)}
-                      </>
-                    );
-                  })()}
-            </div>
-          )}
+                      </div>
+                    </SortableContext>
+
+                    <DragOverlay
+                      dropAnimation={{
+                        sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.4" } } }),
+                      }}
+                    >
+                      {activeLayer && (
+                        <div className="rounded border bg-background shadow-lg px-2 py-1 text-xs font-medium flex items-center gap-1.5 opacity-90">
+                          <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: activeLayer.color }} />
+                          {activeLayer.name}
+                        </div>
+                      )}
+                      {activeFolder && (
+                        <div className="rounded border bg-muted shadow-lg px-2 py-1 text-xs font-medium flex items-center gap-1.5 opacity-90">
+                          <FolderClosed className="h-3.5 w-3.5 text-muted-foreground" />
+                          {activeFolder.name}
+                        </div>
+                      )}
+                    </DragOverlay>
+                  </DndContext>
+                </LayerRowContext.Provider>
+              )}
             </ScrollArea>
           </TabsContent>
 
@@ -1751,75 +1861,75 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
 
           <TabsContent value="settings" className="flex-1 overflow-auto mt-0 px-3 pb-3 data-[state=inactive]:hidden">
             <div className="py-3 space-y-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Map className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Проекция карты</span>
-                  </div>
-                  <div className="rounded-md border bg-background p-3">
-                    <RadioGroup
-                      value={currentProjection}
-                      onValueChange={(value) => {
-                        setProjection(value as ProjectionType);
-                      }}
-                      className="space-y-2"
-                      data-testid="projection-radio-group"
-                    >
-                      {(Object.keys(projectionInfo) as ProjectionType[]).map((projKey) => (
-                        <div key={projKey} className="flex items-center space-x-2">
-                          <RadioGroupItem
-                            value={projKey}
-                            id={`projection-${projKey}`}
-                            data-testid={`radio-projection-${projKey}`}
-                          />
-                          <Label
-                            htmlFor={`projection-${projKey}`}
-                            className="text-sm cursor-pointer"
-                          >
-                            {projectionInfo[projKey].name}
-                            <span className="text-xs text-muted-foreground ml-1">
-                              ({projectionInfo[projKey].description})
-                            </span>
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Map className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Проекция карты</span>
                 </div>
-
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Layers className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Базовые слои</span>
-                  </div>
-                  <div className="rounded-md border bg-background p-3">
-                    <RadioGroup
-                      value={activeBaseLayer}
-                      onValueChange={(value) => {
-                        setActiveBaseLayer(value as BaseLayerType);
-                      }}
-                      className="space-y-2"
-                      data-testid="base-layer-radio-group"
-                    >
-                      {baseLayers.map((layer) => (
-                        <div key={layer.id} className="flex items-center space-x-2">
-                          <RadioGroupItem
-                            value={layer.id}
-                            id={`base-layer-${layer.id}`}
-                            data-testid={`radio-base-layer-${layer.id}`}
-                          />
-                          <Label
-                            htmlFor={`base-layer-${layer.id}`}
-                            className="text-sm cursor-pointer"
-                          >
-                            {layer.name}
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
+                <div className="rounded-md border bg-background p-3">
+                  <RadioGroup
+                    value={currentProjection}
+                    onValueChange={(value) => {
+                      setProjection(value as ProjectionType);
+                    }}
+                    className="space-y-2"
+                    data-testid="projection-radio-group"
+                  >
+                    {(Object.keys(projectionInfo) as ProjectionType[]).map((projKey) => (
+                      <div key={projKey} className="flex items-center space-x-2">
+                        <RadioGroupItem
+                          value={projKey}
+                          id={`projection-${projKey}`}
+                          data-testid={`radio-projection-${projKey}`}
+                        />
+                        <Label
+                          htmlFor={`projection-${projKey}`}
+                          className="text-sm cursor-pointer"
+                        >
+                          {projectionInfo[projKey].name}
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({projectionInfo[projKey].description})
+                          </span>
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
                 </div>
               </div>
+
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Layers className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Базовые слои</span>
+                </div>
+                <div className="rounded-md border bg-background p-3">
+                  <RadioGroup
+                    value={activeBaseLayer}
+                    onValueChange={(value) => {
+                      setActiveBaseLayer(value as BaseLayerType);
+                    }}
+                    className="space-y-2"
+                    data-testid="base-layer-radio-group"
+                  >
+                    {baseLayers.map((layer) => (
+                      <div key={layer.id} className="flex items-center space-x-2">
+                        <RadioGroupItem
+                          value={layer.id}
+                          id={`base-layer-${layer.id}`}
+                          data-testid={`radio-base-layer-${layer.id}`}
+                        />
+                        <Label
+                          htmlFor={`base-layer-${layer.id}`}
+                          className="text-sm cursor-pointer"
+                        >
+                          {layer.name}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
