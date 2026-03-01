@@ -1786,7 +1786,7 @@ export function MapViewer({
         }
       }
       
-      setSelectedMapFeatures(prev => [...prev, ...newSelectedFeatures]);
+      setSelectedMapFeatures(newSelectedFeatures);
 
       // Sync drawing.selectedFeatureIds so the attribute table sees all box-selected features
       const boxSelectedIds = newSelectedFeatures
