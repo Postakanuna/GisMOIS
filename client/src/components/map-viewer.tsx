@@ -113,6 +113,7 @@ interface MapViewerProps {
   onFeatureUpdated?: (featureId: number, updates: Partial<InsertDrawnFeature>) => void;
   selectedEditableFeatureIds?: number[];
   onEditableFeatureSelect?: (featureId: number, multi?: boolean) => void;
+  onMultiSelectFeatures?: (featureIds: number[]) => void;
   onClearEditableSelection?: () => void;
   onSelectEditableLayer?: (layer: EditableLayer) => void;
   // Selection callbacks exposed for external control
@@ -911,6 +912,7 @@ export function MapViewer({
   onFeatureUpdated,
   selectedEditableFeatureIds = [],
   onEditableFeatureSelect,
+  onMultiSelectFeatures,
   onClearEditableSelection,
   onSelectEditableLayer,
   selectionActionsRef,
@@ -996,6 +998,7 @@ export function MapViewer({
   const onSelectEditableLayerRef = useRef(onSelectEditableLayer);
   const allEditableLayersDataRef = useRef(allEditableLayers);
   const onEditableFeatureSelectRef = useRef(onEditableFeatureSelect);
+  const onMultiSelectFeaturesRef = useRef(onMultiSelectFeatures);
   const onClearEditableSelectionRef = useRef(onClearEditableSelection);
   
   // LayerId to skip style sync for when auto-selecting layer from object selection
@@ -1064,6 +1067,10 @@ export function MapViewer({
   useEffect(() => {
     onEditableFeatureSelectRef.current = onEditableFeatureSelect;
   }, [onEditableFeatureSelect]);
+
+  useEffect(() => {
+    onMultiSelectFeaturesRef.current = onMultiSelectFeatures;
+  }, [onMultiSelectFeatures]);
 
   useEffect(() => {
     onClearEditableSelectionRef.current = onClearEditableSelection;
@@ -1780,6 +1787,14 @@ export function MapViewer({
       }
       
       setSelectedMapFeatures(prev => [...prev, ...newSelectedFeatures]);
+
+      // Sync drawing.selectedFeatureIds so the attribute table sees all box-selected features
+      const boxSelectedIds = newSelectedFeatures
+        .map(({ feature }) => feature.get("featureId") as number | undefined)
+        .filter((id): id is number => id !== undefined);
+      if (boxSelectedIds.length > 0 && onMultiSelectFeaturesRef.current) {
+        onMultiSelectFeaturesRef.current(boxSelectedIds);
+      }
     });
     
     map.addInteraction(dragBox);
