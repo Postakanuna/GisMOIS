@@ -700,11 +700,12 @@ export default function Home() {
           </header>
 
           <main className="relative flex-1 overflow-hidden">
-            {editMode && (
+            {drawing.editableLayers.length > 0 && (
               <DrawingToolbar
                 mode={drawing.drawingMode}
                 onModeChange={drawing.setDrawingMode}
                 activeLayer={drawing.activeLayer}
+                editMode={editMode}
                 onDeleteSelected={() => {
                   const ids = drawing.selectedFeatureIds;
                   if (ids.length > 0) {

@@ -1756,8 +1756,7 @@ export function MapViewer({
     });
     
     dragBox.on("boxend", () => {
-      // Selection only works in edit mode
-      if (!editModeRef.current || !selectionModeRef.current) return;
+      if (!selectionModeRef.current) return;
       
       const extent = dragBox.getGeometry().getExtent();
       const newSelectedFeatures: Array<{ layerId: number; featureIndex: number; feature: Feature<Geometry> }> = [];
@@ -1896,8 +1895,8 @@ export function MapViewer({
       const coords = toLonLat(evt.coordinate, currentProjectionRef.current);
       setFeatureCoordinates([coords[0], coords[1]]);
 
-      // Selection only works in edit mode
-      if (currentEditMode && currentSelectionMode) {
+      // Editable feature selection works in both view mode and edit mode
+      if (currentSelectionMode) {
         // Collect ALL candidates from all editable layers (don't stop on first match)
         const candidates: SelectionCandidate[] = [];
         const seenFeatures = new Set<string>(); // Prevent duplicates
@@ -1945,26 +1944,28 @@ export function MapViewer({
           (geometryPriority[a.geometryType] || 99) - (geometryPriority[b.geometryType] || 99)
         );
 
-        if (candidates.length === 0) {
-          // A3: Click on empty space does NOT clear selection.
-          // Selection is cleared only via Escape key or the "×" button in the toolbar.
-        } else if (candidates.length === 1) {
-          // Single candidate - select directly (A1: Shift for multi-select)
-          const candidate = candidates[0];
-          confirmFeatureSelectionRef.current(candidate, evt.originalEvent.shiftKey);
-        } else {
-          // Multiple candidates from different layers - check if they're from the same layer
-          const uniqueLayerIds = new Set(candidates.map(c => c.layerId));
-          if (uniqueLayerIds.size === 1) {
-            // All from same layer - select the first (topmost by geometry priority)
+        if (candidates.length > 0) {
+          // Found editable features — select and stop here (don't fall through to WMS identify)
+          if (candidates.length === 1) {
+            // Single candidate - select directly (A1: Shift for multi-select)
             confirmFeatureSelectionRef.current(candidates[0], evt.originalEvent.shiftKey);
           } else {
-            // Multiple layers - show selection dialog
-            setSelectionCandidates(candidates);
-            setPendingClickEvent({ shiftKey: evt.originalEvent.shiftKey });
+            // Multiple candidates from different layers - check if they're from the same layer
+            const uniqueLayerIds = new Set(candidates.map(c => c.layerId));
+            if (uniqueLayerIds.size === 1) {
+              // All from same layer - select the first (topmost by geometry priority)
+              confirmFeatureSelectionRef.current(candidates[0], evt.originalEvent.shiftKey);
+            } else {
+              // Multiple layers - show selection dialog
+              setSelectionCandidates(candidates);
+              setPendingClickEvent({ shiftKey: evt.originalEvent.shiftKey });
+            }
           }
+          return;
         }
-        return;
+        // A3: Click on empty space does NOT clear selection.
+        // Selection is cleared only via Escape key or the "×" button in the toolbar.
+        // Fall through to WMS identify below.
       }
 
       if (isTicketMode && currentConnection?.useZws) {

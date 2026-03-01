@@ -56,6 +56,7 @@ interface DrawingToolbarProps {
   onUpdateSnapSettings?: (updates: Partial<SnapSettings>) => void;
   onToggleSnap?: () => void;
   snapLayers?: { id: number; name: string; visible: boolean }[];
+  editMode?: boolean;
 }
 
 const ALL_TOOL_BUTTONS: { mode: DrawingMode; icon: typeof Circle; label: string; tooltip: string; geometryType?: string }[] = [
@@ -95,6 +96,7 @@ export function DrawingToolbar({
   onUpdateSnapSettings,
   onToggleSnap,
   snapLayers = [],
+  editMode = false,
 }: DrawingToolbarProps) {
   const canDraw = activeLayer !== null;
 
@@ -113,8 +115,8 @@ export function DrawingToolbar({
   return (
     <>
       <Card className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1 bg-background/95 backdrop-blur-sm">
-        {/* Drawing tools - icon only */}
-        {toolButtons.map(({ mode: toolMode, icon: Icon, tooltip }) => {
+        {/* Drawing tools - only visible in edit mode */}
+        {editMode && toolButtons.map(({ mode: toolMode, icon: Icon, tooltip }) => {
           const isActive = mode === toolMode;
           const isDisabled = !canDraw && toolMode !== "select";
           
@@ -213,7 +215,7 @@ export function DrawingToolbar({
         )}
 
         <div className="border-l pl-1 ml-1 flex items-center gap-1">
-          {/* Trace Route - only when exactly 1 feature selected */}
+          {/* Trace Route - only when exactly 1 feature selected, always visible */}
           {onTraceRoute && selectedCount === 1 && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -267,59 +269,62 @@ export function DrawingToolbar({
             </Tooltip>
           )}
 
-          {/* Delete */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant={selectedCount > 0 ? "destructive" : "ghost"}
-                className="h-8 w-8"
-                onClick={onDeleteSelected}
-                disabled={!hasSelection && selectedCount === 0}
-                data-testid="button-delete-selected"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{isDeleting ? "Удаление..." : "Удалить выбранное (Del)"}</TooltipContent>
-          </Tooltip>
+          {/* Delete / Undo / Redo - edit mode only */}
+          {editMode && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant={selectedCount > 0 ? "destructive" : "ghost"}
+                    className="h-8 w-8"
+                    onClick={onDeleteSelected}
+                    disabled={!hasSelection && selectedCount === 0}
+                    data-testid="button-delete-selected"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{isDeleting ? "Удаление..." : "Удалить выбранное (Del)"}</TooltipContent>
+              </Tooltip>
 
-          {/* Undo/Redo */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                onClick={onUndo}
-                disabled={!canUndo}
-                data-testid="button-undo"
-              >
-                <Undo2 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {undoDescription ? `Отменить: ${undoDescription}` : "Отменить (Ctrl+Z)"}
-            </TooltipContent>
-          </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    onClick={onUndo}
+                    disabled={!canUndo}
+                    data-testid="button-undo"
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {undoDescription ? `Отменить: ${undoDescription}` : "Отменить (Ctrl+Z)"}
+                </TooltipContent>
+              </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                onClick={onRedo}
-                disabled={!canRedo}
-                data-testid="button-redo"
-              >
-                <Redo2 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {redoDescription ? `Повторить: ${redoDescription}` : "Повторить (Ctrl+Y)"}
-            </TooltipContent>
-          </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    onClick={onRedo}
+                    disabled={!canRedo}
+                    data-testid="button-redo"
+                  >
+                    <Redo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {redoDescription ? `Повторить: ${redoDescription}` : "Повторить (Ctrl+Y)"}
+                </TooltipContent>
+              </Tooltip>
+            </>
+          )}
         </div>
       </Card>
 
