@@ -38,6 +38,7 @@ import { Switch } from "@/components/ui/switch";
 import { ApiKeysManager } from "@/components/api-keys-manager";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { BugReportsPanel } from "@/components/bug-reports-panel";
+import { SensorIntegrationPanel } from "@/components/sensor-integration-panel";
 
 type AdminAiProvider = {
   id: number;
@@ -466,12 +467,13 @@ export default function AdminUsers() {
       <div className="container mx-auto p-6">
 
       <Tabs defaultValue="users" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6" data-testid="admin-tabs">
+        <TabsList className="grid w-full grid-cols-7" data-testid="admin-tabs">
           <TabsTrigger value="users" data-testid="tab-users">Пользователи</TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-audit">Журнал действий</TabsTrigger>
           <TabsTrigger value="geocoding" data-testid="tab-geocoding">Геокодирование</TabsTrigger>
           <TabsTrigger value="ai" data-testid="tab-ai">ИИ-агент</TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">Внешние подключения</TabsTrigger>
+          <TabsTrigger value="sensors" data-testid="tab-sensors">Датчики ТИ</TabsTrigger>
           <TabsTrigger value="bugs" data-testid="tab-bugs">Сведения об ошибках</TabsTrigger>
         </TabsList>
 
@@ -785,6 +787,10 @@ export default function AdminUsers() {
 
         <TabsContent value="connections">
           <ApiKeysManager />
+        </TabsContent>
+
+        <TabsContent value="sensors">
+          <SensorIntegrationPanel />
         </TabsContent>
 
         <TabsContent value="audit">

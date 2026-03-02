@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startAuditCleanup } from "./audit";
+import { startSensorPolling } from "./sensor-sync";
 
 const app = express();
 const httpServer = createServer(app);
@@ -89,5 +90,8 @@ app.use((req, res, next) => {
   httpServer.listen(listenOptions, () => {
     log(`serving on port ${port}`);
     startAuditCleanup();
+    startSensorPolling().catch(err => {
+      log(`Sensor polling init error: ${err.message}`, "sensor-sync");
+    });
   });
 })();

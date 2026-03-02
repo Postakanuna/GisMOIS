@@ -119,6 +119,48 @@ Applied as part of pre-publication security audit:
 - **Input Validation**: `parseIntParam(value, res)` helper added to `routes.ts`. All `parseInt(req.params.X)` calls (60 routes) replaced — invalid non-numeric params return 400 immediately.
 - **Production Log Suppression**: Operational `console.log` in `network-graph.ts`, `geocoder.ts`, and `routes.ts` (AutoTrace, BboxBackfill, Migration, SpatialGraph, NetworkGraph, CapacityAnalysis) guarded with `if (process.env.NODE_ENV !== "production")`. `console.error`/`console.warn` remain active in all environments.
 
+## Sensor Telemetry Integration (Датчики ТИ)
+
+Integration with the external API `mvitu.arki.mosreg.ru` for receiving real-time temperature and pressure data from heating infrastructure objects (Источник, ЦТП, Потребитель).
+
+### Architecture
+
+- **External API**: `GET https://mvitu.arki.mosreg.ru/api/edds/bot/koteln_last_sensors_state/index.php` with `X-API-TOKEN` header. Returns paginated list of ТИ objects with sensor readings.
+- **Sync service**: `server/sensor-sync.ts` — fetches all pages in parallel, upserts to cache, runs on configurable interval.
+- **Polling**: Starts automatically at server boot if integration is enabled. Restarts when config changes.
+
+### Database Tables
+
+- `sensor_integration_config` — global settings: API URL, token, polling interval (minutes), enabled flag, last sync timestamp
+- `sensor_object_bindings` — links external sensor ID (`id_cds_koteln`) to internal editable layer (`layer_id`)
+- `sensor_readings_cache` — cached readings per sensor object: temperatures (t_forward, t_reverse), pressures (p_forward, p_revers), status, MKD count, active claims
+
+### API Routes
+
+- `GET/PUT /api/admin/sensor-integration/config` — manage integration settings (admin only)
+- `POST /api/admin/sensor-integration/test` — test API connection
+- `POST /api/admin/sensor-integration/sync` — force manual sync
+- `GET/POST/PUT/DELETE /api/admin/sensor-integration/bindings` — manage object bindings (admin only)
+- `GET /api/sensor-readings` — cached readings (authenticated users)
+- `GET /api/sensor-bindings` — bindings list (authenticated users)
+
+### Admin UI
+
+New tab "Датчики ТИ" in `/gis/admin/settings` (alongside AI agent, external connections, geocoding):
+- Section 1: connection settings (URL, token, interval, enable/disable, test, sync now)
+- Section 2: binding table — links sensor IDs to map layers
+
+### Map UI
+
+`SensorTelemetryBlock` component shown in feature info sidebar and feature info modal when a feature belongs to a bound layer. Displays: sensor status badge, last update time, t_forward/t_reverse temperatures, p_forward/p_revers pressures, MKD count, active claim IDs.
+
+### Key Files
+
+- `server/sensor-sync.ts` — sync service
+- `client/src/hooks/use-sensor-data.ts` — data hooks
+- `client/src/components/sensor-integration-panel.tsx` — admin UI
+- `client/src/components/sensor-telemetry-block.tsx` — map feature info UI
+
 ## External Dependencies
 
 ### Third-Party Services
@@ -128,6 +170,7 @@ Applied as part of pre-publication security audit:
 -   **DaData**: Optional geocoding service, providing FIAS IDs.
 -   **OSRM (router.project-osrm.org)**: Routing service for automatic consumer connection.
 -   **OpenAI**: AI provider for automatic consumer connection parameter calculation and the AI Assistant.
+-   **mvitu.arki.mosreg.ru**: External sensor data API for heating infrastructure objects (ТИ monitoring).
 
 ### Database
 

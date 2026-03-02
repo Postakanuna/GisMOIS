@@ -36,6 +36,7 @@ import { AccidentAnalysisDialog, type AccidentSegmentResult, type AccidentAnalys
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 import { FeatureInfoModal } from "@/components/feature-info-modal";
+import { SensorTelemetryBlock } from "@/components/sensor-telemetry-block";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage } from "@/components/ai-chat-panel";
@@ -177,6 +178,7 @@ function FeatureInfoSidebarPanel({
                       </div>
                     ))}
                 </div>
+                <SensorTelemetryBlock layerId={feature.layerId} />
                 {idx < features.length - 1 && <Separator />}
               </div>
             ))}

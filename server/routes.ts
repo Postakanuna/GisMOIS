@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { syncSensors, testSensorConnection, restartSensorPolling, stopSensorPolling } from "./sensor-sync";
 import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, networkTypeSchema, drawnFeatures, editableLayers, type AttributeField } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
@@ -8488,6 +8489,140 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Error serving screenshot:", error);
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Sensor Integration Routes ─────────────────────────────────────────────
+
+  app.get("/api/admin/sensor-integration/config", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const config = await storage.getSensorIntegrationConfig();
+      res.json(config || null);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/admin/sensor-integration/config", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { apiUrl, apiToken, pollingIntervalMinutes, isEnabled } = req.body;
+      const data: Record<string, unknown> = {};
+      if (apiUrl !== undefined) data.apiUrl = apiUrl;
+      if (apiToken !== undefined) data.apiToken = apiToken;
+      if (pollingIntervalMinutes !== undefined) data.pollingIntervalMinutes = Number(pollingIntervalMinutes);
+      if (isEnabled !== undefined) data.isEnabled = isEnabled ? 1 : 0;
+      const config = await storage.upsertSensorIntegrationConfig(data as any);
+      if (isEnabled) {
+        restartSensorPolling();
+      } else {
+        stopSensorPolling();
+      }
+      res.json(config);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/sensor-integration/test", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { apiUrl, apiToken } = req.body;
+      if (!apiUrl || !apiToken) {
+        return res.status(400).json({ message: "apiUrl и apiToken обязательны" });
+      }
+      const result = await testSensorConnection(apiUrl, apiToken);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/admin/sensor-integration/sync", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const result = await syncSensors();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ synced: 0, error: err.message });
+    }
+  });
+
+  app.get("/api/admin/sensor-integration/bindings", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const bindings = await storage.getSensorObjectBindings();
+      res.json(bindings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/sensor-integration/bindings", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { idCdsKoteln, objectType, layerId, objectName } = req.body;
+      if (!idCdsKoteln || !objectType || !layerId) {
+        return res.status(400).json({ message: "idCdsKoteln, objectType и layerId обязательны" });
+      }
+      const binding = await storage.createSensorObjectBinding({
+        idCdsKoteln: Number(idCdsKoteln),
+        objectType,
+        layerId: Number(layerId),
+        objectName: objectName || "",
+      });
+      res.json(binding);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/admin/sensor-integration/bindings/:id", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const { idCdsKoteln, objectType, layerId, objectName } = req.body;
+      const data: Record<string, unknown> = {};
+      if (idCdsKoteln !== undefined) data.idCdsKoteln = Number(idCdsKoteln);
+      if (objectType !== undefined) data.objectType = objectType;
+      if (layerId !== undefined) data.layerId = Number(layerId);
+      if (objectName !== undefined) data.objectName = objectName;
+      const binding = await storage.updateSensorObjectBinding(id, data as any);
+      if (!binding) return res.status(404).json({ message: "Привязка не найдена" });
+      res.json(binding);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/admin/sensor-integration/bindings/:id", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const deleted = await storage.deleteSensorObjectBinding(id);
+      if (!deleted) return res.status(404).json({ message: "Привязка не найдена" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/sensor-readings", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const { id_cds_koteln } = req.query;
+      if (id_cds_koteln) {
+        const reading = await storage.getSensorReadingByKotelnId(Number(id_cds_koteln));
+        res.json(reading || null);
+      } else {
+        const readings = await storage.getSensorReadingsCache();
+        res.json(readings);
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/sensor-bindings", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const bindings = await storage.getSensorObjectBindings();
+      res.json(bindings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

@@ -648,6 +648,56 @@ export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: t
 export type BugReport = typeof bugReports.$inferSelect;
 export type InsertBugReport = z.infer<typeof insertBugReportSchema>;
 
+// Sensor integration tables
+export const sensorIntegrationConfig = pgTable("sensor_integration_config", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  apiUrl: text("api_url").notNull().default("https://mvitu.arki.mosreg.ru/api/edds/bot/koteln_last_sensors_state/index.php"),
+  apiToken: text("api_token").notNull().default(""),
+  pollingIntervalMinutes: integer("polling_interval_minutes").notNull().default(15),
+  isEnabled: integer("is_enabled").notNull().default(0),
+  lastSyncAt: timestamp("last_sync_at"),
+});
+
+export type SensorIntegrationConfig = typeof sensorIntegrationConfig.$inferSelect;
+export type InsertSensorIntegrationConfig = typeof sensorIntegrationConfig.$inferInsert;
+
+export const sensorObjectBindings = pgTable("sensor_object_bindings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  idCdsKoteln: integer("id_cds_koteln").notNull().unique(),
+  objectType: text("object_type").notNull(), // 'source' | 'ctp' | 'consumer'
+  layerId: integer("layer_id").notNull(),
+  objectName: text("object_name").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type SensorObjectBinding = typeof sensorObjectBindings.$inferSelect;
+export type InsertSensorObjectBinding = typeof sensorObjectBindings.$inferInsert;
+
+export const sensorReadingsCache = pgTable("sensor_readings_cache", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  idCdsKoteln: integer("id_cds_koteln").notNull().unique(),
+  mrName: text("mr_name"),
+  placeName: text("place_name"),
+  nameKoteln: text("name_koteln"),
+  address: text("address"),
+  rsoName: text("rso_name"),
+  type: text("type"),
+  mkdCount: integer("mkd_count"),
+  mkdPeopleCount: integer("mkd_people_count"),
+  activeClaims: jsonb("active_claims").default([]),
+  sensorsState: text("sensors_state"),
+  sensorDate: timestamp("sensor_date"),
+  tForward: real("t_forward"),
+  tReverse: real("t_reverse"),
+  pForward: real("p_forward"),
+  pRevers: real("p_revers"),
+  responsibles: jsonb("responsibles").default([]),
+  fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
+});
+
+export type SensorReadingCache = typeof sensorReadingsCache.$inferSelect;
+export type InsertSensorReadingCache = typeof sensorReadingsCache.$inferInsert;
+
 // External API schemas
 export const externalCreatePointSchema = z.object({
   sceneId: z.number(),

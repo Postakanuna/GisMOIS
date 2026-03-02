@@ -16,9 +16,13 @@ import {
   type CustomIcon, type InsertCustomIcon,
   type LayerFolder,
   type BugReport, type InsertBugReport,
+  type SensorIntegrationConfig, type InsertSensorIntegrationConfig,
+  type SensorObjectBinding, type InsertSensorObjectBinding,
+  type SensorReadingCache, type InsertSensorReadingCache,
   editableLayers, drawnFeatures, layerSchemas,
   scenes, sceneMembers, sceneFolders, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
-  appSettings, bugReports
+  appSettings, bugReports,
+  sensorIntegrationConfig, sensorObjectBindings, sensorReadingsCache
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { aiProviders, type AiProvider, type InsertAiProvider, type UpdateAiProvider } from "@shared/models/chat";
@@ -146,6 +150,18 @@ export interface IStorage {
   updateAiProvider(id: number, updates: UpdateAiProvider): Promise<AiProvider | undefined>;
   deleteAiProvider(id: number): Promise<boolean>;
   getDefaultAiProvider(): Promise<AiProvider | undefined>;
+
+  // Sensor integration methods
+  getSensorIntegrationConfig(): Promise<SensorIntegrationConfig | undefined>;
+  upsertSensorIntegrationConfig(data: Partial<InsertSensorIntegrationConfig>): Promise<SensorIntegrationConfig>;
+  getSensorObjectBindings(): Promise<SensorObjectBinding[]>;
+  createSensorObjectBinding(data: InsertSensorObjectBinding): Promise<SensorObjectBinding>;
+  updateSensorObjectBinding(id: number, data: Partial<InsertSensorObjectBinding>): Promise<SensorObjectBinding | undefined>;
+  deleteSensorObjectBinding(id: number): Promise<boolean>;
+  getSensorReadingsCache(): Promise<SensorReadingCache[]>;
+  getSensorReadingByKotelnId(idCdsKoteln: number): Promise<SensorReadingCache | undefined>;
+  upsertSensorReadingsCache(readings: InsertSensorReadingCache[]): Promise<void>;
+  updateSensorLastSyncAt(timestamp: Date): Promise<void>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -1099,6 +1115,94 @@ export class DatabaseStorage implements IStorage {
     if (row) return row;
     const [first] = await db.select().from(aiProviders).where(eq(aiProviders.isActive, true)).limit(1);
     return first;
+  }
+
+  async getSensorIntegrationConfig(): Promise<SensorIntegrationConfig | undefined> {
+    const [row] = await db.select().from(sensorIntegrationConfig).limit(1);
+    return row;
+  }
+
+  async upsertSensorIntegrationConfig(data: Partial<InsertSensorIntegrationConfig>): Promise<SensorIntegrationConfig> {
+    const existing = await this.getSensorIntegrationConfig();
+    if (existing) {
+      const [row] = await db.update(sensorIntegrationConfig)
+        .set(data)
+        .where(eq(sensorIntegrationConfig.id, existing.id))
+        .returning();
+      return row;
+    } else {
+      const [row] = await db.insert(sensorIntegrationConfig)
+        .values(data as InsertSensorIntegrationConfig)
+        .returning();
+      return row;
+    }
+  }
+
+  async getSensorObjectBindings(): Promise<SensorObjectBinding[]> {
+    return await db.select().from(sensorObjectBindings).orderBy(sensorObjectBindings.createdAt);
+  }
+
+  async createSensorObjectBinding(data: InsertSensorObjectBinding): Promise<SensorObjectBinding> {
+    const [row] = await db.insert(sensorObjectBindings).values(data).returning();
+    return row;
+  }
+
+  async updateSensorObjectBinding(id: number, data: Partial<InsertSensorObjectBinding>): Promise<SensorObjectBinding | undefined> {
+    const [row] = await db.update(sensorObjectBindings).set(data).where(eq(sensorObjectBindings.id, id)).returning();
+    return row;
+  }
+
+  async deleteSensorObjectBinding(id: number): Promise<boolean> {
+    const result = await db.delete(sensorObjectBindings).where(eq(sensorObjectBindings.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getSensorReadingsCache(): Promise<SensorReadingCache[]> {
+    return await db.select().from(sensorReadingsCache).orderBy(sensorReadingsCache.nameKoteln);
+  }
+
+  async getSensorReadingByKotelnId(idCdsKoteln: number): Promise<SensorReadingCache | undefined> {
+    const [row] = await db.select().from(sensorReadingsCache).where(eq(sensorReadingsCache.idCdsKoteln, idCdsKoteln));
+    return row;
+  }
+
+  async upsertSensorReadingsCache(readings: InsertSensorReadingCache[]): Promise<void> {
+    if (readings.length === 0) return;
+    for (const reading of readings) {
+      await db.insert(sensorReadingsCache)
+        .values(reading)
+        .onConflictDoUpdate({
+          target: sensorReadingsCache.idCdsKoteln,
+          set: {
+            mrName: reading.mrName,
+            placeName: reading.placeName,
+            nameKoteln: reading.nameKoteln,
+            address: reading.address,
+            rsoName: reading.rsoName,
+            type: reading.type,
+            mkdCount: reading.mkdCount,
+            mkdPeopleCount: reading.mkdPeopleCount,
+            activeClaims: reading.activeClaims,
+            sensorsState: reading.sensorsState,
+            sensorDate: reading.sensorDate,
+            tForward: reading.tForward,
+            tReverse: reading.tReverse,
+            pForward: reading.pForward,
+            pRevers: reading.pRevers,
+            responsibles: reading.responsibles,
+            fetchedAt: new Date(),
+          }
+        });
+    }
+  }
+
+  async updateSensorLastSyncAt(timestamp: Date): Promise<void> {
+    const existing = await this.getSensorIntegrationConfig();
+    if (existing) {
+      await db.update(sensorIntegrationConfig)
+        .set({ lastSyncAt: timestamp })
+        .where(eq(sensorIntegrationConfig.id, existing.id));
+    }
   }
 }
 
