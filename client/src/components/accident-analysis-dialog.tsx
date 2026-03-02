@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -88,6 +89,7 @@ export function AccidentAnalysisDialog({
   initialResult,
 }: AccidentAnalysisDialogProps) {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [networkLayerId, setNetworkLayerId] = useState<number | null>(null);
   const [accidentLayerId, setAccidentLayerId] = useState<number | null>(null);
@@ -293,21 +295,25 @@ export function AccidentAnalysisDialog({
 
   return (
     <div
-      className="fixed z-50 w-[420px] bg-background border border-border rounded-lg shadow-2xl flex flex-col"
-      style={{ left: position.x, top: position.y, maxHeight: "calc(100vh - 100px)" }}
+      className={isMobile
+        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
+        : "fixed z-50 w-[420px] bg-background border border-border rounded-lg shadow-2xl flex flex-col"}
+      style={isMobile ? undefined : { left: position.x, top: position.y, maxHeight: "calc(100vh - 100px)" }}
       data-testid="accident-analysis-dialog"
     >
       <div
-        className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40 rounded-t-lg cursor-grab select-none"
-        onMouseDown={handleMouseDown}
+        className={isMobile
+          ? "flex items-center justify-between px-4 py-3 border-b border-border bg-muted/40 shrink-0"
+          : "flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40 rounded-t-lg cursor-grab select-none"}
+        onMouseDown={isMobile ? undefined : handleMouseDown}
       >
         <div className="flex items-center gap-2">
-          <GripHorizontal className="h-4 w-4 text-muted-foreground" />
+          {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground" />}
           <Zap className="h-4 w-4 text-orange-500" />
           <span className="font-semibold text-sm">Анализ аварийности</span>
         </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onOpenChange(false)} data-testid="button-close-accident-dialog">
-          <X className="h-3.5 w-3.5" />
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)} data-testid="button-close-accident-dialog">
+          <X className="h-4 w-4" />
         </Button>
       </div>
 

@@ -114,7 +114,7 @@ export function DrawingToolbar({
 
   return (
     <>
-      <Card className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1 bg-background/95 backdrop-blur-sm">
+      <Card className="absolute top-14 sm:top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1 bg-background/95 backdrop-blur-sm">
         {/* Drawing tools - only visible in edit mode */}
         {editMode && toolButtons.map(({ mode: toolMode, icon: Icon, tooltip }) => {
           const isActive = mode === toolMode;

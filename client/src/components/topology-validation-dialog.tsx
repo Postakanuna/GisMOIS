@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -118,6 +119,7 @@ export function TopologyValidationDialog({
   onOpenChange,
   sceneId,
 }: TopologyValidationDialogProps) {
+  const isMobile = useIsMobile();
   const [tabMode, setTabMode] = useState<TabMode>("validate");
   const [result, setResult] = useState<TopologyValidationResult | null>(null);
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
@@ -303,16 +305,20 @@ export function TopologyValidationDialog({
 
   return (
     <div
-      className="fixed z-50 bg-background border rounded-md shadow-lg"
-      style={{ left: position.x, top: position.y, width: 500, maxHeight: "calc(100vh - 100px)" }}
+      className={isMobile
+        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
+        : "fixed z-50 bg-background border rounded-md shadow-lg"}
+      style={isMobile ? undefined : { left: position.x, top: position.y, width: 500, maxHeight: "calc(100vh - 100px)" }}
       data-testid="topology-validation-dialog"
     >
       <div
-        className="flex items-center justify-between px-3 py-2 border-b cursor-move select-none"
-        onMouseDown={handleMouseDown}
+        className={isMobile
+          ? "flex items-center justify-between px-3 py-3 border-b bg-muted/40 shrink-0"
+          : "flex items-center justify-between px-3 py-2 border-b cursor-move select-none"}
+        onMouseDown={isMobile ? undefined : handleMouseDown}
       >
         <div className="flex items-center gap-2">
-          <GripHorizontal className="h-4 w-4 text-muted-foreground" />
+          {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground" />}
           <ShieldCheck className="h-4 w-4 text-blue-500" />
           <span className="font-medium text-sm">Проверка топологии</span>
         </div>
@@ -338,7 +344,7 @@ export function TopologyValidationDialog({
         </button>
       </div>
 
-      <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 250px)" }}>
+      <div className={isMobile ? "flex-1 overflow-y-auto" : "overflow-y-auto"} style={isMobile ? undefined : { maxHeight: "calc(100vh - 250px)" }}>
         <div className="p-3 space-y-3">
           {tabMode === "validate" && (
             <>

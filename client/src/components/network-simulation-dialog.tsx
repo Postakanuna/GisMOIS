@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -99,6 +100,7 @@ export function NetworkSimulationDialog({
   onSimulationResult,
   initialResult,
 }: NetworkSimulationDialogProps) {
+  const isMobile = useIsMobile();
   const [result, setResult] = useState<SimulationResult | null>(initialResult ?? null);
 
   useEffect(() => {
@@ -215,15 +217,19 @@ export function NetworkSimulationDialog({
   return (
     <div
       ref={dragRef}
-      className="fixed z-[9999] w-[420px] max-h-[80vh] flex flex-col rounded-md border bg-background shadow-lg"
-      style={{ left: position.x, top: position.y }}
+      className={isMobile
+        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
+        : "fixed z-[9999] w-[420px] max-h-[80vh] flex flex-col rounded-md border bg-background shadow-lg"}
+      style={isMobile ? undefined : { left: position.x, top: position.y }}
       data-testid="dialog-network-simulation"
     >
       <div
-        className="flex items-center gap-2 px-4 py-3 border-b cursor-grab active:cursor-grabbing select-none shrink-0"
-        onMouseDown={handleMouseDown}
+        className={isMobile
+          ? "flex items-center gap-2 px-4 py-3 border-b shrink-0 bg-muted/40"
+          : "flex items-center gap-2 px-4 py-3 border-b cursor-grab active:cursor-grabbing select-none shrink-0"}
+        onMouseDown={isMobile ? undefined : handleMouseDown}
       >
-        <GripHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />
+        {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />}
         <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
         <span className="text-sm font-semibold flex-1">Анализ сети</span>
         <Button size="icon" variant="ghost" onClick={handleClose} data-testid="button-close-simulation">

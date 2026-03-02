@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -174,6 +175,7 @@ export function ComplaintAnalysisDialog({
   onHighlightPolygons,
   initialNoTopoResult,
 }: ComplaintAnalysisDialogProps) {
+  const isMobile = useIsMobile();
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("topology");
   const [selectedLayerIds, setSelectedLayerIds] = useState<number[]>([]);
   const [layerFieldMappings, setLayerFieldMappings] = useState<Record<number, { dateField: string; addressField: string }>>({});
@@ -482,21 +484,20 @@ export function ComplaintAnalysisDialog({
 
   return (
     <div
-      className="fixed z-50 bg-background border rounded-md shadow-lg"
-      style={{
-        left: position.x,
-        top: position.y,
-        width: 420,
-        maxHeight: "calc(100vh - 100px)",
-      }}
+      className={isMobile
+        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
+        : "fixed z-50 bg-background border rounded-md shadow-lg"}
+      style={isMobile ? undefined : { left: position.x, top: position.y, width: 420, maxHeight: "calc(100vh - 100px)" }}
       data-testid="complaint-analysis-dialog"
     >
       <div
-        className="flex items-center justify-between px-3 py-2 border-b cursor-move select-none"
-        onMouseDown={handleMouseDown}
+        className={isMobile
+          ? "flex items-center justify-between px-3 py-3 border-b bg-muted/40 shrink-0"
+          : "flex items-center justify-between px-3 py-2 border-b cursor-move select-none"}
+        onMouseDown={isMobile ? undefined : handleMouseDown}
       >
         <div className="flex items-center gap-2">
-          <GripHorizontal className="h-4 w-4 text-muted-foreground" />
+          {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground" />}
           <AlertTriangle className="h-4 w-4 text-orange-500" />
           <span className="font-medium text-sm">Анализ жалоб</span>
         </div>
@@ -518,7 +519,7 @@ export function ComplaintAnalysisDialog({
         </div>
       </div>
 
-      <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
+      <div className={isMobile ? "flex-1 overflow-y-auto" : "overflow-y-auto"} style={isMobile ? undefined : { maxHeight: "calc(100vh - 200px)" }}>
         <div className="p-3 space-y-3">
           {!hasAnyResult && (
             <>

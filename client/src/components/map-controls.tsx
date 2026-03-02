@@ -32,7 +32,7 @@ export function MapControls({
   isReloading,
 }: MapControlsProps) {
   return (
-    <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+    <div className="absolute top-14 sm:top-4 right-4 z-10 flex flex-col gap-2">
       <div className="flex flex-col rounded-lg bg-card/90 backdrop-blur-sm shadow-lg border border-card-border overflow-hidden">
         <Tooltip>
           <TooltipTrigger asChild>
