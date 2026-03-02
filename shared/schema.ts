@@ -655,6 +655,7 @@ export const sensorIntegrationConfig = pgTable("sensor_integration_config", {
   apiToken: text("api_token").notNull().default(""),
   pollingIntervalMinutes: integer("polling_interval_minutes").notNull().default(15),
   isEnabled: integer("is_enabled").notNull().default(0),
+  isDebugMode: integer("is_debug_mode").notNull().default(0),
   lastSyncAt: timestamp("last_sync_at"),
 });
 

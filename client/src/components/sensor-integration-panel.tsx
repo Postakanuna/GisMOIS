@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Loader2, RefreshCw, Wifi, WifiOff, Activity, Info, Layers } from "lucide-react";
+import { Loader2, RefreshCw, Wifi, WifiOff, Activity, Info, Layers, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ interface SensorConfig {
   apiToken: string;
   pollingIntervalMinutes: number;
   isEnabled: number;
+  isDebugMode: number;
   lastSyncAt: string | null;
 }
 
@@ -110,10 +111,12 @@ export function SensorIntegrationPanel() {
     if (localConfig.apiToken !== undefined) payload.apiToken = localConfig.apiToken;
     if (localConfig.pollingIntervalMinutes !== undefined) payload.pollingIntervalMinutes = localConfig.pollingIntervalMinutes;
     if (localConfig.isEnabled !== undefined) payload.isEnabled = localConfig.isEnabled === 1;
+    if (localConfig.isDebugMode !== undefined) payload.isDebugMode = localConfig.isDebugMode === 1;
     saveConfigMutation.mutate(payload);
   };
 
   const isEnabled = effectiveConfig.isEnabled === 1;
+  const isDebugMode = effectiveConfig.isDebugMode === 1;
   const cacheCount = readings?.length ?? 0;
   const networkLayers = (layers || []).filter(l =>
     l.networkType && ["source", "ctp", "consumer"].includes(l.networkType)
@@ -155,6 +158,30 @@ export function SensorIntegrationPanel() {
                 data-testid="switch-sensor-enabled"
               />
             </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <Label className="flex items-center gap-1.5">
+                  <Bug className="h-3.5 w-3.5 text-muted-foreground" />
+                  Режим отладки
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Выводить детальные логи опроса API в серверную консоль
+                </p>
+              </div>
+              <Switch
+                checked={isDebugMode}
+                onCheckedChange={checked => setLocalConfig(prev => ({ ...prev, isDebugMode: checked ? 1 : 0 }))}
+                data-testid="switch-sensor-debug"
+              />
+            </div>
+
+            {isDebugMode && (
+              <div className="rounded-md border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-700 dark:text-yellow-400 space-y-1">
+                <p className="font-medium">Режим отладки активен</p>
+                <p className="text-muted-foreground">Подробные логи каждого запроса к API, пагинация, SSL-ошибки и статусы ответов будут выводиться в консоль сервера с тегом <span className="font-mono">[sensor-sync]</span>.</p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>API URL</Label>

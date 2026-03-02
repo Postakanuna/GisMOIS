@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { syncSensors, testSensorConnection, restartSensorPolling, stopSensorPolling } from "./sensor-sync";
+import { syncSensors, testSensorConnection, restartSensorPolling, stopSensorPolling, setDebugMode } from "./sensor-sync";
 import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, networkTypeSchema, drawnFeatures, editableLayers, type AttributeField } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
@@ -8505,17 +8505,23 @@ export async function registerRoutes(
 
   app.put("/api/admin/sensor-integration/config", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { apiUrl, apiToken, pollingIntervalMinutes, isEnabled } = req.body;
+      const { apiUrl, apiToken, pollingIntervalMinutes, isEnabled, isDebugMode } = req.body;
       const data: Record<string, unknown> = {};
       if (apiUrl !== undefined) data.apiUrl = apiUrl;
       if (apiToken !== undefined) data.apiToken = apiToken;
       if (pollingIntervalMinutes !== undefined) data.pollingIntervalMinutes = Number(pollingIntervalMinutes);
       if (isEnabled !== undefined) data.isEnabled = isEnabled ? 1 : 0;
+      if (isDebugMode !== undefined) data.isDebugMode = isDebugMode ? 1 : 0;
       const config = await storage.upsertSensorIntegrationConfig(data as any);
-      if (isEnabled) {
-        restartSensorPolling();
-      } else {
-        stopSensorPolling();
+      if (isDebugMode !== undefined) {
+        setDebugMode(!!isDebugMode);
+      }
+      if (isEnabled !== undefined) {
+        if (isEnabled) {
+          restartSensorPolling();
+        } else {
+          stopSensorPolling();
+        }
       }
       res.json(config);
     } catch (err: any) {
