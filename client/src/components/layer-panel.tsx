@@ -100,6 +100,7 @@ interface FolderData {
   sceneId: number;
   name: string;
   visible: boolean;
+  displayOrder: number;
   createdAt: string;
 }
 
@@ -742,7 +743,6 @@ export function LayerPanel({
                 }
 
                 const groupedByFolder: Record<number, EditableLayer[]> = {};
-                const ungroupedLayers: EditableLayer[] = [];
 
                 for (const layer of editableLayers) {
                   const fid = (layer as any).folderId as number | null | undefined;
@@ -751,71 +751,85 @@ export function LayerPanel({
                       groupedByFolder[fid] = [];
                     }
                     groupedByFolder[fid].push(layer);
-                  } else {
-                    ungroupedLayers.push(layer);
                   }
                 }
 
+                type TopItem =
+                  | { type: "folder"; folder: FolderData; displayOrder: number }
+                  | { type: "layer"; layer: EditableLayer; displayOrder: number };
+
+                const topItems: TopItem[] = [
+                  ...folders.map(f => ({ type: "folder" as const, folder: f, displayOrder: f.displayOrder ?? 0 })),
+                  ...editableLayers
+                    .filter(l => !(l as any).folderId)
+                    .map(l => ({ type: "layer" as const, layer: l, displayOrder: (l as any).displayOrder ?? 0 })),
+                ].sort((a, b) => a.displayOrder - b.displayOrder);
+
                 return (
                   <>
-                    {folders.map((folder) => {
-                      const folderLayers = groupedByFolder[folder.id] || [];
-                      if (folderLayers.length === 0) return null;
-                      const isCollapsed = collapsedFolders.has(folder.id);
-                      return (
-                        <Collapsible
-                          key={`folder-${folder.id}`}
-                          open={!isCollapsed}
-                          onOpenChange={(open) => {
-                            setCollapsedFolders((prev) => {
-                              const next = new Set(prev);
-                              if (open) {
-                                next.delete(folder.id);
-                              } else {
-                                next.add(folder.id);
-                              }
-                              return next;
-                            });
-                          }}
-                        >
-                          <div className="rounded-md border border-sidebar-border" data-testid={`folder-item-${folder.id}`}>
-                            <div className="flex items-center gap-1 px-2 py-1">
-                              <CollapsibleTrigger asChild>
-                                <button className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer" data-testid={`button-toggle-folder-${folder.id}`}>
-                                  {isCollapsed ? (
-                                    <FolderClosed className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                  ) : (
-                                    <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                  )}
-                                  <span className="text-xs font-medium truncate">{folder.name}</span>
-                                  <span className="text-[10px] text-muted-foreground shrink-0">({folderLayers.length})</span>
-                                </button>
-                              </CollapsibleTrigger>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleFolderVisibilityMutation.mutate({ folderId: folder.id, visible: !folder.visible });
-                                    }}
-                                    data-testid={`button-toggle-folder-visibility-${folder.id}`}
-                                  >
-                                    {folder.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3 text-muted-foreground" />}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent><p>{folder.visible ? "Скрыть папку" : "Показать папку"}</p></TooltipContent>
-                              </Tooltip>
+                    {topItems.map((item) => {
+                      if (item.type === "folder") {
+                        const folder = item.folder;
+                        const folderLayers = (groupedByFolder[folder.id] || [])
+                          .sort((a, b) => ((a as any).displayOrder ?? 0) - ((b as any).displayOrder ?? 0));
+                        if (folderLayers.length === 0) return null;
+                        const isCollapsed = collapsedFolders.has(folder.id);
+                        return (
+                          <Collapsible
+                            key={`folder-${folder.id}`}
+                            open={!isCollapsed}
+                            onOpenChange={(open) => {
+                              setCollapsedFolders((prev) => {
+                                const next = new Set(prev);
+                                if (open) {
+                                  next.delete(folder.id);
+                                } else {
+                                  next.add(folder.id);
+                                }
+                                return next;
+                              });
+                            }}
+                          >
+                            <div className="rounded-md border border-sidebar-border" data-testid={`folder-item-${folder.id}`}>
+                              <div className="flex items-center gap-1 px-2 py-1">
+                                <CollapsibleTrigger asChild>
+                                  <button className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer" data-testid={`button-toggle-folder-${folder.id}`}>
+                                    {isCollapsed ? (
+                                      <FolderClosed className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    ) : (
+                                      <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    )}
+                                    <span className="text-xs font-medium truncate">{folder.name}</span>
+                                    <span className="text-[10px] text-muted-foreground shrink-0">({folderLayers.length})</span>
+                                  </button>
+                                </CollapsibleTrigger>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFolderVisibilityMutation.mutate({ folderId: folder.id, visible: !folder.visible });
+                                      }}
+                                      data-testid={`button-toggle-folder-visibility-${folder.id}`}
+                                    >
+                                      {folder.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3 text-muted-foreground" />}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent><p>{folder.visible ? "Скрыть папку" : "Показать папку"}</p></TooltipContent>
+                                </Tooltip>
+                              </div>
+                              <CollapsibleContent className="space-y-1 px-1 pb-1">
+                                {folderLayers.map(renderEditableLayerItem)}
+                              </CollapsibleContent>
                             </div>
-                            <CollapsibleContent className="space-y-1 px-1 pb-1">
-                              {folderLayers.map(renderEditableLayerItem)}
-                            </CollapsibleContent>
-                          </div>
-                        </Collapsible>
-                      );
+                          </Collapsible>
+                        );
+                      } else {
+                        return renderEditableLayerItem(item.layer);
+                      }
                     })}
-                    {ungroupedLayers.map(renderEditableLayerItem)}
                   </>
                 );
               })()}

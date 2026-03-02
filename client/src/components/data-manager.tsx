@@ -59,6 +59,7 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
   defaultDropAnimationSideEffects,
@@ -551,6 +552,63 @@ function SortableLayerRow({ layer }: { layer: EditableLayer }) {
   );
 }
 
+function FolderContentDropZone({ folderId, isEmpty, dndActiveType, folderLayers }: {
+  folderId: number;
+  isEmpty: boolean;
+  dndActiveType: "layer" | "folder" | null;
+  folderLayers: EditableLayer[];
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `folder-zone-${folderId}` });
+  const folderLayerIds = useMemo(
+    () => folderLayers.map((l) => `layer-${l.id}`),
+    [folderLayers]
+  );
+
+  if (isEmpty) {
+    return (
+      <div
+        ref={setNodeRef}
+        className={`text-[10px] text-center py-2 rounded transition-colors ${
+          isOver && dndActiveType === "layer"
+            ? "bg-primary/15 text-primary border border-dashed border-primary"
+            : "text-muted-foreground"
+        }`}
+        data-testid={`folder-empty-${folderId}`}
+      >
+        {dndActiveType === "layer" ? (isOver ? "Отпустите для добавления" : "Перетащите слой сюда") : "Пусто"}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={setNodeRef} className="space-y-1">
+      <SortableContext items={folderLayerIds} strategy={verticalListSortingStrategy}>
+        {folderLayers.map((layer) => (
+          <SortableLayerRow key={layer.id} layer={layer} />
+        ))}
+      </SortableContext>
+    </div>
+  );
+}
+
+function UngroupedDropZone({ isActive }: { isActive: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id: "ungrouped-zone" });
+  if (!isActive) return null;
+  return (
+    <div
+      ref={setNodeRef}
+      className={`border-2 border-dashed rounded p-2 text-center text-[10px] transition-colors ${
+        isOver
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-muted text-muted-foreground"
+      }`}
+      data-testid="ungrouped-drop-zone"
+    >
+      {isOver ? "Отпустите для размещения вне папок" : "Перетащите сюда чтобы убрать слой из папки"}
+    </div>
+  );
+}
+
 function SortableFolderRow({
   folder,
   folderLayers,
@@ -594,15 +652,10 @@ function SortableFolderRow({
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const folderLayerIds = useMemo(
-    () => folderLayers.map((l) => `layer-${l.id}`),
-    [folderLayers]
-  );
-
   return (
     <div ref={setNodeRef} style={style} {...attributes} data-testid={`folder-${folder.id}`}>
       <Collapsible open={isExpanded} onOpenChange={() => toggleFolderExpanded(folder.id)}>
-        <div className={`rounded border transition-colors bg-muted/30`}>
+        <div className="rounded border transition-colors bg-muted/30">
           <div className="flex items-center gap-1.5 px-2 py-1">
             {canEdit && (
               <span
@@ -715,21 +768,13 @@ function SortableFolderRow({
             )}
           </div>
           <CollapsibleContent>
-            <div className="space-y-1 px-2 pb-1.5">
-              {folderLayers.length === 0 ? (
-                <div
-                  className="text-[10px] text-muted-foreground text-center py-2"
-                  data-testid={`folder-empty-${folder.id}`}
-                >
-                  {dndActiveType === "layer" ? "Перетащите слой сюда" : "Пусто"}
-                </div>
-              ) : (
-                <SortableContext items={folderLayerIds} strategy={verticalListSortingStrategy}>
-                  {folderLayers.map((layer) => (
-                    <SortableLayerRow key={layer.id} layer={layer} />
-                  ))}
-                </SortableContext>
-              )}
+            <div className="px-2 pb-1.5">
+              <FolderContentDropZone
+                folderId={folder.id}
+                isEmpty={folderLayers.length === 0}
+                dndActiveType={dndActiveType}
+                folderLayers={folderLayers}
+              />
             </div>
           </CollapsibleContent>
         </div>
@@ -1409,11 +1454,23 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       fi.type === "folder" ? { ...fi, layers: [...fi.layers] } : { ...fi }
     );
 
+    const removeLayerFromSource = (layerId: number, srcFolderId: number | null) => {
+      if (srcFolderId !== null) {
+        const srcFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === srcFolderId);
+        if (srcFolder?.type === "folder") {
+          srcFolder.layers = srcFolder.layers.filter(id => id !== layerId);
+        }
+      } else {
+        const idx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === layerId);
+        if (idx >= 0) flatItems.splice(idx, 1);
+      }
+    };
+
     if (activeIdStr.startsWith("folder-")) {
       const movedFolderId = parseInt(activeIdStr.replace("folder-", ""));
       const fromIdx = flatItems.findIndex(fi => fi.type === "folder" && fi.folderId === movedFolderId);
       let toIdx = -1;
-      if (overIdStr.startsWith("folder-")) {
+      if (overIdStr.startsWith("folder-") && !overIdStr.startsWith("folder-zone-")) {
         const overFolderId = parseInt(overIdStr.replace("folder-", ""));
         toIdx = flatItems.findIndex(fi => fi.type === "folder" && fi.folderId === overFolderId);
       } else if (overIdStr.startsWith("layer-")) {
@@ -1429,84 +1486,86 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       return;
     }
 
-    if (activeIdStr.startsWith("layer-")) {
-      const movedLayerId = parseInt(activeIdStr.replace("layer-", ""));
-      const movedLayer = sceneLayers.find(l => l.id === movedLayerId);
-      if (!movedLayer) return;
+    if (!activeIdStr.startsWith("layer-")) return;
 
-      const sourceFolderId = movedLayer.folderId ?? null;
+    const movedLayerId = parseInt(activeIdStr.replace("layer-", ""));
+    const movedLayer = sceneLayers.find(l => l.id === movedLayerId);
+    if (!movedLayer) return;
 
-      if (overIdStr.startsWith("folder-")) {
-        const targetFolderId = parseInt(overIdStr.replace("folder-", ""));
-        if (sourceFolderId === targetFolderId) return;
-        if (sourceFolderId) {
-          const srcFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === sourceFolderId);
-          if (srcFolder && srcFolder.type === "folder") {
-            srcFolder.layers = srcFolder.layers.filter(id => id !== movedLayerId);
+    const sourceFolderId = movedLayer.folderId ?? null;
+
+    if (overIdStr === "ungrouped-zone") {
+      if (sourceFolderId === null) return;
+      removeLayerFromSource(movedLayerId, sourceFolderId);
+      flatItems.push({ type: "layer", layerId: movedLayerId, displayOrder: 0 });
+      persistFlatOrder(flatItems, movedLayerId, sourceFolderId, null);
+      return;
+    }
+
+    if (overIdStr.startsWith("folder-zone-")) {
+      const targetFolderId = parseInt(overIdStr.replace("folder-zone-", ""));
+      if (sourceFolderId === targetFolderId) return;
+      removeLayerFromSource(movedLayerId, sourceFolderId);
+      const tgtFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === targetFolderId);
+      if (tgtFolder?.type === "folder") {
+        tgtFolder.layers.push(movedLayerId);
+      }
+      persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
+      return;
+    }
+
+    if (overIdStr.startsWith("folder-") && !overIdStr.startsWith("folder-zone-")) {
+      const nearFolderId = parseInt(overIdStr.replace("folder-", ""));
+      removeLayerFromSource(movedLayerId, sourceFolderId);
+      const folderIdx = flatItems.findIndex(fi => fi.type === "folder" && fi.folderId === nearFolderId);
+      const insertAt = folderIdx >= 0 ? folderIdx : flatItems.length;
+      flatItems.splice(insertAt, 0, { type: "layer", layerId: movedLayerId, displayOrder: 0 });
+      persistFlatOrder(flatItems, movedLayerId, sourceFolderId, null);
+      return;
+    }
+
+    if (overIdStr.startsWith("layer-")) {
+      const overLayerId = parseInt(overIdStr.replace("layer-", ""));
+      const overLayer = sceneLayers.find(l => l.id === overLayerId);
+      if (!overLayer) return;
+
+      const targetFolderId = overLayer.folderId ?? null;
+
+      if (sourceFolderId === targetFolderId) {
+        if (sourceFolderId !== null) {
+          const folderItem = flatItems.find(fi => fi.type === "folder" && fi.folderId === sourceFolderId);
+          if (folderItem?.type === "folder") {
+            const fromLayerIdx = folderItem.layers.indexOf(movedLayerId);
+            const toLayerIdx = folderItem.layers.indexOf(overLayerId);
+            if (fromLayerIdx >= 0 && toLayerIdx >= 0 && fromLayerIdx !== toLayerIdx) {
+              folderItem.layers.splice(fromLayerIdx, 1);
+              const adjustedTo = toLayerIdx > fromLayerIdx ? toLayerIdx - 1 : toLayerIdx;
+              folderItem.layers.splice(adjustedTo, 0, movedLayerId);
+            }
           }
         } else {
-          const idx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === movedLayerId);
-          if (idx >= 0) flatItems.splice(idx, 1);
+          const fromIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === movedLayerId);
+          const toIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === overLayerId);
+          if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
+            const [removed] = flatItems.splice(fromIdx, 1);
+            const adjustedTo = toIdx > fromIdx ? toIdx - 1 : toIdx;
+            flatItems.splice(adjustedTo, 0, removed);
+          }
         }
-        const tgtFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === targetFolderId);
-        if (tgtFolder && tgtFolder.type === "folder") {
-          tgtFolder.layers.push(movedLayerId);
+        persistFlatOrder(flatItems);
+      } else {
+        removeLayerFromSource(movedLayerId, sourceFolderId);
+        if (targetFolderId !== null) {
+          const tgtFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === targetFolderId);
+          if (tgtFolder?.type === "folder") {
+            const toLayerIdx = tgtFolder.layers.indexOf(overLayerId);
+            tgtFolder.layers.splice(toLayerIdx >= 0 ? toLayerIdx : tgtFolder.layers.length, 0, movedLayerId);
+          }
+        } else {
+          const toIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === overLayerId);
+          flatItems.splice(toIdx >= 0 ? toIdx : flatItems.length, 0, { type: "layer", layerId: movedLayerId, displayOrder: 0 });
         }
         persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
-        return;
-      }
-
-      if (overIdStr.startsWith("layer-")) {
-        const overLayerId = parseInt(overIdStr.replace("layer-", ""));
-        const overLayer = sceneLayers.find(l => l.id === overLayerId);
-        if (!overLayer) return;
-
-        const targetFolderId = overLayer.folderId ?? null;
-
-        if (sourceFolderId === targetFolderId) {
-          if (sourceFolderId !== null) {
-            const folderItem = flatItems.find(fi => fi.type === "folder" && fi.folderId === sourceFolderId);
-            if (folderItem && folderItem.type === "folder") {
-              const fromLayerIdx = folderItem.layers.indexOf(movedLayerId);
-              const toLayerIdx = folderItem.layers.indexOf(overLayerId);
-              if (fromLayerIdx >= 0 && toLayerIdx >= 0 && fromLayerIdx !== toLayerIdx) {
-                folderItem.layers.splice(fromLayerIdx, 1);
-                const adjustedTo = toLayerIdx > fromLayerIdx ? toLayerIdx - 1 : toLayerIdx;
-                folderItem.layers.splice(adjustedTo, 0, movedLayerId);
-              }
-            }
-          } else {
-            const fromIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === movedLayerId);
-            const toIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === overLayerId);
-            if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
-              const [removed] = flatItems.splice(fromIdx, 1);
-              const adjustedTo = toIdx > fromIdx ? toIdx - 1 : toIdx;
-              flatItems.splice(adjustedTo, 0, removed);
-            }
-          }
-          persistFlatOrder(flatItems);
-        } else {
-          if (sourceFolderId !== null) {
-            const srcFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === sourceFolderId);
-            if (srcFolder && srcFolder.type === "folder") {
-              srcFolder.layers = srcFolder.layers.filter(id => id !== movedLayerId);
-            }
-          } else {
-            const idx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === movedLayerId);
-            if (idx >= 0) flatItems.splice(idx, 1);
-          }
-          if (targetFolderId !== null) {
-            const tgtFolder = flatItems.find(fi => fi.type === "folder" && fi.folderId === targetFolderId);
-            if (tgtFolder && tgtFolder.type === "folder") {
-              const toLayerIdx = tgtFolder.layers.indexOf(overLayerId);
-              tgtFolder.layers.splice(toLayerIdx >= 0 ? toLayerIdx : tgtFolder.layers.length, 0, movedLayerId);
-            }
-          } else {
-            const toIdx = flatItems.findIndex(fi => fi.type === "layer" && fi.layerId === overLayerId);
-            flatItems.splice(toIdx >= 0 ? toIdx : flatItems.length, 0, { type: "layer", layerId: movedLayerId, displayOrder: 0 });
-          }
-          persistFlatOrder(flatItems, movedLayerId, sourceFolderId, targetFolderId);
-        }
       }
     }
   };
@@ -1800,6 +1859,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                             );
                           }
                         })}
+                        {canEdit && <UngroupedDropZone isActive={dndActiveType === "layer"} />}
                       </div>
                     </SortableContext>
 
