@@ -22,22 +22,6 @@ export interface SensorReading {
   fetchedAt: string;
 }
 
-export interface SensorObjectBinding {
-  id: number;
-  idCdsKoteln: number;
-  objectType: string;
-  layerId: number;
-  objectName: string;
-  createdAt: string;
-}
-
-export function useSensorBindings() {
-  return useQuery<SensorObjectBinding[]>({
-    queryKey: ["/api/sensor-bindings"],
-    staleTime: 60_000,
-  });
-}
-
 export function useSensorReadings() {
   return useQuery<SensorReading[]>({
     queryKey: ["/api/sensor-readings"],
@@ -45,17 +29,13 @@ export function useSensorReadings() {
   });
 }
 
-export function useSensorDataForLayer(layerId: number | undefined) {
-  const { data: bindings } = useSensorBindings();
+export function useSensorDataBySensorId(sensorId: number | string | undefined | null) {
   const { data: readings } = useSensorReadings();
 
-  if (!layerId || !bindings || !readings) return null;
+  if (sensorId == null || sensorId === "" || !readings) return null;
 
-  const binding = bindings.find(b => b.layerId === layerId);
-  if (!binding) return null;
+  const id = Number(sensorId);
+  if (isNaN(id)) return null;
 
-  const reading = readings.find(r => r.idCdsKoteln === binding.idCdsKoteln);
-  if (!reading) return null;
-
-  return { binding, reading };
+  return readings.find(r => r.idCdsKoteln === id) ?? null;
 }

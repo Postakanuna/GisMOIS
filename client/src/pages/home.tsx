@@ -178,7 +178,9 @@ function FeatureInfoSidebarPanel({
                       </div>
                     ))}
                 </div>
-                <SensorTelemetryBlock layerId={feature.layerId} />
+                {feature.properties.sensor_id != null && feature.properties.sensor_id !== "" && (
+                  <SensorTelemetryBlock sensorId={feature.properties.sensor_id as number | string} />
+                )}
                 {idx < features.length - 1 && <Separator />}
               </div>
             ))}

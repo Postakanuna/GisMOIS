@@ -1,13 +1,12 @@
-import { useSensorDataForLayer } from "@/hooks/use-sensor-data";
+import { useSensorDataBySensorId } from "@/hooks/use-sensor-data";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Thermometer, Gauge, Building, Users, FileText } from "lucide-react";
+import { Thermometer, Gauge, Building, Users, FileText, WifiOff, AlertTriangle } from "lucide-react";
 
 interface SensorTelemetryBlockProps {
-  layerId: number;
+  sensorId: number | string | undefined | null;
 }
 
-function SensorStateBadge({ state }: { state: string | null }) {
+export function SensorStateBadge({ state }: { state: string | null }) {
   if (!state) return null;
   if (state === "Корректные данные") {
     return (
@@ -44,27 +43,38 @@ function formatDate(dateStr: string | null | undefined) {
   }
 }
 
-export function SensorTelemetryBlock({ layerId }: SensorTelemetryBlockProps) {
-  const sensorData = useSensorDataForLayer(layerId);
+export function SensorTelemetryBlock({ sensorId }: SensorTelemetryBlockProps) {
+  const reading = useSensorDataBySensorId(sensorId);
 
-  if (!sensorData) return null;
+  if (sensorId == null || sensorId === "") {
+    return (
+      <div className="flex items-center gap-2 p-3 rounded-md bg-muted/30 border border-border text-sm text-muted-foreground" data-testid="sensor-no-id">
+        <WifiOff className="h-4 w-4 shrink-0" />
+        <span>Датчик не привязан. Укажите <span className="font-mono font-semibold">sensor_id</span> в атрибутах объекта.</span>
+      </div>
+    );
+  }
 
-  const { reading } = sensorData;
+  if (!reading) {
+    return (
+      <div className="flex items-center gap-2 p-3 rounded-md bg-muted/30 border border-border text-sm text-muted-foreground" data-testid="sensor-no-data">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        <span>Нет данных для датчика <span className="font-mono font-semibold">#{sensorId}</span>. Выполните синхронизацию в настройках.</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3" data-testid="sensor-telemetry-block">
-      <Separator />
       <div className="space-y-2">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Телеметрия датчиков</span>
           <SensorStateBadge state={reading.sensorsState} />
+          {reading.sensorDate && (
+            <span className="text-xs text-muted-foreground">
+              Обновлено: {formatDate(reading.sensorDate)}
+            </span>
+          )}
         </div>
-
-        {reading.sensorDate && (
-          <p className="text-xs text-muted-foreground">
-            Обновлено: {formatDate(reading.sensorDate)}
-          </p>
-        )}
 
         {reading.nameKoteln && (
           <p className="text-xs font-medium" data-testid="text-sensor-name">{reading.nameKoteln}</p>
@@ -74,23 +84,23 @@ export function SensorTelemetryBlock({ layerId }: SensorTelemetryBlockProps) {
         )}
       </div>
 
-      <div className="rounded-md border border-border bg-muted/30 p-2 space-y-2">
-        <div className="grid grid-cols-2 gap-2">
+      <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Thermometer className="h-3 w-3" />
-              <span>Подача</span>
+              <span>Темп. подача</span>
             </div>
-            <div className="text-sm font-medium" data-testid="text-t-forward">
+            <div className="text-sm font-semibold" data-testid="text-t-forward">
               {formatVal(reading.tForward, "°C")}
             </div>
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Thermometer className="h-3 w-3" />
-              <span>Обратка</span>
+              <span>Темп. обратка</span>
             </div>
-            <div className="text-sm font-medium" data-testid="text-t-reverse">
+            <div className="text-sm font-semibold" data-testid="text-t-reverse">
               {formatVal(reading.tReverse, "°C")}
             </div>
           </div>
@@ -99,7 +109,7 @@ export function SensorTelemetryBlock({ layerId }: SensorTelemetryBlockProps) {
               <Gauge className="h-3 w-3" />
               <span>Давл. подача</span>
             </div>
-            <div className="text-sm font-medium" data-testid="text-p-forward">
+            <div className="text-sm font-semibold" data-testid="text-p-forward">
               {formatVal(reading.pForward, "МПа")}
             </div>
           </div>
@@ -108,7 +118,7 @@ export function SensorTelemetryBlock({ layerId }: SensorTelemetryBlockProps) {
               <Gauge className="h-3 w-3" />
               <span>Давл. обратка</span>
             </div>
-            <div className="text-sm font-medium" data-testid="text-p-revers">
+            <div className="text-sm font-semibold" data-testid="text-p-revers">
               {formatVal(reading.pRevers, "МПа")}
             </div>
           </div>
