@@ -295,8 +295,57 @@ CREATE TABLE IF NOT EXISTS "ai_providers" (
   "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 23. Конфигурация интеграции с датчиками ТИ
+CREATE TABLE IF NOT EXISTS "sensor_integration_config" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "api_url" text NOT NULL DEFAULT 'https://mvitu.arki.mosreg.ru/api/edds/bot/koteln_last_sensors_state/index.php',
+  "api_token" text NOT NULL DEFAULT '',
+  "polling_interval_minutes" integer NOT NULL DEFAULT 15,
+  "is_enabled" integer NOT NULL DEFAULT 0,
+  "last_sync_at" timestamp,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
+-- 24. Привязки объектов карты к датчикам (устарело — используется sensor_id в properties)
+-- Оставлена для обратной совместимости
+CREATE TABLE IF NOT EXISTS "sensor_object_bindings" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "layer_id" integer NOT NULL,
+  "feature_id" integer,
+  "sensor_id" text NOT NULL,
+  "sensor_name" text,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "sensor_object_bindings_layer_id_idx" ON "sensor_object_bindings" USING btree ("layer_id");
+CREATE INDEX IF NOT EXISTS "sensor_object_bindings_sensor_id_idx" ON "sensor_object_bindings" USING btree ("sensor_id");
+
+-- 25. Кэш показаний датчиков
+CREATE TABLE IF NOT EXISTS "sensor_readings_cache" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "id_cds_koteln" integer NOT NULL,
+  "name" text,
+  "address" text,
+  "sensors_state" text,
+  "t1_in" real,
+  "t1_out" real,
+  "t2_in" real,
+  "t2_out" real,
+  "p1_in" real,
+  "p1_out" real,
+  "p2_in" real,
+  "p2_out" real,
+  "gvs_in" real,
+  "gvs_out" real,
+  "raw_data" jsonb,
+  "synced_at" timestamp DEFAULT now() NOT NULL,
+  CONSTRAINT "sensor_readings_cache_id_cds_koteln_unique" UNIQUE("id_cds_koteln")
+);
+CREATE INDEX IF NOT EXISTS "sensor_readings_cache_id_cds_koteln_idx" ON "sensor_readings_cache" USING btree ("id_cds_koteln");
+
 -- =====================================================
--- Конец схемы. Итого: 22 таблицы.
+-- Конец схемы. Итого: 25 таблиц.
 -- При добавлении новых таблиц в shared/schema.ts или
 -- shared/models/ — ОБЯЗАТЕЛЬНО добавляйте их сюда.
 -- =====================================================
