@@ -2532,6 +2532,10 @@ export async function registerRoutes(
         accidentLayerId,
         maxDistanceMeters = 50,
         attributeFilter,
+        runSimulation = false,
+        consumerLayerId,
+        residentField,
+        sceneId,
       } = req.body;
 
       if (!networkLayerId || !accidentLayerId) {
@@ -2650,7 +2654,7 @@ export async function registerRoutes(
         }
       }
 
-      const segments = Array.from(segmentAccidentMap.entries())
+      const baseSegments = Array.from(segmentAccidentMap.entries())
         .map(([, data]) => {
           const props = data.feature.properties;
           return {
@@ -2669,9 +2673,88 @@ export async function registerRoutes(
               geometry: a.geometry,
               properties: a.properties,
             })),
+            consumerCount: null as number | null,
+            residentCount: null as number | null,
           };
         })
         .sort((a, b) => b.accidentCount - a.accidentCount);
+
+      // Run disconnection simulation once per unique segment if requested
+      if (runSimulation && sceneId) {
+        const { simulateSpatialDisconnection } = await import("./network-graph");
+        // Load consumer features once if residentField is provided
+        let consumerFeatures: Array<{ id: number; geometry: { type: string; coordinates: any }; properties: Record<string, unknown> }> = [];
+        if (consumerLayerId && residentField) {
+          const consumerFeaturesRaw = await storage.getDrawnFeatures(Number(consumerLayerId));
+          consumerFeatures = consumerFeaturesRaw.map(f => ({
+            id: f.id,
+            geometry: { type: f.geometryType, coordinates: f.coordinates },
+            properties: (f.properties || {}) as Record<string, unknown>,
+          }));
+        }
+
+        const isValidPt = (p: any) => Array.isArray(p) && p.length >= 2 && p.every((n: any) => typeof n === "number" && isFinite(n));
+
+        for (const seg of baseSegments) {
+          try {
+            const simResult = await simulateSpatialDisconnection(seg.featureId, Number(networkLayerId), Number(sceneId));
+            seg.consumerCount = simResult.stats?.totalConsumers ?? simResult.affectedConsumers?.length ?? 0;
+          } catch (simErr) {
+            console.warn(`[accident-analysis] simulation failed for featureId=${seg.featureId}:`, (simErr as Error).message);
+            seg.consumerCount = 0;
+          }
+
+          // Sum residents from consumer layer if configured
+          if (consumerLayerId && residentField && consumerFeatures.length > 0) {
+            try {
+              const geomType = seg.geometry.type;
+              let segGeoFeature: any = null;
+              if (geomType === "LineString") {
+                const cleaned = (seg.geometry.coordinates as any[]).filter(isValidPt);
+                if (cleaned.length >= 2) {
+                  segGeoFeature = turf.buffer(turf.lineString(cleaned), 5, { units: "meters" });
+                }
+              } else if (geomType === "MultiLineString") {
+                const cleanedParts = (seg.geometry.coordinates as any[][])
+                  .map(part => (Array.isArray(part) ? part : []).filter(isValidPt))
+                  .filter(part => part.length >= 2);
+                if (cleanedParts.length > 0) {
+                  segGeoFeature = turf.buffer(turf.multiLineString(cleanedParts), 5, { units: "meters" });
+                }
+              }
+
+              if (segGeoFeature) {
+                let total = 0;
+                for (const cf of consumerFeatures) {
+                  if (!cf.geometry) continue;
+                  try {
+                    let pt: any = null;
+                    if (cf.geometry.type === "Point") {
+                      const c = cf.geometry.coordinates as number[];
+                      if (isValidPt(c)) pt = turf.point(c);
+                    } else if (cf.geometry.type === "Polygon" || cf.geometry.type === "MultiPolygon") {
+                      pt = turf.centroid({ type: "Feature", geometry: cf.geometry as any, properties: {} });
+                    }
+                    if (pt && turf.booleanPointInPolygon(pt, segGeoFeature)) {
+                      const val = cf.properties[residentField as string];
+                      const num = typeof val === "number" ? val : Number(val);
+                      if (!isNaN(num)) total += num;
+                    }
+                  } catch { /* skip */ }
+                }
+                seg.residentCount = total;
+              } else {
+                seg.residentCount = 0;
+              }
+            } catch (resErr) {
+              console.warn(`[accident-analysis] residentCount failed for featureId=${seg.featureId}:`, (resErr as Error).message);
+              seg.residentCount = 0;
+            }
+          }
+        }
+      }
+
+      const segments = baseSegments;
 
       return res.json({
         networkLayerName: networkLayer.name,
@@ -2780,19 +2863,26 @@ export async function registerRoutes(
             continue;
           }
 
+          const props: Record<string, unknown> = {
+            Sys: seg.sys ?? "",
+            Begin_uch: seg.beginUch ?? "",
+            End_uch: seg.endUch ?? "",
+            Dpod: seg.dpod ?? "",
+            Dobr: seg.dobr ?? "",
+            L: seg.length ?? "",
+            AccidentCount: seg.accidentCount ?? 0,
+          };
+          if (seg.consumerCount !== null && seg.consumerCount !== undefined) {
+            props.Kol_potreb = seg.consumerCount;
+          }
+          if (seg.residentCount !== null && seg.residentCount !== undefined) {
+            props.Kol_zhit = seg.residentCount;
+          }
           features.push({
             layerId: Number(targetLayerId),
             geometryType: buffered.geometry.type,
             coordinates: buffered.geometry.coordinates,
-            properties: {
-              Sys: seg.sys ?? "",
-              Begin_uch: seg.beginUch ?? "",
-              End_uch: seg.endUch ?? "",
-              Dpod: seg.dpod ?? "",
-              Dobr: seg.dobr ?? "",
-              L: seg.length ?? "",
-              AccidentCount: seg.accidentCount ?? 0,
-            },
+            properties: props,
           });
         } catch (segErr: any) {
           console.warn(`[save-buffer] Unexpected error featureId=${seg.featureId}:`, segErr.message);

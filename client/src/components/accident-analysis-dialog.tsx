@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
   Select,
@@ -30,6 +31,9 @@ import {
   MapPin,
   Ruler,
   Layers,
+  Users,
+  Home,
+  AlertTriangle,
 } from "lucide-react";
 
 interface EditableLayer {
@@ -55,6 +59,8 @@ interface AccidentSegmentResult {
     geometry: { type: string; coordinates: any };
     properties: Record<string, unknown>;
   }>;
+  consumerCount: number | null;
+  residentCount: number | null;
 }
 
 interface AccidentAnalysisResult {
@@ -85,6 +91,7 @@ export function AccidentAnalysisDialog({
   open,
   onOpenChange,
   editableLayers,
+  sceneId,
   onHighlightSegment,
   initialResult,
 }: AccidentAnalysisDialogProps) {
@@ -97,6 +104,10 @@ export function AccidentAnalysisDialog({
   const [attributeFilter, setAttributeFilter] = useState<AttributeFilter>({ field: "", value: "" });
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [networkAttributes, setNetworkAttributes] = useState<string[]>([]);
+  const [runSimulation, setRunSimulation] = useState(false);
+  const [consumerLayerId, setConsumerLayerId] = useState<number | null>(null);
+  const [residentField, setResidentField] = useState<string | null>(null);
+  const [consumerAttributes, setConsumerAttributes] = useState<string[]>([]);
   const [result, setResult] = useState<AccidentAnalysisResult | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
   const [saveLayerId, setSaveLayerId] = useState<number | null>(null);
@@ -153,6 +164,18 @@ export function AccidentAnalysisDialog({
   }, [networkLayerId]);
 
   useEffect(() => {
+    if (!consumerLayerId) {
+      setConsumerAttributes([]);
+      setResidentField(null);
+      return;
+    }
+    fetch(`/api/editable-layers/${consumerLayerId}/attributes`)
+      .then(r => r.ok ? r.json() : [])
+      .then((attrs: string[]) => setConsumerAttributes(attrs))
+      .catch(() => setConsumerAttributes([]));
+  }, [consumerLayerId]);
+
+  useEffect(() => {
     if (!open) {
       setResult(null);
       setSelectedSegmentId(null);
@@ -176,9 +199,15 @@ export function AccidentAnalysisDialog({
         networkLayerId,
         accidentLayerId,
         maxDistanceMeters: maxDistance,
+        sceneId,
+        runSimulation,
       };
       if (filterEnabled && attributeFilter.field && attributeFilter.value) {
         body.attributeFilter = attributeFilter;
+      }
+      if (runSimulation && consumerLayerId) {
+        body.consumerLayerId = consumerLayerId;
+        if (residentField) body.residentField = residentField;
       }
       const res = await apiRequest("POST", "/api/analytics/accident-analysis", body);
       return res.json();
@@ -207,6 +236,7 @@ export function AccidentAnalysisDialog({
       const ExcelJS = await import("exceljs");
       const workbook = new ExcelJS.Workbook();
       const ws = workbook.addWorksheet("Анализ аварийности");
+      const hasConsumers = result.segments.some(s => s.consumerCount !== null);
       ws.columns = [
         { header: "№", key: "rank", width: 6 },
         { header: "Sys", key: "sys", width: 14 },
@@ -216,10 +246,14 @@ export function AccidentAnalysisDialog({
         { header: "Dpod", key: "dpod", width: 12 },
         { header: "Dobr", key: "dobr", width: 12 },
         { header: "Кол-во аварий", key: "count", width: 15 },
+        ...(hasConsumers ? [
+          { header: "Потребители (откл.)", key: "consumers", width: 20 },
+          { header: "Жители (откл.)", key: "residents", width: 18 },
+        ] : []),
       ];
       ws.getRow(1).font = { bold: true };
       result.segments.forEach((seg, idx) => {
-        ws.addRow({
+        const row: Record<string, unknown> = {
           rank: idx + 1,
           sys: seg.sys ?? "",
           begin: seg.beginUch ?? "",
@@ -228,7 +262,12 @@ export function AccidentAnalysisDialog({
           dpod: seg.dpod ?? "",
           dobr: seg.dobr ?? "",
           count: seg.accidentCount,
-        });
+        };
+        if (hasConsumers) {
+          row.consumers = seg.consumerCount ?? 0;
+          row.residents = seg.residentCount ?? 0;
+        }
+        ws.addRow(row);
       });
       const metaWs = workbook.addWorksheet("Метаданные");
       metaWs.columns = [{ header: "Параметр", key: "p", width: 30 }, { header: "Значение", key: "v", width: 40 }];
@@ -424,6 +463,71 @@ export function AccidentAnalysisDialog({
               data-testid="input-max-distance"
             />
           </div>
+
+          <div className="space-y-2 border border-border rounded-md p-2.5 bg-muted/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-medium">Анализ отключаемых потребителей</span>
+              </div>
+              <Switch
+                checked={runSimulation}
+                onCheckedChange={(v) => {
+                  setRunSimulation(v);
+                  if (!v) { setConsumerLayerId(null); setResidentField(null); }
+                }}
+                data-testid="switch-run-simulation"
+              />
+            </div>
+            {runSimulation && (
+              <div className="space-y-2 mt-1">
+                <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  <span className="text-xs">Ресурсоёмкая операция — симуляция на каждый участок</span>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Слой потребителей</Label>
+                  <Select
+                    value={consumerLayerId !== null ? String(consumerLayerId) : ""}
+                    onValueChange={v => { setConsumerLayerId(Number(v)); setResidentField(null); }}
+                  >
+                    <SelectTrigger className="h-7 text-xs" data-testid="select-consumer-layer">
+                      <SelectValue placeholder="Выберите слой..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {editableLayers.length === 0 && (
+                        <SelectItem value="__none__" disabled>Нет слоёв</SelectItem>
+                      )}
+                      {editableLayers.map(l => (
+                        <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {consumerLayerId !== null && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Поле с количеством жителей</Label>
+                    <Select
+                      value={residentField ?? ""}
+                      onValueChange={v => setResidentField(v || null)}
+                    >
+                      <SelectTrigger className="h-7 text-xs" data-testid="select-resident-field">
+                        <SelectValue placeholder="Выберите поле..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {consumerAttributes.length === 0 && (
+                          <SelectItem value="__none__" disabled>Нет атрибутов</SelectItem>
+                        )}
+                        {consumerAttributes.map(attr => (
+                          <SelectItem key={attr} value={attr}>{attr}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <Button
@@ -542,6 +646,20 @@ export function AccidentAnalysisDialog({
                         </span>
                       )}
                     </div>
+                    {seg.consumerCount !== null && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-4 text-xs">
+                        <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-consumers-${seg.featureId}`}>
+                          <Users className="h-3 w-3" />
+                          {seg.consumerCount} потреб.
+                        </span>
+                        {seg.residentCount !== null && seg.residentCount > 0 && (
+                          <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium" data-testid={`text-residents-${seg.featureId}`}>
+                            <Home className="h-3 w-3" />
+                            {seg.residentCount} жит.
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <Button
                       size="sm"
                       variant={selectedSegmentId === seg.featureId ? "default" : "outline"}
