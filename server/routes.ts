@@ -2771,6 +2771,263 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/analytics/accident-analysis/stream", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    const sendEvent = (type: string, data: Record<string, unknown>) => {
+      try {
+        res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+        (res as any).flush?.();
+      } catch { /* client disconnected */ }
+    };
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    try {
+      const {
+        networkLayerId,
+        accidentLayerId,
+        maxDistanceMeters = 50,
+        attributeFilter,
+        runSimulation = false,
+        consumerLayerId,
+        residentField,
+        sceneId,
+      } = req.body;
+
+      if (!networkLayerId || !accidentLayerId) {
+        sendEvent("error", { message: "networkLayerId and accidentLayerId are required" });
+        return res.end();
+      }
+
+      const networkLayer = await storage.getEditableLayer(networkLayerId);
+      const accidentLayer = await storage.getEditableLayer(accidentLayerId);
+      if (!networkLayer || !accidentLayer) {
+        sendEvent("error", { message: "Layer not found" });
+        return res.end();
+      }
+
+      const networkFeaturesRaw = await storage.getDrawnFeatures(networkLayerId);
+      const accidentFeaturesRaw = await storage.getDrawnFeatures(accidentLayerId);
+
+      let networkFeatures = networkFeaturesRaw.map(f => ({
+        id: f.id,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
+        properties: (f.properties || {}) as Record<string, unknown>,
+      }));
+
+      const accidentFeatures = accidentFeaturesRaw.map(f => ({
+        id: f.id,
+        geometry: { type: f.geometryType, coordinates: f.coordinates },
+        properties: (f.properties || {}) as Record<string, unknown>,
+      }));
+
+      if (accidentFeatures.length === 0 || networkFeatures.length === 0) {
+        sendEvent("error", { message: "One of the layers has no features" });
+        return res.end();
+      }
+
+      if (attributeFilter && attributeFilter.field && attributeFilter.value !== undefined && attributeFilter.value !== null && attributeFilter.value !== "") {
+        const { field, value } = attributeFilter;
+        networkFeatures = networkFeatures.filter(f => {
+          const propVal = f.properties[field];
+          if (propVal === undefined || propVal === null) return false;
+          return String(propVal) === String(value);
+        });
+        if (networkFeatures.length === 0) {
+          sendEvent("error", { message: "No network features match the attribute filter" });
+          return res.end();
+        }
+      }
+
+      // --- Step 1: Spatial binding ---
+      const segmentAccidentMap: Map<number, { feature: typeof networkFeatures[0]; accidents: typeof accidentFeatures }> = new Map();
+      let boundCount = 0;
+      let unboundCount = 0;
+
+      for (const accidentFeature of accidentFeatures) {
+        if (!accidentFeature.geometry || accidentFeature.geometry.type !== "Point") {
+          unboundCount++;
+          continue;
+        }
+        const accidentCoords = accidentFeature.geometry.coordinates as number[];
+        const accidentPoint = turf.point(accidentCoords);
+        let nearestNetworkIndex = -1;
+        let nearestDistance = Infinity;
+
+        for (let i = 0; i < networkFeatures.length; i++) {
+          const netFeature = networkFeatures[i];
+          if (!netFeature.geometry) continue;
+          const geomType = netFeature.geometry.type;
+          if (geomType !== "LineString" && geomType !== "MultiLineString") continue;
+          try {
+            let minDist = Infinity;
+            if (geomType === "LineString") {
+              const np = turf.nearestPointOnLine(turf.lineString(netFeature.geometry.coordinates as number[][]), accidentPoint);
+              if (np.properties.dist !== undefined) minDist = np.properties.dist;
+            } else {
+              for (const lineCoords of netFeature.geometry.coordinates as number[][][]) {
+                if (lineCoords.length < 2) continue;
+                const np = turf.nearestPointOnLine(turf.lineString(lineCoords), accidentPoint);
+                if (np.properties.dist !== undefined && np.properties.dist < minDist) minDist = np.properties.dist;
+              }
+            }
+            if (minDist < nearestDistance) { nearestDistance = minDist; nearestNetworkIndex = i; }
+          } catch { continue; }
+        }
+
+        const distMeters = nearestDistance * 1000;
+        if (nearestNetworkIndex >= 0 && distMeters <= maxDistanceMeters) {
+          const netFeature = networkFeatures[nearestNetworkIndex];
+          if (!segmentAccidentMap.has(nearestNetworkIndex)) {
+            segmentAccidentMap.set(nearestNetworkIndex, { feature: netFeature, accidents: [] });
+          }
+          segmentAccidentMap.get(nearestNetworkIndex)!.accidents.push(accidentFeature);
+          boundCount++;
+        } else {
+          unboundCount++;
+        }
+      }
+
+      const baseSegments = Array.from(segmentAccidentMap.entries())
+        .map(([, data]) => {
+          const props = data.feature.properties;
+          return {
+            featureId: data.feature.id,
+            geometry: data.feature.geometry,
+            properties: props,
+            dpod: props.Dpod ?? props.dpod ?? props.DPOD ?? null,
+            dobr: props.Dobr ?? props.dobr ?? props.DOBR ?? null,
+            length: props.L ?? props.l ?? null,
+            sys: props.Sys ?? props.sys ?? props.SYS ?? null,
+            beginUch: props.Begin_uch ?? props.begin_uch ?? null,
+            endUch: props.End_uch ?? props.end_uch ?? null,
+            accidentCount: data.accidents.length,
+            accidentFeatures: data.accidents.map(a => ({ id: a.id, geometry: a.geometry, properties: a.properties })),
+            consumerCount: null as number | null,
+            residentCount: null as number | null,
+          };
+        })
+        .sort((a, b) => b.accidentCount - a.accidentCount);
+
+      // Send binding results
+      sendEvent("binding", {
+        boundAccidents: boundCount,
+        unboundAccidents: unboundCount,
+        totalAccidents: accidentFeatures.length,
+        segmentsWithAccidents: baseSegments.length,
+        networkLayerName: networkLayer.name,
+        accidentLayerName: accidentLayer.name,
+      });
+
+      // --- Step 2 & 3: Graph + simulation (optional) ---
+      if (runSimulation && sceneId) {
+        const { buildSpatialNetworkGraph, simulateSpatialDisconnection } = await import("./network-graph");
+
+        sendEvent("graph_building", { message: "Построение графа сети..." });
+        const spatialGraph = await buildSpatialNetworkGraph(Number(sceneId));
+        sendEvent("graph_ready", {
+          nodeCount: spatialGraph.nodes.size,
+          edgeCount: spatialGraph.edges.length,
+        });
+
+        // Load consumer features once
+        const isValidPt = (p: any) => Array.isArray(p) && p.length >= 2 && p.every((n: any) => typeof n === "number" && isFinite(n));
+        let consumerFeatures: Array<{ id: number; geometry: { type: string; coordinates: any }; properties: Record<string, unknown> }> = [];
+        if (consumerLayerId && residentField) {
+          const raw = await storage.getDrawnFeatures(Number(consumerLayerId));
+          consumerFeatures = raw.map(f => ({
+            id: f.id,
+            geometry: { type: f.geometryType, coordinates: f.coordinates },
+            properties: (f.properties || {}) as Record<string, unknown>,
+          }));
+          sendEvent("consumers_loaded", { consumerCount: consumerFeatures.length });
+        }
+
+        const total = baseSegments.length;
+        for (let i = 0; i < baseSegments.length; i++) {
+          const seg = baseSegments[i];
+
+          // Simulation
+          try {
+            const simResult = await simulateSpatialDisconnection(seg.featureId, Number(networkLayerId), Number(sceneId), spatialGraph);
+            seg.consumerCount = simResult.stats?.totalConsumers ?? simResult.affectedConsumers?.length ?? 0;
+          } catch {
+            seg.consumerCount = 0;
+          }
+
+          // Resident count
+          if (consumerLayerId && residentField && consumerFeatures.length > 0) {
+            try {
+              let segGeoFeature: any = null;
+              const geomType = seg.geometry.type;
+              if (geomType === "LineString") {
+                const cleaned = (seg.geometry.coordinates as any[]).filter(isValidPt);
+                if (cleaned.length >= 2) segGeoFeature = turf.buffer(turf.lineString(cleaned), 5, { units: "meters" });
+              } else if (geomType === "MultiLineString") {
+                const cleanedParts = (seg.geometry.coordinates as any[][])
+                  .map(part => (Array.isArray(part) ? part : []).filter(isValidPt))
+                  .filter(part => part.length >= 2);
+                if (cleanedParts.length > 0) segGeoFeature = turf.buffer(turf.multiLineString(cleanedParts), 5, { units: "meters" });
+              }
+              if (segGeoFeature) {
+                let resTotal = 0;
+                for (const cf of consumerFeatures) {
+                  if (!cf.geometry) continue;
+                  try {
+                    let pt: any = null;
+                    if (cf.geometry.type === "Point") {
+                      const c = cf.geometry.coordinates as number[];
+                      if (isValidPt(c)) pt = turf.point(c);
+                    } else if (cf.geometry.type === "Polygon" || cf.geometry.type === "MultiPolygon") {
+                      pt = turf.centroid({ type: "Feature", geometry: cf.geometry as any, properties: {} });
+                    }
+                    if (pt && turf.booleanPointInPolygon(pt, segGeoFeature)) {
+                      const val = cf.properties[residentField as string];
+                      const num = typeof val === "number" ? val : Number(val);
+                      if (!isNaN(num)) resTotal += num;
+                    }
+                  } catch { /* skip */ }
+                }
+                seg.residentCount = resTotal;
+              } else {
+                seg.residentCount = 0;
+              }
+            } catch {
+              seg.residentCount = 0;
+            }
+          }
+
+          // Send progress after each segment
+          sendEvent("simulation_progress", {
+            current: i + 1,
+            total,
+            segment: seg,
+          });
+        }
+      }
+
+      // --- Final result ---
+      sendEvent("complete", {
+        networkLayerName: networkLayer.name,
+        accidentLayerName: accidentLayer.name,
+        totalAccidents: accidentFeatures.length,
+        boundAccidents: boundCount,
+        unboundAccidents: unboundCount,
+        segmentsWithAccidents: baseSegments.length,
+        segments: baseSegments,
+      });
+
+      return res.end();
+    } catch (error: any) {
+      console.error("[accident-analysis/stream] error:", error);
+      sendEvent("error", { message: error.message || "Internal server error" });
+      return res.end();
+    }
+  });
+
   app.post("/api/analytics/accident-analysis/save-buffer", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { segments, targetLayerId, bufferMeters = 5 } = req.body;

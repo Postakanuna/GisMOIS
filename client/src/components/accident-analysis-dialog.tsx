@@ -1,6 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +32,10 @@ import {
   Users,
   Home,
   AlertTriangle,
+  CheckCircle2,
+  Network,
+  BarChart3,
+  XCircle,
 } from "lucide-react";
 
 interface EditableLayer {
@@ -78,6 +80,20 @@ interface AttributeFilter {
   value: string;
 }
 
+interface AnalysisProgress {
+  stage: "binding" | "graph_building" | "graph_ready" | "simulating" | "done";
+  boundAccidents?: number;
+  unboundAccidents?: number;
+  totalAccidents?: number;
+  segmentsWithAccidents?: number;
+  graphNodes?: number;
+  graphEdges?: number;
+  simulationCurrent?: number;
+  simulationTotal?: number;
+  consumerLayerCount?: number;
+  partialSegments: AccidentSegmentResult[];
+}
+
 interface AccidentAnalysisDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -108,11 +124,16 @@ export function AccidentAnalysisDialog({
   const [consumerLayerId, setConsumerLayerId] = useState<number | null>(null);
   const [residentField, setResidentField] = useState<string | null>(null);
   const [consumerAttributes, setConsumerAttributes] = useState<string[]>([]);
+
   const [result, setResult] = useState<AccidentAnalysisResult | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
   const [saveLayerId, setSaveLayerId] = useState<number | null>(null);
   const [showSavePopover, setShowSavePopover] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const [position, setPosition] = useState({ x: 20, y: 80 });
   const isDragging = useRef(false);
@@ -120,20 +141,14 @@ export function AccidentAnalysisDialog({
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     isDragging.current = true;
-    dragStart.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    };
+    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
     e.preventDefault();
   }, [position]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
-      setPosition({
-        x: e.clientX - dragStart.current.x,
-        y: e.clientY - dragStart.current.y,
-      });
+      setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
     };
     const handleMouseUp = () => { isDragging.current = false; };
     window.addEventListener("mousemove", handleMouseMove);
@@ -145,9 +160,7 @@ export function AccidentAnalysisDialog({
   }, []);
 
   useEffect(() => {
-    if (initialResult && open) {
-      setResult(initialResult);
-    }
+    if (initialResult && open) setResult(initialResult);
   }, [initialResult, open]);
 
   useEffect(() => {
@@ -180,6 +193,11 @@ export function AccidentAnalysisDialog({
       setResult(null);
       setSelectedSegmentId(null);
       onHighlightSegment(null);
+      if (isAnalyzing) {
+        abortControllerRef.current?.abort();
+        setIsAnalyzing(false);
+        setProgress(null);
+      }
     }
   }, [open]);
 
@@ -193,37 +211,129 @@ export function AccidentAnalysisDialog({
     pointLayerTypes.some(t => l.geometryType?.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase() === l.geometryType?.toLowerCase())
   );
 
-  const analysisMutation = useMutation({
-    mutationFn: async () => {
-      const body: Record<string, unknown> = {
-        networkLayerId,
-        accidentLayerId,
-        maxDistanceMeters: maxDistance,
-        sceneId,
-        runSimulation,
-      };
-      if (filterEnabled && attributeFilter.field && attributeFilter.value) {
-        body.attributeFilter = attributeFilter;
+  const runAnalysis = async () => {
+    if (!networkLayerId || !accidentLayerId) return;
+
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setIsAnalyzing(true);
+    setResult(null);
+    setSelectedSegmentId(null);
+    onHighlightSegment(null);
+    setProgress({ stage: "binding", partialSegments: [] });
+
+    const body: Record<string, unknown> = {
+      networkLayerId,
+      accidentLayerId,
+      maxDistanceMeters: maxDistance,
+      sceneId,
+      runSimulation,
+    };
+    if (filterEnabled && attributeFilter.field && attributeFilter.value) {
+      body.attributeFilter = attributeFilter;
+    }
+    if (runSimulation && consumerLayerId) {
+      body.consumerLayerId = consumerLayerId;
+      if (residentField) body.residentField = residentField;
+    }
+
+    try {
+      const response = await fetch("/api/analytics/accident-analysis/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`Ошибка сервера: ${response.status}`);
       }
-      if (runSimulation && consumerLayerId) {
-        body.consumerLayerId = consumerLayerId;
-        if (residentField) body.residentField = residentField;
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+
+            if (event.type === "binding") {
+              setProgress(prev => ({
+                ...(prev ?? { partialSegments: [] }),
+                stage: runSimulation ? "graph_building" : "done",
+                boundAccidents: event.boundAccidents,
+                unboundAccidents: event.unboundAccidents,
+                totalAccidents: event.totalAccidents,
+                segmentsWithAccidents: event.segmentsWithAccidents,
+              }));
+            } else if (event.type === "graph_building") {
+              setProgress(prev => ({
+                ...(prev ?? { partialSegments: [] }),
+                stage: "graph_building",
+              }));
+            } else if (event.type === "graph_ready") {
+              setProgress(prev => ({
+                ...(prev ?? { partialSegments: [] }),
+                stage: "simulating",
+                graphNodes: event.nodeCount,
+                graphEdges: event.edgeCount,
+                simulationCurrent: 0,
+                simulationTotal: prev?.segmentsWithAccidents ?? 0,
+              }));
+            } else if (event.type === "consumers_loaded") {
+              setProgress(prev => ({
+                ...(prev ?? { partialSegments: [] }),
+                consumerLayerCount: event.consumerCount,
+              }));
+            } else if (event.type === "simulation_progress") {
+              setProgress(prev => ({
+                ...(prev ?? { partialSegments: [] }),
+                stage: "simulating",
+                simulationCurrent: event.current,
+                simulationTotal: event.total,
+                partialSegments: [...(prev?.partialSegments ?? []), event.segment],
+              }));
+            } else if (event.type === "complete") {
+              setResult(event as AccidentAnalysisResult);
+              setProgress(null);
+              setIsAnalyzing(false);
+              if ((event.segments as AccidentSegmentResult[]).length === 0) {
+                toast({ title: "Аварии не привязаны", description: "Ни одна авария не попала в зону привязки к сетям.", variant: "destructive" });
+              }
+            } else if (event.type === "error") {
+              toast({ title: "Ошибка анализа", description: event.message || "Не удалось выполнить анализ", variant: "destructive" });
+              setIsAnalyzing(false);
+              setProgress(null);
+            }
+          } catch { /* malformed line */ }
+        }
       }
-      const res = await apiRequest("POST", "/api/analytics/accident-analysis", body);
-      return res.json();
-    },
-    onSuccess: (data: AccidentAnalysisResult) => {
-      setResult(data);
-      setSelectedSegmentId(null);
-      onHighlightSegment(null);
-      if (data.segments.length === 0) {
-        toast({ title: "Аварии не привязаны", description: "Ни одна авария не попала в зону привязки к сетям.", variant: "destructive" });
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        toast({ title: "Ошибка анализа", description: err.message || "Не удалось выполнить анализ", variant: "destructive" });
       }
-    },
-    onError: (err: any) => {
-      toast({ title: "Ошибка анализа", description: err.message || "Не удалось выполнить анализ", variant: "destructive" });
-    },
-  });
+      setIsAnalyzing(false);
+      setProgress(null);
+    }
+  };
+
+  const handleCancelAnalysis = () => {
+    abortControllerRef.current?.abort();
+    setIsAnalyzing(false);
+    setProgress(null);
+  };
 
   const handleSegmentClick = (segment: AccidentSegmentResult) => {
     setSelectedSegmentId(segment.featureId);
@@ -287,7 +397,7 @@ export function AccidentAnalysisDialog({
       a.download = `accident_analysis_${Date.now()}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
+    } catch {
       toast({ title: "Ошибка экспорта", description: "Не удалось создать файл Excel", variant: "destructive" });
     }
   };
@@ -300,11 +410,7 @@ export function AccidentAnalysisDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          segments: result.segments,
-          targetLayerId: saveLayerId,
-          bufferMeters: 5,
-        }),
+        body: JSON.stringify({ segments: result.segments, targetLayerId: saveLayerId, bufferMeters: 5 }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || `Ошибка ${res.status}`);
@@ -318,11 +424,8 @@ export function AccidentAnalysisDialog({
     }
   };
 
-  const polygonLayers = editableLayers.filter(l =>
-    l.geometryType?.toLowerCase().includes("polygon")
-  );
+  const polygonLayers = editableLayers.filter(l => l.geometryType?.toLowerCase().includes("polygon"));
   const saveTargetLayers = polygonLayers.length > 0 ? polygonLayers : editableLayers;
-
   const canRun = networkLayerId !== null && accidentLayerId !== null;
 
   if (!open) return null;
@@ -331,6 +434,8 @@ export function AccidentAnalysisDialog({
     if (val === null || val === undefined || val === "") return "—";
     return String(val);
   };
+
+  const displaySegments = result?.segments ?? (progress?.partialSegments ?? []);
 
   return (
     <div
@@ -368,12 +473,8 @@ export function AccidentAnalysisDialog({
                 <SelectValue placeholder="Выберите слой сетей..." />
               </SelectTrigger>
               <SelectContent>
-                {networkLayers.length === 0 && (
-                  <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>
-                )}
-                {networkLayers.map(l => (
-                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-                ))}
+                {networkLayers.length === 0 && <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>}
+                {networkLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -389,10 +490,7 @@ export function AccidentAnalysisDialog({
                   variant={filterEnabled ? "default" : "outline"}
                   size="sm"
                   className="h-6 text-xs px-2"
-                  onClick={() => {
-                    setFilterEnabled(prev => !prev);
-                    if (filterEnabled) setAttributeFilter({ field: "", value: "" });
-                  }}
+                  onClick={() => { setFilterEnabled(prev => !prev); if (filterEnabled) setAttributeFilter({ field: "", value: "" }); }}
                   data-testid="button-toggle-filter"
                 >
                   {filterEnabled ? "Убрать фильтр" : "Добавить фильтр"}
@@ -402,17 +500,12 @@ export function AccidentAnalysisDialog({
                 <div className="flex gap-2 mt-2">
                   <div className="flex-1 space-y-1">
                     <Label className="text-xs">Столбец</Label>
-                    <Select
-                      value={attributeFilter.field}
-                      onValueChange={v => setAttributeFilter(prev => ({ ...prev, field: v }))}
-                    >
+                    <Select value={attributeFilter.field} onValueChange={v => setAttributeFilter(prev => ({ ...prev, field: v }))}>
                       <SelectTrigger className="h-7 text-xs" data-testid="select-filter-field">
                         <SelectValue placeholder="Атрибут..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {networkAttributes.map(attr => (
-                          <SelectItem key={attr} value={attr}>{attr}</SelectItem>
-                        ))}
+                        {networkAttributes.map(attr => <SelectItem key={attr} value={attr}>{attr}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -441,12 +534,8 @@ export function AccidentAnalysisDialog({
                 <SelectValue placeholder="Выберите слой аварий..." />
               </SelectTrigger>
               <SelectContent>
-                {accidentLayers.length === 0 && (
-                  <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>
-                )}
-                {accidentLayers.map(l => (
-                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-                ))}
+                {accidentLayers.length === 0 && <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>}
+                {accidentLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -472,10 +561,7 @@ export function AccidentAnalysisDialog({
               </div>
               <Switch
                 checked={runSimulation}
-                onCheckedChange={(v) => {
-                  setRunSimulation(v);
-                  if (!v) { setConsumerLayerId(null); setResidentField(null); }
-                }}
+                onCheckedChange={(v) => { setRunSimulation(v); if (!v) { setConsumerLayerId(null); setResidentField(null); } }}
                 data-testid="switch-run-simulation"
               />
             </div>
@@ -495,32 +581,21 @@ export function AccidentAnalysisDialog({
                       <SelectValue placeholder="Выберите слой..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {editableLayers.length === 0 && (
-                        <SelectItem value="__none__" disabled>Нет слоёв</SelectItem>
-                      )}
-                      {editableLayers.map(l => (
-                        <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-                      ))}
+                      {editableLayers.length === 0 && <SelectItem value="__none__" disabled>Нет слоёв</SelectItem>}
+                      {editableLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 {consumerLayerId !== null && (
                   <div className="space-y-1.5">
                     <Label className="text-xs">Поле с количеством жителей</Label>
-                    <Select
-                      value={residentField ?? ""}
-                      onValueChange={v => setResidentField(v || null)}
-                    >
+                    <Select value={residentField ?? ""} onValueChange={v => setResidentField(v || null)}>
                       <SelectTrigger className="h-7 text-xs" data-testid="select-resident-field">
                         <SelectValue placeholder="Выберите поле..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {consumerAttributes.length === 0 && (
-                          <SelectItem value="__none__" disabled>Нет атрибутов</SelectItem>
-                        )}
-                        {consumerAttributes.map(attr => (
-                          <SelectItem key={attr} value={attr}>{attr}</SelectItem>
-                        ))}
+                        {consumerAttributes.length === 0 && <SelectItem value="__none__" disabled>Нет атрибутов</SelectItem>}
+                        {consumerAttributes.map(attr => <SelectItem key={attr} value={attr}>{attr}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -530,80 +605,185 @@ export function AccidentAnalysisDialog({
           </div>
         </div>
 
-        <Button
-          className="w-full h-8 text-xs"
-          disabled={!canRun || analysisMutation.isPending}
-          onClick={() => analysisMutation.mutate()}
-          data-testid="button-run-accident-analysis"
-        >
-          {analysisMutation.isPending ? (
-            <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Анализ...</>
-          ) : (
-            <><Zap className="h-3.5 w-3.5 mr-2" />Запустить анализ</>
-          )}
-        </Button>
+        {isAnalyzing ? (
+          <Button
+            variant="destructive"
+            className="w-full h-8 text-xs"
+            onClick={handleCancelAnalysis}
+            data-testid="button-cancel-analysis"
+          >
+            <XCircle className="h-3.5 w-3.5 mr-2" />
+            Отменить анализ
+          </Button>
+        ) : (
+          <Button
+            className="w-full h-8 text-xs"
+            disabled={!canRun}
+            onClick={runAnalysis}
+            data-testid="button-run-accident-analysis"
+          >
+            <Zap className="h-3.5 w-3.5 mr-2" />
+            Запустить анализ
+          </Button>
+        )}
 
-        {result && (
-          <div className="space-y-3">
-            <div className="flex items-center flex-wrap gap-2">
-              <Badge variant="outline" data-testid="badge-total">Аварий: {result.totalAccidents}</Badge>
-              <Badge variant="secondary" data-testid="badge-bound">Привязано: {result.boundAccidents}</Badge>
-              {result.unboundAccidents > 0 && (
-                <Badge variant="destructive" data-testid="badge-unbound">Не привязано: {result.unboundAccidents}</Badge>
+        {/* Progress block */}
+        {isAnalyzing && progress && (
+          <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2.5" data-testid="analysis-progress">
+            <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-500 shrink-0" />
+              <span>Анализ выполняется...</span>
+            </div>
+
+            {/* Binding row */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs">
+                {(progress.stage !== "binding") ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                ) : (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+                )}
+                <span className="text-muted-foreground">Привязка аварий</span>
+                {progress.boundAccidents !== undefined && (
+                  <span className="ml-auto font-medium text-foreground">
+                    {progress.boundAccidents} / {progress.totalAccidents}
+                  </span>
+                )}
+              </div>
+              {progress.boundAccidents !== undefined && progress.totalAccidents !== undefined && progress.totalAccidents > 0 && (
+                <div className="h-1 rounded-full bg-muted overflow-hidden ml-5">
+                  <div
+                    className="h-full rounded-full bg-green-500 transition-all duration-300"
+                    style={{ width: `${Math.round((progress.boundAccidents / progress.totalAccidents) * 100)}%` }}
+                  />
+                </div>
               )}
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">
-                Участков с авариями: {result.segmentsWithAccidents}
-              </span>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
-                  <Download className="h-3 w-3" />
-                  Excel
-                </Button>
-                <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-6 text-xs gap-1" data-testid="button-save-to-layer">
-                      <Layers className="h-3 w-3" />
-                      В слой
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-3" align="end">
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium">Сохранить буферизованные полигоны (±5 м)</p>
-                      <Select value={saveLayerId ? String(saveLayerId) : ""} onValueChange={v => setSaveLayerId(Number(v))}>
-                        <SelectTrigger className="h-7 text-xs" data-testid="select-save-layer">
-                          <SelectValue placeholder="Выберите слой..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {saveTargetLayers.map(l => (
-                            <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="sm"
-                        className="w-full h-7 text-xs"
-                        disabled={!saveLayerId || isSaving}
-                        onClick={handleSaveToLayer}
-                        data-testid="button-confirm-save-to-layer"
-                      >
-                        {isSaving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Сохранение...</> : "Сохранить"}
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
 
-            {result.segments.length === 0 ? (
+            {/* Graph build row */}
+            {runSimulation && (
+              <div className="flex items-center gap-1.5 text-xs">
+                {progress.stage === "binding" || progress.stage === "graph_building" ? (
+                  progress.stage === "graph_building"
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+                    : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                )}
+                <Network className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">Граф сети</span>
+                {progress.graphNodes !== undefined && (
+                  <span className="ml-auto font-medium text-foreground">
+                    {progress.graphNodes.toLocaleString("ru-RU")} узлов
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Simulation progress row */}
+            {runSimulation && (progress.stage === "simulating" || (progress.simulationCurrent ?? 0) > 0) && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <BarChart3 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                  <span className="text-muted-foreground">Симуляция участков</span>
+                  <span className="ml-auto font-medium text-foreground">
+                    {progress.simulationCurrent ?? 0} / {progress.simulationTotal ?? "…"}
+                  </span>
+                </div>
+                {(progress.simulationTotal ?? 0) > 0 && (
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden ml-5">
+                    <div
+                      className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${Math.round(((progress.simulationCurrent ?? 0) / (progress.simulationTotal ?? 1)) * 100)}%` }}
+                    />
+                  </div>
+                )}
+                {progress.consumerLayerCount !== undefined && (
+                  <div className="flex items-center gap-1 ml-5 text-xs text-muted-foreground">
+                    <Users className="h-3 w-3" />
+                    <span>Потребителей в слое: {progress.consumerLayerCount}</span>
+                  </div>
+                )}
+                {progress.partialSegments.length > 0 && (
+                  <div className="ml-5 text-xs text-muted-foreground">
+                    Найдено участков: <span className="font-medium text-foreground">{progress.partialSegments.length}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Results */}
+        {(result || (isAnalyzing && progress && progress.partialSegments.length > 0)) && (
+          <div className="space-y-3">
+            {result && (
+              <div className="flex items-center flex-wrap gap-2">
+                <Badge variant="outline" data-testid="badge-total">Аварий: {result.totalAccidents}</Badge>
+                <Badge variant="secondary" data-testid="badge-bound">Привязано: {result.boundAccidents}</Badge>
+                {result.unboundAccidents > 0 && (
+                  <Badge variant="destructive" data-testid="badge-unbound">Не привязано: {result.unboundAccidents}</Badge>
+                )}
+              </div>
+            )}
+            {result && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  Участков с авариями: {result.segmentsWithAccidents}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
+                    <Download className="h-3 w-3" />
+                    Excel
+                  </Button>
+                  <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-6 text-xs gap-1" data-testid="button-save-to-layer">
+                        <Layers className="h-3 w-3" />
+                        В слой
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-3" align="end">
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium">Сохранить буферизованные полигоны (±5 м)</p>
+                        <Select value={saveLayerId ? String(saveLayerId) : ""} onValueChange={v => setSaveLayerId(Number(v))}>
+                          <SelectTrigger className="h-7 text-xs" data-testid="select-save-layer">
+                            <SelectValue placeholder="Выберите слой..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {saveTargetLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          className="w-full h-7 text-xs"
+                          disabled={!saveLayerId || isSaving}
+                          onClick={handleSaveToLayer}
+                          data-testid="button-confirm-save-to-layer"
+                        >
+                          {isSaving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Сохранение...</> : "Сохранить"}
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            )}
+
+            {isAnalyzing && progress && progress.partialSegments.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Промежуточные результаты ({progress.partialSegments.length} участков):
+              </div>
+            )}
+
+            {displaySegments.length === 0 && result ? (
               <div className="text-center py-6 text-muted-foreground text-xs">
                 <AlertOctagon className="h-8 w-8 mx-auto mb-2 opacity-40" />
                 Нет участков с привязанными авариями
               </div>
             ) : (
               <div className="space-y-1.5">
-                {result.segments.map((seg, idx) => (
+                {displaySegments.map((seg, idx) => (
                   <div
                     key={seg.featureId}
                     className={`text-xs border rounded-md p-2 space-y-1 cursor-pointer transition-colors ${

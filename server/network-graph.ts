@@ -1220,7 +1220,8 @@ function getDepth(parentMap: Map<string, string | null>, key: string): number {
 export async function simulateSpatialDisconnection(
   featureId: number,
   layerId: number,
-  sceneId: number
+  sceneId: number,
+  prebuiltGraph?: SpatialGraph
 ): Promise<SimulationResult> {
   const feature = await db
     .select({
@@ -1245,7 +1246,7 @@ export async function simulateSpatialDisconnection(
   if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] === Spatial Simulation Start ===`);
   if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Feature: id=${featureId}, layer=${layerId}, name="${featName}", geom=${feat.geometryType}`);
 
-  const graph = await buildSpatialNetworkGraph(sceneId);
+  const graph = prebuiltGraph ?? await buildSpatialNetworkGraph(sceneId);
 
   const found = findFeatureInSpatialGraph(graph, featureId, layerId, feat.coordinates, feat.geometryType);
 
