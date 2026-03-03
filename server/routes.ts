@@ -3152,6 +3152,49 @@ export async function registerRoutes(
       }
 
       const created = await storage.createDrawnFeaturesBatch(features);
+
+      // Update layer schema so attribute table shows all saved fields
+      try {
+        // Determine which fields are present across all saved segments
+        const allPropKeys = new Set<string>();
+        for (const f of features) {
+          Object.keys(f.properties).forEach(k => allPropKeys.add(k));
+        }
+
+        // Define field types for known accident-analysis attributes
+        const knownTypes: Record<string, "text" | "number"> = {
+          Sys: "text",
+          Begin_uch: "text",
+          End_uch: "text",
+          Dpod: "text",
+          Dobr: "text",
+          L: "number",
+          AccidentCount: "number",
+          Kol_potreb: "number",
+          Kol_zhit: "number",
+        };
+
+        const newFields: AttributeField[] = Array.from(allPropKeys).map(key => ({
+          name: key,
+          type: (knownTypes[key] ?? "text") as "text" | "number",
+          label: key,
+          required: false,
+        }));
+
+        const existingSchema = await storage.getLayerSchema(Number(targetLayerId));
+        if (existingSchema) {
+          const existingNames = new Set(existingSchema.fields.map((f: AttributeField) => f.name));
+          const toAdd = newFields.filter(f => !existingNames.has(f.name));
+          if (toAdd.length > 0) {
+            await storage.updateLayerSchema(Number(targetLayerId), [...existingSchema.fields as AttributeField[], ...toAdd]);
+          }
+        } else {
+          await storage.createLayerSchema({ layerId: Number(targetLayerId), fields: newFields });
+        }
+      } catch (schemaErr: any) {
+        console.warn("[save-buffer] Schema update failed (non-fatal):", schemaErr.message);
+      }
+
       return res.json({ saved: created.length, errors: errorCount });
     } catch (error: any) {
       console.error("Buffer-save error:", error);
