@@ -1,1256 +1,1256 @@
 ЛИСТИНГ ИСХОДНОГО КОДА
 ГИС МО «Инженерные сети» (ГИС МО «ИС»)
 Депонируемые материалы — Первые 25 страниц (50 строк на страницу)
-Общий объём: 48 597 строк исходного кода (собственная разработка, подсистемы 1–6)
+Общий объём: 52 296 строк исходного кода (собственная разработка, подсистемы 1–6)
 
 
-000001	<!DOCTYPE html>
-000002	<html lang="ru">
-000003	  <head>
-000004	    <meta charset="UTF-8" />
-000005	    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-000006	    <meta name="description" content="ГИС МО Инженерные сети - веб-приложение для управления инженерной инфраструктурой" />
-000007	    <title>ГИС МО "Инженерные сети"</title>
-000008	    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-000009	    <link rel="preconnect" href="https://fonts.googleapis.com">
-000010	    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-000011	    <link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Fira+Code:wght@300..700&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400..700;1,400..700&family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@100..900&family=Oxanium:wght@200..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Roboto:ital,wght@0,100..900;1,100..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
-000012	  </head>
-000013	  <body>
-000014	    <div id="root"></div>
-000015	    <script type="module" src="/src/main.tsx"></script>
-000016	  </body>
-000017	</html>
-000018	// ============================================================
-000019	// Файл: client/src/App.tsx
-000020	// ============================================================
-000021	import { Switch, Route } from "wouter";
-000022	import { queryClient } from "./lib/queryClient";
-000023	import { QueryClientProvider } from "@tanstack/react-query";
-000024	import { Toaster } from "@/components/ui/toaster";
-000025	import { TooltipProvider } from "@/components/ui/tooltip";
-000026	import { ZuluConnectionProvider } from "@/contexts/zulu-connection-context";
-000027	import { SceneProvider } from "@/contexts/scene-context";
-000028	import { BaseLayersProvider } from "@/contexts/base-layers-context";
-000029	import { ProjectionProvider } from "@/contexts/projection-context";
-000030	import { ProtectedRoute } from "@/components/protected-route";
-000031	import NotFound from "@/pages/not-found";
-000032	import LandingPage from "@/pages/landing";
-000033	import Home from "@/pages/home";
-000034	import AdminUsers from "@/pages/admin-users";
-000035	import AdminLayerManager from "@/pages/admin-layer-manager";
-000036	import LoginPage from "@/pages/login";
-000037	import ScenesPage from "@/pages/scenes";
-000038	import ProfilePage from "@/pages/profile";
-000039	
-000040	function Router() {
-000041	  return (
-000042	    <Switch>
-000043	      <Route path="/" component={LandingPage} />
-000044	      <Route path="/gis/login" component={LoginPage} />
-000045	      <Route path="/gis/scenes">
-000046	        <ProtectedRoute>
-000047	          <ScenesPage />
-000048	        </ProtectedRoute>
-000049	      </Route>
-000050	      <Route path="/gis/app">
-000051	        <ProtectedRoute>
-000052	          <Home />
-000053	        </ProtectedRoute>
-000054	      </Route>
-000055	      <Route path="/gis/profile">
-000056	        <ProtectedRoute>
-000057	          <ProfilePage />
-000058	        </ProtectedRoute>
-000059	      </Route>
-000060	      <Route path="/gis/admin/settings">
-000061	        <ProtectedRoute requireAdmin>
-000062	          <AdminUsers />
-000063	        </ProtectedRoute>
-000064	      </Route>
-000065	      <Route path="/gis/admin/layers">
-000066	        <ProtectedRoute requireAdmin>
-000067	          <AdminLayerManager />
-000068	        </ProtectedRoute>
-000069	      </Route>
-000070	      <Route path="/gis/admin">
-000071	        <ProtectedRoute requireAdmin>
-000072	          <AdminUsers />
-000073	        </ProtectedRoute>
-000074	      </Route>
-000075	      <Route component={NotFound} />
-000076	    </Switch>
-000077	  );
-000078	}
-000079	
-000080	function App() {
-000081	  return (
-000082	    <QueryClientProvider client={queryClient}>
-000083	      <TooltipProvider>
-000084	        <SceneProvider>
-000085	          <ProjectionProvider>
-000086	            <BaseLayersProvider>
-000087	              <ZuluConnectionProvider>
-000088	              <Toaster />
-000089	              <Router />
-000090	            </ZuluConnectionProvider>
-000091	            </BaseLayersProvider>
-000092	          </ProjectionProvider>
-000093	        </SceneProvider>
-000094	      </TooltipProvider>
-000095	    </QueryClientProvider>
-000096	  );
-000097	}
-000098	
-000099	export default App;
-000100	
-000101	// ============================================================
-000102	// Файл: client/src/components/accident-analysis-dialog.tsx
-000103	// ============================================================
-000104	import { useState, useRef, useCallback, useEffect } from "react";
-000105	import { useMutation } from "@tanstack/react-query";
-000106	import { apiRequest } from "@/lib/queryClient";
-000107	import { Button } from "@/components/ui/button";
-000108	import { Badge } from "@/components/ui/badge";
-000109	import { useToast } from "@/hooks/use-toast";
-000110	import {
-000111	  Select,
-000112	  SelectContent,
-000113	  SelectItem,
-000114	  SelectTrigger,
-000115	  SelectValue,
-000116	} from "@/components/ui/select";
-000117	import {
-000118	  Popover,
-000119	  PopoverContent,
-000120	  PopoverTrigger,
-000121	} from "@/components/ui/popover";
-000122	import { Input } from "@/components/ui/input";
-000123	import { Label } from "@/components/ui/label";
-000124	import {
-000125	  Zap,
-000126	  Download,
-000127	  GripHorizontal,
-000128	  Loader2,
-000129	  X,
-000130	  Filter,
-000131	  AlertOctagon,
-000132	  MapPin,
-000133	  Ruler,
-000134	  Layers,
-000135	} from "lucide-react";
-000136	
-000137	interface EditableLayer {
-000138	  id: number;
-000139	  name: string;
-000140	  geometryType: string;
-000141	  visible?: boolean;
-000142	}
-000143	
-000144	interface AccidentSegmentResult {
-000145	  featureId: number;
-000146	  geometry: { type: string; coordinates: any };
-000147	  properties: Record<string, unknown>;
-000148	  dpod: string | number | null;
-000149	  dobr: string | number | null;
-000150	  length: string | number | null;
-000151	  sys: string | null;
-000152	  beginUch: string | null;
-000153	  endUch: string | null;
-000154	  accidentCount: number;
-000155	  accidentFeatures: Array<{
-000156	    id: number;
-000157	    geometry: { type: string; coordinates: any };
-000158	    properties: Record<string, unknown>;
-000159	  }>;
-000160	}
-000161	
-000162	interface AccidentAnalysisResult {
-000163	  networkLayerName: string;
-000164	  accidentLayerName: string;
-000165	  totalAccidents: number;
-000166	  boundAccidents: number;
-000167	  unboundAccidents: number;
-000168	  segmentsWithAccidents: number;
-000169	  segments: AccidentSegmentResult[];
-000170	}
-000171	
-000172	interface AttributeFilter {
-000173	  field: string;
-000174	  value: string;
-000175	}
-000176	
-000177	interface AccidentAnalysisDialogProps {
-000178	  open: boolean;
-000179	  onOpenChange: (open: boolean) => void;
-000180	  editableLayers: EditableLayer[];
-000181	  sceneId: number;
-000182	  onHighlightSegment: (segment: AccidentSegmentResult | null) => void;
-000183	  initialResult?: AccidentAnalysisResult | null;
-000184	}
-000185	
-000186	export function AccidentAnalysisDialog({
-000187	  open,
-000188	  onOpenChange,
-000189	  editableLayers,
-000190	  onHighlightSegment,
-000191	  initialResult,
-000192	}: AccidentAnalysisDialogProps) {
-000193	  const { toast } = useToast();
-000194	
-000195	  const [networkLayerId, setNetworkLayerId] = useState<number | null>(null);
-000196	  const [accidentLayerId, setAccidentLayerId] = useState<number | null>(null);
-000197	  const [maxDistance, setMaxDistance] = useState<number>(15);
-000198	  const [attributeFilter, setAttributeFilter] = useState<AttributeFilter>({ field: "", value: "" });
-000199	  const [filterEnabled, setFilterEnabled] = useState(false);
-000200	  const [networkAttributes, setNetworkAttributes] = useState<string[]>([]);
-000201	  const [result, setResult] = useState<AccidentAnalysisResult | null>(null);
-000202	  const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
-000203	  const [saveLayerId, setSaveLayerId] = useState<number | null>(null);
-000204	  const [showSavePopover, setShowSavePopover] = useState(false);
-000205	  const [isSaving, setIsSaving] = useState(false);
-000206	
-000207	  const [position, setPosition] = useState({ x: 20, y: 80 });
-000208	  const isDragging = useRef(false);
-000209	  const dragStart = useRef({ x: 0, y: 0 });
-000210	
-000211	  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-000212	    isDragging.current = true;
-000213	    dragStart.current = {
-000214	      x: e.clientX - position.x,
-000215	      y: e.clientY - position.y,
-000216	    };
-000217	    e.preventDefault();
-000218	  }, [position]);
-000219	
-000220	  useEffect(() => {
-000221	    const handleMouseMove = (e: MouseEvent) => {
-000222	      if (!isDragging.current) return;
-000223	      setPosition({
-000224	        x: e.clientX - dragStart.current.x,
-000225	        y: e.clientY - dragStart.current.y,
-000226	      });
-000227	    };
-000228	    const handleMouseUp = () => { isDragging.current = false; };
-000229	    window.addEventListener("mousemove", handleMouseMove);
-000230	    window.addEventListener("mouseup", handleMouseUp);
-000231	    return () => {
-000232	      window.removeEventListener("mousemove", handleMouseMove);
-000233	      window.removeEventListener("mouseup", handleMouseUp);
-000234	    };
-000235	  }, []);
-000236	
-000237	  useEffect(() => {
-000238	    if (initialResult && open) {
-000239	      setResult(initialResult);
-000240	    }
-000241	  }, [initialResult, open]);
-000242	
-000243	  useEffect(() => {
-000244	    if (!networkLayerId) {
-000245	      setNetworkAttributes([]);
-000246	      setFilterEnabled(false);
-000247	      setAttributeFilter({ field: "", value: "" });
-000248	      return;
-000249	    }
-000250	    fetch(`/api/editable-layers/${networkLayerId}/attributes`)
-000251	      .then(r => r.ok ? r.json() : [])
-000252	      .then((attrs: string[]) => setNetworkAttributes(attrs))
-000253	      .catch(() => setNetworkAttributes([]));
-000254	  }, [networkLayerId]);
-000255	
-000256	  useEffect(() => {
-000257	    if (!open) {
-000258	      setResult(null);
-000259	      setSelectedSegmentId(null);
-000260	      onHighlightSegment(null);
-000261	    }
-000262	  }, [open]);
-000263	
-000264	  const lineLayerTypes = ["LineString", "MultiLineString", "line", "polyline"];
-000265	  const pointLayerTypes = ["Point", "MultiPoint", "point"];
-000266	
-000267	  const networkLayers = editableLayers.filter(l =>
-000268	    lineLayerTypes.some(t => l.geometryType?.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase() === l.geometryType?.toLowerCase())
-000269	  );
-000270	  const accidentLayers = editableLayers.filter(l =>
-000271	    pointLayerTypes.some(t => l.geometryType?.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase() === l.geometryType?.toLowerCase())
-000272	  );
-000273	
-000274	  const analysisMutation = useMutation({
-000275	    mutationFn: async () => {
-000276	      const body: Record<string, unknown> = {
-000277	        networkLayerId,
-000278	        accidentLayerId,
-000279	        maxDistanceMeters: maxDistance,
-000280	      };
-000281	      if (filterEnabled && attributeFilter.field && attributeFilter.value) {
-000282	        body.attributeFilter = attributeFilter;
-000283	      }
-000284	      const res = await apiRequest("POST", "/api/analytics/accident-analysis", body);
-000285	      return res.json();
-000286	    },
-000287	    onSuccess: (data: AccidentAnalysisResult) => {
-000288	      setResult(data);
-000289	      setSelectedSegmentId(null);
-000290	      onHighlightSegment(null);
-000291	      if (data.segments.length === 0) {
-000292	        toast({ title: "Аварии не привязаны", description: "Ни одна авария не попала в зону привязки к сетям.", variant: "destructive" });
-000293	      }
-000294	    },
-000295	    onError: (err: any) => {
-000296	      toast({ title: "Ошибка анализа", description: err.message || "Не удалось выполнить анализ", variant: "destructive" });
-000297	    },
-000298	  });
-000299	
-000300	  const handleSegmentClick = (segment: AccidentSegmentResult) => {
-000301	    setSelectedSegmentId(segment.featureId);
-000302	    onHighlightSegment(segment);
-000303	  };
-000304	
-000305	  const handleExportExcel = async () => {
-000306	    if (!result) return;
-000307	    try {
-000308	      const ExcelJS = await import("exceljs");
-000309	      const workbook = new ExcelJS.Workbook();
-000310	      const ws = workbook.addWorksheet("Анализ аварийности");
-000311	      ws.columns = [
-000312	        { header: "№", key: "rank", width: 6 },
-000313	        { header: "Sys", key: "sys", width: 14 },
-000314	        { header: "Участок (от)", key: "begin", width: 20 },
-000315	        { header: "Участок (до)", key: "end", width: 20 },
-000316	        { header: "L (м)", key: "l", width: 12 },
-000317	        { header: "Dpod", key: "dpod", width: 12 },
-000318	        { header: "Dobr", key: "dobr", width: 12 },
-000319	        { header: "Кол-во аварий", key: "count", width: 15 },
-000320	      ];
-000321	      ws.getRow(1).font = { bold: true };
-000322	      result.segments.forEach((seg, idx) => {
-000323	        ws.addRow({
-000324	          rank: idx + 1,
-000325	          sys: seg.sys ?? "",
-000326	          begin: seg.beginUch ?? "",
-000327	          end: seg.endUch ?? "",
-000328	          l: seg.length ?? "",
-000329	          dpod: seg.dpod ?? "",
-000330	          dobr: seg.dobr ?? "",
-000331	          count: seg.accidentCount,
-000332	        });
-000333	      });
-000334	      const metaWs = workbook.addWorksheet("Метаданные");
-000335	      metaWs.columns = [{ header: "Параметр", key: "p", width: 30 }, { header: "Значение", key: "v", width: 40 }];
-000336	      metaWs.getRow(1).font = { bold: true };
-000337	      metaWs.addRow({ p: "Дата анализа", v: new Date().toLocaleString("ru-RU") });
-000338	      metaWs.addRow({ p: "Слой сетей", v: result.networkLayerName });
-000339	      metaWs.addRow({ p: "Слой аварий", v: result.accidentLayerName });
-000340	      metaWs.addRow({ p: "Порог расстояния (м)", v: maxDistance });
-000341	      metaWs.addRow({ p: "Всего аварий", v: result.totalAccidents });
-000342	      metaWs.addRow({ p: "Привязано", v: result.boundAccidents });
-000343	      metaWs.addRow({ p: "Не привязано", v: result.unboundAccidents });
-000344	      const buf = await workbook.xlsx.writeBuffer();
-000345	      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-000346	      const url = URL.createObjectURL(blob);
-000347	      const a = document.createElement("a");
-000348	      a.href = url;
-000349	      a.download = `accident_analysis_${Date.now()}.xlsx`;
-000350	      a.click();
-000351	      URL.revokeObjectURL(url);
-000352	    } catch (e) {
-000353	      toast({ title: "Ошибка экспорта", description: "Не удалось создать файл Excel", variant: "destructive" });
-000354	    }
-000355	  };
-000356	
-000357	  const handleSaveToLayer = async () => {
-000358	    if (!result || !saveLayerId) return;
-000359	    setIsSaving(true);
-000360	    try {
-000361	      const res = await fetch("/api/analytics/accident-analysis/save-buffer", {
-000362	        method: "POST",
-000363	        headers: { "Content-Type": "application/json" },
-000364	        credentials: "include",
-000365	        body: JSON.stringify({
-000366	          segments: result.segments,
-000367	          targetLayerId: saveLayerId,
-000368	          bufferMeters: 5,
-000369	        }),
-000370	      });
-000371	      const data = await res.json().catch(() => ({}));
-000372	      if (!res.ok) throw new Error(data.message || `Ошибка ${res.status}`);
-000373	      toast({ title: "Сохранено", description: `${data.saved} полигонов сохранено в слой${data.errors > 0 ? ` (ошибок: ${data.errors})` : ""}` });
-000374	      setShowSavePopover(false);
-000375	      window.dispatchEvent(new Event("viewport-features-invalidate"));
-000376	    } catch (e: any) {
-000377	      toast({ title: "Ошибка сохранения", description: e.message || "Не удалось сохранить в слой", variant: "destructive" });
-000378	    } finally {
-000379	      setIsSaving(false);
-000380	    }
-000381	  };
-000382	
-000383	  const polygonLayers = editableLayers.filter(l =>
-000384	    l.geometryType?.toLowerCase().includes("polygon")
-000385	  );
-000386	  const saveTargetLayers = polygonLayers.length > 0 ? polygonLayers : editableLayers;
-000387	
-000388	  const canRun = networkLayerId !== null && accidentLayerId !== null;
-000389	
-000390	  if (!open) return null;
-000391	
-000392	  const formatVal = (val: string | number | null) => {
-000393	    if (val === null || val === undefined || val === "") return "—";
-000394	    return String(val);
-000395	  };
-000396	
-000397	  return (
-000398	    <div
-000399	      className="fixed z-50 w-[420px] bg-background border border-border rounded-lg shadow-2xl flex flex-col"
-000400	      style={{ left: position.x, top: position.y, maxHeight: "calc(100vh - 100px)" }}
-000401	      data-testid="accident-analysis-dialog"
-000402	    >
-000403	      <div
-000404	        className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40 rounded-t-lg cursor-grab select-none"
-000405	        onMouseDown={handleMouseDown}
-000406	      >
-000407	        <div className="flex items-center gap-2">
-000408	          <GripHorizontal className="h-4 w-4 text-muted-foreground" />
-000409	          <Zap className="h-4 w-4 text-orange-500" />
-000410	          <span className="font-semibold text-sm">Анализ аварийности</span>
-000411	        </div>
-000412	        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onOpenChange(false)} data-testid="button-close-accident-dialog">
-000413	          <X className="h-3.5 w-3.5" />
-000414	        </Button>
-000415	      </div>
-000416	
-000417	      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-000418	        <div className="space-y-3">
-000419	          <div className="space-y-1.5">
-000420	            <Label className="text-xs font-medium">Слой сетей (линии)</Label>
-000421	            <Select
-000422	              value={networkLayerId !== null ? String(networkLayerId) : ""}
-000423	              onValueChange={v => { setNetworkLayerId(Number(v)); setResult(null); setSelectedSegmentId(null); onHighlightSegment(null); }}
-000424	            >
-000425	              <SelectTrigger data-testid="select-network-layer" className="h-8 text-xs">
-000426	                <SelectValue placeholder="Выберите слой сетей..." />
-000427	              </SelectTrigger>
-000428	              <SelectContent>
-000429	                {networkLayers.length === 0 && (
-000430	                  <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>
-000431	                )}
-000432	                {networkLayers.map(l => (
-000433	                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-000434	                ))}
-000435	              </SelectContent>
-000436	            </Select>
-000437	          </div>
-000438	
-000439	          {networkLayerId !== null && (
-000440	            <div className="space-y-1.5 border border-border rounded-md p-2.5 bg-muted/20">
-000441	              <div className="flex items-center justify-between">
-000442	                <div className="flex items-center gap-1.5">
-000443	                  <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-000444	                  <span className="text-xs font-medium text-muted-foreground">Фильтр объектов сети</span>
-000445	                </div>
-000446	                <Button
-000447	                  variant={filterEnabled ? "default" : "outline"}
-000448	                  size="sm"
-000449	                  className="h-6 text-xs px-2"
-000450	                  onClick={() => {
-000451	                    setFilterEnabled(prev => !prev);
-000452	                    if (filterEnabled) setAttributeFilter({ field: "", value: "" });
-000453	                  }}
-000454	                  data-testid="button-toggle-filter"
-000455	                >
-000456	                  {filterEnabled ? "Убрать фильтр" : "Добавить фильтр"}
-000457	                </Button>
-000458	              </div>
-000459	              {filterEnabled && (
-000460	                <div className="flex gap-2 mt-2">
-000461	                  <div className="flex-1 space-y-1">
-000462	                    <Label className="text-xs">Столбец</Label>
-000463	                    <Select
-000464	                      value={attributeFilter.field}
-000465	                      onValueChange={v => setAttributeFilter(prev => ({ ...prev, field: v }))}
-000466	                    >
-000467	                      <SelectTrigger className="h-7 text-xs" data-testid="select-filter-field">
-000468	                        <SelectValue placeholder="Атрибут..." />
-000469	                      </SelectTrigger>
-000470	                      <SelectContent>
-000471	                        {networkAttributes.map(attr => (
-000472	                          <SelectItem key={attr} value={attr}>{attr}</SelectItem>
-000473	                        ))}
-000474	                      </SelectContent>
-000475	                    </Select>
-000476	                  </div>
-000477	                  <div className="w-28 space-y-1">
-000478	                    <Label className="text-xs">Значение</Label>
-000479	                    <Input
-000480	                      className="h-7 text-xs"
-000481	                      placeholder="например: 1"
-000482	                      value={attributeFilter.value}
-000483	                      onChange={e => setAttributeFilter(prev => ({ ...prev, value: e.target.value }))}
-000484	                      data-testid="input-filter-value"
-000485	                    />
-000486	                  </div>
-000487	                </div>
-000488	              )}
-000489	            </div>
-000490	          )}
-000491	
-000492	          <div className="space-y-1.5">
-000493	            <Label className="text-xs font-medium">Слой аварий (точки)</Label>
-000494	            <Select
-000495	              value={accidentLayerId !== null ? String(accidentLayerId) : ""}
-000496	              onValueChange={v => { setAccidentLayerId(Number(v)); setResult(null); setSelectedSegmentId(null); onHighlightSegment(null); }}
-000497	            >
-000498	              <SelectTrigger data-testid="select-accident-layer" className="h-8 text-xs">
-000499	                <SelectValue placeholder="Выберите слой аварий..." />
-000500	              </SelectTrigger>
-000501	              <SelectContent>
-000502	                {accidentLayers.length === 0 && (
-000503	                  <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>
-000504	                )}
-000505	                {accidentLayers.map(l => (
-000506	                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-000507	                ))}
-000508	              </SelectContent>
-000509	            </Select>
-000510	          </div>
-000511	
-000512	          <div className="space-y-1.5">
-000513	            <Label className="text-xs font-medium">Макс. расстояние привязки (м)</Label>
-000514	            <Input
-000515	              type="number"
-000516	              min={1}
-000517	              max={5000}
-000518	              value={maxDistance}
-000519	              onChange={e => setMaxDistance(Number(e.target.value))}
-000520	              className="h-8 text-xs"
-000521	              data-testid="input-max-distance"
-000522	            />
-000523	          </div>
-000524	        </div>
-000525	
-000526	        <Button
-000527	          className="w-full h-8 text-xs"
-000528	          disabled={!canRun || analysisMutation.isPending}
-000529	          onClick={() => analysisMutation.mutate()}
-000530	          data-testid="button-run-accident-analysis"
-000531	        >
-000532	          {analysisMutation.isPending ? (
-000533	            <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Анализ...</>
-000534	          ) : (
-000535	            <><Zap className="h-3.5 w-3.5 mr-2" />Запустить анализ</>
-000536	          )}
-000537	        </Button>
-000538	
-000539	        {result && (
-000540	          <div className="space-y-3">
-000541	            <div className="flex items-center flex-wrap gap-2">
-000542	              <Badge variant="outline" data-testid="badge-total">Аварий: {result.totalAccidents}</Badge>
-000543	              <Badge variant="secondary" data-testid="badge-bound">Привязано: {result.boundAccidents}</Badge>
-000544	              {result.unboundAccidents > 0 && (
-000545	                <Badge variant="destructive" data-testid="badge-unbound">Не привязано: {result.unboundAccidents}</Badge>
-000546	              )}
-000547	            </div>
-000548	            <div className="flex items-center justify-between">
-000549	              <span className="text-xs text-muted-foreground">
-000550	                Участков с авариями: {result.segmentsWithAccidents}
-000551	              </span>
-000552	              <div className="flex items-center gap-1">
-000553	                <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
-000554	                  <Download className="h-3 w-3" />
-000555	                  Excel
-000556	                </Button>
-000557	                <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
-000558	                  <PopoverTrigger asChild>
-000559	                    <Button variant="outline" size="sm" className="h-6 text-xs gap-1" data-testid="button-save-to-layer">
-000560	                      <Layers className="h-3 w-3" />
-000561	                      В слой
-000562	                    </Button>
-000563	                  </PopoverTrigger>
-000564	                  <PopoverContent className="w-64 p-3" align="end">
-000565	                    <div className="space-y-2">
-000566	                      <p className="text-xs font-medium">Сохранить буферизованные полигоны (±5 м)</p>
-000567	                      <Select value={saveLayerId ? String(saveLayerId) : ""} onValueChange={v => setSaveLayerId(Number(v))}>
-000568	                        <SelectTrigger className="h-7 text-xs" data-testid="select-save-layer">
-000569	                          <SelectValue placeholder="Выберите слой..." />
-000570	                        </SelectTrigger>
-000571	                        <SelectContent>
-000572	                          {saveTargetLayers.map(l => (
-000573	                            <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-000574	                          ))}
-000575	                        </SelectContent>
-000576	                      </Select>
-000577	                      <Button
-000578	                        size="sm"
-000579	                        className="w-full h-7 text-xs"
-000580	                        disabled={!saveLayerId || isSaving}
-000581	                        onClick={handleSaveToLayer}
-000582	                        data-testid="button-confirm-save-to-layer"
-000583	                      >
-000584	                        {isSaving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Сохранение...</> : "Сохранить"}
-000585	                      </Button>
-000586	                    </div>
-000587	                  </PopoverContent>
-000588	                </Popover>
-000589	              </div>
-000590	            </div>
-000591	
-000592	            {result.segments.length === 0 ? (
-000593	              <div className="text-center py-6 text-muted-foreground text-xs">
-000594	                <AlertOctagon className="h-8 w-8 mx-auto mb-2 opacity-40" />
-000595	                Нет участков с привязанными авариями
-000596	              </div>
-000597	            ) : (
-000598	              <div className="space-y-1.5">
-000599	                {result.segments.map((seg, idx) => (
-000600	                  <div
-000601	                    key={seg.featureId}
-000602	                    className={`text-xs border rounded-md p-2 space-y-1 cursor-pointer transition-colors ${
-000603	                      selectedSegmentId === seg.featureId
-000604	                        ? "bg-primary/10 border-primary/30"
-000605	                        : "hover:bg-muted/40"
-000606	                    }`}
-000607	                    onClick={() => handleSegmentClick(seg)}
-000608	                    data-testid={`card-segment-${seg.featureId}`}
-000609	                  >
-000610	                    <div className="flex items-center justify-between gap-2">
-000611	                      <div className="flex items-center gap-1.5 min-w-0">
-000612	                        <span className="text-muted-foreground shrink-0">{idx + 1}.</span>
-000613	                        <span className="font-medium truncate">
-000614	                          {seg.sys ? `${seg.sys} ` : ""}
-000615	                          {seg.beginUch && seg.endUch
-000616	                            ? `${seg.beginUch} — ${seg.endUch}`
-000617	                            : seg.beginUch || seg.endUch || `Участок #${seg.featureId}`}
-000618	                        </span>
-000619	                      </div>
-000620	                      <Badge variant="destructive" className="shrink-0" data-testid={`badge-count-${seg.featureId}`}>
-000621	                        {seg.accidentCount} ав.
-000622	                      </Badge>
-000623	                    </div>
-000624	                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground pl-4">
-000625	                      {(seg.dpod !== null && seg.dpod !== "") && (
-000626	                        <span data-testid={`text-dpod-${seg.featureId}`}>
-000627	                          <span className="font-medium">Dpod:</span> {formatVal(seg.dpod)}
-000628	                        </span>
-000629	                      )}
-000630	                      {(seg.dobr !== null && seg.dobr !== "") && (
-000631	                        <span data-testid={`text-dobr-${seg.featureId}`}>
-000632	                          <span className="font-medium">Dobr:</span> {formatVal(seg.dobr)}
-000633	                        </span>
-000634	                      )}
-000635	                      {(seg.length !== null && seg.length !== "") && (
-000636	                        <span className="flex items-center gap-0.5" data-testid={`text-length-${seg.featureId}`}>
-000637	                          <Ruler className="h-3 w-3" />
-000638	                          {formatVal(seg.length)} м
-000639	                        </span>
-000640	                      )}
-000641	                    </div>
-000642	                    <Button
-000643	                      size="sm"
-000644	                      variant={selectedSegmentId === seg.featureId ? "default" : "outline"}
-000645	                      className="w-full h-6 gap-1 mt-0.5"
-000646	                      onClick={e => { e.stopPropagation(); handleSegmentClick(seg); }}
-000647	                      data-testid={`button-show-segment-${seg.featureId}`}
-000648	                    >
-000649	                      <MapPin className="h-3 w-3" />
-000650	                      Показать на карте
-000651	                    </Button>
-000652	                  </div>
-000653	                ))}
-000654	              </div>
-000655	            )}
-000656	          </div>
-000657	        )}
-000658	      </div>
-000659	    </div>
-000660	  );
-000661	}
-000662	
-000663	export type { AccidentSegmentResult, AccidentAnalysisResult };
-000664	
-000665	// ============================================================
-000666	// Файл: client/src/components/ai-chat-panel.tsx
-000667	// ============================================================
-000668	import { useState, useRef, useEffect } from "react";
-000669	import { Button } from "@/components/ui/button";
-000670	import { Textarea } from "@/components/ui/textarea";
-000671	import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search } from "lucide-react";
-000672	import {
-000673	  DropdownMenu,
-000674	  DropdownMenuContent,
-000675	  DropdownMenuItem,
-000676	  DropdownMenuTrigger,
-000677	} from "@/components/ui/dropdown-menu";
-000678	
-000679	export interface ChatAction {
-000680	  type:
-000681	    | "start_complaint_analysis"
-000682	    | "show_complaint_result"
-000683	    | "simulation_candidates"
-000684	    | "run_simulation"
-000685	    | "show_simulation_result"
-000686	    | "start_accident_analysis"
-000687	    | "show_accident_result";
-000688	  label: string;
-000689	  payload?: any;
-000690	  done?: boolean;
-000691	}
-000692	
-000693	export interface ChatMessage {
-000694	  id: string;
-000695	  role: "user" | "assistant";
-000696	  content: string;
-000697	  timestamp: Date;
-000698	  action?: ChatAction;
-000699	}
-000700	
-000701	interface AiProvider {
-000702	  id: string;
-000703	  name: string;
-000704	  available: boolean;
-000705	}
-000706	
-000707	interface ProvidersResponse {
-000708	  enabled: boolean;
-000709	  providers: AiProvider[];
-000710	  default: string | null;
-000711	}
-000712	
-000713	const WELCOME_MESSAGE: ChatMessage = {
-000714	  id: "welcome",
-000715	  role: "assistant",
-000716	  content: "Здравствуйте! Я ИИ-агент ГИС МО \"Инженерные сети\". Задайте интересующий вас вопрос.",
-000717	  timestamp: new Date(),
-000718	};
-000719	
-000720	interface AiChatPanelProps {
-000721	  onBack: () => void;
-000722	  messages: ChatMessage[];
-000723	  onMessagesChange: (messages: ChatMessage[]) => void;
-000724	  sceneId?: number | null;
-000725	  onComplaintAnalysisResult?: (result: any) => void;
-000726	  onSimulationResult?: (result: any, featureInfo: { featureId: number; layerId: number; name: string; featureType: string }) => void;
-000727	  onAccidentAnalysisResult?: (result: any) => void;
-000728	}
-000729	
-000730	const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
-000731	const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^:\]]+):([^\]]*)\]/;
-000732	const ACCIDENT_ANALYSIS_REGEX = /\[ACTION:ACCIDENT_ANALYSIS:([^:\]]*):([^\]]*)\]/;
-000733	
-000734	export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult }: AiChatPanelProps) {
-000735	  const [input, setInput] = useState("");
-000736	  const [isLoading, setIsLoading] = useState(false);
-000737	  const [isAnalyzing, setIsAnalyzing] = useState(false);
-000738	  const [providers, setProviders] = useState<AiProvider[]>([]);
-000739	  const [selectedProvider, setSelectedProvider] = useState<string>("");
-000740	  const [aiEnabled, setAiEnabled] = useState(true);
-000741	  const [providersLoaded, setProvidersLoaded] = useState(false);
-000742	  const scrollRef = useRef<HTMLDivElement>(null);
-000743	  const textareaRef = useRef<HTMLTextAreaElement>(null);
-000744	
-000745	  useEffect(() => {
-000746	    fetch("/api/ai/providers")
-000747	      .then(r => r.json())
-000748	      .then((data: ProvidersResponse) => {
-000749	        setAiEnabled(data.enabled);
-000750	        if (data.providers) setProviders(data.providers);
-000751	        if (data.default) setSelectedProvider(data.default);
-000752	        setProvidersLoaded(true);
-000753	      })
-000754	      .catch(() => {
-000755	        setProvidersLoaded(true);
-000756	      });
-000757	  }, []);
-000758	
-000759	  useEffect(() => {
-000760	    if (scrollRef.current) {
-000761	      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-000762	    }
-000763	  }, [messages]);
-000764	
-000765	  const isDisabled = !aiEnabled || providers.length === 0;
-000766	
-000767	  const handleSend = async () => {
-000768	    const text = input.trim();
-000769	    if (!text || isLoading || isDisabled) return;
-000770	
-000771	    const userMsg: ChatMessage = {
-000772	      id: `user-${Date.now()}`,
-000773	      role: "user",
-000774	      content: text,
-000775	      timestamp: new Date(),
-000776	    };
-000777	    const updatedMessages = [...messages, userMsg];
-000778	    onMessagesChange(updatedMessages);
-000779	    setInput("");
-000780	    setIsLoading(true);
-000781	
-000782	    try {
-000783	      const allMessages = updatedMessages.filter(m => m.id !== "welcome" && !m.action);
-000784	      const apiMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
-000785	
-000786	      const response = await fetch("/api/ai/chat", {
-000787	        method: "POST",
-000788	        headers: { "Content-Type": "application/json" },
-000789	        body: JSON.stringify({ messages: apiMessages, provider: selectedProvider, sceneId: sceneId || undefined }),
-000790	      });
-000791	      const data = await response.json();
-000792	      if (!response.ok) {
-000793	        if (response.status === 403) {
-000794	          throw new Error(data.error || "ИИ-агент отключён администратором системы");
-000795	        }
-000796	        throw new Error(data.error || `Ошибка сервера: ${response.status}`);
-000797	      }
-000798	
-000799	      let aiContent = data.content || "Нет ответа от модели";
-000800	      const complaintMatch = aiContent.match(ACTION_MARKER_REGEX);
-000801	      const simulationMatch = aiContent.match(SIMULATION_SEARCH_REGEX);
-000802	      const accidentMatch = aiContent.match(ACCIDENT_ANALYSIS_REGEX);
-000803	
-000804	      const newMessages = [...updatedMessages];
-000805	
-000806	      if (complaintMatch) {
-000807	        const layerId = parseInt(complaintMatch[1]);
-000808	        const dateField = complaintMatch[2];
-000809	        const addressField = complaintMatch[3] && complaintMatch[3] !== "_none_" ? complaintMatch[3] : "";
-000810	        aiContent = aiContent.replace(ACTION_MARKER_REGEX, "").trim();
-000811	
-000812	        const aiMsg: ChatMessage = {
-000813	          id: `ai-${Date.now()}`,
-000814	          role: "assistant",
-000815	          content: aiContent,
-000816	          timestamp: new Date(),
-000817	        };
-000818	        newMessages.push(aiMsg);
-000819	
-000820	        const actionMsg: ChatMessage = {
-000821	          id: `action-${Date.now()}`,
-000822	          role: "assistant",
-000823	          content: "",
-000824	          timestamp: new Date(),
-000825	          action: {
-000826	            type: "start_complaint_analysis",
-000827	            label: "Начать анализ",
-000828	            payload: { layerId, dateField, addressField },
-000829	          },
-000830	        };
-000831	        newMessages.push(actionMsg);
-000832	      } else if (simulationMatch) {
-000833	        const searchQuery = simulationMatch[1].trim();
-000834	        const networkType = simulationMatch[2] && simulationMatch[2] !== "_any_" ? simulationMatch[2].trim() : "";
-000835	        aiContent = aiContent.replace(SIMULATION_SEARCH_REGEX, "").trim();
-000836	
-000837	        const aiMsg: ChatMessage = {
-000838	          id: `ai-${Date.now()}`,
-000839	          role: "assistant",
-000840	          content: aiContent,
-000841	          timestamp: new Date(),
-000842	        };
-000843	        newMessages.push(aiMsg);
-000844	        onMessagesChange([...newMessages]);
-000845	
-000846	        const searchingMsg: ChatMessage = {
-000847	          id: `searching-${Date.now()}`,
-000848	          role: "assistant",
-000849	          content: `Ищу объект: "${searchQuery}"...`,
-000850	          timestamp: new Date(),
-000851	        };
-000852	        onMessagesChange([...newMessages, searchingMsg]);
-000853	
-000854	        try {
-000855	          const sid = sceneId || 0;
-000856	          const ntParam = networkType ? `&networkType=${encodeURIComponent(networkType)}` : "";
-000857	          const searchResp = await fetch(`/api/ai/search-features?sceneId=${sid}&query=${encodeURIComponent(searchQuery)}${ntParam}`);
-000858	          const candidates: Array<{ featureId: number; layerId: number; layerName: string; featureName: string; featureAddress: string }> = await searchResp.json();
-000859	
-000860	          const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
-000861	
-000862	          if (!candidates || candidates.length === 0) {
-000863	            finalMessages.push({
-000864	              id: `notfound-${Date.now()}`,
-000865	              role: "assistant",
-000866	              content: `Объект не найден по запросу "${searchQuery}". Уточните название, адрес или тип объекта.`,
-000867	              timestamp: new Date(),
-000868	            });
-000869	            onMessagesChange(finalMessages);
-000870	          } else {
-000871	            const exactMatches = candidates.filter(c =>
-000872	              c.featureName.toLowerCase() === searchQuery.toLowerCase()
-000873	            );
-000874	            const displayCandidates = exactMatches.length > 0 ? exactMatches : candidates;
-000875	
-000876	            if (exactMatches.length === 1) {
-000877	              const c = exactMatches[0];
-000878	              finalMessages.push({
-000879	                id: `autorun-${Date.now()}`,
-000880	                role: "assistant",
-000881	                content: `Найден объект: ${c.featureName} — ${c.layerName}. Запускаю симуляцию...`,
-000882	                timestamp: new Date(),
-000883	              });
-000884	              onMessagesChange(finalMessages);
-000885	              await runSimulation(c.featureId, c.layerId, c.featureName, c.layerName, finalMessages);
-000886	            } else if (displayCandidates.length === 1) {
-000887	              const c = displayCandidates[0];
-000888	              const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
-000889	              finalMessages.push({
-000890	                id: `action-${Date.now()}`,
-000891	                role: "assistant",
-000892	                content: `Найден объект: ${label}`,
-000893	                timestamp: new Date(),
-000894	                action: {
-000895	                  type: "run_simulation",
-000896	                  label: "Запустить симуляцию",
-000897	                  payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
-000898	                },
-000899	              });
-000900	              onMessagesChange(finalMessages);
-000901	            } else {
-000902	              const candidateActions = displayCandidates.slice(0, 5).map((c, i) => {
-000903	                const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
-000904	                return {
-000905	                  id: `candidate-${Date.now()}-${i}`,
-000906	                  role: "assistant" as const,
-000907	                  content: i === 0 ? `Найдено несколько объектов. Выберите нужный:` : "",
-000908	                  timestamp: new Date(),
-000909	                  action: {
-000910	                    type: "run_simulation" as const,
-000911	                    label,
-000912	                    payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
-000913	                  },
-000914	                };
-000915	              });
-000916	              finalMessages.push(...candidateActions);
-000917	              onMessagesChange(finalMessages);
-000918	            }
-000919	          }
-000920	        } catch {
-000921	          const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
-000922	          finalMessages.push({
-000923	            id: `error-${Date.now()}`,
-000924	            role: "assistant",
-000925	            content: "Ошибка поиска объекта. Попробуйте ещё раз.",
-000926	            timestamp: new Date(),
-000927	          });
-000928	          onMessagesChange(finalMessages);
-000929	        }
-000930	
-000931	        return;
-000932	      } else if (accidentMatch) {
-000933	        const zMode = accidentMatch[1] || "";
-000934	        const dpodMin = accidentMatch[2] || "";
-000935	        aiContent = aiContent.replace(ACCIDENT_ANALYSIS_REGEX, "").trim();
-000936	
-000937	        const aiMsg: ChatMessage = {
-000938	          id: `ai-${Date.now()}`,
-000939	          role: "assistant",
-000940	          content: aiContent,
-000941	          timestamp: new Date(),
-000942	        };
-000943	        newMessages.push(aiMsg);
-000944	
-000945	        const actionMsg: ChatMessage = {
-000946	          id: `action-${Date.now()}`,
-000947	          role: "assistant",
-000948	          content: "",
-000949	          timestamp: new Date(),
-000950	          action: {
-000951	            type: "start_accident_analysis",
-000952	            label: "Запустить анализ аварийности",
-000953	            payload: { zMode, dpodMin },
-000954	          },
-000955	        };
-000956	        newMessages.push(actionMsg);
-000957	      } else {
-000958	        const aiMsg: ChatMessage = {
-000959	          id: `ai-${Date.now()}`,
-000960	          role: "assistant",
-000961	          content: aiContent,
-000962	          timestamp: new Date(),
-000963	        };
-000964	        newMessages.push(aiMsg);
-000965	      }
-000966	
-000967	      onMessagesChange(newMessages);
-000968	    } catch (error: any) {
-000969	      const errorMsg: ChatMessage = {
-000970	        id: `error-${Date.now()}`,
-000971	        role: "assistant",
-000972	        content: `Ошибка: ${error.message || "Не удалось получить ответ от ИИ"}`,
-000973	        timestamp: new Date(),
-000974	      };
-000975	      onMessagesChange([...updatedMessages, errorMsg]);
-000976	    } finally {
-000977	      setIsLoading(false);
-000978	    }
-000979	  };
-000980	
-000981	  const runSimulation = async (
-000982	    featureId: number,
-000983	    layerId: number,
-000984	    featureName: string,
-000985	    layerName: string,
-000986	    currentMessages: ChatMessage[],
-000987	  ) => {
-000988	    const loadingMsg: ChatMessage = {
-000989	      id: `simulating-${Date.now()}`,
-000990	      role: "assistant",
-000991	      content: `Симулирую отключение объекта "${featureName}"...`,
-000992	      timestamp: new Date(),
-000993	    };
-000994	    onMessagesChange([...currentMessages, loadingMsg]);
-000995	    setIsAnalyzing(true);
-000996	
-000997	    try {
-000998	      const sid = sceneId || 0;
-000999	      const response = await fetch("/api/ai/run-simulation", {
-001000	        method: "POST",
-001001	        headers: { "Content-Type": "application/json" },
-001002	        body: JSON.stringify({ featureId, layerId, sceneId: sid }),
-001003	      });
-001004	      const data = await response.json();
-001005	
-001006	      if (!response.ok) {
-001007	        throw new Error(data.error || "Ошибка симуляции");
-001008	      }
-001009	
-001010	      const consumers = data.stats?.totalConsumers ?? 0;
-001011	      const segments = data.stats?.totalSegments ?? 0;
-001012	      const ctps = data.stats?.totalCTPs ?? 0;
-001013	
-001014	      const resultMsg: ChatMessage = {
-001015	        id: `sim-result-${Date.now()}`,
-001016	        role: "assistant",
-001017	        content: `Симуляция завершена. При отключении "${featureName}" (${layerName}) затронуто: потребителей — ${consumers}, участков сети — ${segments}, ЦТП — ${ctps}.`,
-001018	        timestamp: new Date(),
-001019	        action: {
-001020	          type: "show_simulation_result",
-001021	          label: "Показать результаты",
-001022	          payload: { result: data, featureId, layerId, featureName },
-001023	        },
-001024	      };
-001025	
-001026	      const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
-001027	      onMessagesChange([...finalMessages, resultMsg]);
-001028	    } catch (error: any) {
-001029	      const errorMsg: ChatMessage = {
-001030	        id: `error-${Date.now()}`,
-001031	        role: "assistant",
-001032	        content: `Ошибка симуляции: ${error.message}`,
-001033	        timestamp: new Date(),
-001034	      };
-001035	      const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
-001036	      onMessagesChange([...finalMessages, errorMsg]);
-001037	    } finally {
-001038	      setIsAnalyzing(false);
-001039	    }
-001040	  };
-001041	
-001042	  const handleActionClick = async (msg: ChatMessage) => {
-001043	    if (!msg.action || msg.action.done) return;
-001044	
-001045	    if (msg.action.type === "start_complaint_analysis") {
-001046	      const { layerId, dateField, addressField } = msg.action.payload;
-001047	
-001048	      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
-001049	      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
-001050	
-001051	      const loadingMsg: ChatMessage = {
-001052	        id: `analyzing-${Date.now()}`,
-001053	        role: "assistant",
-001054	        content: "Анализирую жалобы...",
-001055	        timestamp: new Date(),
-001056	      };
-001057	      onMessagesChange([...currentMessages, loadingMsg]);
-001058	      setIsAnalyzing(true);
-001059	
-001060	      try {
-001061	        const response = await fetch("/api/ai/run-complaint-analysis", {
-001062	          method: "POST",
-001063	          headers: { "Content-Type": "application/json" },
-001064	          body: JSON.stringify({ layerId, dateField, addressField }),
-001065	        });
-001066	        const data = await response.json();
-001067	
-001068	        if (!response.ok) {
-001069	          throw new Error(data.error || "Ошибка анализа");
-001070	        }
-001071	
-001072	        const clusterCount = data.clusters?.length || 0;
-001073	        const totalComplaints = data.totalComplaints || 0;
-001074	
-001075	        const resultMsg: ChatMessage = {
-001076	          id: `result-${Date.now()}`,
-001077	          role: "assistant",
-001078	          content: `Анализ завершён. Обработано жалоб: ${totalComplaints}. Найдено кластеров: ${clusterCount}.`,
-001079	          timestamp: new Date(),
-001080	          action: {
-001081	            type: "show_complaint_result",
-001082	            label: "Показать результат",
-001083	            payload: data,
-001084	          },
-001085	        };
-001086	
-001087	        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
-001088	        onMessagesChange([...finalMessages, resultMsg]);
-001089	      } catch (error: any) {
-001090	        const errorMsg: ChatMessage = {
-001091	          id: `error-${Date.now()}`,
-001092	          role: "assistant",
-001093	          content: `Ошибка анализа: ${error.message}`,
-001094	          timestamp: new Date(),
-001095	        };
-001096	        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
-001097	        onMessagesChange([...finalMessages, errorMsg]);
-001098	      } finally {
-001099	        setIsAnalyzing(false);
-001100	      }
-001101	    } else if (msg.action.type === "show_complaint_result") {
-001102	      if (onComplaintAnalysisResult && msg.action.payload) {
-001103	        onComplaintAnalysisResult(msg.action.payload);
-001104	      }
-001105	    } else if (msg.action.type === "run_simulation") {
-001106	      const { featureId, layerId, featureName, layerName } = msg.action.payload;
-001107	      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
-001108	      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
-001109	      await runSimulation(featureId, layerId, featureName, layerName, currentMessages);
-001110	    } else if (msg.action.type === "show_simulation_result") {
-001111	      if (onSimulationResult && msg.action.payload) {
-001112	        const { result, featureId, layerId, featureName } = msg.action.payload;
-001113	        onSimulationResult(result, {
-001114	          featureId,
-001115	          layerId,
-001116	          name: featureName,
-001117	          featureType: result?.failurePoint?.type || "Point",
-001118	        });
-001119	      }
-001120	    } else if (msg.action.type === "start_accident_analysis") {
-001121	      const { zMode, dpodMin } = msg.action.payload || {};
-001122	      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
-001123	      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
-001124	      setIsAnalyzing(true);
-001125	      try {
-001126	        const res = await fetch("/api/ai/run-accident-analysis", {
-001127	          method: "POST",
-001128	          headers: { "Content-Type": "application/json" },
-001129	          credentials: "include",
-001130	          body: JSON.stringify({ zMode, dpodMin, sceneId }),
-001131	        });
-001132	        const data = await res.json();
-001133	        if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
-001134	
-001135	        const top = data.segments?.[0];
-001136	        const topInfo = top
-001137	          ? `. Наиболее проблемный участок: ${top.beginUch ?? "—"}–${top.endUch ?? "—"}, ${top.accidentCount} аварий`
-001138	          : "";
-001139	        const summaryText = `Анализ завершён. Аварий: ${data.totalAccidents}. Привязано: ${data.boundAccidents}${topInfo}.`;
-001140	
-001141	        const summaryMsg: ChatMessage = {
-001142	          id: `ai-${Date.now()}`,
-001143	          role: "assistant",
-001144	          content: summaryText,
-001145	          timestamp: new Date(),
-001146	        };
-001147	        const resultActionMsg: ChatMessage = {
-001148	          id: `action-${Date.now() + 1}`,
-001149	          role: "assistant",
-001150	          content: "",
-001151	          timestamp: new Date(),
-001152	          action: {
-001153	            type: "show_accident_result",
-001154	            label: "Показать результаты",
-001155	            payload: data,
-001156	          },
-001157	        };
-001158	        onMessagesChange([...currentMessages, summaryMsg, resultActionMsg]);
-001159	      } catch (err: any) {
-001160	        const errMsg: ChatMessage = {
-001161	          id: `error-${Date.now()}`,
-001162	          role: "assistant",
-001163	          content: `Ошибка анализа аварийности: ${err.message}`,
-001164	          timestamp: new Date(),
-001165	        };
-001166	        onMessagesChange([...currentMessages, errMsg]);
-001167	      } finally {
-001168	        setIsAnalyzing(false);
-001169	      }
-001170	      return;
-001171	    } else if (msg.action.type === "show_accident_result") {
-001172	      if (onAccidentAnalysisResult && msg.action.payload) {
-001173	        onAccidentAnalysisResult(msg.action.payload);
-001174	      }
-001175	    }
-001176	  };
-001177	
-001178	  const handleClearChat = () => {
-001179	    onMessagesChange([WELCOME_MESSAGE]);
-001180	  };
-001181	
-001182	  const handleKeyDown = (e: React.KeyboardEvent) => {
-001183	    if (e.key === "Enter" && !e.shiftKey) {
-001184	      e.preventDefault();
-001185	      handleSend();
-001186	    }
-001187	  };
-001188	
-001189	  const currentProvider = providers.find(p => p.id === selectedProvider);
-001190	  const hasHistory = messages.some(m => m.id !== "welcome");
-001191	
-001192	  const getActionIcon = (type: ChatAction["type"]) => {
-001193	    switch (type) {
-001194	      case "start_complaint_analysis": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />;
-001195	      case "show_complaint_result": return <BarChart3 className="h-3.5 w-3.5" />;
-001196	      case "run_simulation": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />;
-001197	      case "show_simulation_result": return <Search className="h-3.5 w-3.5" />;
-001198	      case "start_accident_analysis": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />;
-001199	      case "show_accident_result": return <BarChart3 className="h-3.5 w-3.5" />;
-001200	      default: return null;
-001201	    }
-001202	  };
-001203	
-001204	  return (
-001205	    <div className="flex flex-col h-full min-h-0 flex-1">
-001206	      <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
-001207	        <Button size="icon" variant="ghost" onClick={onBack} data-testid="button-back-to-layers">
-001208	          <ArrowLeft className="h-4 w-4" />
-001209	        </Button>
-001210	        <Bot className="h-4 w-4 text-primary" />
-001211	        <span className="text-sm font-semibold">ИИ-ассистент</span>
-001212	        {!isDisabled && (
-001213	          <div className="ml-auto flex items-center gap-1">
-001214	            {hasHistory && (
-001215	              <Button
-001216	                size="icon"
-001217	                variant="ghost"
-001218	                onClick={handleClearChat}
-001219	                className="h-7 w-7"
-001220	                title="Очистить чат"
-001221	                data-testid="button-clear-chat"
-001222	              >
-001223	                <Trash2 className="h-3.5 w-3.5" />
-001224	              </Button>
-001225	            )}
-001226	            <DropdownMenu>
-001227	              <DropdownMenuTrigger asChild>
-001228	                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
-001229	                  {currentProvider?.name || "Модель"}
-001230	                  <ChevronDown className="h-3 w-3" />
-001231	                </Button>
-001232	              </DropdownMenuTrigger>
-001233	              <DropdownMenuContent align="end">
-001234	                {providers.map(p => (
-001235	                  <DropdownMenuItem
-001236	                    key={p.id}
-001237	                    onClick={() => setSelectedProvider(p.id)}
-001238	                    disabled={!p.available}
-001239	                    data-testid={`provider-option-${p.id}`}
-001240	                  >
-001241	                    <span className={selectedProvider === p.id ? "font-semibold" : ""}>
-001242	                      {p.name}
-001243	                    </span>
-001244	                    {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
-001245	                  </DropdownMenuItem>
-001246	                ))}
-001247	              </DropdownMenuContent>
-001248	            </DropdownMenu>
-001249	          </div>
-001250	        )}
+000001// ============================================================
+000002// Файл: client/index.html
+000003// ============================================================
+000004<!DOCTYPE html>
+000005<html lang="ru">
+000006  <head>
+000007    <meta charset="UTF-8" />
+000008    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+000009    <meta name="description" content="ГИС МО Инженерные сети - веб-приложение для управления инженерной инфраструктурой" />
+000010    <title>ГИС МО "Инженерные сети"</title>
+000011    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+000012    <link rel="preconnect" href="https://fonts.googleapis.com">
+000013    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+000014    <link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Fira+Code:wght@300..700&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400..700;1,400..700&family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@100..900&family=Oxanium:wght@200..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Roboto:ital,wght@0,100..900;1,100..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+000015  </head>
+000016  <body>
+000017    <div id="root"></div>
+000018    <script type="module" src="/src/main.tsx"></script>
+000019  </body>
+000020</html>
+000021// ============================================================
+000022// Файл: client/src/App.tsx
+000023// ============================================================
+000024import { Switch, Route } from "wouter";
+000025import { queryClient } from "./lib/queryClient";
+000026import { QueryClientProvider } from "@tanstack/react-query";
+000027import { Toaster } from "@/components/ui/toaster";
+000028import { TooltipProvider } from "@/components/ui/tooltip";
+000029import { ZuluConnectionProvider } from "@/contexts/zulu-connection-context";
+000030import { SceneProvider } from "@/contexts/scene-context";
+000031import { BaseLayersProvider } from "@/contexts/base-layers-context";
+000032import { ProjectionProvider } from "@/contexts/projection-context";
+000033import { ProtectedRoute } from "@/components/protected-route";
+000034import NotFound from "@/pages/not-found";
+000035import LandingPage from "@/pages/landing";
+000036import Home from "@/pages/home";
+000037import AdminUsers from "@/pages/admin-users";
+000038import AdminLayerManager from "@/pages/admin-layer-manager";
+000039import LoginPage from "@/pages/login";
+000040import ScenesPage from "@/pages/scenes";
+000041import ProfilePage from "@/pages/profile";
+000042
+000043function Router() {
+000044  return (
+000045    <Switch>
+000046      <Route path="/" component={LandingPage} />
+000047      <Route path="/gis/login" component={LoginPage} />
+000048      <Route path="/gis/scenes">
+000049        <ProtectedRoute>
+000050          <ScenesPage />
+000051        </ProtectedRoute>
+000052      </Route>
+000053      <Route path="/gis/app">
+000054        <ProtectedRoute>
+000055          <Home />
+000056        </ProtectedRoute>
+000057      </Route>
+000058      <Route path="/gis/profile">
+000059        <ProtectedRoute>
+000060          <ProfilePage />
+000061        </ProtectedRoute>
+000062      </Route>
+000063      <Route path="/gis/admin/settings">
+000064        <ProtectedRoute requireAdmin>
+000065          <AdminUsers />
+000066        </ProtectedRoute>
+000067      </Route>
+000068      <Route path="/gis/admin/layers">
+000069        <ProtectedRoute requireAdmin>
+000070          <AdminLayerManager />
+000071        </ProtectedRoute>
+000072      </Route>
+000073      <Route path="/gis/admin">
+000074        <ProtectedRoute requireAdmin>
+000075          <AdminUsers />
+000076        </ProtectedRoute>
+000077      </Route>
+000078      <Route component={NotFound} />
+000079    </Switch>
+000080  );
+000081}
+000082
+000083function App() {
+000084  return (
+000085    <QueryClientProvider client={queryClient}>
+000086      <TooltipProvider>
+000087        <SceneProvider>
+000088          <ProjectionProvider>
+000089            <BaseLayersProvider>
+000090              <ZuluConnectionProvider>
+000091              <Toaster />
+000092              <Router />
+000093            </ZuluConnectionProvider>
+000094            </BaseLayersProvider>
+000095          </ProjectionProvider>
+000096        </SceneProvider>
+000097      </TooltipProvider>
+000098    </QueryClientProvider>
+000099  );
+000100}
+000101
+000102export default App;
+000103
+000104// ============================================================
+000105// Файл: client/src/components/accident-analysis-dialog.tsx
+000106// ============================================================
+000107import { useState, useRef, useCallback, useEffect } from "react";
+000108import { useIsMobile } from "@/hooks/use-mobile";
+000109import { Button } from "@/components/ui/button";
+000110import { Badge } from "@/components/ui/badge";
+000111import { Switch } from "@/components/ui/switch";
+000112import { useToast } from "@/hooks/use-toast";
+000113import {
+000114  Select,
+000115  SelectContent,
+000116  SelectItem,
+000117  SelectTrigger,
+000118  SelectValue,
+000119} from "@/components/ui/select";
+000120import {
+000121  Popover,
+000122  PopoverContent,
+000123  PopoverTrigger,
+000124} from "@/components/ui/popover";
+000125import { Input } from "@/components/ui/input";
+000126import { Label } from "@/components/ui/label";
+000127import {
+000128  Zap,
+000129  Download,
+000130  GripHorizontal,
+000131  Loader2,
+000132  X,
+000133  Filter,
+000134  AlertOctagon,
+000135  MapPin,
+000136  Ruler,
+000137  Layers,
+000138  Users,
+000139  Home,
+000140  AlertTriangle,
+000141  CheckCircle2,
+000142  Network,
+000143  BarChart3,
+000144  XCircle,
+000145} from "lucide-react";
+000146
+000147interface EditableLayer {
+000148  id: number;
+000149  name: string;
+000150  geometryType: string;
+000151  visible?: boolean;
+000152}
+000153
+000154interface AccidentSegmentResult {
+000155  featureId: number;
+000156  geometry: { type: string; coordinates: any };
+000157  properties: Record<string, unknown>;
+000158  dpod: string | number | null;
+000159  dobr: string | number | null;
+000160  length: string | number | null;
+000161  sys: string | null;
+000162  beginUch: string | null;
+000163  endUch: string | null;
+000164  accidentCount: number;
+000165  accidentFeatures: Array<{
+000166    id: number;
+000167    geometry: { type: string; coordinates: any };
+000168    properties: Record<string, unknown>;
+000169  }>;
+000170  consumerCount: number | null;
+000171  residentCount: number | null;
+000172}
+000173
+000174interface AccidentAnalysisResult {
+000175  networkLayerName: string;
+000176  accidentLayerName: string;
+000177  totalAccidents: number;
+000178  boundAccidents: number;
+000179  unboundAccidents: number;
+000180  segmentsWithAccidents: number;
+000181  segments: AccidentSegmentResult[];
+000182}
+000183
+000184interface AttributeFilter {
+000185  field: string;
+000186  value: string;
+000187}
+000188
+000189interface AnalysisProgress {
+000190  stage: "binding" | "graph_building" | "graph_ready" | "simulating" | "done";
+000191  boundAccidents?: number;
+000192  unboundAccidents?: number;
+000193  totalAccidents?: number;
+000194  segmentsWithAccidents?: number;
+000195  graphNodes?: number;
+000196  graphEdges?: number;
+000197  simulationCurrent?: number;
+000198  simulationTotal?: number;
+000199  consumerLayerCount?: number;
+000200  partialSegments: AccidentSegmentResult[];
+000201}
+000202
+000203interface AccidentAnalysisDialogProps {
+000204  open: boolean;
+000205  onOpenChange: (open: boolean) => void;
+000206  editableLayers: EditableLayer[];
+000207  sceneId: number;
+000208  onHighlightSegment: (segment: AccidentSegmentResult | null) => void;
+000209  initialResult?: AccidentAnalysisResult | null;
+000210}
+000211
+000212export function AccidentAnalysisDialog({
+000213  open,
+000214  onOpenChange,
+000215  editableLayers,
+000216  sceneId,
+000217  onHighlightSegment,
+000218  initialResult,
+000219}: AccidentAnalysisDialogProps) {
+000220  const { toast } = useToast();
+000221  const isMobile = useIsMobile();
+000222
+000223  const [networkLayerId, setNetworkLayerId] = useState<number | null>(null);
+000224  const [accidentLayerId, setAccidentLayerId] = useState<number | null>(null);
+000225  const [maxDistance, setMaxDistance] = useState<number>(15);
+000226  const [attributeFilter, setAttributeFilter] = useState<AttributeFilter>({ field: "", value: "" });
+000227  const [filterEnabled, setFilterEnabled] = useState(false);
+000228  const [networkAttributes, setNetworkAttributes] = useState<string[]>([]);
+000229  const [runSimulation, setRunSimulation] = useState(false);
+000230  const [consumerLayerId, setConsumerLayerId] = useState<number | null>(null);
+000231  const [residentField, setResidentField] = useState<string | null>(null);
+000232  const [consumerAttributes, setConsumerAttributes] = useState<string[]>([]);
+000233
+000234  const [result, setResult] = useState<AccidentAnalysisResult | null>(null);
+000235  const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
+000236  const [saveLayerId, setSaveLayerId] = useState<number | null>(null);
+000237  const [showSavePopover, setShowSavePopover] = useState(false);
+000238  const [isSaving, setIsSaving] = useState(false);
+000239
+000240  const [isAnalyzing, setIsAnalyzing] = useState(false);
+000241  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
+000242  const abortControllerRef = useRef<AbortController | null>(null);
+000243
+000244  const [position, setPosition] = useState({ x: 20, y: 80 });
+000245  const isDragging = useRef(false);
+000246  const dragStart = useRef({ x: 0, y: 0 });
+000247
+000248  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+000249    isDragging.current = true;
+000250    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+000251    e.preventDefault();
+000252  }, [position]);
+000253
+000254  useEffect(() => {
+000255    const handleMouseMove = (e: MouseEvent) => {
+000256      if (!isDragging.current) return;
+000257      setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
+000258    };
+000259    const handleMouseUp = () => { isDragging.current = false; };
+000260    window.addEventListener("mousemove", handleMouseMove);
+000261    window.addEventListener("mouseup", handleMouseUp);
+000262    return () => {
+000263      window.removeEventListener("mousemove", handleMouseMove);
+000264      window.removeEventListener("mouseup", handleMouseUp);
+000265    };
+000266  }, []);
+000267
+000268  useEffect(() => {
+000269    if (initialResult && open) setResult(initialResult);
+000270  }, [initialResult, open]);
+000271
+000272  useEffect(() => {
+000273    if (!networkLayerId) {
+000274      setNetworkAttributes([]);
+000275      setFilterEnabled(false);
+000276      setAttributeFilter({ field: "", value: "" });
+000277      return;
+000278    }
+000279    fetch(`/api/editable-layers/${networkLayerId}/attributes`)
+000280      .then(r => r.ok ? r.json() : [])
+000281      .then((attrs: string[]) => setNetworkAttributes(attrs))
+000282      .catch(() => setNetworkAttributes([]));
+000283  }, [networkLayerId]);
+000284
+000285  useEffect(() => {
+000286    if (!consumerLayerId) {
+000287      setConsumerAttributes([]);
+000288      setResidentField(null);
+000289      return;
+000290    }
+000291    fetch(`/api/editable-layers/${consumerLayerId}/attributes`)
+000292      .then(r => r.ok ? r.json() : [])
+000293      .then((attrs: string[]) => setConsumerAttributes(attrs))
+000294      .catch(() => setConsumerAttributes([]));
+000295  }, [consumerLayerId]);
+000296
+000297  useEffect(() => {
+000298    if (!open) {
+000299      setResult(null);
+000300      setSelectedSegmentId(null);
+000301      onHighlightSegment(null);
+000302      if (isAnalyzing) {
+000303        abortControllerRef.current?.abort();
+000304        setIsAnalyzing(false);
+000305        setProgress(null);
+000306      }
+000307    }
+000308  }, [open]);
+000309
+000310  const lineLayerTypes = ["LineString", "MultiLineString", "line", "polyline"];
+000311  const pointLayerTypes = ["Point", "MultiPoint", "point"];
+000312
+000313  const networkLayers = editableLayers.filter(l =>
+000314    lineLayerTypes.some(t => l.geometryType?.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase() === l.geometryType?.toLowerCase())
+000315  );
+000316  const accidentLayers = editableLayers.filter(l =>
+000317    pointLayerTypes.some(t => l.geometryType?.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase() === l.geometryType?.toLowerCase())
+000318  );
+000319
+000320  const runAnalysis = async () => {
+000321    if (!networkLayerId || !accidentLayerId) return;
+000322
+000323    abortControllerRef.current?.abort();
+000324    const controller = new AbortController();
+000325    abortControllerRef.current = controller;
+000326
+000327    setIsAnalyzing(true);
+000328    setResult(null);
+000329    setSelectedSegmentId(null);
+000330    onHighlightSegment(null);
+000331    setProgress({ stage: "binding", partialSegments: [] });
+000332
+000333    const body: Record<string, unknown> = {
+000334      networkLayerId,
+000335      accidentLayerId,
+000336      maxDistanceMeters: maxDistance,
+000337      sceneId,
+000338      runSimulation,
+000339    };
+000340    if (filterEnabled && attributeFilter.field && attributeFilter.value) {
+000341      body.attributeFilter = attributeFilter;
+000342    }
+000343    if (runSimulation && consumerLayerId) {
+000344      body.consumerLayerId = consumerLayerId;
+000345      if (residentField) body.residentField = residentField;
+000346    }
+000347
+000348    try {
+000349      const response = await fetch("/api/analytics/accident-analysis/stream", {
+000350        method: "POST",
+000351        headers: { "Content-Type": "application/json" },
+000352        credentials: "include",
+000353        body: JSON.stringify(body),
+000354        signal: controller.signal,
+000355      });
+000356
+000357      if (!response.ok || !response.body) {
+000358        throw new Error(`Ошибка сервера: ${response.status}`);
+000359      }
+000360
+000361      const reader = response.body.getReader();
+000362      const decoder = new TextDecoder();
+000363      let buffer = "";
+000364
+000365      while (true) {
+000366        const { done, value } = await reader.read();
+000367        if (done) break;
+000368
+000369        buffer += decoder.decode(value, { stream: true });
+000370        const lines = buffer.split("\n");
+000371        buffer = lines.pop() ?? "";
+000372
+000373        for (const line of lines) {
+000374          if (!line.startsWith("data: ")) continue;
+000375          try {
+000376            const event = JSON.parse(line.slice(6));
+000377
+000378            if (event.type === "binding") {
+000379              setProgress(prev => ({
+000380                ...(prev ?? { partialSegments: [] }),
+000381                stage: runSimulation ? "graph_building" : "done",
+000382                boundAccidents: event.boundAccidents,
+000383                unboundAccidents: event.unboundAccidents,
+000384                totalAccidents: event.totalAccidents,
+000385                segmentsWithAccidents: event.segmentsWithAccidents,
+000386              }));
+000387            } else if (event.type === "graph_building") {
+000388              setProgress(prev => ({
+000389                ...(prev ?? { partialSegments: [] }),
+000390                stage: "graph_building",
+000391              }));
+000392            } else if (event.type === "graph_ready") {
+000393              setProgress(prev => ({
+000394                ...(prev ?? { partialSegments: [] }),
+000395                stage: "simulating",
+000396                graphNodes: event.nodeCount,
+000397                graphEdges: event.edgeCount,
+000398                simulationCurrent: 0,
+000399                simulationTotal: prev?.segmentsWithAccidents ?? 0,
+000400              }));
+000401            } else if (event.type === "consumers_loaded") {
+000402              setProgress(prev => ({
+000403                ...(prev ?? { partialSegments: [] }),
+000404                consumerLayerCount: event.consumerCount,
+000405              }));
+000406            } else if (event.type === "simulation_progress") {
+000407              setProgress(prev => ({
+000408                ...(prev ?? { partialSegments: [] }),
+000409                stage: "simulating",
+000410                simulationCurrent: event.current,
+000411                simulationTotal: event.total,
+000412                partialSegments: [...(prev?.partialSegments ?? []), event.segment],
+000413              }));
+000414            } else if (event.type === "complete") {
+000415              setResult(event as AccidentAnalysisResult);
+000416              setProgress(null);
+000417              setIsAnalyzing(false);
+000418              if ((event.segments as AccidentSegmentResult[]).length === 0) {
+000419                toast({ title: "Аварии не привязаны", description: "Ни одна авария не попала в зону привязки к сетям.", variant: "destructive" });
+000420              }
+000421            } else if (event.type === "error") {
+000422              toast({ title: "Ошибка анализа", description: event.message || "Не удалось выполнить анализ", variant: "destructive" });
+000423              setIsAnalyzing(false);
+000424              setProgress(null);
+000425            }
+000426          } catch { /* malformed line */ }
+000427        }
+000428      }
+000429    } catch (err: any) {
+000430      if (err.name !== "AbortError") {
+000431        toast({ title: "Ошибка анализа", description: err.message || "Не удалось выполнить анализ", variant: "destructive" });
+000432      }
+000433      setIsAnalyzing(false);
+000434      setProgress(null);
+000435    }
+000436  };
+000437
+000438  const handleCancelAnalysis = () => {
+000439    abortControllerRef.current?.abort();
+000440    setIsAnalyzing(false);
+000441    setProgress(null);
+000442  };
+000443
+000444  const handleSegmentClick = (segment: AccidentSegmentResult) => {
+000445    setSelectedSegmentId(segment.featureId);
+000446    onHighlightSegment(segment);
+000447  };
+000448
+000449  const handleExportExcel = async () => {
+000450    if (!result) return;
+000451    try {
+000452      const ExcelJS = await import("exceljs");
+000453      const workbook = new ExcelJS.Workbook();
+000454      const ws = workbook.addWorksheet("Анализ аварийности");
+000455      const hasConsumers = result.segments.some(s => s.consumerCount !== null);
+000456      ws.columns = [
+000457        { header: "№", key: "rank", width: 6 },
+000458        { header: "Sys", key: "sys", width: 14 },
+000459        { header: "Участок (от)", key: "begin", width: 20 },
+000460        { header: "Участок (до)", key: "end", width: 20 },
+000461        { header: "L (м)", key: "l", width: 12 },
+000462        { header: "Dpod", key: "dpod", width: 12 },
+000463        { header: "Dobr", key: "dobr", width: 12 },
+000464        { header: "Кол-во аварий", key: "count", width: 15 },
+000465        ...(hasConsumers ? [
+000466          { header: "Потребители (откл.)", key: "consumers", width: 20 },
+000467          { header: "Жители (откл.)", key: "residents", width: 18 },
+000468        ] : []),
+000469      ];
+000470      ws.getRow(1).font = { bold: true };
+000471      result.segments.forEach((seg, idx) => {
+000472        const row: Record<string, unknown> = {
+000473          rank: idx + 1,
+000474          sys: seg.sys ?? "",
+000475          begin: seg.beginUch ?? "",
+000476          end: seg.endUch ?? "",
+000477          l: seg.length ?? "",
+000478          dpod: seg.dpod ?? "",
+000479          dobr: seg.dobr ?? "",
+000480          count: seg.accidentCount,
+000481        };
+000482        if (hasConsumers) {
+000483          row.consumers = seg.consumerCount ?? 0;
+000484          row.residents = seg.residentCount ?? 0;
+000485        }
+000486        ws.addRow(row);
+000487      });
+000488      const metaWs = workbook.addWorksheet("Метаданные");
+000489      metaWs.columns = [{ header: "Параметр", key: "p", width: 30 }, { header: "Значение", key: "v", width: 40 }];
+000490      metaWs.getRow(1).font = { bold: true };
+000491      metaWs.addRow({ p: "Дата анализа", v: new Date().toLocaleString("ru-RU") });
+000492      metaWs.addRow({ p: "Слой сетей", v: result.networkLayerName });
+000493      metaWs.addRow({ p: "Слой аварий", v: result.accidentLayerName });
+000494      metaWs.addRow({ p: "Порог расстояния (м)", v: maxDistance });
+000495      metaWs.addRow({ p: "Всего аварий", v: result.totalAccidents });
+000496      metaWs.addRow({ p: "Привязано", v: result.boundAccidents });
+000497      metaWs.addRow({ p: "Не привязано", v: result.unboundAccidents });
+000498      const buf = await workbook.xlsx.writeBuffer();
+000499      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+000500      const url = URL.createObjectURL(blob);
+000501      const a = document.createElement("a");
+000502      a.href = url;
+000503      a.download = `accident_analysis_${Date.now()}.xlsx`;
+000504      a.click();
+000505      URL.revokeObjectURL(url);
+000506    } catch {
+000507      toast({ title: "Ошибка экспорта", description: "Не удалось создать файл Excel", variant: "destructive" });
+000508    }
+000509  };
+000510
+000511  const handleSaveToLayer = async () => {
+000512    if (!result || !saveLayerId) return;
+000513    setIsSaving(true);
+000514    try {
+000515      const res = await fetch("/api/analytics/accident-analysis/save-buffer", {
+000516        method: "POST",
+000517        headers: { "Content-Type": "application/json" },
+000518        credentials: "include",
+000519        body: JSON.stringify({ segments: result.segments, targetLayerId: saveLayerId, bufferMeters: 5 }),
+000520      });
+000521      const data = await res.json().catch(() => ({}));
+000522      if (!res.ok) throw new Error(data.message || `Ошибка ${res.status}`);
+000523      toast({ title: "Сохранено", description: `${data.saved} полигонов сохранено в слой${data.errors > 0 ? ` (ошибок: ${data.errors})` : ""}` });
+000524      setShowSavePopover(false);
+000525      window.dispatchEvent(new Event("viewport-features-invalidate"));
+000526    } catch (e: any) {
+000527      toast({ title: "Ошибка сохранения", description: e.message || "Не удалось сохранить в слой", variant: "destructive" });
+000528    } finally {
+000529      setIsSaving(false);
+000530    }
+000531  };
+000532
+000533  const polygonLayers = editableLayers.filter(l => l.geometryType?.toLowerCase().includes("polygon"));
+000534  const saveTargetLayers = polygonLayers.length > 0 ? polygonLayers : editableLayers;
+000535  const canRun = networkLayerId !== null && accidentLayerId !== null;
+000536
+000537  if (!open) return null;
+000538
+000539  const formatVal = (val: string | number | null) => {
+000540    if (val === null || val === undefined || val === "") return "—";
+000541    return String(val);
+000542  };
+000543
+000544  const displaySegments = result?.segments ?? (progress?.partialSegments ?? []);
+000545
+000546  return (
+000547    <div
+000548      className={isMobile
+000549        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
+000550        : "fixed z-50 w-[420px] bg-background border border-border rounded-lg shadow-2xl flex flex-col"}
+000551      style={isMobile ? undefined : { left: position.x, top: position.y, maxHeight: "calc(100vh - 100px)" }}
+000552      data-testid="accident-analysis-dialog"
+000553    >
+000554      <div
+000555        className={isMobile
+000556          ? "flex items-center justify-between px-4 py-3 border-b border-border bg-muted/40 shrink-0"
+000557          : "flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40 rounded-t-lg cursor-grab select-none"}
+000558        onMouseDown={isMobile ? undefined : handleMouseDown}
+000559      >
+000560        <div className="flex items-center gap-2">
+000561          {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground" />}
+000562          <Zap className="h-4 w-4 text-orange-500" />
+000563          <span className="font-semibold text-sm">Анализ аварийности</span>
+000564        </div>
+000565        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)} data-testid="button-close-accident-dialog">
+000566          <X className="h-4 w-4" />
+000567        </Button>
+000568      </div>
+000569
+000570      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+000571        <div className="space-y-3">
+000572          <div className="space-y-1.5">
+000573            <Label className="text-xs font-medium">Слой сетей (линии)</Label>
+000574            <Select
+000575              value={networkLayerId !== null ? String(networkLayerId) : ""}
+000576              onValueChange={v => { setNetworkLayerId(Number(v)); setResult(null); setSelectedSegmentId(null); onHighlightSegment(null); }}
+000577            >
+000578              <SelectTrigger data-testid="select-network-layer" className="h-8 text-xs">
+000579                <SelectValue placeholder="Выберите слой сетей..." />
+000580              </SelectTrigger>
+000581              <SelectContent>
+000582                {networkLayers.length === 0 && <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>}
+000583                {networkLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
+000584              </SelectContent>
+000585            </Select>
+000586          </div>
+000587
+000588          {networkLayerId !== null && (
+000589            <div className="space-y-1.5 border border-border rounded-md p-2.5 bg-muted/20">
+000590              <div className="flex items-center justify-between">
+000591                <div className="flex items-center gap-1.5">
+000592                  <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+000593                  <span className="text-xs font-medium text-muted-foreground">Фильтр объектов сети</span>
+000594                </div>
+000595                <Button
+000596                  variant={filterEnabled ? "default" : "outline"}
+000597                  size="sm"
+000598                  className="h-6 text-xs px-2"
+000599                  onClick={() => { setFilterEnabled(prev => !prev); if (filterEnabled) setAttributeFilter({ field: "", value: "" }); }}
+000600                  data-testid="button-toggle-filter"
+000601                >
+000602                  {filterEnabled ? "Убрать фильтр" : "Добавить фильтр"}
+000603                </Button>
+000604              </div>
+000605              {filterEnabled && (
+000606                <div className="flex gap-2 mt-2">
+000607                  <div className="flex-1 space-y-1">
+000608                    <Label className="text-xs">Столбец</Label>
+000609                    <Select value={attributeFilter.field} onValueChange={v => setAttributeFilter(prev => ({ ...prev, field: v }))}>
+000610                      <SelectTrigger className="h-7 text-xs" data-testid="select-filter-field">
+000611                        <SelectValue placeholder="Атрибут..." />
+000612                      </SelectTrigger>
+000613                      <SelectContent>
+000614                        {networkAttributes.map(attr => <SelectItem key={attr} value={attr}>{attr}</SelectItem>)}
+000615                      </SelectContent>
+000616                    </Select>
+000617                  </div>
+000618                  <div className="w-28 space-y-1">
+000619                    <Label className="text-xs">Значение</Label>
+000620                    <Input
+000621                      className="h-7 text-xs"
+000622                      placeholder="например: 1"
+000623                      value={attributeFilter.value}
+000624                      onChange={e => setAttributeFilter(prev => ({ ...prev, value: e.target.value }))}
+000625                      data-testid="input-filter-value"
+000626                    />
+000627                  </div>
+000628                </div>
+000629              )}
+000630            </div>
+000631          )}
+000632
+000633          <div className="space-y-1.5">
+000634            <Label className="text-xs font-medium">Слой аварий (точки)</Label>
+000635            <Select
+000636              value={accidentLayerId !== null ? String(accidentLayerId) : ""}
+000637              onValueChange={v => { setAccidentLayerId(Number(v)); setResult(null); setSelectedSegmentId(null); onHighlightSegment(null); }}
+000638            >
+000639              <SelectTrigger data-testid="select-accident-layer" className="h-8 text-xs">
+000640                <SelectValue placeholder="Выберите слой аварий..." />
+000641              </SelectTrigger>
+000642              <SelectContent>
+000643                {accidentLayers.length === 0 && <SelectItem value="__none__" disabled>Нет подходящих слоёв</SelectItem>}
+000644                {accidentLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
+000645              </SelectContent>
+000646            </Select>
+000647          </div>
+000648
+000649          <div className="space-y-1.5">
+000650            <Label className="text-xs font-medium">Макс. расстояние привязки (м)</Label>
+000651            <Input
+000652              type="number"
+000653              min={1}
+000654              max={5000}
+000655              value={maxDistance}
+000656              onChange={e => setMaxDistance(Number(e.target.value))}
+000657              className="h-8 text-xs"
+000658              data-testid="input-max-distance"
+000659            />
+000660          </div>
+000661
+000662          <div className="space-y-2 border border-border rounded-md p-2.5 bg-muted/20">
+000663            <div className="flex items-center justify-between">
+000664              <div className="flex items-center gap-1.5">
+000665                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+000666                <span className="text-xs font-medium">Анализ отключаемых потребителей</span>
+000667              </div>
+000668              <Switch
+000669                checked={runSimulation}
+000670                onCheckedChange={(v) => { setRunSimulation(v); if (!v) { setConsumerLayerId(null); setResidentField(null); } }}
+000671                data-testid="switch-run-simulation"
+000672              />
+000673            </div>
+000674            {runSimulation && (
+000675              <div className="space-y-2 mt-1">
+000676                <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+000677                  <AlertTriangle className="h-3 w-3 shrink-0" />
+000678                  <span className="text-xs">Ресурсоёмкая операция — симуляция на каждый участок</span>
+000679                </div>
+000680                <div className="space-y-1.5">
+000681                  <Label className="text-xs">Слой потребителей</Label>
+000682                  <Select
+000683                    value={consumerLayerId !== null ? String(consumerLayerId) : ""}
+000684                    onValueChange={v => { setConsumerLayerId(Number(v)); setResidentField(null); }}
+000685                  >
+000686                    <SelectTrigger className="h-7 text-xs" data-testid="select-consumer-layer">
+000687                      <SelectValue placeholder="Выберите слой..." />
+000688                    </SelectTrigger>
+000689                    <SelectContent>
+000690                      {editableLayers.length === 0 && <SelectItem value="__none__" disabled>Нет слоёв</SelectItem>}
+000691                      {editableLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
+000692                    </SelectContent>
+000693                  </Select>
+000694                </div>
+000695                {consumerLayerId !== null && (
+000696                  <div className="space-y-1.5">
+000697                    <Label className="text-xs">Поле с количеством жителей</Label>
+000698                    <Select value={residentField ?? ""} onValueChange={v => setResidentField(v || null)}>
+000699                      <SelectTrigger className="h-7 text-xs" data-testid="select-resident-field">
+000700                        <SelectValue placeholder="Выберите поле..." />
+000701                      </SelectTrigger>
+000702                      <SelectContent>
+000703                        {consumerAttributes.length === 0 && <SelectItem value="__none__" disabled>Нет атрибутов</SelectItem>}
+000704                        {consumerAttributes.map(attr => <SelectItem key={attr} value={attr}>{attr}</SelectItem>)}
+000705                      </SelectContent>
+000706                    </Select>
+000707                  </div>
+000708                )}
+000709              </div>
+000710            )}
+000711          </div>
+000712        </div>
+000713
+000714        {isAnalyzing ? (
+000715          <Button
+000716            variant="destructive"
+000717            className="w-full h-8 text-xs"
+000718            onClick={handleCancelAnalysis}
+000719            data-testid="button-cancel-analysis"
+000720          >
+000721            <XCircle className="h-3.5 w-3.5 mr-2" />
+000722            Отменить анализ
+000723          </Button>
+000724        ) : (
+000725          <Button
+000726            className="w-full h-8 text-xs"
+000727            disabled={!canRun}
+000728            onClick={runAnalysis}
+000729            data-testid="button-run-accident-analysis"
+000730          >
+000731            <Zap className="h-3.5 w-3.5 mr-2" />
+000732            Запустить анализ
+000733          </Button>
+000734        )}
+000735
+000736        {/* Progress block */}
+000737        {isAnalyzing && progress && (
+000738          <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2.5" data-testid="analysis-progress">
+000739            <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+000740              <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-500 shrink-0" />
+000741              <span>Анализ выполняется...</span>
+000742            </div>
+000743
+000744            {/* Binding row */}
+000745            <div className="space-y-1">
+000746              <div className="flex items-center gap-1.5 text-xs">
+000747                {(progress.stage !== "binding") ? (
+000748                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+000749                ) : (
+000750                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+000751                )}
+000752                <span className="text-muted-foreground">Привязка аварий</span>
+000753                {progress.boundAccidents !== undefined && (
+000754                  <span className="ml-auto font-medium text-foreground">
+000755                    {progress.boundAccidents} / {progress.totalAccidents}
+000756                  </span>
+000757                )}
+000758              </div>
+000759              {progress.boundAccidents !== undefined && progress.totalAccidents !== undefined && progress.totalAccidents > 0 && (
+000760                <div className="h-1 rounded-full bg-muted overflow-hidden ml-5">
+000761                  <div
+000762                    className="h-full rounded-full bg-green-500 transition-all duration-300"
+000763                    style={{ width: `${Math.round((progress.boundAccidents / progress.totalAccidents) * 100)}%` }}
+000764                  />
+000765                </div>
+000766              )}
+000767            </div>
+000768
+000769            {/* Graph build row */}
+000770            {runSimulation && (
+000771              <div className="flex items-center gap-1.5 text-xs">
+000772                {progress.stage === "binding" || progress.stage === "graph_building" ? (
+000773                  progress.stage === "graph_building"
+000774                    ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+000775                    : <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />
+000776                ) : (
+000777                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+000778                )}
+000779                <Network className="h-3 w-3 text-muted-foreground shrink-0" />
+000780                <span className="text-muted-foreground">Граф сети</span>
+000781                {progress.graphNodes !== undefined && (
+000782                  <span className="ml-auto font-medium text-foreground">
+000783                    {progress.graphNodes.toLocaleString("ru-RU")} узлов
+000784                  </span>
+000785                )}
+000786              </div>
+000787            )}
+000788
+000789            {/* Simulation progress row */}
+000790            {runSimulation && (progress.stage === "simulating" || (progress.simulationCurrent ?? 0) > 0) && (
+000791              <div className="space-y-1">
+000792                <div className="flex items-center gap-1.5 text-xs">
+000793                  <BarChart3 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+000794                  <span className="text-muted-foreground">Симуляция участков</span>
+000795                  <span className="ml-auto font-medium text-foreground">
+000796                    {progress.simulationCurrent ?? 0} / {progress.simulationTotal ?? "…"}
+000797                  </span>
+000798                </div>
+000799                {(progress.simulationTotal ?? 0) > 0 && (
+000800                  <div className="h-1.5 rounded-full bg-muted overflow-hidden ml-5">
+000801                    <div
+000802                      className="h-full rounded-full bg-blue-500 transition-all duration-300"
+000803                      style={{ width: `${Math.round(((progress.simulationCurrent ?? 0) / (progress.simulationTotal ?? 1)) * 100)}%` }}
+000804                    />
+000805                  </div>
+000806                )}
+000807                {progress.consumerLayerCount !== undefined && (
+000808                  <div className="flex items-center gap-1 ml-5 text-xs text-muted-foreground">
+000809                    <Users className="h-3 w-3" />
+000810                    <span>Потребителей в слое: {progress.consumerLayerCount}</span>
+000811                  </div>
+000812                )}
+000813                {progress.partialSegments.length > 0 && (
+000814                  <div className="ml-5 text-xs text-muted-foreground">
+000815                    Найдено участков: <span className="font-medium text-foreground">{progress.partialSegments.length}</span>
+000816                  </div>
+000817                )}
+000818              </div>
+000819            )}
+000820          </div>
+000821        )}
+000822
+000823        {/* Results */}
+000824        {(result || (isAnalyzing && progress && progress.partialSegments.length > 0)) && (
+000825          <div className="space-y-3">
+000826            {result && (
+000827              <div className="flex items-center flex-wrap gap-2">
+000828                <Badge variant="outline" data-testid="badge-total">Аварий: {result.totalAccidents}</Badge>
+000829                <Badge variant="secondary" data-testid="badge-bound">Привязано: {result.boundAccidents}</Badge>
+000830                {result.unboundAccidents > 0 && (
+000831                  <Badge variant="destructive" data-testid="badge-unbound">Не привязано: {result.unboundAccidents}</Badge>
+000832                )}
+000833              </div>
+000834            )}
+000835            {result && (
+000836              <div className="flex items-center justify-between">
+000837                <span className="text-xs text-muted-foreground">
+000838                  Участков с авариями: {result.segmentsWithAccidents}
+000839                </span>
+000840                <div className="flex items-center gap-1">
+000841                  <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
+000842                    <Download className="h-3 w-3" />
+000843                    Excel
+000844                  </Button>
+000845                  <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
+000846                    <PopoverTrigger asChild>
+000847                      <Button variant="outline" size="sm" className="h-6 text-xs gap-1" data-testid="button-save-to-layer">
+000848                        <Layers className="h-3 w-3" />
+000849                        В слой
+000850                      </Button>
+000851                    </PopoverTrigger>
+000852                    <PopoverContent className="w-64 p-3" align="end">
+000853                      <div className="space-y-2">
+000854                        <p className="text-xs font-medium">Сохранить буферизованные полигоны (±5 м)</p>
+000855                        <Select value={saveLayerId ? String(saveLayerId) : ""} onValueChange={v => setSaveLayerId(Number(v))}>
+000856                          <SelectTrigger className="h-7 text-xs" data-testid="select-save-layer">
+000857                            <SelectValue placeholder="Выберите слой..." />
+000858                          </SelectTrigger>
+000859                          <SelectContent>
+000860                            {saveTargetLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
+000861                          </SelectContent>
+000862                        </Select>
+000863                        <Button
+000864                          size="sm"
+000865                          className="w-full h-7 text-xs"
+000866                          disabled={!saveLayerId || isSaving}
+000867                          onClick={handleSaveToLayer}
+000868                          data-testid="button-confirm-save-to-layer"
+000869                        >
+000870                          {isSaving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Сохранение...</> : "Сохранить"}
+000871                        </Button>
+000872                      </div>
+000873                    </PopoverContent>
+000874                  </Popover>
+000875                </div>
+000876              </div>
+000877            )}
+000878
+000879            {isAnalyzing && progress && progress.partialSegments.length > 0 && (
+000880              <div className="text-xs text-muted-foreground">
+000881                Промежуточные результаты ({progress.partialSegments.length} участков):
+000882              </div>
+000883            )}
+000884
+000885            {displaySegments.length === 0 && result ? (
+000886              <div className="text-center py-6 text-muted-foreground text-xs">
+000887                <AlertOctagon className="h-8 w-8 mx-auto mb-2 opacity-40" />
+000888                Нет участков с привязанными авариями
+000889              </div>
+000890            ) : (
+000891              <div className="space-y-1.5">
+000892                {displaySegments.map((seg, idx) => (
+000893                  <div
+000894                    key={seg.featureId}
+000895                    className={`text-xs border rounded-md p-2 space-y-1 cursor-pointer transition-colors ${
+000896                      selectedSegmentId === seg.featureId
+000897                        ? "bg-primary/10 border-primary/30"
+000898                        : "hover:bg-muted/40"
+000899                    }`}
+000900                    onClick={() => handleSegmentClick(seg)}
+000901                    data-testid={`card-segment-${seg.featureId}`}
+000902                  >
+000903                    <div className="flex items-center justify-between gap-2">
+000904                      <div className="flex items-center gap-1.5 min-w-0">
+000905                        <span className="text-muted-foreground shrink-0">{idx + 1}.</span>
+000906                        <span className="font-medium truncate">
+000907                          {seg.sys ? `${seg.sys} ` : ""}
+000908                          {seg.beginUch && seg.endUch
+000909                            ? `${seg.beginUch} — ${seg.endUch}`
+000910                            : seg.beginUch || seg.endUch || `Участок #${seg.featureId}`}
+000911                        </span>
+000912                      </div>
+000913                      <Badge variant="destructive" className="shrink-0" data-testid={`badge-count-${seg.featureId}`}>
+000914                        {seg.accidentCount} ав.
+000915                      </Badge>
+000916                    </div>
+000917                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground pl-4">
+000918                      {(seg.dpod !== null && seg.dpod !== "") && (
+000919                        <span data-testid={`text-dpod-${seg.featureId}`}>
+000920                          <span className="font-medium">Dpod:</span> {formatVal(seg.dpod)}
+000921                        </span>
+000922                      )}
+000923                      {(seg.dobr !== null && seg.dobr !== "") && (
+000924                        <span data-testid={`text-dobr-${seg.featureId}`}>
+000925                          <span className="font-medium">Dobr:</span> {formatVal(seg.dobr)}
+000926                        </span>
+000927                      )}
+000928                      {(seg.length !== null && seg.length !== "") && (
+000929                        <span className="flex items-center gap-0.5" data-testid={`text-length-${seg.featureId}`}>
+000930                          <Ruler className="h-3 w-3" />
+000931                          {formatVal(seg.length)} м
+000932                        </span>
+000933                      )}
+000934                    </div>
+000935                    {seg.consumerCount !== null && (
+000936                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-4 text-xs">
+000937                        <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium" data-testid={`text-consumers-${seg.featureId}`}>
+000938                          <Users className="h-3 w-3" />
+000939                          {seg.consumerCount} потреб.
+000940                        </span>
+000941                        {seg.residentCount !== null && seg.residentCount > 0 && (
+000942                          <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium" data-testid={`text-residents-${seg.featureId}`}>
+000943                            <Home className="h-3 w-3" />
+000944                            {seg.residentCount} жит.
+000945                          </span>
+000946                        )}
+000947                      </div>
+000948                    )}
+000949                    <Button
+000950                      size="sm"
+000951                      variant={selectedSegmentId === seg.featureId ? "default" : "outline"}
+000952                      className="w-full h-6 gap-1 mt-0.5"
+000953                      onClick={e => { e.stopPropagation(); handleSegmentClick(seg); }}
+000954                      data-testid={`button-show-segment-${seg.featureId}`}
+000955                    >
+000956                      <MapPin className="h-3 w-3" />
+000957                      Показать на карте
+000958                    </Button>
+000959                  </div>
+000960                ))}
+000961              </div>
+000962            )}
+000963          </div>
+000964        )}
+000965      </div>
+000966    </div>
+000967  );
+000968}
+000969
+000970export type { AccidentSegmentResult, AccidentAnalysisResult };
+000971
+000972// ============================================================
+000973// Файл: client/src/components/ai-chat-panel.tsx
+000974// ============================================================
+000975import { useState, useRef, useEffect } from "react";
+000976import { Button } from "@/components/ui/button";
+000977import { Textarea } from "@/components/ui/textarea";
+000978import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search } from "lucide-react";
+000979import {
+000980  DropdownMenu,
+000981  DropdownMenuContent,
+000982  DropdownMenuItem,
+000983  DropdownMenuTrigger,
+000984} from "@/components/ui/dropdown-menu";
+000985
+000986export interface ChatAction {
+000987  type:
+000988    | "start_complaint_analysis"
+000989    | "show_complaint_result"
+000990    | "simulation_candidates"
+000991    | "run_simulation"
+000992    | "show_simulation_result"
+000993    | "start_accident_analysis"
+000994    | "show_accident_result";
+000995  label: string;
+000996  payload?: any;
+000997  done?: boolean;
+000998}
+000999
+001000export interface ChatMessage {
+001001  id: string;
+001002  role: "user" | "assistant";
+001003  content: string;
+001004  timestamp: Date;
+001005  action?: ChatAction;
+001006}
+001007
+001008interface AiProvider {
+001009  id: string;
+001010  name: string;
+001011  available: boolean;
+001012}
+001013
+001014interface ProvidersResponse {
+001015  enabled: boolean;
+001016  providers: AiProvider[];
+001017  default: string | null;
+001018}
+001019
+001020const WELCOME_MESSAGE: ChatMessage = {
+001021  id: "welcome",
+001022  role: "assistant",
+001023  content: "Здравствуйте! Я ИИ-агент ГИС МО \"Инженерные сети\". Задайте интересующий вас вопрос.",
+001024  timestamp: new Date(),
+001025};
+001026
+001027interface AiChatPanelProps {
+001028  onBack: () => void;
+001029  messages: ChatMessage[];
+001030  onMessagesChange: (messages: ChatMessage[]) => void;
+001031  sceneId?: number | null;
+001032  onComplaintAnalysisResult?: (result: any) => void;
+001033  onSimulationResult?: (result: any, featureInfo: { featureId: number; layerId: number; name: string; featureType: string }) => void;
+001034  onAccidentAnalysisResult?: (result: any) => void;
+001035}
+001036
+001037const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
+001038const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^:\]]+):([^\]]*)\]/;
+001039const ACCIDENT_ANALYSIS_REGEX = /\[ACTION:ACCIDENT_ANALYSIS:([^:\]]*):([^\]]*)\]/;
+001040
+001041export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult }: AiChatPanelProps) {
+001042  const [input, setInput] = useState("");
+001043  const [isLoading, setIsLoading] = useState(false);
+001044  const [isAnalyzing, setIsAnalyzing] = useState(false);
+001045  const [providers, setProviders] = useState<AiProvider[]>([]);
+001046  const [selectedProvider, setSelectedProvider] = useState<string>("");
+001047  const [aiEnabled, setAiEnabled] = useState(true);
+001048  const [providersLoaded, setProvidersLoaded] = useState(false);
+001049  const scrollRef = useRef<HTMLDivElement>(null);
+001050  const textareaRef = useRef<HTMLTextAreaElement>(null);
+001051
+001052  useEffect(() => {
+001053    fetch("/api/ai/providers")
+001054      .then(r => r.json())
+001055      .then((data: ProvidersResponse) => {
+001056        setAiEnabled(data.enabled);
+001057        if (data.providers) setProviders(data.providers);
+001058        if (data.default) setSelectedProvider(data.default);
+001059        setProvidersLoaded(true);
+001060      })
+001061      .catch(() => {
+001062        setProvidersLoaded(true);
+001063      });
+001064  }, []);
+001065
+001066  useEffect(() => {
+001067    if (scrollRef.current) {
+001068      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+001069    }
+001070  }, [messages]);
+001071
+001072  const isDisabled = !aiEnabled || providers.length === 0;
+001073
+001074  const handleSend = async () => {
+001075    const text = input.trim();
+001076    if (!text || isLoading || isDisabled) return;
+001077
+001078    const userMsg: ChatMessage = {
+001079      id: `user-${Date.now()}`,
+001080      role: "user",
+001081      content: text,
+001082      timestamp: new Date(),
+001083    };
+001084    const updatedMessages = [...messages, userMsg];
+001085    onMessagesChange(updatedMessages);
+001086    setInput("");
+001087    setIsLoading(true);
+001088
+001089    try {
+001090      const allMessages = updatedMessages.filter(m => m.id !== "welcome" && !m.action);
+001091      const apiMessages = allMessages.map(m => ({ role: m.role, content: m.content }));
+001092
+001093      const response = await fetch("/api/ai/chat", {
+001094        method: "POST",
+001095        headers: { "Content-Type": "application/json" },
+001096        body: JSON.stringify({ messages: apiMessages, provider: selectedProvider, sceneId: sceneId || undefined }),
+001097      });
+001098      const data = await response.json();
+001099      if (!response.ok) {
+001100        if (response.status === 403) {
+001101          throw new Error(data.error || "ИИ-агент отключён администратором системы");
+001102        }
+001103        throw new Error(data.error || `Ошибка сервера: ${response.status}`);
+001104      }
+001105
+001106      let aiContent = data.content || "Нет ответа от модели";
+001107      const complaintMatch = aiContent.match(ACTION_MARKER_REGEX);
+001108      const simulationMatch = aiContent.match(SIMULATION_SEARCH_REGEX);
+001109      const accidentMatch = aiContent.match(ACCIDENT_ANALYSIS_REGEX);
+001110
+001111      const newMessages = [...updatedMessages];
+001112
+001113      if (complaintMatch) {
+001114        const layerId = parseInt(complaintMatch[1]);
+001115        const dateField = complaintMatch[2];
+001116        const addressField = complaintMatch[3] && complaintMatch[3] !== "_none_" ? complaintMatch[3] : "";
+001117        aiContent = aiContent.replace(ACTION_MARKER_REGEX, "").trim();
+001118
+001119        const aiMsg: ChatMessage = {
+001120          id: `ai-${Date.now()}`,
+001121          role: "assistant",
+001122          content: aiContent,
+001123          timestamp: new Date(),
+001124        };
+001125        newMessages.push(aiMsg);
+001126
+001127        const actionMsg: ChatMessage = {
+001128          id: `action-${Date.now()}`,
+001129          role: "assistant",
+001130          content: "",
+001131          timestamp: new Date(),
+001132          action: {
+001133            type: "start_complaint_analysis",
+001134            label: "Начать анализ",
+001135            payload: { layerId, dateField, addressField },
+001136          },
+001137        };
+001138        newMessages.push(actionMsg);
+001139      } else if (simulationMatch) {
+001140        const searchQuery = simulationMatch[1].trim();
+001141        const networkType = simulationMatch[2] && simulationMatch[2] !== "_any_" ? simulationMatch[2].trim() : "";
+001142        aiContent = aiContent.replace(SIMULATION_SEARCH_REGEX, "").trim();
+001143
+001144        const aiMsg: ChatMessage = {
+001145          id: `ai-${Date.now()}`,
+001146          role: "assistant",
+001147          content: aiContent,
+001148          timestamp: new Date(),
+001149        };
+001150        newMessages.push(aiMsg);
+001151        onMessagesChange([...newMessages]);
+001152
+001153        const searchingMsg: ChatMessage = {
+001154          id: `searching-${Date.now()}`,
+001155          role: "assistant",
+001156          content: `Ищу объект: "${searchQuery}"...`,
+001157          timestamp: new Date(),
+001158        };
+001159        onMessagesChange([...newMessages, searchingMsg]);
+001160
+001161        try {
+001162          const sid = sceneId || 0;
+001163          const ntParam = networkType ? `&networkType=${encodeURIComponent(networkType)}` : "";
+001164          const searchResp = await fetch(`/api/ai/search-features?sceneId=${sid}&query=${encodeURIComponent(searchQuery)}${ntParam}`);
+001165          const candidates: Array<{ featureId: number; layerId: number; layerName: string; featureName: string; featureAddress: string }> = await searchResp.json();
+001166
+001167          const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
+001168
+001169          if (!candidates || candidates.length === 0) {
+001170            finalMessages.push({
+001171              id: `notfound-${Date.now()}`,
+001172              role: "assistant",
+001173              content: `Объект не найден по запросу "${searchQuery}". Уточните название, адрес или тип объекта.`,
+001174              timestamp: new Date(),
+001175            });
+001176            onMessagesChange(finalMessages);
+001177          } else {
+001178            const exactMatches = candidates.filter(c =>
+001179              c.featureName.toLowerCase() === searchQuery.toLowerCase()
+001180            );
+001181            const displayCandidates = exactMatches.length > 0 ? exactMatches : candidates;
+001182
+001183            if (exactMatches.length === 1) {
+001184              const c = exactMatches[0];
+001185              finalMessages.push({
+001186                id: `autorun-${Date.now()}`,
+001187                role: "assistant",
+001188                content: `Найден объект: ${c.featureName} — ${c.layerName}. Запускаю симуляцию...`,
+001189                timestamp: new Date(),
+001190              });
+001191              onMessagesChange(finalMessages);
+001192              await runSimulation(c.featureId, c.layerId, c.featureName, c.layerName, finalMessages);
+001193            } else if (displayCandidates.length === 1) {
+001194              const c = displayCandidates[0];
+001195              const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
+001196              finalMessages.push({
+001197                id: `action-${Date.now()}`,
+001198                role: "assistant",
+001199                content: `Найден объект: ${label}`,
+001200                timestamp: new Date(),
+001201                action: {
+001202                  type: "run_simulation",
+001203                  label: "Запустить симуляцию",
+001204                  payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
+001205                },
+001206              });
+001207              onMessagesChange(finalMessages);
+001208            } else {
+001209              const candidateActions = displayCandidates.slice(0, 5).map((c, i) => {
+001210                const label = c.featureName + (c.featureAddress ? ` (${c.featureAddress})` : "") + ` — ${c.layerName}`;
+001211                return {
+001212                  id: `candidate-${Date.now()}-${i}`,
+001213                  role: "assistant" as const,
+001214                  content: i === 0 ? `Найдено несколько объектов. Выберите нужный:` : "",
+001215                  timestamp: new Date(),
+001216                  action: {
+001217                    type: "run_simulation" as const,
+001218                    label,
+001219                    payload: { featureId: c.featureId, layerId: c.layerId, featureName: c.featureName, layerName: c.layerName },
+001220                  },
+001221                };
+001222              });
+001223              finalMessages.push(...candidateActions);
+001224              onMessagesChange(finalMessages);
+001225            }
+001226          }
+001227        } catch {
+001228          const finalMessages = [...newMessages].filter(m => m.id !== searchingMsg.id);
+001229          finalMessages.push({
+001230            id: `error-${Date.now()}`,
+001231            role: "assistant",
+001232            content: "Ошибка поиска объекта. Попробуйте ещё раз.",
+001233            timestamp: new Date(),
+001234          });
+001235          onMessagesChange(finalMessages);
+001236        }
+001237
+001238        return;
+001239      } else if (accidentMatch) {
+001240        const zMode = accidentMatch[1] || "";
+001241        const dpodMin = accidentMatch[2] || "";
+001242        aiContent = aiContent.replace(ACCIDENT_ANALYSIS_REGEX, "").trim();
+001243
+001244        const aiMsg: ChatMessage = {
+001245          id: `ai-${Date.now()}`,
+001246          role: "assistant",
+001247          content: aiContent,
+001248          timestamp: new Date(),
+001249        };
+001250        newMessages.push(aiMsg);

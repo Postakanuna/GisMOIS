@@ -1,1256 +1,1257 @@
 ЛИСТИНГ ИСХОДНОГО КОДА
 ГИС МО «Инженерные сети» (ГИС МО «ИС»)
 Депонируемые материалы — Последние 25 страниц (50 строк на страницу)
-Общий объём: 48 597 строк исходного кода (собственная разработка, подсистемы 1–6)
+Общий объём: 52 296 строк исходного кода (собственная разработка, подсистемы 1–6)
+Начало фрагмента: строка 51 047 из 52 296
 
 
-000001	  Sist: "Номер источника (строка)",
-000002	  H_geo: "Геодезическая отметка, м",
-000003	  H_geo2: "Геодезическая отметка конца, м",
-000004	  Sys: "Системный номер",
-000005	  ZMode: "Режим расчёта",
-000006	  ZType: "Тип объекта",
-000007	  Nomer_uch: "Номер участка",
-000008	  Dw_obr: "Толщина стенки обр. тр-да, м",
-000009	  Dw_pod: "Толщина стенки под. тр-да, м",
-000010	  FIELD1: "Дополнительное поле 1",
-000011	  FIELD2: "Дополнительное поле 2",
-000012	  FIELD3: "Дополнительное поле 3",
-000013	  FIELD4: "Дополнительное поле 4",
-000014	  FIELD5: "Дополнительное поле 5",
-000015	  FIELD6: "Дополнительное поле 6",
-000016	  FIELD7: "Дополнительное поле 7",
-000017	  FIELD8: "Дополнительное поле 8",
-000018	  UseNorma: "Использовать нормы",
-000019	  dafter: "Диаметр после, м",
-000020	  dbefore: "Диаметр до, м",
-000021	  Dcalibr_o: "Калибровочный диаметр обр., м",
-000022	  Dcalibr_p: "Калибровочный диаметр под., м",
-000023	  Drating_c: "Диаметр расч. (констр.), м",
-000024	  Drel_cali: "Относительный калибровочный диаметр",
-000025	  LeakZeta_: "Коэфф. местного сопр. утечки",
-000026	  Overgrowt: "Зарастание, мм",
-000027	  Zrating_c: "Сумма коэф. местных сопр. (констр.)",
-000028	  Gcalibr_o: "Калибровочный расход обр., т/ч",
-000029	  Gcalibr_p: "Калибровочный расход под., т/ч",
-000030	  Pcalibr_o: "Калибровочное давление обр., м",
-000031	  Pcalibr_p: "Калибровочное давление под., м",
-000032	  Tcalibr_o: "Калибровочная температура обр., °C",
-000033	  Tcalibr_p: "Калибровочная температура под., °C",
-000034	  G1_t: "Текущий расход 1 контура, т/ч",
-000035	  G2_t: "Текущий расход 2 контура, т/ч",
-000036	  Gt_obr: "Расход в обратном тр-де (текущий), т/ч",
-000037	  T11_t: "Текущая температура на входе 1 контура, °C",
-000038	  T12_t: "Текущая температура на выходе 1 контура, °C",
-000039	  Tcut: "Температура среза, °C",
-000040	  Tshelf: "Температура полки, °C",
-000041	  Ttunnel: "Температура в тоннеле, °C",
-000042	  Tsg_tunnel: "Среднегодовая температура в тоннеле, °C",
-000043	  Qniz: "Нагрузка нижней ступени",
-000044	  Qverh: "Нагрузка верхней ступени",
-000045	  Qcirc_c: "Расход на циркуляцию (расч.), т/ч",
-000046	  Qso_c: "Нагрузка на СО (расч.), Гкал/ч",
-000047	  Qsv_c: "Нагрузка на СВ (расч.), Гкал/ч",
-000048	  Qgv_c: "Нагрузка на ГВС (расч.), Гкал/ч",
-000049	  Qsum_c: "Суммарная нагрузка (расч.), Гкал/ч",
-000050	  Regul_G_k: "Kvs способа дросселирования",
-000051	  Regul_T_k: "Kvs регулятора температуры",
-000052	  RegulVal: "Значение регулятора",
-000053	  Lambda_r_: "Расчетная интенсивность отказов",
-000054	  Lambda_t_: "Средняя интенсивность отказов",
-000055	
-000056	  // --- Источник ---
-000057	  T1_r: "Расчетная температура в подающем тр-де, °С",
-000058	  Thz_r: "Расчетная температура холодной воды, °С",
-000059	  Tnv_r: "Расчетная температура наружного воздуха, °С",
-000060	  T1_t: "Текущая температура воды в подающем тр-де, °С",
-000061	  Tnv_t: "Текущая температура наружного воздуха, °С",
-000062	  H_ras: "Располагаемый напор, м",
-000063	  H_obr: "Напор в обратном трубопроводе, м",
-000064	  Mode: "Режим работы источника",
-000065	  H_pod: "Напор в подающем трубопроводе, м",
-000066	
-000067	  // --- Узел ---
-000068	  Gpod: "Слив/Расход в подающем тр-де, т/ч",
-000069	  Gobr: "Слив/Расход в обратном тр-де, т/ч",
-000070	  Tpod: "Температура воды в подающем тр-де, °C",
-000071	  Tobr: "Температура воды в обратном тр-де, °C",
-000072	  Ppod: "Давление в подающем тр-де, м",
-000073	  Pobr: "Давление в обратном тр-де, м",
-000074	  Time: "Время прохождения воды от источника, мин",
-000075	  Dist: "Путь, пройденный от источника, м",
-000076	  Tb: "Давление вскипания, м",
-000077	  Hstat: "Статический напор, м",
-000078	
-000079	  // --- Участок ---
-000080	  Owner: "Балансодержатель",
-000081	  Begin_uch: "Наименование начала участка",
-000082	  End_uch: "Наименование конца участка",
-000083	  L: "Длина участка, м",
-000084	  Dpod: "Диаметр подающего тр-да, м",
-000085	  Dobr: "Диаметр обратного тр-да, м",
-000086	  Zpod: "Сумма коэф. местных сопр. под. тр-да",
-000087	  Zpod_str: "Местные сопротивления под. тр-да",
-000088	  Zobr: "Сумма коэф. местных сопр. обр. тр-да",
-000089	  Zobr_str: "Местные сопротивления обр. тр-да",
-000090	  Ke_pod: "Шероховатость подающего тр-да, мм",
-000091	  Ke_obr: "Шероховатость обратного тр-да, мм",
-000092	  Zarost_pod: "Зарастание подающего тр-да, мм",
-000093	  Zarost_obr: "Зарастание обратного тр-да, мм",
-000094	  Kz_pod: "Коэфф. местного сопр. под. тр-да",
-000095	  Kz_obr: "Коэфф. местного сопр. обр. тр-да",
-000096	  Spod: "Сопротивление подающего тр-да, м/(т/ч)²",
-000097	  Sobr: "Сопротивление обратного тр-да, м/(т/ч)²",
-000098	  StatZone: "Разделитель зон статическим напором",
-000099	  Options: "Опции",
-000100	  Proklad: "Вид прокладки тепловой сети",
-000101	  Norma: "Нормативные потери в тепловой сети",
-000102	  Use_pod: "Период работы подающего тр-да",
-000103	  Use_obr: "Период работы обратного тр-да",
-000104	  Kpoprav: "Поправочный коэфф. тепл. потерь под. тр-да",
-000105	  Kpop_obr: "Поправочный коэфф. тепл. потерь обр. тр-да",
-000106	  Grunt: "Вид грунта",
-000107	  Hzal: "Глубина заложения трубопровода, м",
-000108	  Izol_pod: "Теплоизоляционный материал под. тр-да",
-000109	  Izol_obr: "Теплоизоляционный материал обр. тр-да",
-000110	  Wizol_pod: "Толщина изоляции подающего тр-да, м",
-000111	  Wizol_obr: "Толщина изоляции обратного тр-да, м",
-000112	  Tex_pod: "Техническое состояние изоляции под. тр-да",
-000113	  Tex_obr: "Техническое состояние изоляции обр. тр-да",
-000114	  S: "Расстояние между осями трубопроводов, м",
-000115	  Hkanal: "Высота канала, м",
-000116	  Wkanal: "Ширина канала, м",
-000117	  Q1_pod: "Доп. потери тепла под. тр-да, ккал",
-000118	  Q1_obr: "Доп. потери тепла обр. тр-да, ккал",
-000119	  dH_pod: "Потери напора в подающем тр-де, м",
-000120	  dH_obr: "Потери напора в обратном тр-де, м",
-000121	  Ppod_beg: "Давление в начале подающего, м",
-000122	  Ppod_end: "Давление в конце подающего, м",
-000123	  Pobr_beg: "Давление в начале обратного, м",
-000124	  Pobr_end: "Давление в конце обратного, м",
-000125	  Hpod_beg: "Напор в начале подающего, м",
-000126	  Hpod_end: "Напор в конце подающего, м",
-000127	  Hobr_beg: "Напор в начале обратного, м",
-000128	  Hobr_end: "Напор в конце обратного, м",
-000129	  Hras_beg: "Располагаемый напор в начале, м",
-000130	  Hras_end: "Располагаемый напор в конце, м",
-000131	  dHud_pod: "Удельные линейные потери напора в под. тр-де, мм/м",
-000132	  dHud_obr: "Удельные линейные потери напора в обр. тр-де, мм/м",
-000133	  Le_pod: "Эквивалентная длина подающего, м",
-000134	  Le_obr: "Эквивалентная длина обратного, м",
-000135	  Lt_pod: "Приведенная длина подающего, м",
-000136	  Lt_obr: "Приведенная длина обратного, м",
-000137	  Re_pod: "Число Рейнольдса на подающем",
-000138	  Re_obr: "Число Рейнольдса на обратном",
-000139	  Lambda_pod: "Коэфф. гидравл. трения на подающем",
-000140	  Lambda_obr: "Коэфф. гидравл. трения на обратном",
-000141	  Vpod: "Скорость воды в под. тр-де, м/с",
-000142	  Vobr: "Скорость воды в обр. тр-де, м/с",
-000143	  Gut_pod: "Утечка из подающего тр-да, т/ч",
-000144	  Gut_obr: "Утечка из обратного тр-да, т/ч",
-000145	  Qpot_pod: "Тепловые потери в подающем тр-де, ккал/ч",
-000146	  Qpot_obr: "Тепловые потери в обратном тр-де, ккал/ч",
-000147	  Tbeg_pod: "Температура в начале участка под. тр-да, °C",
-000148	  Tend_pod: "Температура в конце участка под. тр-да, °C",
-000149	  Tbeg_obr: "Температура в начале участка обр. тр-да, °C",
-000150	  Tend_obr: "Температура в конце участка обр. тр-да, °C",
-000151	  Tsurf: "Температура на поверхности, °С",
-000152	  Drek_pod: "Диаметр под. тр-да (конструкторский), м",
-000153	  Drek_obr: "Диаметр обр. тр-да (конструкторский), м",
-000154	  Ke_con_pod: "Шероховатость под. тр-да (конструкторский), мм",
-000155	  Ke_con_obr: "Шероховатость обр. тр-да (конструкторский), мм",
-000156	  Vopt_pod: "Оптимальная скорость в подающем (констр.), м/с",
-000157	  Vopt_obr: "Оптимальная скорость в обратном (констр.), м/с",
-000158	  dHud_con_pod: "Удельные линейные потери подающего (констр.), мм/м",
-000159	  dHud_con_obr: "Удельные линейные потери обратного (констр.), мм/м",
-000160	  Tubes: "Сортамент",
-000161	  DFixed: "Фиксированный диаметр (конструкторский)",
-000162	
-000163	  // --- Перемычка ---
-000164	  Lper: "Длина перемычки, м",
-000165	  Dper: "Диаметр перемычки, м",
-000166	  Zper: "Коэф. местных сопротивлений перемычки",
-000167	  Kper: "Шероховатость перемычки, мм",
-000168	  Sper: "Сопротивление перемычки, м·ч²/т²",
-000169	  Gperem: "Расход воды по перемычке, т/ч",
-000170	
-000171	  // --- Дросселирующий узел ---
-000172	  Dshb_pod: "Диаметр шайбы на под. тр-де, мм",
-000173	  Nshb_pod: "Количество шайб на под. тр-де, шт",
-000174	  Dshb_obr: "Диаметр шайбы на обр. тр-де, мм",
-000175	  Nshb_obr: "Количество шайб на обр. тр-де, шт",
-000176	  Dbp_pod: "Диаметр байпаса на подающем тр-де, м",
-000177	  Lbp_pod: "Длина байпаса на подающем тр-де, м",
-000178	  Dbp_obr: "Диаметр байпаса на обратном тр-де, м",
-000179	  Lbp_obr: "Длина байпаса на обратном тр-де, м",
-000180	  Zbp_pod: "Сумма коэф. местных сопр. байпаса под. тр-да",
-000181	  Zbp_obr: "Сумма коэф. местных сопр. байпаса обр. тр-да",
-000182	  Kv_pod: "Kv байпаса на подающем, м³/ч",
-000183	  Kv_obr: "Kv байпаса на обратном, м³/ч",
-000184	  Ke_bp: "Шероховатость байпаса, мм",
-000185	  Hzapas: "Запас напора, м",
-000186	  Regul_G: "Способ дросселирования",
-000187	  H: "Регулируемый параметр напор/расход",
-000188	  Kreg: "Пропускная способность регулятора",
-000189	  Deq: "Диаметр эквивалентной шайбы, мм",
-000190	  Hin: "Располагаемый напор до узла, м",
-000191	  Hout: "Располагаемый напор после узла, м",
-000192	  Hin_pod: "Напор в подающем тр-де перед узлом, м",
-000193	  Hout_pod: "Напор в подающем тр-де после узла, м",
-000194	  Hin_obr: "Напор в обратном тр-де перед узлом, м",
-000195	  Hout_obr: "Напор в обратном тр-де после узла, м",
-000196	  dHshb_pod: "Потери напора на шайбе в под. тр., м",
-000197	  dHshb_obr: "Потери напора на шайбе в обр. тр., м",
-000198	  Pin_pod: "Давление в подающем тр-де перед узлом, м",
-000199	  Pout_pod: "Давление в подающем тр-де после узла, м",
-000200	  Pin_obr: "Давление в обратном тр-де перед узлом, м",
-000201	  Pout_obr: "Давление в обратном тр-де после узла, м",
-000202	  Hstat_out: "Статический напор на выходе, м",
-000203	
-000204	  // --- Насосная станция ---
-000205	  Type_pod: "Способ задания насоса на подающем",
-000206	  Mark_pod: "Марка насоса/арматуры на подающем",
-000207	  Npod: "Число насосов на подающем тр-де",
-000208	  Hpod: "Напор насоса на подающем тр-де, м",
-000209	  Pr_pod: "Напор после насоса на подающем, м",
-000210	  Type_obr: "Способ задания насоса на обратном",
-000211	  Mark_obr: "Марка насоса/арматуры на обратном",
-000212	  Nobr: "Число насосов на обратном тр-де",
-000213	  Hobr: "Напор насоса на обратном тр-де, м",
-000214	  Pr_obr: "Напор перед насосом на обратном, м",
-000215	  Cost_w: "Стоимость электроэнергии",
-000216	  Costs_w: "Затраты на электроэнергию",
-000217	
-000218	  // --- Задвижка ---
-000219	  Per_pod: "Степень открытия на подающем",
-000220	  Per_obr: "Степень открытия на обратном",
-000221	
-000222	  // --- Потребитель ---
-000223	  Hzdan: "Высота здания потребителя, м",
-000224	  N_schem: "Номер схемы подключения",
-000225	  Qo_r: "Расчетная нагрузка на отопление, Гкал/ч",
-000226	  Qsv_r: "Расчетная нагрузка на вентиляцию, Гкал/ч",
-000227	  Qgv_sred: "Расчетная средняя нагрузка на ГВС, Гкал/ч",
-000228	  Njil: "Число жителей",
-000229	  Kso: "Коэфф. изменения расхода на СО и СВ",
-000230	  Ksv: "Коэфф. изменения расхода на СВ",
-000231	  Kgv: "Коэфф. изменения расхода на ГВС",
-000232	  Kb: "Балансовый коэффициент закр. ГВС",
-000233	  Gso_otn_max: "Макс. относительный расход на СО",
-000234	  Gso_max: "Макс. расход на СО, т/ч",
-000235	  Tvso_n: "Начальная температура воздуха для СО, °C",
-000236	  Klapan_sv: "Клапан на систему вентиляции",
-000237	  Regul_T: "Наличие регулятора температуры на ГВС",
-000238	  Regul_T_kvs: "Kvs регулятора температуры на ГВС",
-000239	  T2_r: "Расчетная температура на входе 2 контура, °C",
-000240	  T3_r: "Расчетная температура на выходе 2 контура, °С",
-000241	  Tvso_r: "Расчетная температура внутр. воздуха для СО, °C",
-000242	  Hso_r: "Расчетный располагаемый напор на СО, м",
-000243	  Hso_zapas: "Запас напора на СО при наладке, м",
-000244	  Tvsv_r: "Расчетная температура внутр. воздуха для СВ, °C",
-000245	  Tnsv_r: "Расчетная температура наружного воздуха для СВ, °С",
-000246	  Hsv_r: "Расчетный располагаемый напор в СВ, м",
-000247	  Kcirc: "Коэфф. циркуляции",
-000248	  Hcirc: "Потери напора в циркуляционном контуре, м",
-000249	  Hpump_gvs: "Напор циркуляционного насоса ГВС, м",
-000250	  Tcirc: "Температура циркуляции, °C",
-000251	  Thv: "Расчетная температура холодной воды, °С",
-000252	  Tgv: "Расчетная температура горячей воды, °С",
-000253	  Pmax_obr: "Макс. давление в обратном тр-де, м",
-000254	  Pmax_gvs: "Макс. давление в системе ГВС, м",
-000255	  Thv_t: "Текущая температура холодной воды, °С",
-000256	  Nsec_so: "Количество секций ТО на СО",
-000257	  Hsec_so: "Потери напора в секции ТО на СО, м",
-000258	  Ngr_so: "Количество параллельных групп ТО на СО",
-000259	  T1to_so: "Расчетная температура на выходе 1 контура СО, °C",
-000260	  T2r_obr: "Расчетная температура в обратном тр-де СО, °C",
-000261	  Tto_so: "Температура теплоносителя после ТО на СО, °C",
-000262	  Nel_r: "Расчетное количество элементов смешения",
-000263	  Dsop_r: "Расчетный диаметр сопла, мм",
-000264	  U_calc: "Расчетный коэфф. смешения",
-000265	  U_fakt: "Фактический коэфф. смешения",
-000266	  Nel_u: "Количество элементов смешения (факт.)",
-000267	  Dsop_u: "Диаметр сопла (факт.), мм",
-000268	  T1_t_consumer: "Текущая температура в подающем тр-де, °С",
-000269	  T2_t: "Текущая температура в обратном тр-де, °С",
-000270	  Gso: "Расход сетевой воды на СО, т/ч",
-000271	  Gso_otn: "Относительный расход воды на СО",
-000272	  Qso_otn: "Относительная нагрузка на СО",
-000273	  T3so_t: "Температура после смесительного устройства на СО, °C",
-000274	  T2so_t: "Температура воды после системы отопления, °C",
-000275	  Tvso_t: "Температура внутреннего воздуха СО, °C",
-000276	  Dshb_so_pod: "Диаметр шайбы на СО в под. тр-де, мм",
-000277	  Nshb_so_pod: "Количество шайб на СО в под. тр-де, шт",
-000278	  Dshb_so_obr: "Диаметр шайбы на СО в обр. тр-де, мм",
-000279	  Nshb_so_obr: "Количество шайб на СО в обр. тр-де, шт",
-000280	  dHshb_so_pod: "Потери напора на шайбе СО в под. тр., м",
-000281	  dHshb_so_obr: "Потери напора на шайбе СО в обр. тр., м",
-000282	  dHsop: "Потери напора на сопле, м",
-000283	  dHsoplo: "Потери напора на сопле, м",
-000284	  Gsv: "Расход сетевой воды на СВ, т/ч",
-000285	  Gsv_otn: "Относительный расход воды на СВ",
-000286	  T2sv_t: "Температура воды после системы вентиляции, °C",
-000287	  Tvsv_t: "Температура внутреннего воздуха СВ, °C",
-000288	  Dshb_sv: "Диаметр шайбы на систему вентиляции, мм",
-000289	  Nshb_sv: "Количество шайб на систему вентиляции, шт",
-000290	  dHshb_sv: "Потери напора на шайбе СВ, м",
-000291	  Ggv: "Расход сетевой воды на открытые ГВС, т/ч",
-000292	  Tgv_t: "Текущая температура воды на ГВС, °C",
-000293	  Gcirc: "Расход воды в цирк. трубопроводе, т/ч",
-000294	  Tcirc_t: "Текущая температура воды в цирк. контуре, °C",
-000295	  Dshb_gvs: "Диаметр шайбы на ГВС, мм",
-000296	  Nshb_gvs: "Количество шайб на ГВС, шт",
-000297	  dHshb_gvs: "Потери напора на шайбе ГВС, м",
-000298	  Dshb_circ: "Диаметр циркуляционной шайбы на ГВС, мм",
-000299	  Nshb_circ: "Количество циркуляционных шайб на ГВС, шт",
-000300	  Dshb_so_pod_u: "Диаметр шайбы СО на подающем (факт.), мм",
-000301	  Nshb_so_pod_u: "Количество шайб СО на подающем (факт.), шт",
-000302	  Dshb_so_obr_u: "Диаметр шайбы СО на обратном (факт.), мм",
-000303	  Nshb_so_obr_u: "Количество шайб СО на обратном (факт.), шт",
-000304	  dHsnb_so_obr: "Потери напора на шайбе обр. тр-да после СО, м",
-000305	
-000306	  // --- Потребитель: ТО ГВС I ступень ---
-000307	  Nsec_niz: "Количество секций ТО ГВС I ступень",
-000308	  Ngr_niz: "Количество паралл. групп ТО ГВС I ступень",
-000309	  Hsec_niz: "Потери напора в секции I ступени, м",
-000310	  T11_i_niz: "Исп. температура на входе 1 контура I ступени, °C",
-000311	  T12_i_niz: "Исп. температура на выходе 1 контура I ступени, °C",
-000312	  T21_i_niz: "Исп. температура на входе 2 контура I ступени, °C",
-000313	  T22_i_niz: "Исп. температура на выходе 2 контура I ступени, °C",
-000314	  Q_i_niz: "Исп. тепловая нагрузка I ступени, Гкал/час",
-000315	  Gniz: "Расход 1 контура I ступени ТО ГВС, т/ч",
-000316	  G2_niz: "Расход 2 контура I ступени ТО ГВС, т/ч",
-000317	  Q_niz: "Тепловая нагрузка I ступени, Гкал/час",
-000318	  T11_niz: "Температура на входе 1 контура I ступени, °C",
-000319	  T12_niz: "Температура на выходе 1 контура I ступени, °C",
-000320	  T21_niz: "Температура на входе 2 контура I ступени, °C",
-000321	  T22_niz: "Температура на выходе 2 контура I ступени, °C",
-000322	
-000323	  // --- Потребитель: ТО ГВС II ступень ---
-000324	  Nsec_verh: "Количество секций ТО ГВС II ступень",
-000325	  Ngr_verh: "Количество паралл. групп ТО ГВС II ступень",
-000326	  Hsec_verh: "Потери напора в секции II ступени, м",
-000327	  T11_i_verh: "Исп. температура на входе 1 контура II ступени, °C",
-000328	  T12_i_verh: "Исп. температура на выходе 1 контура II ступени, °C",
-000329	  T21_i_verh: "Исп. температура на входе 2 контура II ступени, °C",
-000330	  T22_i_verh: "Исп. температура на выходе 2 контура II ступени, °C",
-000331	  Q_i_verh: "Исп. тепловая нагрузка II ступени, Гкал/час",
-000332	  T11_verh: "Температура на входе 1 контура II ступени, °C",
-000333	  T12_verh: "Температура на выходе 1 контура II ступени, °C",
-000334	  T21_verh: "Температура на входе 2 контура II ступени, °C",
-000335	  T22_verh: "Температура на выходе 2 контура II ступени, °C",
-000336	  Gverh: "Расход 1 контура II ступени ТО ГВС, т/ч",
-000337	  G2_verh: "Расход 2 контура II ступени ТО ГВС, т/ч",
-000338	  Q_verh: "Тепловая нагрузка II ступени, Гкал/час",
-000339	
-000340	  // --- Потребитель: итоговые ---
-000341	  Gset_nal: "Расход сетевой воды после наладки, т/ч",
-000342	  Hset_nal: "Напор на регуляторе давления СО, м",
-000343	  Gsum_pod: "Суммарный расход сетевой воды, т/ч",
-000344	  Q_sum: "Суммарная нагрузка, Гкал/час",
-000345	  Gut_pot: "Утечка из системы теплопотребления, т/ч",
-000346	  Qut_pot: "Потери тепла от утечки, Ккал",
-000347	  Gcon_so: "Расчетный расход на СО (констр.), т/ч",
-000348	  Gcon_sv: "Расчетный расход на СВ (констр.), т/ч",
-000349	  Gcon_gv: "Расчетный на циркуляцию ГВС (констр.), т/ч",
-000350	  Gcon_gv_open: "Разбор воды на ГВС (констр.), т/ч",
-000351	  Hcon_ras: "Располагаемый напор на вводе (констр.), м",
-000352	
-000353	  // --- ЦТП ---
-000354	  T1to_so_ctp: "Расчетная температура на выходе 1 контура СО, °C",
-000355	  Hnz_ras: "Располагаемый напор второго контура, м",
-000356	  Hnz_obr: "Напор в обратке второго контура, м",
-000357	  Podpit: "Подпитка второго контура",
-000358	  Dshb_pod_u: "Диаметр шайбы на подающем (факт.), мм",
-000359	  Nshb_pod_u: "Количество шайб на подающем (факт.), шт",
-000360	  Dshb_obr_u: "Диаметр шайбы на обратном (факт.), мм",
-000361	  Nshb_obr_u: "Количество шайб на обратном (факт.), шт",
-000362	  Dshb_gvs_u: "Диаметр шайбы на ГВС (факт.), мм",
-000363	  Nshb_gvs_u: "Количество шайб на ГВС (факт.), шт",
-000364	  Hgv2_ras: "Располагаемый напор на ГВС 2 контура, м",
-000365	  Hgv2_obr: "Напор в обратке ГВС 2 контура, м",
-000366	  Qo_t: "Подключенная нагрузка на отопление, Гкал/ч",
-000367	  Qsv_t: "Подключенная нагрузка на вентиляцию, Гкал/ч",
-000368	  Qgv_t: "Подключенная нагрузка на ГВС, Гкал/ч",
-000369	  Hgv_pod: "Напор в под. тр-де ГВС, м",
-000370	  Hgv_obr: "Напор в обр. тр-де ГВС, м",
-000371	  Pgv_pod: "Давление в под. тр-де ГВС, м",
-000372	  Pgv_obr: "Давление в обр. тр-де ГВС, м",
-000373	  RegulType: "Тип регулятора",
-000374	  Tsg_pod: "Среднегодовая температура воды в под. тр-де, °С",
-000375	  Tsg_obr: "Среднегодовая температура воды в обр. тр-де, °С",
-000376	  Tsg_grunt: "Среднегодовая температура грунта, °C",
-000377	  Tsg_nv: "Среднегодовая температура наружного воздуха, °С",
-000378	  Tsg_podval: "Среднегодовая температура воздуха в подвалах, °C",
-000379	  Tgrunt: "Текущая температура грунта, °C",
-000380	  Tpodval: "Текущая температура воздуха в подвалах, °C",
-000381	  Gsum_pod2: "Суммарный расход воды во 2 контуре ЦТП, т/ч",
-000382	  Qut_pod: "Потери тепла от утечек в подающем тр-де, Ккал/ч",
-000383	  Qut_obr: "Потери тепла от утечек в обратном тр-де, Ккал/ч",
-000384	  Qut_potr: "Потери тепла от утечек в сист. теплопотреб., Ккал/ч",
-000385	  T11_i: "Исп. температура воды на входе 1 контура, °C",
-000386	  T12_i: "Исп. температура воды на выходе 1 контура, °C",
-000387	  T21_i: "Исп. температура воды на входе 2 контура, °C",
-000388	  T22_i: "Исп. температура воды на выходе 2 контура, °C",
-000389	  G1_i: "Исп. расход 1 контура, т/ч",
-000390	  G2_i: "Исп. расход 2 контура, т/ч",
-000391	  Qsum: "Суммарная тепловая нагрузка на ЦТП, Гкал/ч",
-000392	  Qts_pod: "Тепловые потери в подающем тр-де, Ккал/ч",
-000393	  Qts_obr: "Тепловые потери в обратном тр-де, Ккал/ч",
-000394	  Gut_potr: "Расход воды на утечки из систем теплопотреб., т/ч",
-000395	  Tb_out: "Давление вскипания на выходе ЦТП, м",
-000396	
-000397	  // --- Обобщённый потребитель ---
-000398	  Gu_r: "Расход на открытый водоразбор, т/ч",
-000399	  Gto_r: "Расход воды на закр. системы ГВС, т/ч",
-000400	  Kto: "Коэфф. изменения расхода на закр. ГВС",
-000401	  Beta: "Доля водоразбора из подающего тр-да",
-000402	  Sr: "Расчетное сопротивление, м/(т/ч)²",
-000403	  Tobr_type: "Способ определения температуры обратной воды",
-000404	  Tobr_val: "Значение температуры обратной воды, °C",
-000405	
-000406	  // --- Надёжность (общие) ---
-000407	  Lambda_t_nad: "Средняя интенсивность отказов, 1/(км·ч)",
-000408	  Lambda_r_nad: "Расчетная интенсивность отказов, 1/(км·ч)",
-000409	  Tr_nad: "Расчетное время восстановления, ч",
-000410	  Texp_nad: "Период эксплуатации, лет",
-000411	  Trep_nad: "Время восстановления, ч",
-000412	  Mrep_nad: "Интенсивность восстановления, 1/ч",
-000413	  Lambda_nad: "Интенсивность отказов, 1/(км·ч)",
-000414	  Omega_nad: "Поток отказов, 1/ч",
-000415	  Qot_nad: "Относительное кол. отключ. нагрузки",
-000416	  Pbreak_nad: "Вероятность отказа",
-000417	  Beta_nad: "Коэффициент тепловой аккумуляции, ч",
-000418	  Tmin_nad: "Минимально допустимая температура, °С",
-000419	  R_nad: "Вероятность безотказной работы",
-000420	  K_nad: "Коэффициент готовности",
-000421	  Qlost_nad: "Средний суммарный недоотпуск теплоты, Гкал/от.период",
-000422	
-000423	  // --- Источник: расчётные ---
-000424	  T1to_so_ist: "Расчетная температура на выходе 1 контура, °C",
-000425	
-000426	  // --- Адресные ориентиры (обратное геокодирование) ---
-000427	  addr_begin: "Адресный ориентир начала участка",
-000428	  addr_end: "Адресный ориентир окончания участка",
-000429	  addr_point: "Адресный ориентир",
-000430	  fias_begin: "ФИАС ID начала участка",
-000431	  fias_end: "ФИАС ID окончания участка",
-000432	  fias_point: "ФИАС ID",
-000433	  fias_id: "ФИАС ID",
-000434	
-000435	  cluster_id: "ID кластера",
-000436	  complaint_count: "Кол-во жалоб",
-000437	  radius_m: "Радиус (м)",
-000438	  centroid_lon: "Долгота центра",
-000439	  centroid_lat: "Широта центра",
-000440	  addresses: "Адреса",
-000441	  address_count: "Кол-во адресов",
-000442	  zone_name: "Зона отказа",
-000443	  zone_type: "Тип зоны",
-000444	  confidence: "Достоверность",
-000445	  downstream_consumer_count: "Кол-во потребителей ниже по сети",
-000446	  complaint_consumers: "Потребители с жалобами",
-000447	  segment: "Участок",
-000448	  segment_length_m: "Длина участка (м)",
-000449	  affected_segments_count: "Затронутых участков",
-000450	  affected_consumers_count: "Затронутых потребителей",
-000451	  consumer_names: "Имена потребителей",
-000452	  consumer_addresses: "Адреса потребителей",
-000453	  segments_detail: "Детали участков",
-000454	  group_complaint_count: "Жалоб в группе",
-000455	  group_consumers: "Потребители группы",
-000456	  source_name: "Источник теплоснабжения",
-000457	  date: "Дата",
-000458	};
-000459	
-000460	const fieldLabelsLower: Record<string, string> = {};
-000461	for (const [key, value] of Object.entries(fieldLabels)) {
-000462	  fieldLabelsLower[key.toLowerCase()] = value;
-000463	}
-000464	
-000465	export function getFieldLabel(technicalName: string): string {
-000466	  const label = fieldLabels[technicalName] ?? fieldLabelsLower[technicalName.toLowerCase()];
-000467	  if (label) {
-000468	    return `${label} (${technicalName})`;
-000469	  }
-000470	  return technicalName;
-000471	}
-000472	
-000473	export function transformPropertyKeys(
-000474	  properties: Record<string, unknown>
-000475	): Record<string, unknown> {
-000476	  const result: Record<string, unknown> = {};
-000477	  for (const [key, value] of Object.entries(properties)) {
-000478	    const newKey = getFieldLabel(key);
-000479	    result[newKey] = value;
-000480	  }
-000481	  return result;
-000482	}
-000483	
-000484	// ============================================================
-000485	// Файл: shared/models/auth.ts
-000486	// ============================================================
-000487	import { sql } from "drizzle-orm";
-000488	import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
-000489	
-000490	export const sessions = pgTable(
-000491	  "sessions",
-000492	  {
-000493	    sid: varchar("sid").primaryKey(),
-000494	    sess: jsonb("sess").notNull(),
-000495	    expire: timestamp("expire").notNull(),
-000496	  },
-000497	  (table) => [index("IDX_session_expire").on(table.expire)]
-000498	);
-000499	
-000500	export const users = pgTable("users", {
-000501	  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-000502	  username: varchar("username", { length: 50 }).notNull().unique(),
-000503	  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
-000504	  role: varchar("role", { length: 20 }).notNull().default("user"),
-000505	  firstName: varchar("first_name"),
-000506	  lastName: varchar("last_name"),
-000507	  middleName: varchar("middle_name"),
-000508	  position: varchar("position"),
-000509	  organization: varchar("organization"),
-000510	  phone: varchar("phone"),
-000511	  email: varchar("email"),
-000512	  isActive: varchar("is_active", { length: 5 }).notNull().default("true"),
-000513	  createdAt: timestamp("created_at").defaultNow(),
-000514	  updatedAt: timestamp("updated_at").defaultNow(),
-000515	});
-000516	
-000517	export type User = typeof users.$inferSelect;
-000518	export type InsertUser = typeof users.$inferInsert;
-000519	
-000520	export type SafeUser = Omit<User, "passwordHash">;
-000521	
-000522	// ============================================================
-000523	// Файл: shared/models/chat.ts
-000524	// ============================================================
-000525	import { pgTable, serial, integer, text, timestamp, boolean } from "drizzle-orm/pg-core";
-000526	import { createInsertSchema } from "drizzle-zod";
-000527	import { z } from "zod";
-000528	import { sql } from "drizzle-orm";
-000529	
-000530	export const conversations = pgTable("conversations", {
-000531	  id: serial("id").primaryKey(),
-000532	  title: text("title").notNull(),
-000533	  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-000534	});
-000535	
-000536	export const messages = pgTable("messages", {
-000537	  id: serial("id").primaryKey(),
-000538	  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
-000539	  role: text("role").notNull(),
-000540	  content: text("content").notNull(),
-000541	  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-000542	});
-000543	
-000544	export const aiProviders = pgTable("ai_providers", {
-000545	  id: serial("id").primaryKey(),
-000546	  name: text("name").notNull(),
-000547	  baseUrl: text("base_url"),
-000548	  apiKey: text("api_key"),
-000549	  model: text("model"),
-000550	  isActive: boolean("is_active").default(true).notNull(),
-000551	  isDefault: boolean("is_default").default(false).notNull(),
-000552	  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-000553	  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-000554	});
-000555	
-000556	export const insertConversationSchema = createInsertSchema(conversations).omit({
-000557	  id: true,
-000558	  createdAt: true,
-000559	});
-000560	
-000561	export const insertMessageSchema = createInsertSchema(messages).omit({
-000562	  id: true,
-000563	  createdAt: true,
-000564	});
-000565	
-000566	export const insertAiProviderSchema = createInsertSchema(aiProviders).omit({
-000567	  id: true,
-000568	  createdAt: true,
-000569	  updatedAt: true,
-000570	});
-000571	
-000572	export const updateAiProviderSchema = z.object({
-000573	  name: z.string().optional(),
-000574	  baseUrl: z.string().nullable().optional(),
-000575	  apiKey: z.string().nullable().optional(),
-000576	  model: z.string().nullable().optional(),
-000577	  isActive: z.boolean().optional(),
-000578	  isDefault: z.boolean().optional(),
-000579	});
-000580	
-000581	export type Conversation = typeof conversations.$inferSelect;
-000582	export type InsertConversation = z.infer<typeof insertConversationSchema>;
-000583	export type Message = typeof messages.$inferSelect;
-000584	export type InsertMessage = z.infer<typeof insertMessageSchema>;
-000585	export type AiProvider = typeof aiProviders.$inferSelect;
-000586	export type InsertAiProvider = z.infer<typeof insertAiProviderSchema>;
-000587	export type UpdateAiProvider = z.infer<typeof updateAiProviderSchema>;
-000588	
-000589	
-000590	// ============================================================
-000591	// Файл: shared/schema.ts
-000592	// ============================================================
-000593	import { z } from "zod";
-000594	
-000595	// ZuluServer connection configuration
-000596	export const zuluConnectionSchema = z.object({
-000597	  host: z.string().min(1, "Host is required"),
-000598	  port: z.number().min(1).max(65535).optional(),
-000599	  layerName: z.string().default(""),
-000600	  useWfs: z.boolean().default(false),
-000601	  useZws: z.boolean().default(false),
-000602	  baseUrl: z.string().optional(),
-000603	});
-000604	
-000605	export type ZuluConnection = z.infer<typeof zuluConnectionSchema>;
-000606	
-000607	// Sublayer filter for virtual layers
-000608	export const sublayerFilterSchema = z.object({
-000609	  field: z.string(),
-000610	  value: z.string(),
-000611	  label: z.string(),
-000612	  visible: z.boolean().default(true),
-000613	});
-000614	
-000615	export type SublayerFilter = z.infer<typeof sublayerFilterSchema>;
-000616	
-000617	// Layer configuration
-000618	export const layerConfigSchema = z.object({
-000619	  id: z.string(),
-000620	  name: z.string(),
-000621	  visible: z.boolean().default(true),
-000622	  opacity: z.number().min(0).max(1).default(1),
-000623	  type: z.enum(["wms", "wfs", "base"]),
-000624	  url: z.string().optional(),
-000625	  sublayers: z.array(sublayerFilterSchema).optional(),
-000626	  activeFilters: z.record(z.string(), z.array(z.string())).optional(),
-000627	});
-000628	
-000629	export type LayerConfig = z.infer<typeof layerConfigSchema>;
-000630	
-000631	// Feature info from WMS GetFeatureInfo or WFS
-000632	export const featureInfoSchema = z.object({
-000633	  id: z.string(),
-000634	  layerName: z.string(),
-000635	  properties: z.record(z.string(), z.unknown()),
-000636	  geometry: z.object({
-000637	    type: z.string(),
-000638	    coordinates: z.unknown(),
-000639	  }).optional(),
-000640	});
-000641	
-000642	export type FeatureInfo = z.infer<typeof featureInfoSchema>;
-000643	
-000644	// Map view state
-000645	export const mapViewStateSchema = z.object({
-000646	  center: z.tuple([z.number(), z.number()]),
-000647	  zoom: z.number(),
-000648	  rotation: z.number().default(0),
-000649	});
-000650	
-000651	export type MapViewState = z.infer<typeof mapViewStateSchema>;
-000652	
-000653	// WMS capabilities response
-000654	export const wmsCapabilitiesSchema = z.object({
-000655	  layers: z.array(z.object({
-000656	    name: z.string(),
-000657	    title: z.string(),
-000658	    abstract: z.string().optional(),
-000659	    bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
-000660	  })),
-000661	  version: z.string(),
-000662	  title: z.string().optional(),
-000663	});
-000664	
-000665	export type WmsCapabilities = z.infer<typeof wmsCapabilitiesSchema>;
-000666	
-000667	// Connection status
-000668	export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
-000669	
-000670	// API response types
-000671	export interface ProxyWmsRequest {
-000672	  baseUrl: string;
-000673	  service: "WMS" | "WFS";
-000674	  request: string;
-000675	  layers?: string;
-000676	  bbox?: string;
-000677	  width?: number;
-000678	  height?: number;
-000679	  format?: string;
-000680	  srs?: string;
-000681	  version?: string;
-000682	  query?: string;
-000683	  x?: number;
-000684	  y?: number;
-000685	  info_format?: string;
-000686	}
-000687	
-000688	// Ticket (marker point) schema
-000689	export const ticketSchema = z.object({
-000690	  id: z.number(),
-000691	  lon: z.number(),
-000692	  lat: z.number(),
-000693	  status: z.enum(["bound", "unbound"]),
-000694	  boundPolygonId: z.string().optional(),
-000695	  boundLayerId: z.string().optional(),
-000696	  nameIst: z.string().optional(),
-000697	  notes: z.string().optional(),
-000698	  createdAt: z.string(),
-000699	});
-000700	
-000701	export type Ticket = z.infer<typeof ticketSchema>;
-000702	
-000703	export const insertTicketSchema = ticketSchema.omit({ id: true, createdAt: true, status: true });
-000704	export type InsertTicket = z.infer<typeof insertTicketSchema>;
-000705	
-000706	// Point style options for shapefile layers
-000707	// Basic shapes + ГОСТ heat network symbols
-000708	export const pointStyleSchema = z.enum([
-000709	  // Basic geometric shapes
-000710	  "circle", "square", "triangle", "cloud", "diamond", "star", "cross", "hexagon", "pentagon",
-000711	  // ГОСТ heat network symbols
-000712	  "heat-source",    // Теплоисточник
-000713	  "ctp",            // ЦТП (Центральный тепловой пункт)
-000714	  "itp",            // ИТП (Индивидуальный тепловой пункт)
-000715	  "valve",          // Задвижка
-000716	  "heat-chamber",   // Тепловая камера
-000717	  "pump-station",   // Насосная станция
-000718	  "compensator",    // Компенсатор
-000719	  "support",        // Опора
-000720	]);
-000721	export type PointStyle = z.infer<typeof pointStyleSchema>;
-000722	
-000723	// Line style options for shapefile layers
-000724	// Basic styles + ГОСТ heat network line styles
-000725	export const lineStyleSchema = z.enum([
-000726	  // Basic line styles
-000727	  "solid", "dashed", "double", "dash-dot", "dotted", "long-dash", "dash-dot-dot",
-000728	  // ГОСТ heat network line styles
-000729	  "relaying",              // Под перекладку
-000730	  "bypass",                // Байпас (временная схема)
-000731	  "demolition",            // Под демонтаж
-000732	  "above-ground",          // Наземная
-000733	  "underground-channel",   // Подземная канальная
-000734	  "underground-channelless", // Подземная бесканальная
-000735	  "state-program",         // Под перекладку в рамках госпрограммы
-000736	]);
-000737	export type LineStyle = z.infer<typeof lineStyleSchema>;
-000738	
-000739	// Layer source type
-000740	export const layerSourceSchema = z.enum(["user", "import"]);
-000741	export type LayerSource = z.infer<typeof layerSourceSchema>;
-000742	
-000743	// Style renderer types (inspired by QGIS/ArcGIS)
-000744	export const rendererTypeSchema = z.enum(["single", "categorized", "graduated"]);
-000745	export type RendererType = z.infer<typeof rendererTypeSchema>;
-000746	
-000747	export const styleClassItemSchema = z.object({
-000748	  color: z.string(),
-000749	  pointStyle: pointStyleSchema.optional(),
-000750	  lineStyle: lineStyleSchema.optional(),
-000751	  strokeWidth: z.number().optional(),
-000752	  fillOpacity: z.number().min(0).max(1).optional(),
-000753	  iconSize: z.number().min(4).max(128).optional(),
-000754	  customIconId: z.number().optional(),
-000755	});
-000756	export type StyleClassItem = z.infer<typeof styleClassItemSchema>;
-000757	
-000758	export const categorizedClassSchema = z.object({
-000759	  value: z.union([z.string(), z.number(), z.boolean()]),
-000760	  label: z.string(),
-000761	  style: styleClassItemSchema,
-000762	});
-000763	export type CategorizedClass = z.infer<typeof categorizedClassSchema>;
-000764	
-000765	export const graduatedClassSchema = z.object({
-000766	  min: z.number(),
-000767	  max: z.number(),
-000768	  label: z.string(),
-000769	  style: styleClassItemSchema,
-000770	});
-000771	export type GraduatedClass = z.infer<typeof graduatedClassSchema>;
-000772	
-000773	export const styleConfigSchema = z.object({
-000774	  renderer: rendererTypeSchema.default("single"),
-000775	  field: z.string().optional(),
-000776	  categorizedClasses: z.array(categorizedClassSchema).optional(),
-000777	  graduatedClasses: z.array(graduatedClassSchema).optional(),
-000778	  defaultStyle: styleClassItemSchema.optional(),
-000779	});
-000780	export type StyleConfig = z.infer<typeof styleConfigSchema>;
-000781	
-000782	// Geometry types for drawn features
-000783	export const geometryTypeSchema = z.enum(["Point", "LineString", "Polygon"]);
-000784	export type GeometryType = z.infer<typeof geometryTypeSchema>;
-000785	
-000786	// Attribute field types
-000787	export const attributeFieldTypeSchema = z.enum(["text", "number", "date", "boolean", "select"]);
-000788	export type AttributeFieldType = z.infer<typeof attributeFieldTypeSchema>;
-000789	
-000790	// Attribute field definition
-000791	export const attributeFieldSchema = z.object({
-000792	  name: z.string(),
-000793	  type: attributeFieldTypeSchema,
-000794	  required: z.boolean().default(false),
-000795	  defaultValue: z.unknown().optional(),
-000796	  options: z.array(z.string()).optional(), // For select type
-000797	});
-000798	export type AttributeField = z.infer<typeof attributeFieldSchema>;
-000799	
-000800	// Layer schema definition (for custom attribute structures)
-000801	export const layerSchemaDefinitionSchema = z.object({
-000802	  id: z.number(),
-000803	  layerId: z.number(),
-000804	  fields: z.array(attributeFieldSchema),
-000805	  createdAt: z.string(),
-000806	  updatedAt: z.string(),
-000807	});
-000808	export type LayerSchemaDefinition = z.infer<typeof layerSchemaDefinitionSchema>;
-000809	
-000810	export const insertLayerSchemaDefinitionSchema = layerSchemaDefinitionSchema.omit({ id: true, createdAt: true, updatedAt: true });
-000811	export type InsertLayerSchemaDefinition = z.infer<typeof insertLayerSchemaDefinitionSchema>;
-000812	
-000813	// Drawn feature schema (user-created geometry)
-000814	export const drawnFeatureSchema = z.object({
-000815	  id: z.number(),
-000816	  layerId: z.number(),
-000817	  geometryType: geometryTypeSchema,
-000818	  coordinates: z.any(), // GeoJSON coordinates
-000819	  properties: z.record(z.string(), z.unknown()).default({}),
-000820	  createdAt: z.string(),
-000821	  updatedAt: z.string(),
-000822	  version: z.number().default(1),
-000823	});
-000824	export type DrawnFeature = z.infer<typeof drawnFeatureSchema>;
-000825	
-000826	export const insertDrawnFeatureSchema = drawnFeatureSchema.omit({ id: true, createdAt: true, updatedAt: true, version: true });
-000827	export type InsertDrawnFeature = z.infer<typeof insertDrawnFeatureSchema>;
-000828	
-000829	// Feature history for versioning
-000830	export const featureHistorySchema = z.object({
-000831	  id: z.number(),
-000832	  featureId: z.number(),
-000833	  layerId: z.number(),
-000834	  geometryType: geometryTypeSchema,
-000835	  coordinates: z.any(),
-000836	  properties: z.record(z.string(), z.unknown()),
-000837	  version: z.number(),
-000838	  action: z.enum(["create", "update", "delete"]),
-000839	  createdAt: z.string(),
-000840	});
-000841	export type FeatureHistory = z.infer<typeof featureHistorySchema>;
-000842	
-000843	export const insertFeatureHistorySchema = featureHistorySchema.omit({ id: true, createdAt: true });
-000844	export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
-000845	
-000846	export const networkTypeSchema = z.enum(["source", "ctp", "consumer", "segment", "valve", "node", "pump", "accident"]);
-000847	export type NetworkType = z.infer<typeof networkTypeSchema>;
-000848	
-000849	// Editable layer (user-created layer for drawing or imported from shapefile)
-000850	export const editableLayerSchema = z.object({
-000851	  id: z.number(),
-000852	  sceneId: z.number().nullable().optional(),
-000853	  folderId: z.number().nullable().optional(),
-000854	  name: z.string(),
-000855	  geometryType: geometryTypeSchema,
-000856	  color: z.string().default("#1976D2"),
-000857	  pointStyle: pointStyleSchema.default("circle"),
-000858	  lineStyle: lineStyleSchema.default("solid"),
-000859	  visible: z.boolean().default(true),
-000860	  opacity: z.number().min(0).max(1).default(1),
-000861	  featureCount: z.number().default(0),
-000862	  displayOrder: z.number().default(0),
-000863	  source: layerSourceSchema.default("user"),
-000864	  sourceFileName: z.string().optional(),
-000865	  sourceFiles: z.array(z.string()).optional(),
-000866	  crs: z.string().default("EPSG:4326"),
-000867	  styleConfig: styleConfigSchema.optional(),
-000868	  metadata: z.record(z.unknown()).nullable().optional(),
-000869	  networkType: networkTypeSchema.nullable().optional(),
-000870	  createdAt: z.string(),
-000871	  updatedAt: z.string(),
-000872	});
-000873	export type EditableLayer = z.infer<typeof editableLayerSchema>;
-000874	
-000875	export const insertEditableLayerSchema = editableLayerSchema.omit({ id: true, createdAt: true, updatedAt: true, featureCount: true });
-000876	export type InsertEditableLayer = z.infer<typeof insertEditableLayerSchema>;
-000877	
-000878	// Auth schema (users and sessions)
-000879	export * from "./models/auth";
-000880	
-000881	import { sql } from "drizzle-orm";
-000882	import { pgTable, text, varchar, integer, jsonb, timestamp, real, index } from "drizzle-orm/pg-core";
-000883	import { createInsertSchema } from "drizzle-zod";
-000884	
-000885	// Layer folders for grouping layers
-000886	export const layerFolders = pgTable("layer_folders", {
-000887	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-000888	  sceneId: integer("scene_id").notNull(),
-000889	  name: text("name").notNull(),
-000890	  visible: integer("visible").notNull().default(1),
-000891	  displayOrder: integer("display_order").notNull().default(0),
-000892	  createdAt: timestamp("created_at").notNull().defaultNow(),
-000893	});
-000894	
-000895	export type LayerFolder = typeof layerFolders.$inferSelect;
-000896	export type InsertLayerFolder = typeof layerFolders.$inferInsert;
-000897	
-000898	export const layerFolderSchema = z.object({
-000899	  id: z.number(),
-000900	  sceneId: z.number(),
-000901	  name: z.string(),
-000902	  visible: z.boolean(),
-000903	  displayOrder: z.number().default(0),
-000904	  createdAt: z.string(),
-000905	});
-000906	
-000907	export const insertLayerFolderSchema = z.object({
-000908	  sceneId: z.number(),
-000909	  name: z.string().min(1),
-000910	});
-000911	
-000912	// PostgreSQL tables for GIS data
-000913	export const editableLayers = pgTable("editable_layers", {
-000914	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-000915	  sceneId: integer("scene_id"), // null for global layers, scene ID for scene-specific layers
-000916	  folderId: integer("folder_id"), // null = not in any folder
-000917	  name: text("name").notNull(),
-000918	  geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
-000919	  color: text("color").notNull().default("#1976D2"),
-000920	  pointStyle: text("point_style").notNull().default("circle"),
-000921	  lineStyle: text("line_style").notNull().default("solid"),
-000922	  visible: integer("visible").notNull().default(1),
-000923	  opacity: real("opacity").notNull().default(1),
-000924	  featureCount: integer("feature_count").notNull().default(0),
-000925	  displayOrder: integer("display_order").notNull().default(0),
-000926	  source: text("source").notNull().default("user"), // "user" or "import"
-000927	  sourceFileName: text("source_file_name"), // original filename for imported layers
-000928	  sourceFiles: jsonb("source_files").default([]), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
-000929	  crs: text("crs").notNull().default("EPSG:4326"), // coordinate reference system
-000930	  styleConfig: jsonb("style_config"),
-000931	  metadata: jsonb("metadata"),
-000932	  networkType: text("network_type"),
-000933	  createdAt: timestamp("created_at").notNull().defaultNow(),
-000934	  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-000935	});
-000936	
-000937	export const drawnFeatures = pgTable("drawn_features", {
-000938	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-000939	  layerId: integer("layer_id").notNull(),
-000940	  geometryType: text("geometry_type").notNull(),
-000941	  coordinates: jsonb("coordinates").notNull(),
-000942	  properties: jsonb("properties").notNull().default({}),
-000943	  version: integer("version").notNull().default(1),
-000944	  bboxMinX: real("bbox_min_x"),
-000945	  bboxMinY: real("bbox_min_y"),
-000946	  bboxMaxX: real("bbox_max_x"),
-000947	  bboxMaxY: real("bbox_max_y"),
-000948	  createdAt: timestamp("created_at").notNull().defaultNow(),
-000949	  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-000950	}, (table) => [
-000951	  index("drawn_features_layer_id_idx").on(table.layerId),
-000952	  index("drawn_features_bbox_idx").on(table.layerId, table.bboxMinX, table.bboxMinY, table.bboxMaxX, table.bboxMaxY),
-000953	]);
-000954	
-000955	export const featureHistory = pgTable("feature_history", {
-000956	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-000957	  featureId: integer("feature_id").notNull(),
-000958	  layerId: integer("layer_id").notNull(),
-000959	  geometryType: text("geometry_type").notNull(),
-000960	  coordinates: jsonb("coordinates").notNull(),
-000961	  properties: jsonb("properties").notNull(),
-000962	  version: integer("version").notNull(),
-000963	  action: text("action").notNull(), // create, update, delete
-000964	  createdAt: timestamp("created_at").notNull().defaultNow(),
-000965	});
-000966	
-000967	export const layerSchemas = pgTable("layer_schemas", {
-000968	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-000969	  layerId: integer("layer_id").notNull().unique(),
-000970	  fields: jsonb("fields").notNull().default([]),
-000971	  createdAt: timestamp("created_at").notNull().defaultNow(),
-000972	  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-000973	});
-000974	
-000975	// Scene role types
-000976	export const sceneRoleSchema = z.enum(["owner", "editor", "viewer"]);
-000977	export type SceneRole = z.infer<typeof sceneRoleSchema>;
-000978	
-000979	// Scene folders for grouping scenes
-000980	export const sceneFolders = pgTable("scene_folders", {
-000981	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-000982	  name: text("name").notNull(),
-000983	  parentId: integer("parent_id"),
-000984	  createdBy: varchar("created_by").notNull(),
-000985	  createdAt: timestamp("created_at").notNull().defaultNow(),
-000986	});
-000987	
-000988	export type SceneFolder = typeof sceneFolders.$inferSelect;
-000989	export type InsertSceneFolder = typeof sceneFolders.$inferInsert;
-000990	
-000991	export const insertSceneFolderSchema = z.object({
-000992	  name: z.string().min(1),
-000993	  parentId: z.number().nullable().optional(),
-000994	  createdBy: z.string(),
-000995	});
-000996	
-000997	// Scenes table - project containers
-000998	export const scenes = pgTable("scenes", {
-000999	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001000	  name: text("name").notNull(),
-001001	  description: text("description"),
-001002	  folderId: integer("folder_id"),
-001003	  createdBy: varchar("created_by").notNull(),
-001004	  createdAt: timestamp("created_at").notNull().defaultNow(),
-001005	  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-001006	});
-001007	
-001008	export type Scene = typeof scenes.$inferSelect;
-001009	export type InsertScene = typeof scenes.$inferInsert;
-001010	
-001011	export const insertSceneSchema = z.object({
-001012	  name: z.string().min(1),
-001013	  description: z.string().optional(),
-001014	  folderId: z.number().nullable().optional(),
-001015	  createdBy: z.string(),
-001016	});
-001017	
-001018	// Scene members - user access to scenes with roles
-001019	export const sceneMembers = pgTable("scene_members", {
-001020	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001021	  sceneId: integer("scene_id").notNull(),
-001022	  userId: varchar("user_id").notNull(),
-001023	  role: text("role").notNull().default("viewer"), // owner, editor, viewer
-001024	  addedAt: timestamp("added_at").notNull().defaultNow(),
-001025	});
-001026	
-001027	export type SceneMember = typeof sceneMembers.$inferSelect;
-001028	export type InsertSceneMember = typeof sceneMembers.$inferInsert;
-001029	
-001030	export const insertSceneMemberSchema = z.object({
-001031	  sceneId: z.number(),
-001032	  userId: z.string(),
-001033	  role: sceneRoleSchema.default("viewer"),
-001034	});
-001035	
-001036	// Datasets - processed shapefile data catalog
-001037	export const datasets = pgTable("datasets", {
-001038	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001039	  name: text("name").notNull(),
-001040	  originalFilename: text("original_filename").notNull(),
-001041	  geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
-001042	  crs: text("crs").default("EPSG:4326"),
-001043	  fieldSchema: jsonb("field_schema").notNull().default([]), // Array of AttributeField
-001044	  featureCount: integer("feature_count").notNull().default(0),
-001045	  createdBy: varchar("created_by").notNull(),
-001046	  createdAt: timestamp("created_at").notNull().defaultNow(),
-001047	});
-001048	
-001049	export type Dataset = typeof datasets.$inferSelect;
-001050	export type InsertDataset = typeof datasets.$inferInsert;
-001051	
-001052	export const insertDatasetSchema = z.object({
-001053	  name: z.string().min(1),
-001054	  originalFilename: z.string(),
-001055	  geometryType: z.string(),
-001056	  crs: z.string().default("EPSG:4326"),
-001057	  fieldSchema: z.array(attributeFieldSchema).default([]),
-001058	  createdBy: z.string(),
-001059	});
-001060	
-001061	// Dataset features - geometry and attributes for each dataset
-001062	export const datasetFeatures = pgTable("dataset_features", {
-001063	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001064	  datasetId: integer("dataset_id").notNull(),
-001065	  geometryType: text("geometry_type").notNull(),
-001066	  coordinates: jsonb("coordinates").notNull(),
-001067	  properties: jsonb("properties").notNull().default({}),
-001068	  createdAt: timestamp("created_at").notNull().defaultNow(),
-001069	});
-001070	
-001071	export type DatasetFeature = typeof datasetFeatures.$inferSelect;
-001072	export type InsertDatasetFeature = typeof datasetFeatures.$inferInsert;
-001073	
-001074	export const insertDatasetFeatureSchema = z.object({
-001075	  datasetId: z.number(),
-001076	  geometryType: z.string(),
-001077	  coordinates: z.any(),
-001078	  properties: z.record(z.string(), z.unknown()).default({}),
-001079	});
-001080	
-001081	// Scene datasets - links datasets to scenes with display settings
-001082	export const sceneDatasets = pgTable("scene_datasets", {
-001083	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001084	  sceneId: integer("scene_id").notNull(),
-001085	  datasetId: integer("dataset_id").notNull(),
-001086	  layerName: text("layer_name"), // custom name in this scene
-001087	  isVisible: integer("is_visible").notNull().default(1),
-001088	  opacity: real("opacity").notNull().default(1),
-001089	  color: text("color").notNull().default("#1976D2"),
-001090	  pointStyle: text("point_style").notNull().default("circle"),
-001091	  lineStyle: text("line_style").notNull().default("solid"),
-001092	  zIndex: integer("z_index").notNull().default(0),
-001093	  addedAt: timestamp("added_at").notNull().defaultNow(),
-001094	});
-001095	
-001096	export type SceneDataset = typeof sceneDatasets.$inferSelect;
-001097	export type InsertSceneDataset = typeof sceneDatasets.$inferInsert;
-001098	
-001099	export const insertSceneDatasetSchema = z.object({
-001100	  sceneId: z.number(),
-001101	  datasetId: z.number(),
-001102	  layerName: z.string().optional(),
-001103	  isVisible: z.number().default(1),
-001104	  opacity: z.number().default(1),
-001105	  color: z.string().default("#1976D2"),
-001106	  pointStyle: pointStyleSchema.default("circle"),
-001107	  lineStyle: lineStyleSchema.default("solid"),
-001108	  zIndex: z.number().default(0),
-001109	});
-001110	
-001111	// Uploads - tracking shapefile upload status
-001112	export const uploadStatusSchema = z.enum(["pending", "processing", "completed", "failed"]);
-001113	export type UploadStatus = z.infer<typeof uploadStatusSchema>;
-001114	
-001115	export const uploads = pgTable("uploads", {
-001116	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001117	  filename: text("filename").notNull(),
-001118	  originalFilename: text("original_filename").notNull(),
-001119	  status: text("status").notNull().default("pending"), // pending, uploading, processing, completed, failed
-001120	  error: text("error"),
-001121	  datasetId: integer("dataset_id"),
-001122	  layerId: integer("layer_id"),
-001123	  progress: integer("progress").notNull().default(0),
-001124	  totalFeatures: integer("total_features"),
-001125	  processedFeatures: integer("processed_features").notNull().default(0),
-001126	  sceneId: integer("scene_id"),
-001127	  color: text("color"),
-001128	  createdBy: varchar("created_by").notNull(),
-001129	  createdAt: timestamp("created_at").notNull().defaultNow(),
-001130	  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-001131	});
-001132	
-001133	export type Upload = typeof uploads.$inferSelect;
-001134	export type InsertUpload = typeof uploads.$inferInsert;
-001135	
-001136	export const insertUploadSchema = z.object({
-001137	  filename: z.string(),
-001138	  originalFilename: z.string(),
-001139	  createdBy: z.string(),
-001140	});
-001141	
-001142	// Custom icons - user-uploaded SVG icons for styling
-001143	export const customIcons = pgTable("custom_icons", {
-001144	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001145	  name: text("name").notNull(),
-001146	  svgContent: text("svg_content").notNull(),
-001147	  category: text("category").default("custom"),
-001148	  createdBy: varchar("created_by"),
-001149	  createdAt: timestamp("created_at").notNull().defaultNow(),
-001150	});
-001151	
-001152	export type CustomIcon = typeof customIcons.$inferSelect;
-001153	export type InsertCustomIcon = typeof customIcons.$inferInsert;
-001154	
-001155	export const insertCustomIconSchema = z.object({
-001156	  name: z.string().min(1),
-001157	  svgContent: z.string().min(1),
-001158	  category: z.string().default("custom"),
-001159	  createdBy: z.string().optional(),
-001160	});
-001161	
-001162	// API Keys for external integrations (Telegram bot, etc.)
-001163	export const apiKeys = pgTable("api_keys", {
-001164	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001165	  userId: varchar("user_id").notNull(),
-001166	  name: text("name").notNull(),
-001167	  tokenHash: varchar("token_hash", { length: 255 }).notNull(),
-001168	  sceneId: integer("scene_id"),
-001169	  permissions: text("permissions").array().notNull().default(sql`ARRAY['create_point']`),
-001170	  isActive: integer("is_active").notNull().default(1),
-001171	  lastUsedAt: timestamp("last_used_at"),
-001172	  createdAt: timestamp("created_at").notNull().defaultNow(),
-001173	});
-001174	
-001175	export type ApiKey = typeof apiKeys.$inferSelect;
-001176	export type InsertApiKey = typeof apiKeys.$inferInsert;
-001177	
-001178	export const apiKeyPermissionSchema = z.enum(["create_point", "read_layers", "read_scenes", "spatial_query"]);
-001179	export type ApiKeyPermission = z.infer<typeof apiKeyPermissionSchema>;
-001180	
-001181	export const insertApiKeySchema = z.object({
-001182	  userId: z.string(),
-001183	  name: z.string().min(1, "Название обязательно"),
-001184	  tokenHash: z.string(),
-001185	  sceneId: z.number().optional(),
-001186	  permissions: z.array(apiKeyPermissionSchema).default(["create_point"]),
-001187	});
-001188	
-001189	// Application settings - key-value store for app configuration
-001190	export const appSettings = pgTable("app_settings", {
-001191	  key: varchar("key", { length: 255 }).primaryKey(),
-001192	  value: text("value").notNull(),
-001193	  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-001194	});
-001195	
-001196	export type AppSetting = typeof appSettings.$inferSelect;
-001197	export type InsertAppSetting = typeof appSettings.$inferInsert;
-001198	
-001199	export const geocodeProviderSchema = z.enum(["yandex", "dadata"]);
-001200	export type GeocodeProvider = z.infer<typeof geocodeProviderSchema>;
-001201	
-001202	// Audit log for user action tracking
-001203	export const auditLog = pgTable("audit_log", {
-001204	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001205	  userId: varchar("user_id"),
-001206	  username: varchar("username"),
-001207	  action: varchar("action", { length: 100 }).notNull(),
-001208	  entityType: varchar("entity_type", { length: 50 }),
-001209	  entityId: varchar("entity_id", { length: 100 }),
-001210	  sceneId: integer("scene_id"),
-001211	  details: jsonb("details"),
-001212	  createdAt: timestamp("created_at").notNull().defaultNow(),
-001213	}, (table) => [
-001214	  index("audit_log_user_id_idx").on(table.userId),
-001215	  index("audit_log_created_at_idx").on(table.createdAt),
-001216	  index("audit_log_action_idx").on(table.action),
-001217	]);
-001218	
-001219	export type AuditLogEntry = typeof auditLog.$inferSelect;
-001220	
-001221	// Bug reports
-001222	export const bugReportStatusEnum = ["new", "rejected", "in_progress", "fixed", "paused"] as const;
-001223	export type BugReportStatus = typeof bugReportStatusEnum[number];
-001224	
-001225	export const bugReports = pgTable("bug_reports", {
-001226	  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-001227	  userId: varchar("user_id").notNull(),
-001228	  username: varchar("username"),
-001229	  message: text("message").notNull(),
-001230	  screenshotPath: text("screenshot_path"),
-001231	  status: varchar("status", { length: 50 }).notNull().default("new"),
-001232	  createdAt: timestamp("created_at").notNull().defaultNow(),
-001233	}, (table) => [
-001234	  index("bug_reports_user_id_idx").on(table.userId),
-001235	  index("bug_reports_status_idx").on(table.status),
-001236	  index("bug_reports_created_at_idx").on(table.createdAt),
-001237	]);
-001238	
-001239	export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: true, createdAt: true });
-001240	export type BugReport = typeof bugReports.$inferSelect;
-001241	export type InsertBugReport = z.infer<typeof insertBugReportSchema>;
-001242	
-001243	// External API schemas
-001244	export const externalCreatePointSchema = z.object({
-001245	  sceneId: z.number(),
-001246	  layerId: z.number(),
-001247	  coordinates: z.tuple([z.number(), z.number()]), // [longitude, latitude]
-001248	  properties: z.record(z.string(), z.unknown()).default({}),
-001249	});
-001250	export type ExternalCreatePoint = z.infer<typeof externalCreatePointSchema>;
+051047  Hpod: "Напор насоса на подающем тр-де, м",
+051048  Pr_pod: "Напор после насоса на подающем, м",
+051049  Type_obr: "Способ задания насоса на обратном",
+051050  Mark_obr: "Марка насоса/арматуры на обратном",
+051051  Nobr: "Число насосов на обратном тр-де",
+051052  Hobr: "Напор насоса на обратном тр-де, м",
+051053  Pr_obr: "Напор перед насосом на обратном, м",
+051054  Cost_w: "Стоимость электроэнергии",
+051055  Costs_w: "Затраты на электроэнергию",
+051056
+051057  // --- Задвижка ---
+051058  Per_pod: "Степень открытия на подающем",
+051059  Per_obr: "Степень открытия на обратном",
+051060
+051061  // --- Потребитель ---
+051062  Hzdan: "Высота здания потребителя, м",
+051063  N_schem: "Номер схемы подключения",
+051064  Qo_r: "Расчетная нагрузка на отопление, Гкал/ч",
+051065  Qsv_r: "Расчетная нагрузка на вентиляцию, Гкал/ч",
+051066  Qgv_sred: "Расчетная средняя нагрузка на ГВС, Гкал/ч",
+051067  Njil: "Число жителей",
+051068  Kso: "Коэфф. изменения расхода на СО и СВ",
+051069  Ksv: "Коэфф. изменения расхода на СВ",
+051070  Kgv: "Коэфф. изменения расхода на ГВС",
+051071  Kb: "Балансовый коэффициент закр. ГВС",
+051072  Gso_otn_max: "Макс. относительный расход на СО",
+051073  Gso_max: "Макс. расход на СО, т/ч",
+051074  Tvso_n: "Начальная температура воздуха для СО, °C",
+051075  Klapan_sv: "Клапан на систему вентиляции",
+051076  Regul_T: "Наличие регулятора температуры на ГВС",
+051077  Regul_T_kvs: "Kvs регулятора температуры на ГВС",
+051078  T2_r: "Расчетная температура на входе 2 контура, °C",
+051079  T3_r: "Расчетная температура на выходе 2 контура, °С",
+051080  Tvso_r: "Расчетная температура внутр. воздуха для СО, °C",
+051081  Hso_r: "Расчетный располагаемый напор на СО, м",
+051082  Hso_zapas: "Запас напора на СО при наладке, м",
+051083  Tvsv_r: "Расчетная температура внутр. воздуха для СВ, °C",
+051084  Tnsv_r: "Расчетная температура наружного воздуха для СВ, °С",
+051085  Hsv_r: "Расчетный располагаемый напор в СВ, м",
+051086  Kcirc: "Коэфф. циркуляции",
+051087  Hcirc: "Потери напора в циркуляционном контуре, м",
+051088  Hpump_gvs: "Напор циркуляционного насоса ГВС, м",
+051089  Tcirc: "Температура циркуляции, °C",
+051090  Thv: "Расчетная температура холодной воды, °С",
+051091  Tgv: "Расчетная температура горячей воды, °С",
+051092  Pmax_obr: "Макс. давление в обратном тр-де, м",
+051093  Pmax_gvs: "Макс. давление в системе ГВС, м",
+051094  Thv_t: "Текущая температура холодной воды, °С",
+051095  Nsec_so: "Количество секций ТО на СО",
+051096  Hsec_so: "Потери напора в секции ТО на СО, м",
+051097  Ngr_so: "Количество параллельных групп ТО на СО",
+051098  T1to_so: "Расчетная температура на выходе 1 контура СО, °C",
+051099  T2r_obr: "Расчетная температура в обратном тр-де СО, °C",
+051100  Tto_so: "Температура теплоносителя после ТО на СО, °C",
+051101  Nel_r: "Расчетное количество элементов смешения",
+051102  Dsop_r: "Расчетный диаметр сопла, мм",
+051103  U_calc: "Расчетный коэфф. смешения",
+051104  U_fakt: "Фактический коэфф. смешения",
+051105  Nel_u: "Количество элементов смешения (факт.)",
+051106  Dsop_u: "Диаметр сопла (факт.), мм",
+051107  T1_t_consumer: "Текущая температура в подающем тр-де, °С",
+051108  T2_t: "Текущая температура в обратном тр-де, °С",
+051109  Gso: "Расход сетевой воды на СО, т/ч",
+051110  Gso_otn: "Относительный расход воды на СО",
+051111  Qso_otn: "Относительная нагрузка на СО",
+051112  T3so_t: "Температура после смесительного устройства на СО, °C",
+051113  T2so_t: "Температура воды после системы отопления, °C",
+051114  Tvso_t: "Температура внутреннего воздуха СО, °C",
+051115  Dshb_so_pod: "Диаметр шайбы на СО в под. тр-де, мм",
+051116  Nshb_so_pod: "Количество шайб на СО в под. тр-де, шт",
+051117  Dshb_so_obr: "Диаметр шайбы на СО в обр. тр-де, мм",
+051118  Nshb_so_obr: "Количество шайб на СО в обр. тр-де, шт",
+051119  dHshb_so_pod: "Потери напора на шайбе СО в под. тр., м",
+051120  dHshb_so_obr: "Потери напора на шайбе СО в обр. тр., м",
+051121  dHsop: "Потери напора на сопле, м",
+051122  dHsoplo: "Потери напора на сопле, м",
+051123  Gsv: "Расход сетевой воды на СВ, т/ч",
+051124  Gsv_otn: "Относительный расход воды на СВ",
+051125  T2sv_t: "Температура воды после системы вентиляции, °C",
+051126  Tvsv_t: "Температура внутреннего воздуха СВ, °C",
+051127  Dshb_sv: "Диаметр шайбы на систему вентиляции, мм",
+051128  Nshb_sv: "Количество шайб на систему вентиляции, шт",
+051129  dHshb_sv: "Потери напора на шайбе СВ, м",
+051130  Ggv: "Расход сетевой воды на открытые ГВС, т/ч",
+051131  Tgv_t: "Текущая температура воды на ГВС, °C",
+051132  Gcirc: "Расход воды в цирк. трубопроводе, т/ч",
+051133  Tcirc_t: "Текущая температура воды в цирк. контуре, °C",
+051134  Dshb_gvs: "Диаметр шайбы на ГВС, мм",
+051135  Nshb_gvs: "Количество шайб на ГВС, шт",
+051136  dHshb_gvs: "Потери напора на шайбе ГВС, м",
+051137  Dshb_circ: "Диаметр циркуляционной шайбы на ГВС, мм",
+051138  Nshb_circ: "Количество циркуляционных шайб на ГВС, шт",
+051139  Dshb_so_pod_u: "Диаметр шайбы СО на подающем (факт.), мм",
+051140  Nshb_so_pod_u: "Количество шайб СО на подающем (факт.), шт",
+051141  Dshb_so_obr_u: "Диаметр шайбы СО на обратном (факт.), мм",
+051142  Nshb_so_obr_u: "Количество шайб СО на обратном (факт.), шт",
+051143  dHsnb_so_obr: "Потери напора на шайбе обр. тр-да после СО, м",
+051144
+051145  // --- Потребитель: ТО ГВС I ступень ---
+051146  Nsec_niz: "Количество секций ТО ГВС I ступень",
+051147  Ngr_niz: "Количество паралл. групп ТО ГВС I ступень",
+051148  Hsec_niz: "Потери напора в секции I ступени, м",
+051149  T11_i_niz: "Исп. температура на входе 1 контура I ступени, °C",
+051150  T12_i_niz: "Исп. температура на выходе 1 контура I ступени, °C",
+051151  T21_i_niz: "Исп. температура на входе 2 контура I ступени, °C",
+051152  T22_i_niz: "Исп. температура на выходе 2 контура I ступени, °C",
+051153  Q_i_niz: "Исп. тепловая нагрузка I ступени, Гкал/час",
+051154  Gniz: "Расход 1 контура I ступени ТО ГВС, т/ч",
+051155  G2_niz: "Расход 2 контура I ступени ТО ГВС, т/ч",
+051156  Q_niz: "Тепловая нагрузка I ступени, Гкал/час",
+051157  T11_niz: "Температура на входе 1 контура I ступени, °C",
+051158  T12_niz: "Температура на выходе 1 контура I ступени, °C",
+051159  T21_niz: "Температура на входе 2 контура I ступени, °C",
+051160  T22_niz: "Температура на выходе 2 контура I ступени, °C",
+051161
+051162  // --- Потребитель: ТО ГВС II ступень ---
+051163  Nsec_verh: "Количество секций ТО ГВС II ступень",
+051164  Ngr_verh: "Количество паралл. групп ТО ГВС II ступень",
+051165  Hsec_verh: "Потери напора в секции II ступени, м",
+051166  T11_i_verh: "Исп. температура на входе 1 контура II ступени, °C",
+051167  T12_i_verh: "Исп. температура на выходе 1 контура II ступени, °C",
+051168  T21_i_verh: "Исп. температура на входе 2 контура II ступени, °C",
+051169  T22_i_verh: "Исп. температура на выходе 2 контура II ступени, °C",
+051170  Q_i_verh: "Исп. тепловая нагрузка II ступени, Гкал/час",
+051171  T11_verh: "Температура на входе 1 контура II ступени, °C",
+051172  T12_verh: "Температура на выходе 1 контура II ступени, °C",
+051173  T21_verh: "Температура на входе 2 контура II ступени, °C",
+051174  T22_verh: "Температура на выходе 2 контура II ступени, °C",
+051175  Gverh: "Расход 1 контура II ступени ТО ГВС, т/ч",
+051176  G2_verh: "Расход 2 контура II ступени ТО ГВС, т/ч",
+051177  Q_verh: "Тепловая нагрузка II ступени, Гкал/час",
+051178
+051179  // --- Потребитель: итоговые ---
+051180  Gset_nal: "Расход сетевой воды после наладки, т/ч",
+051181  Hset_nal: "Напор на регуляторе давления СО, м",
+051182  Gsum_pod: "Суммарный расход сетевой воды, т/ч",
+051183  Q_sum: "Суммарная нагрузка, Гкал/час",
+051184  Gut_pot: "Утечка из системы теплопотребления, т/ч",
+051185  Qut_pot: "Потери тепла от утечки, Ккал",
+051186  Gcon_so: "Расчетный расход на СО (констр.), т/ч",
+051187  Gcon_sv: "Расчетный расход на СВ (констр.), т/ч",
+051188  Gcon_gv: "Расчетный на циркуляцию ГВС (констр.), т/ч",
+051189  Gcon_gv_open: "Разбор воды на ГВС (констр.), т/ч",
+051190  Hcon_ras: "Располагаемый напор на вводе (констр.), м",
+051191
+051192  // --- ЦТП ---
+051193  T1to_so_ctp: "Расчетная температура на выходе 1 контура СО, °C",
+051194  Hnz_ras: "Располагаемый напор второго контура, м",
+051195  Hnz_obr: "Напор в обратке второго контура, м",
+051196  Podpit: "Подпитка второго контура",
+051197  Dshb_pod_u: "Диаметр шайбы на подающем (факт.), мм",
+051198  Nshb_pod_u: "Количество шайб на подающем (факт.), шт",
+051199  Dshb_obr_u: "Диаметр шайбы на обратном (факт.), мм",
+051200  Nshb_obr_u: "Количество шайб на обратном (факт.), шт",
+051201  Dshb_gvs_u: "Диаметр шайбы на ГВС (факт.), мм",
+051202  Nshb_gvs_u: "Количество шайб на ГВС (факт.), шт",
+051203  Hgv2_ras: "Располагаемый напор на ГВС 2 контура, м",
+051204  Hgv2_obr: "Напор в обратке ГВС 2 контура, м",
+051205  Qo_t: "Подключенная нагрузка на отопление, Гкал/ч",
+051206  Qsv_t: "Подключенная нагрузка на вентиляцию, Гкал/ч",
+051207  Qgv_t: "Подключенная нагрузка на ГВС, Гкал/ч",
+051208  Hgv_pod: "Напор в под. тр-де ГВС, м",
+051209  Hgv_obr: "Напор в обр. тр-де ГВС, м",
+051210  Pgv_pod: "Давление в под. тр-де ГВС, м",
+051211  Pgv_obr: "Давление в обр. тр-де ГВС, м",
+051212  RegulType: "Тип регулятора",
+051213  Tsg_pod: "Среднегодовая температура воды в под. тр-де, °С",
+051214  Tsg_obr: "Среднегодовая температура воды в обр. тр-де, °С",
+051215  Tsg_grunt: "Среднегодовая температура грунта, °C",
+051216  Tsg_nv: "Среднегодовая температура наружного воздуха, °С",
+051217  Tsg_podval: "Среднегодовая температура воздуха в подвалах, °C",
+051218  Tgrunt: "Текущая температура грунта, °C",
+051219  Tpodval: "Текущая температура воздуха в подвалах, °C",
+051220  Gsum_pod2: "Суммарный расход воды во 2 контуре ЦТП, т/ч",
+051221  Qut_pod: "Потери тепла от утечек в подающем тр-де, Ккал/ч",
+051222  Qut_obr: "Потери тепла от утечек в обратном тр-де, Ккал/ч",
+051223  Qut_potr: "Потери тепла от утечек в сист. теплопотреб., Ккал/ч",
+051224  T11_i: "Исп. температура воды на входе 1 контура, °C",
+051225  T12_i: "Исп. температура воды на выходе 1 контура, °C",
+051226  T21_i: "Исп. температура воды на входе 2 контура, °C",
+051227  T22_i: "Исп. температура воды на выходе 2 контура, °C",
+051228  G1_i: "Исп. расход 1 контура, т/ч",
+051229  G2_i: "Исп. расход 2 контура, т/ч",
+051230  Qsum: "Суммарная тепловая нагрузка на ЦТП, Гкал/ч",
+051231  Qts_pod: "Тепловые потери в подающем тр-де, Ккал/ч",
+051232  Qts_obr: "Тепловые потери в обратном тр-де, Ккал/ч",
+051233  Gut_potr: "Расход воды на утечки из систем теплопотреб., т/ч",
+051234  Tb_out: "Давление вскипания на выходе ЦТП, м",
+051235
+051236  // --- Обобщённый потребитель ---
+051237  Gu_r: "Расход на открытый водоразбор, т/ч",
+051238  Gto_r: "Расход воды на закр. системы ГВС, т/ч",
+051239  Kto: "Коэфф. изменения расхода на закр. ГВС",
+051240  Beta: "Доля водоразбора из подающего тр-да",
+051241  Sr: "Расчетное сопротивление, м/(т/ч)²",
+051242  Tobr_type: "Способ определения температуры обратной воды",
+051243  Tobr_val: "Значение температуры обратной воды, °C",
+051244
+051245  // --- Надёжность (общие) ---
+051246  Lambda_t_nad: "Средняя интенсивность отказов, 1/(км·ч)",
+051247  Lambda_r_nad: "Расчетная интенсивность отказов, 1/(км·ч)",
+051248  Tr_nad: "Расчетное время восстановления, ч",
+051249  Texp_nad: "Период эксплуатации, лет",
+051250  Trep_nad: "Время восстановления, ч",
+051251  Mrep_nad: "Интенсивность восстановления, 1/ч",
+051252  Lambda_nad: "Интенсивность отказов, 1/(км·ч)",
+051253  Omega_nad: "Поток отказов, 1/ч",
+051254  Qot_nad: "Относительное кол. отключ. нагрузки",
+051255  Pbreak_nad: "Вероятность отказа",
+051256  Beta_nad: "Коэффициент тепловой аккумуляции, ч",
+051257  Tmin_nad: "Минимально допустимая температура, °С",
+051258  R_nad: "Вероятность безотказной работы",
+051259  K_nad: "Коэффициент готовности",
+051260  Qlost_nad: "Средний суммарный недоотпуск теплоты, Гкал/от.период",
+051261
+051262  // --- Источник: расчётные ---
+051263  T1to_so_ist: "Расчетная температура на выходе 1 контура, °C",
+051264
+051265  // --- Адресные ориентиры (обратное геокодирование) ---
+051266  addr_begin: "Адресный ориентир начала участка",
+051267  addr_end: "Адресный ориентир окончания участка",
+051268  addr_point: "Адресный ориентир",
+051269  fias_begin: "ФИАС ID начала участка",
+051270  fias_end: "ФИАС ID окончания участка",
+051271  fias_point: "ФИАС ID",
+051272  fias_id: "ФИАС ID",
+051273
+051274  cluster_id: "ID кластера",
+051275  complaint_count: "Кол-во жалоб",
+051276  radius_m: "Радиус (м)",
+051277  centroid_lon: "Долгота центра",
+051278  centroid_lat: "Широта центра",
+051279  addresses: "Адреса",
+051280  address_count: "Кол-во адресов",
+051281  zone_name: "Зона отказа",
+051282  zone_type: "Тип зоны",
+051283  confidence: "Достоверность",
+051284  downstream_consumer_count: "Кол-во потребителей ниже по сети",
+051285  complaint_consumers: "Потребители с жалобами",
+051286  segment: "Участок",
+051287  segment_length_m: "Длина участка (м)",
+051288  affected_segments_count: "Затронутых участков",
+051289  affected_consumers_count: "Затронутых потребителей",
+051290  consumer_names: "Имена потребителей",
+051291  consumer_addresses: "Адреса потребителей",
+051292  segments_detail: "Детали участков",
+051293  group_complaint_count: "Жалоб в группе",
+051294  group_consumers: "Потребители группы",
+051295  source_name: "Источник теплоснабжения",
+051296  date: "Дата",
+051297};
+051298
+051299const fieldLabelsLower: Record<string, string> = {};
+051300for (const [key, value] of Object.entries(fieldLabels)) {
+051301  fieldLabelsLower[key.toLowerCase()] = value;
+051302}
+051303
+051304export function getFieldLabel(technicalName: string): string {
+051305  const label = fieldLabels[technicalName] ?? fieldLabelsLower[technicalName.toLowerCase()];
+051306  if (label) {
+051307    return `${label} (${technicalName})`;
+051308  }
+051309  return technicalName;
+051310}
+051311
+051312export function transformPropertyKeys(
+051313  properties: Record<string, unknown>
+051314): Record<string, unknown> {
+051315  const result: Record<string, unknown> = {};
+051316  for (const [key, value] of Object.entries(properties)) {
+051317    const newKey = getFieldLabel(key);
+051318    result[newKey] = value;
+051319  }
+051320  return result;
+051321}
+051322
+051323// ============================================================
+051324// Файл: shared/models/auth.ts
+051325// ============================================================
+051326import { sql } from "drizzle-orm";
+051327import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+051328
+051329export const sessions = pgTable(
+051330  "sessions",
+051331  {
+051332    sid: varchar("sid").primaryKey(),
+051333    sess: jsonb("sess").notNull(),
+051334    expire: timestamp("expire").notNull(),
+051335  },
+051336  (table) => [index("IDX_session_expire").on(table.expire)]
+051337);
+051338
+051339export const users = pgTable("users", {
+051340  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+051341  username: varchar("username", { length: 50 }).notNull().unique(),
+051342  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+051343  role: varchar("role", { length: 20 }).notNull().default("user"),
+051344  firstName: varchar("first_name"),
+051345  lastName: varchar("last_name"),
+051346  middleName: varchar("middle_name"),
+051347  position: varchar("position"),
+051348  organization: varchar("organization"),
+051349  phone: varchar("phone"),
+051350  email: varchar("email"),
+051351  isActive: varchar("is_active", { length: 5 }).notNull().default("true"),
+051352  createdAt: timestamp("created_at").defaultNow(),
+051353  updatedAt: timestamp("updated_at").defaultNow(),
+051354});
+051355
+051356export type User = typeof users.$inferSelect;
+051357export type InsertUser = typeof users.$inferInsert;
+051358
+051359export type SafeUser = Omit<User, "passwordHash">;
+051360
+051361// ============================================================
+051362// Файл: shared/models/chat.ts
+051363// ============================================================
+051364import { pgTable, serial, integer, text, timestamp, boolean } from "drizzle-orm/pg-core";
+051365import { createInsertSchema } from "drizzle-zod";
+051366import { z } from "zod";
+051367import { sql } from "drizzle-orm";
+051368
+051369export const conversations = pgTable("conversations", {
+051370  id: serial("id").primaryKey(),
+051371  title: text("title").notNull(),
+051372  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+051373});
+051374
+051375export const messages = pgTable("messages", {
+051376  id: serial("id").primaryKey(),
+051377  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+051378  role: text("role").notNull(),
+051379  content: text("content").notNull(),
+051380  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+051381});
+051382
+051383export const aiProviders = pgTable("ai_providers", {
+051384  id: serial("id").primaryKey(),
+051385  name: text("name").notNull(),
+051386  baseUrl: text("base_url"),
+051387  apiKey: text("api_key"),
+051388  model: text("model"),
+051389  isActive: boolean("is_active").default(true).notNull(),
+051390  isDefault: boolean("is_default").default(false).notNull(),
+051391  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+051392  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+051393});
+051394
+051395export const insertConversationSchema = createInsertSchema(conversations).omit({
+051396  id: true,
+051397  createdAt: true,
+051398});
+051399
+051400export const insertMessageSchema = createInsertSchema(messages).omit({
+051401  id: true,
+051402  createdAt: true,
+051403});
+051404
+051405export const insertAiProviderSchema = createInsertSchema(aiProviders).omit({
+051406  id: true,
+051407  createdAt: true,
+051408  updatedAt: true,
+051409});
+051410
+051411export const updateAiProviderSchema = z.object({
+051412  name: z.string().optional(),
+051413  baseUrl: z.string().nullable().optional(),
+051414  apiKey: z.string().nullable().optional(),
+051415  model: z.string().nullable().optional(),
+051416  isActive: z.boolean().optional(),
+051417  isDefault: z.boolean().optional(),
+051418});
+051419
+051420export type Conversation = typeof conversations.$inferSelect;
+051421export type InsertConversation = z.infer<typeof insertConversationSchema>;
+051422export type Message = typeof messages.$inferSelect;
+051423export type InsertMessage = z.infer<typeof insertMessageSchema>;
+051424export type AiProvider = typeof aiProviders.$inferSelect;
+051425export type InsertAiProvider = z.infer<typeof insertAiProviderSchema>;
+051426export type UpdateAiProvider = z.infer<typeof updateAiProviderSchema>;
+051427
+051428
+051429// ============================================================
+051430// Файл: shared/schema.ts
+051431// ============================================================
+051432import { z } from "zod";
+051433
+051434// ZuluServer connection configuration
+051435export const zuluConnectionSchema = z.object({
+051436  host: z.string().min(1, "Host is required"),
+051437  port: z.number().min(1).max(65535).optional(),
+051438  layerName: z.string().default(""),
+051439  useWfs: z.boolean().default(false),
+051440  useZws: z.boolean().default(false),
+051441  baseUrl: z.string().optional(),
+051442});
+051443
+051444export type ZuluConnection = z.infer<typeof zuluConnectionSchema>;
+051445
+051446// Sublayer filter for virtual layers
+051447export const sublayerFilterSchema = z.object({
+051448  field: z.string(),
+051449  value: z.string(),
+051450  label: z.string(),
+051451  visible: z.boolean().default(true),
+051452});
+051453
+051454export type SublayerFilter = z.infer<typeof sublayerFilterSchema>;
+051455
+051456// Layer configuration
+051457export const layerConfigSchema = z.object({
+051458  id: z.string(),
+051459  name: z.string(),
+051460  visible: z.boolean().default(true),
+051461  opacity: z.number().min(0).max(1).default(1),
+051462  type: z.enum(["wms", "wfs", "base"]),
+051463  url: z.string().optional(),
+051464  sublayers: z.array(sublayerFilterSchema).optional(),
+051465  activeFilters: z.record(z.string(), z.array(z.string())).optional(),
+051466});
+051467
+051468export type LayerConfig = z.infer<typeof layerConfigSchema>;
+051469
+051470// Feature info from WMS GetFeatureInfo or WFS
+051471export const featureInfoSchema = z.object({
+051472  id: z.string(),
+051473  layerName: z.string(),
+051474  properties: z.record(z.string(), z.unknown()),
+051475  geometry: z.object({
+051476    type: z.string(),
+051477    coordinates: z.unknown(),
+051478  }).optional(),
+051479});
+051480
+051481export type FeatureInfo = z.infer<typeof featureInfoSchema>;
+051482
+051483// Map view state
+051484export const mapViewStateSchema = z.object({
+051485  center: z.tuple([z.number(), z.number()]),
+051486  zoom: z.number(),
+051487  rotation: z.number().default(0),
+051488});
+051489
+051490export type MapViewState = z.infer<typeof mapViewStateSchema>;
+051491
+051492// WMS capabilities response
+051493export const wmsCapabilitiesSchema = z.object({
+051494  layers: z.array(z.object({
+051495    name: z.string(),
+051496    title: z.string(),
+051497    abstract: z.string().optional(),
+051498    bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+051499  })),
+051500  version: z.string(),
+051501  title: z.string().optional(),
+051502});
+051503
+051504export type WmsCapabilities = z.infer<typeof wmsCapabilitiesSchema>;
+051505
+051506// Connection status
+051507export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
+051508
+051509// API response types
+051510export interface ProxyWmsRequest {
+051511  baseUrl: string;
+051512  service: "WMS" | "WFS";
+051513  request: string;
+051514  layers?: string;
+051515  bbox?: string;
+051516  width?: number;
+051517  height?: number;
+051518  format?: string;
+051519  srs?: string;
+051520  version?: string;
+051521  query?: string;
+051522  x?: number;
+051523  y?: number;
+051524  info_format?: string;
+051525}
+051526
+051527// Ticket (marker point) schema
+051528export const ticketSchema = z.object({
+051529  id: z.number(),
+051530  lon: z.number(),
+051531  lat: z.number(),
+051532  status: z.enum(["bound", "unbound"]),
+051533  boundPolygonId: z.string().optional(),
+051534  boundLayerId: z.string().optional(),
+051535  nameIst: z.string().optional(),
+051536  notes: z.string().optional(),
+051537  createdAt: z.string(),
+051538});
+051539
+051540export type Ticket = z.infer<typeof ticketSchema>;
+051541
+051542export const insertTicketSchema = ticketSchema.omit({ id: true, createdAt: true, status: true });
+051543export type InsertTicket = z.infer<typeof insertTicketSchema>;
+051544
+051545// Point style options for shapefile layers
+051546// Basic shapes + ГОСТ heat network symbols
+051547export const pointStyleSchema = z.enum([
+051548  // Basic geometric shapes
+051549  "circle", "square", "triangle", "cloud", "diamond", "star", "cross", "hexagon", "pentagon",
+051550  // ГОСТ heat network symbols
+051551  "heat-source",    // Теплоисточник
+051552  "ctp",            // ЦТП (Центральный тепловой пункт)
+051553  "itp",            // ИТП (Индивидуальный тепловой пункт)
+051554  "valve",          // Задвижка
+051555  "heat-chamber",   // Тепловая камера
+051556  "pump-station",   // Насосная станция
+051557  "compensator",    // Компенсатор
+051558  "support",        // Опора
+051559]);
+051560export type PointStyle = z.infer<typeof pointStyleSchema>;
+051561
+051562// Line style options for shapefile layers
+051563// Basic styles + ГОСТ heat network line styles
+051564export const lineStyleSchema = z.enum([
+051565  // Basic line styles
+051566  "solid", "dashed", "double", "dash-dot", "dotted", "long-dash", "dash-dot-dot",
+051567  // ГОСТ heat network line styles
+051568  "relaying",              // Под перекладку
+051569  "bypass",                // Байпас (временная схема)
+051570  "demolition",            // Под демонтаж
+051571  "above-ground",          // Наземная
+051572  "underground-channel",   // Подземная канальная
+051573  "underground-channelless", // Подземная бесканальная
+051574  "state-program",         // Под перекладку в рамках госпрограммы
+051575]);
+051576export type LineStyle = z.infer<typeof lineStyleSchema>;
+051577
+051578// Layer source type
+051579export const layerSourceSchema = z.enum(["user", "import"]);
+051580export type LayerSource = z.infer<typeof layerSourceSchema>;
+051581
+051582// Style renderer types (inspired by QGIS/ArcGIS)
+051583export const rendererTypeSchema = z.enum(["single", "categorized", "graduated"]);
+051584export type RendererType = z.infer<typeof rendererTypeSchema>;
+051585
+051586export const styleClassItemSchema = z.object({
+051587  color: z.string(),
+051588  pointStyle: pointStyleSchema.optional(),
+051589  lineStyle: lineStyleSchema.optional(),
+051590  strokeWidth: z.number().optional(),
+051591  fillOpacity: z.number().min(0).max(1).optional(),
+051592  iconSize: z.number().min(4).max(128).optional(),
+051593  customIconId: z.number().optional(),
+051594});
+051595export type StyleClassItem = z.infer<typeof styleClassItemSchema>;
+051596
+051597export const categorizedClassSchema = z.object({
+051598  value: z.union([z.string(), z.number(), z.boolean()]),
+051599  label: z.string(),
+051600  style: styleClassItemSchema,
+051601});
+051602export type CategorizedClass = z.infer<typeof categorizedClassSchema>;
+051603
+051604export const graduatedClassSchema = z.object({
+051605  min: z.number(),
+051606  max: z.number(),
+051607  label: z.string(),
+051608  style: styleClassItemSchema,
+051609});
+051610export type GraduatedClass = z.infer<typeof graduatedClassSchema>;
+051611
+051612export const styleConfigSchema = z.object({
+051613  renderer: rendererTypeSchema.default("single"),
+051614  field: z.string().optional(),
+051615  categorizedClasses: z.array(categorizedClassSchema).optional(),
+051616  graduatedClasses: z.array(graduatedClassSchema).optional(),
+051617  defaultStyle: styleClassItemSchema.optional(),
+051618});
+051619export type StyleConfig = z.infer<typeof styleConfigSchema>;
+051620
+051621// Geometry types for drawn features
+051622export const geometryTypeSchema = z.enum(["Point", "LineString", "Polygon"]);
+051623export type GeometryType = z.infer<typeof geometryTypeSchema>;
+051624
+051625// Attribute field types
+051626export const attributeFieldTypeSchema = z.enum(["text", "number", "date", "boolean", "select"]);
+051627export type AttributeFieldType = z.infer<typeof attributeFieldTypeSchema>;
+051628
+051629// Attribute field definition
+051630export const attributeFieldSchema = z.object({
+051631  name: z.string(),
+051632  type: attributeFieldTypeSchema,
+051633  required: z.boolean().default(false),
+051634  defaultValue: z.unknown().optional(),
+051635  options: z.array(z.string()).optional(), // For select type
+051636});
+051637export type AttributeField = z.infer<typeof attributeFieldSchema>;
+051638
+051639// Layer schema definition (for custom attribute structures)
+051640export const layerSchemaDefinitionSchema = z.object({
+051641  id: z.number(),
+051642  layerId: z.number(),
+051643  fields: z.array(attributeFieldSchema),
+051644  createdAt: z.string(),
+051645  updatedAt: z.string(),
+051646});
+051647export type LayerSchemaDefinition = z.infer<typeof layerSchemaDefinitionSchema>;
+051648
+051649export const insertLayerSchemaDefinitionSchema = layerSchemaDefinitionSchema.omit({ id: true, createdAt: true, updatedAt: true });
+051650export type InsertLayerSchemaDefinition = z.infer<typeof insertLayerSchemaDefinitionSchema>;
+051651
+051652// Drawn feature schema (user-created geometry)
+051653export const drawnFeatureSchema = z.object({
+051654  id: z.number(),
+051655  layerId: z.number(),
+051656  geometryType: geometryTypeSchema,
+051657  coordinates: z.any(), // GeoJSON coordinates
+051658  properties: z.record(z.string(), z.unknown()).default({}),
+051659  createdAt: z.string(),
+051660  updatedAt: z.string(),
+051661  version: z.number().default(1),
+051662});
+051663export type DrawnFeature = z.infer<typeof drawnFeatureSchema>;
+051664
+051665export const insertDrawnFeatureSchema = drawnFeatureSchema.omit({ id: true, createdAt: true, updatedAt: true, version: true });
+051666export type InsertDrawnFeature = z.infer<typeof insertDrawnFeatureSchema>;
+051667
+051668// Feature history for versioning
+051669export const featureHistorySchema = z.object({
+051670  id: z.number(),
+051671  featureId: z.number(),
+051672  layerId: z.number(),
+051673  geometryType: geometryTypeSchema,
+051674  coordinates: z.any(),
+051675  properties: z.record(z.string(), z.unknown()),
+051676  version: z.number(),
+051677  action: z.enum(["create", "update", "delete"]),
+051678  createdAt: z.string(),
+051679});
+051680export type FeatureHistory = z.infer<typeof featureHistorySchema>;
+051681
+051682export const insertFeatureHistorySchema = featureHistorySchema.omit({ id: true, createdAt: true });
+051683export type InsertFeatureHistory = z.infer<typeof insertFeatureHistorySchema>;
+051684
+051685export const networkTypeSchema = z.enum(["source", "ctp", "consumer", "segment", "valve", "node", "pump", "accident"]);
+051686export type NetworkType = z.infer<typeof networkTypeSchema>;
+051687
+051688// Editable layer (user-created layer for drawing or imported from shapefile)
+051689export const editableLayerSchema = z.object({
+051690  id: z.number(),
+051691  sceneId: z.number().nullable().optional(),
+051692  folderId: z.number().nullable().optional(),
+051693  name: z.string(),
+051694  geometryType: geometryTypeSchema,
+051695  color: z.string().default("#1976D2"),
+051696  pointStyle: pointStyleSchema.default("circle"),
+051697  lineStyle: lineStyleSchema.default("solid"),
+051698  visible: z.boolean().default(true),
+051699  opacity: z.number().min(0).max(1).default(1),
+051700  featureCount: z.number().default(0),
+051701  displayOrder: z.number().default(0),
+051702  source: layerSourceSchema.default("user"),
+051703  sourceFileName: z.string().optional(),
+051704  sourceFiles: z.array(z.string()).optional(),
+051705  crs: z.string().default("EPSG:4326"),
+051706  styleConfig: styleConfigSchema.optional(),
+051707  metadata: z.record(z.unknown()).nullable().optional(),
+051708  networkType: networkTypeSchema.nullable().optional(),
+051709  createdAt: z.string(),
+051710  updatedAt: z.string(),
+051711});
+051712export type EditableLayer = z.infer<typeof editableLayerSchema>;
+051713
+051714export const insertEditableLayerSchema = editableLayerSchema.omit({ id: true, createdAt: true, updatedAt: true, featureCount: true });
+051715export type InsertEditableLayer = z.infer<typeof insertEditableLayerSchema>;
+051716
+051717// Auth schema (users and sessions)
+051718export * from "./models/auth";
+051719
+051720import { sql } from "drizzle-orm";
+051721import { pgTable, text, varchar, integer, jsonb, timestamp, real, index } from "drizzle-orm/pg-core";
+051722import { createInsertSchema } from "drizzle-zod";
+051723
+051724// Layer folders for grouping layers
+051725export const layerFolders = pgTable("layer_folders", {
+051726  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051727  sceneId: integer("scene_id").notNull(),
+051728  name: text("name").notNull(),
+051729  visible: integer("visible").notNull().default(1),
+051730  displayOrder: integer("display_order").notNull().default(0),
+051731  createdAt: timestamp("created_at").notNull().defaultNow(),
+051732});
+051733
+051734export type LayerFolder = typeof layerFolders.$inferSelect;
+051735export type InsertLayerFolder = typeof layerFolders.$inferInsert;
+051736
+051737export const layerFolderSchema = z.object({
+051738  id: z.number(),
+051739  sceneId: z.number(),
+051740  name: z.string(),
+051741  visible: z.boolean(),
+051742  displayOrder: z.number().default(0),
+051743  createdAt: z.string(),
+051744});
+051745
+051746export const insertLayerFolderSchema = z.object({
+051747  sceneId: z.number(),
+051748  name: z.string().min(1),
+051749});
+051750
+051751// PostgreSQL tables for GIS data
+051752export const editableLayers = pgTable("editable_layers", {
+051753  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051754  sceneId: integer("scene_id"), // null for global layers, scene ID for scene-specific layers
+051755  folderId: integer("folder_id"), // null = not in any folder
+051756  name: text("name").notNull(),
+051757  geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
+051758  color: text("color").notNull().default("#1976D2"),
+051759  pointStyle: text("point_style").notNull().default("circle"),
+051760  lineStyle: text("line_style").notNull().default("solid"),
+051761  visible: integer("visible").notNull().default(1),
+051762  opacity: real("opacity").notNull().default(1),
+051763  featureCount: integer("feature_count").notNull().default(0),
+051764  displayOrder: integer("display_order").notNull().default(0),
+051765  source: text("source").notNull().default("user"), // "user" or "import"
+051766  sourceFileName: text("source_file_name"), // original filename for imported layers
+051767  sourceFiles: jsonb("source_files").default([]), // list of files in shapefile set (shp, dbf, prj, cpg, shx)
+051768  crs: text("crs").notNull().default("EPSG:4326"), // coordinate reference system
+051769  styleConfig: jsonb("style_config"),
+051770  metadata: jsonb("metadata"),
+051771  networkType: text("network_type"),
+051772  createdAt: timestamp("created_at").notNull().defaultNow(),
+051773  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+051774});
+051775
+051776export const drawnFeatures = pgTable("drawn_features", {
+051777  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051778  layerId: integer("layer_id").notNull(),
+051779  geometryType: text("geometry_type").notNull(),
+051780  coordinates: jsonb("coordinates").notNull(),
+051781  properties: jsonb("properties").notNull().default({}),
+051782  version: integer("version").notNull().default(1),
+051783  bboxMinX: real("bbox_min_x"),
+051784  bboxMinY: real("bbox_min_y"),
+051785  bboxMaxX: real("bbox_max_x"),
+051786  bboxMaxY: real("bbox_max_y"),
+051787  createdAt: timestamp("created_at").notNull().defaultNow(),
+051788  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+051789}, (table) => [
+051790  index("drawn_features_layer_id_idx").on(table.layerId),
+051791  index("drawn_features_bbox_idx").on(table.layerId, table.bboxMinX, table.bboxMinY, table.bboxMaxX, table.bboxMaxY),
+051792]);
+051793
+051794export const featureHistory = pgTable("feature_history", {
+051795  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051796  featureId: integer("feature_id").notNull(),
+051797  layerId: integer("layer_id").notNull(),
+051798  geometryType: text("geometry_type").notNull(),
+051799  coordinates: jsonb("coordinates").notNull(),
+051800  properties: jsonb("properties").notNull(),
+051801  version: integer("version").notNull(),
+051802  action: text("action").notNull(), // create, update, delete
+051803  createdAt: timestamp("created_at").notNull().defaultNow(),
+051804});
+051805
+051806export const layerSchemas = pgTable("layer_schemas", {
+051807  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051808  layerId: integer("layer_id").notNull().unique(),
+051809  fields: jsonb("fields").notNull().default([]),
+051810  createdAt: timestamp("created_at").notNull().defaultNow(),
+051811  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+051812});
+051813
+051814// Scene role types
+051815export const sceneRoleSchema = z.enum(["owner", "editor", "viewer"]);
+051816export type SceneRole = z.infer<typeof sceneRoleSchema>;
+051817
+051818// Scene folders for grouping scenes
+051819export const sceneFolders = pgTable("scene_folders", {
+051820  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051821  name: text("name").notNull(),
+051822  parentId: integer("parent_id"),
+051823  createdBy: varchar("created_by").notNull(),
+051824  createdAt: timestamp("created_at").notNull().defaultNow(),
+051825});
+051826
+051827export type SceneFolder = typeof sceneFolders.$inferSelect;
+051828export type InsertSceneFolder = typeof sceneFolders.$inferInsert;
+051829
+051830export const insertSceneFolderSchema = z.object({
+051831  name: z.string().min(1),
+051832  parentId: z.number().nullable().optional(),
+051833  createdBy: z.string(),
+051834});
+051835
+051836// Scenes table - project containers
+051837export const scenes = pgTable("scenes", {
+051838  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051839  name: text("name").notNull(),
+051840  description: text("description"),
+051841  folderId: integer("folder_id"),
+051842  createdBy: varchar("created_by").notNull(),
+051843  createdAt: timestamp("created_at").notNull().defaultNow(),
+051844  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+051845});
+051846
+051847export type Scene = typeof scenes.$inferSelect;
+051848export type InsertScene = typeof scenes.$inferInsert;
+051849
+051850export const insertSceneSchema = z.object({
+051851  name: z.string().min(1),
+051852  description: z.string().optional(),
+051853  folderId: z.number().nullable().optional(),
+051854  createdBy: z.string(),
+051855});
+051856
+051857// Scene members - user access to scenes with roles
+051858export const sceneMembers = pgTable("scene_members", {
+051859  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051860  sceneId: integer("scene_id").notNull(),
+051861  userId: varchar("user_id").notNull(),
+051862  role: text("role").notNull().default("viewer"), // owner, editor, viewer
+051863  addedAt: timestamp("added_at").notNull().defaultNow(),
+051864});
+051865
+051866export type SceneMember = typeof sceneMembers.$inferSelect;
+051867export type InsertSceneMember = typeof sceneMembers.$inferInsert;
+051868
+051869export const insertSceneMemberSchema = z.object({
+051870  sceneId: z.number(),
+051871  userId: z.string(),
+051872  role: sceneRoleSchema.default("viewer"),
+051873});
+051874
+051875// Datasets - processed shapefile data catalog
+051876export const datasets = pgTable("datasets", {
+051877  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051878  name: text("name").notNull(),
+051879  originalFilename: text("original_filename").notNull(),
+051880  geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
+051881  crs: text("crs").default("EPSG:4326"),
+051882  fieldSchema: jsonb("field_schema").notNull().default([]), // Array of AttributeField
+051883  featureCount: integer("feature_count").notNull().default(0),
+051884  createdBy: varchar("created_by").notNull(),
+051885  createdAt: timestamp("created_at").notNull().defaultNow(),
+051886});
+051887
+051888export type Dataset = typeof datasets.$inferSelect;
+051889export type InsertDataset = typeof datasets.$inferInsert;
+051890
+051891export const insertDatasetSchema = z.object({
+051892  name: z.string().min(1),
+051893  originalFilename: z.string(),
+051894  geometryType: z.string(),
+051895  crs: z.string().default("EPSG:4326"),
+051896  fieldSchema: z.array(attributeFieldSchema).default([]),
+051897  createdBy: z.string(),
+051898});
+051899
+051900// Dataset features - geometry and attributes for each dataset
+051901export const datasetFeatures = pgTable("dataset_features", {
+051902  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051903  datasetId: integer("dataset_id").notNull(),
+051904  geometryType: text("geometry_type").notNull(),
+051905  coordinates: jsonb("coordinates").notNull(),
+051906  properties: jsonb("properties").notNull().default({}),
+051907  createdAt: timestamp("created_at").notNull().defaultNow(),
+051908});
+051909
+051910export type DatasetFeature = typeof datasetFeatures.$inferSelect;
+051911export type InsertDatasetFeature = typeof datasetFeatures.$inferInsert;
+051912
+051913export const insertDatasetFeatureSchema = z.object({
+051914  datasetId: z.number(),
+051915  geometryType: z.string(),
+051916  coordinates: z.any(),
+051917  properties: z.record(z.string(), z.unknown()).default({}),
+051918});
+051919
+051920// Scene datasets - links datasets to scenes with display settings
+051921export const sceneDatasets = pgTable("scene_datasets", {
+051922  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051923  sceneId: integer("scene_id").notNull(),
+051924  datasetId: integer("dataset_id").notNull(),
+051925  layerName: text("layer_name"), // custom name in this scene
+051926  isVisible: integer("is_visible").notNull().default(1),
+051927  opacity: real("opacity").notNull().default(1),
+051928  color: text("color").notNull().default("#1976D2"),
+051929  pointStyle: text("point_style").notNull().default("circle"),
+051930  lineStyle: text("line_style").notNull().default("solid"),
+051931  zIndex: integer("z_index").notNull().default(0),
+051932  addedAt: timestamp("added_at").notNull().defaultNow(),
+051933});
+051934
+051935export type SceneDataset = typeof sceneDatasets.$inferSelect;
+051936export type InsertSceneDataset = typeof sceneDatasets.$inferInsert;
+051937
+051938export const insertSceneDatasetSchema = z.object({
+051939  sceneId: z.number(),
+051940  datasetId: z.number(),
+051941  layerName: z.string().optional(),
+051942  isVisible: z.number().default(1),
+051943  opacity: z.number().default(1),
+051944  color: z.string().default("#1976D2"),
+051945  pointStyle: pointStyleSchema.default("circle"),
+051946  lineStyle: lineStyleSchema.default("solid"),
+051947  zIndex: z.number().default(0),
+051948});
+051949
+051950// Uploads - tracking shapefile upload status
+051951export const uploadStatusSchema = z.enum(["pending", "processing", "completed", "failed"]);
+051952export type UploadStatus = z.infer<typeof uploadStatusSchema>;
+051953
+051954export const uploads = pgTable("uploads", {
+051955  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051956  filename: text("filename").notNull(),
+051957  originalFilename: text("original_filename").notNull(),
+051958  status: text("status").notNull().default("pending"), // pending, uploading, processing, completed, failed
+051959  error: text("error"),
+051960  datasetId: integer("dataset_id"),
+051961  layerId: integer("layer_id"),
+051962  progress: integer("progress").notNull().default(0),
+051963  totalFeatures: integer("total_features"),
+051964  processedFeatures: integer("processed_features").notNull().default(0),
+051965  sceneId: integer("scene_id"),
+051966  color: text("color"),
+051967  createdBy: varchar("created_by").notNull(),
+051968  createdAt: timestamp("created_at").notNull().defaultNow(),
+051969  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+051970});
+051971
+051972export type Upload = typeof uploads.$inferSelect;
+051973export type InsertUpload = typeof uploads.$inferInsert;
+051974
+051975export const insertUploadSchema = z.object({
+051976  filename: z.string(),
+051977  originalFilename: z.string(),
+051978  createdBy: z.string(),
+051979});
+051980
+051981// Custom icons - user-uploaded SVG icons for styling
+051982export const customIcons = pgTable("custom_icons", {
+051983  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+051984  name: text("name").notNull(),
+051985  svgContent: text("svg_content").notNull(),
+051986  category: text("category").default("custom"),
+051987  createdBy: varchar("created_by"),
+051988  createdAt: timestamp("created_at").notNull().defaultNow(),
+051989});
+051990
+051991export type CustomIcon = typeof customIcons.$inferSelect;
+051992export type InsertCustomIcon = typeof customIcons.$inferInsert;
+051993
+051994export const insertCustomIconSchema = z.object({
+051995  name: z.string().min(1),
+051996  svgContent: z.string().min(1),
+051997  category: z.string().default("custom"),
+051998  createdBy: z.string().optional(),
+051999});
+052000
+052001// API Keys for external integrations (Telegram bot, etc.)
+052002export const apiKeys = pgTable("api_keys", {
+052003  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+052004  userId: varchar("user_id").notNull(),
+052005  name: text("name").notNull(),
+052006  tokenHash: varchar("token_hash", { length: 255 }).notNull(),
+052007  sceneId: integer("scene_id"),
+052008  permissions: text("permissions").array().notNull().default(sql`ARRAY['create_point']`),
+052009  isActive: integer("is_active").notNull().default(1),
+052010  lastUsedAt: timestamp("last_used_at"),
+052011  createdAt: timestamp("created_at").notNull().defaultNow(),
+052012});
+052013
+052014export type ApiKey = typeof apiKeys.$inferSelect;
+052015export type InsertApiKey = typeof apiKeys.$inferInsert;
+052016
+052017export const apiKeyPermissionSchema = z.enum(["create_point", "read_layers", "read_scenes", "spatial_query"]);
+052018export type ApiKeyPermission = z.infer<typeof apiKeyPermissionSchema>;
+052019
+052020export const insertApiKeySchema = z.object({
+052021  userId: z.string(),
+052022  name: z.string().min(1, "Название обязательно"),
+052023  tokenHash: z.string(),
+052024  sceneId: z.number().optional(),
+052025  permissions: z.array(apiKeyPermissionSchema).default(["create_point"]),
+052026});
+052027
+052028// Application settings - key-value store for app configuration
+052029export const appSettings = pgTable("app_settings", {
+052030  key: varchar("key", { length: 255 }).primaryKey(),
+052031  value: text("value").notNull(),
+052032  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+052033});
+052034
+052035export type AppSetting = typeof appSettings.$inferSelect;
+052036export type InsertAppSetting = typeof appSettings.$inferInsert;
+052037
+052038export const geocodeProviderSchema = z.enum(["yandex", "dadata"]);
+052039export type GeocodeProvider = z.infer<typeof geocodeProviderSchema>;
+052040
+052041// Audit log for user action tracking
+052042export const auditLog = pgTable("audit_log", {
+052043  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+052044  userId: varchar("user_id"),
+052045  username: varchar("username"),
+052046  action: varchar("action", { length: 100 }).notNull(),
+052047  entityType: varchar("entity_type", { length: 50 }),
+052048  entityId: varchar("entity_id", { length: 100 }),
+052049  sceneId: integer("scene_id"),
+052050  details: jsonb("details"),
+052051  createdAt: timestamp("created_at").notNull().defaultNow(),
+052052}, (table) => [
+052053  index("audit_log_user_id_idx").on(table.userId),
+052054  index("audit_log_created_at_idx").on(table.createdAt),
+052055  index("audit_log_action_idx").on(table.action),
+052056]);
+052057
+052058export type AuditLogEntry = typeof auditLog.$inferSelect;
+052059
+052060// Bug reports
+052061export const bugReportStatusEnum = ["new", "rejected", "in_progress", "fixed", "paused"] as const;
+052062export type BugReportStatus = typeof bugReportStatusEnum[number];
+052063
+052064export const bugReports = pgTable("bug_reports", {
+052065  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+052066  userId: varchar("user_id").notNull(),
+052067  username: varchar("username"),
+052068  message: text("message").notNull(),
+052069  screenshotPath: text("screenshot_path"),
+052070  status: varchar("status", { length: 50 }).notNull().default("new"),
+052071  createdAt: timestamp("created_at").notNull().defaultNow(),
+052072}, (table) => [
+052073  index("bug_reports_user_id_idx").on(table.userId),
+052074  index("bug_reports_status_idx").on(table.status),
+052075  index("bug_reports_created_at_idx").on(table.createdAt),
+052076]);
+052077
+052078export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: true, createdAt: true });
+052079export type BugReport = typeof bugReports.$inferSelect;
+052080export type InsertBugReport = z.infer<typeof insertBugReportSchema>;
+052081
+052082// Sensor integration tables
+052083export const sensorIntegrationConfig = pgTable("sensor_integration_config", {
+052084  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+052085  apiUrl: text("api_url").notNull().default("https://mvitu.arki.mosreg.ru/api/edds/bot/koteln_last_sensors_state/index.php"),
+052086  apiToken: text("api_token").notNull().default(""),
+052087  pollingIntervalMinutes: integer("polling_interval_minutes").notNull().default(15),
+052088  isEnabled: integer("is_enabled").notNull().default(0),
+052089  isDebugMode: integer("is_debug_mode").notNull().default(0),
+052090  lastSyncAt: timestamp("last_sync_at"),
+052091});
+052092
+052093export type SensorIntegrationConfig = typeof sensorIntegrationConfig.$inferSelect;
+052094export type InsertSensorIntegrationConfig = typeof sensorIntegrationConfig.$inferInsert;
+052095
+052096export const sensorObjectBindings = pgTable("sensor_object_bindings", {
+052097  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+052098  idCdsKoteln: integer("id_cds_koteln").notNull().unique(),
+052099  objectType: text("object_type").notNull(), // 'source' | 'ctp' | 'consumer'
+052100  layerId: integer("layer_id").notNull(),
+052101  objectName: text("object_name").notNull().default(""),
+052102  createdAt: timestamp("created_at").notNull().defaultNow(),
+052103});
+052104
+052105export type SensorObjectBinding = typeof sensorObjectBindings.$inferSelect;
+052106export type InsertSensorObjectBinding = typeof sensorObjectBindings.$inferInsert;
+052107
+052108export const sensorReadingsCache = pgTable("sensor_readings_cache", {
+052109  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+052110  idCdsKoteln: integer("id_cds_koteln").notNull().unique(),
+052111  mrName: text("mr_name"),
+052112  placeName: text("place_name"),
+052113  nameKoteln: text("name_koteln"),
+052114  address: text("address"),
+052115  rsoName: text("rso_name"),
+052116  type: text("type"),
+052117  mkdCount: integer("mkd_count"),
+052118  mkdPeopleCount: integer("mkd_people_count"),
+052119  activeClaims: jsonb("active_claims").default([]),
+052120  sensorsState: text("sensors_state"),
+052121  sensorDate: timestamp("sensor_date"),
+052122  tForward: real("t_forward"),
+052123  tReverse: real("t_reverse"),
+052124  pForward: real("p_forward"),
+052125  pRevers: real("p_revers"),
+052126  responsibles: jsonb("responsibles").default([]),
+052127  fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
+052128});
+052129
+052130export type SensorReadingCache = typeof sensorReadingsCache.$inferSelect;
+052131export type InsertSensorReadingCache = typeof sensorReadingsCache.$inferInsert;
+052132
+052133// External API schemas
+052134export const externalCreatePointSchema = z.object({
+052135  sceneId: z.number(),
+052136  layerId: z.number(),
+052137  coordinates: z.tuple([z.number(), z.number()]), // [longitude, latitude]
+052138  properties: z.record(z.string(), z.unknown()).default({}),
+052139});
+052140export type ExternalCreatePoint = z.infer<typeof externalCreatePointSchema>;
+052141
+052142// ============================================================
+052143// Файл: tailwind.config.ts
+052144// ============================================================
+052145import type { Config } from "tailwindcss";
+052146
+052147export default {
+052148  darkMode: ["class"],
+052149  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
+052150  theme: {
+052151    extend: {
+052152      borderRadius: {
+052153        lg: ".5625rem", /* 9px */
+052154        md: ".375rem", /* 6px */
+052155        sm: ".1875rem", /* 3px */
+052156      },
+052157      colors: {
+052158        // Flat / base colors (regular buttons)
+052159        background: "hsl(var(--background) / <alpha-value>)",
+052160        foreground: "hsl(var(--foreground) / <alpha-value>)",
+052161        border: "hsl(var(--border) / <alpha-value>)",
+052162        input: "hsl(var(--input) / <alpha-value>)",
+052163        card: {
+052164          DEFAULT: "hsl(var(--card) / <alpha-value>)",
+052165          foreground: "hsl(var(--card-foreground) / <alpha-value>)",
+052166          border: "hsl(var(--card-border) / <alpha-value>)",
+052167        },
+052168        popover: {
+052169          DEFAULT: "hsl(var(--popover) / <alpha-value>)",
+052170          foreground: "hsl(var(--popover-foreground) / <alpha-value>)",
+052171          border: "hsl(var(--popover-border) / <alpha-value>)",
+052172        },
+052173        primary: {
+052174          DEFAULT: "hsl(var(--primary) / <alpha-value>)",
+052175          foreground: "hsl(var(--primary-foreground) / <alpha-value>)",
+052176          border: "var(--primary-border)",
+052177        },
+052178        secondary: {
+052179          DEFAULT: "hsl(var(--secondary) / <alpha-value>)",
+052180          foreground: "hsl(var(--secondary-foreground) / <alpha-value>)",
+052181          border: "var(--secondary-border)",
+052182        },
+052183        muted: {
+052184          DEFAULT: "hsl(var(--muted) / <alpha-value>)",
+052185          foreground: "hsl(var(--muted-foreground) / <alpha-value>)",
+052186          border: "var(--muted-border)",
+052187        },
+052188        accent: {
+052189          DEFAULT: "hsl(var(--accent) / <alpha-value>)",
+052190          foreground: "hsl(var(--accent-foreground) / <alpha-value>)",
+052191          border: "var(--accent-border)",
+052192        },
+052193        destructive: {
+052194          DEFAULT: "hsl(var(--destructive) / <alpha-value>)",
+052195          foreground: "hsl(var(--destructive-foreground) / <alpha-value>)",
+052196          border: "var(--destructive-border)",
+052197        },
+052198        ring: "hsl(var(--ring) / <alpha-value>)",
+052199        chart: {
+052200          "1": "hsl(var(--chart-1) / <alpha-value>)",
+052201          "2": "hsl(var(--chart-2) / <alpha-value>)",
+052202          "3": "hsl(var(--chart-3) / <alpha-value>)",
+052203          "4": "hsl(var(--chart-4) / <alpha-value>)",
+052204          "5": "hsl(var(--chart-5) / <alpha-value>)",
+052205        },
+052206        sidebar: {
+052207          ring: "hsl(var(--sidebar-ring) / <alpha-value>)",
+052208          DEFAULT: "hsl(var(--sidebar) / <alpha-value>)",
+052209          foreground: "hsl(var(--sidebar-foreground) / <alpha-value>)",
+052210          border: "hsl(var(--sidebar-border) / <alpha-value>)",
+052211        },
+052212        "sidebar-primary": {
+052213          DEFAULT: "hsl(var(--sidebar-primary) / <alpha-value>)",
+052214          foreground: "hsl(var(--sidebar-primary-foreground) / <alpha-value>)",
+052215          border: "var(--sidebar-primary-border)",
+052216        },
+052217        "sidebar-accent": {
+052218          DEFAULT: "hsl(var(--sidebar-accent) / <alpha-value>)",
+052219          foreground: "hsl(var(--sidebar-accent-foreground) / <alpha-value>)",
+052220          border: "var(--sidebar-accent-border)"
+052221        },
+052222        status: {
+052223          online: "rgb(34 197 94)",
+052224          away: "rgb(245 158 11)",
+052225          busy: "rgb(239 68 68)",
+052226          offline: "rgb(156 163 175)",
+052227        },
+052228      },
+052229      fontFamily: {
+052230        sans: ["var(--font-sans)"],
+052231        serif: ["var(--font-serif)"],
+052232        mono: ["var(--font-mono)"],
+052233      },
+052234      keyframes: {
+052235        "accordion-down": {
+052236          from: { height: "0" },
+052237          to: { height: "var(--radix-accordion-content-height)" },
+052238        },
+052239        "accordion-up": {
+052240          from: { height: "var(--radix-accordion-content-height)" },
+052241          to: { height: "0" },
+052242        },
+052243      },
+052244      animation: {
+052245        "accordion-down": "accordion-down 0.2s ease-out",
+052246        "accordion-up": "accordion-up 0.2s ease-out",
+052247      },
+052248    },
+052249  },
+052250  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+052251} satisfies Config;
+052252
+052253// ============================================================
+052254// Файл: vite.config.ts
+052255// ============================================================
+052256import { defineConfig } from "vite";
+052257import react from "@vitejs/plugin-react";
+052258import path from "path";
+052259import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+052260
+052261export default defineConfig({
+052262  plugins: [
+052263    react(),
+052264    runtimeErrorOverlay(),
+052265    ...(process.env.NODE_ENV !== "production" &&
+052266    process.env.REPL_ID !== undefined
+052267      ? [
+052268          await import("@replit/vite-plugin-cartographer").then((m) =>
+052269            m.cartographer(),
+052270          ),
+052271          await import("@replit/vite-plugin-dev-banner").then((m) =>
+052272            m.devBanner(),
+052273          ),
+052274        ]
+052275      : []),
+052276  ],
+052277  resolve: {
+052278    alias: {
+052279      "@": path.resolve(import.meta.dirname, "client", "src"),
+052280      "@shared": path.resolve(import.meta.dirname, "shared"),
+052281      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+052282    },
+052283  },
+052284  root: path.resolve(import.meta.dirname, "client"),
+052285  build: {
+052286    outDir: path.resolve(import.meta.dirname, "dist/public"),
+052287    emptyOutDir: true,
+052288  },
+052289  server: {
+052290    fs: {
+052291      strict: true,
+052292      deny: ["**/.*"],
+052293    },
+052294  },
+052295});
+052296
