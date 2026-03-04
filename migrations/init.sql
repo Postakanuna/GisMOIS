@@ -1,7 +1,7 @@
 -- =====================================================
 -- ГИС МО "Инженерные сети" — Полная схема базы данных
--- Версия: 1.0.0-rc.3
--- Дата обновления: 2026-03-02
+-- Версия: 1.0.0-rc.4
+-- Дата обновления: 2026-03-04
 --
 -- Этот файл содержит ВСЕ таблицы приложения (25 шт.).
 -- Безопасен для повторного применения (IF NOT EXISTS).
@@ -302,44 +302,45 @@ CREATE TABLE IF NOT EXISTS "sensor_integration_config" (
   "api_token" text NOT NULL DEFAULT '',
   "polling_interval_minutes" integer NOT NULL DEFAULT 15,
   "is_enabled" integer NOT NULL DEFAULT 0,
-  "last_sync_at" timestamp,
-  "created_at" timestamp DEFAULT now() NOT NULL,
-  "updated_at" timestamp DEFAULT now() NOT NULL
+  "is_debug_mode" integer NOT NULL DEFAULT 0,
+  "last_sync_at" timestamp
 );
 
--- 24. Привязки объектов карты к датчикам (устарело — используется sensor_id в properties)
--- Оставлена для обратной совместимости
+-- 24. Привязки объектов карты к датчикам ТИ
+-- id_cds_koteln — идентификатор котельной во внешней системе МВИТУ
 CREATE TABLE IF NOT EXISTS "sensor_object_bindings" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "id_cds_koteln" integer NOT NULL,
+  "object_type" text NOT NULL,
   "layer_id" integer NOT NULL,
-  "feature_id" integer,
-  "sensor_id" text NOT NULL,
-  "sensor_name" text,
+  "object_name" text NOT NULL DEFAULT '',
   "created_at" timestamp DEFAULT now() NOT NULL,
-  "updated_at" timestamp DEFAULT now() NOT NULL
+  CONSTRAINT "sensor_object_bindings_id_cds_koteln_unique" UNIQUE("id_cds_koteln")
 );
 CREATE INDEX IF NOT EXISTS "sensor_object_bindings_layer_id_idx" ON "sensor_object_bindings" USING btree ("layer_id");
-CREATE INDEX IF NOT EXISTS "sensor_object_bindings_sensor_id_idx" ON "sensor_object_bindings" USING btree ("sensor_id");
 
 -- 25. Кэш показаний датчиков
+-- Данные из внешнего API МВИТУ: параметры котельных (температуры, давления, МКД, заявки)
 CREATE TABLE IF NOT EXISTS "sensor_readings_cache" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "id_cds_koteln" integer NOT NULL,
-  "name" text,
+  "mr_name" text,
+  "place_name" text,
+  "name_koteln" text,
   "address" text,
+  "rso_name" text,
+  "type" text,
+  "mkd_count" integer,
+  "mkd_people_count" integer,
+  "active_claims" jsonb DEFAULT '[]'::jsonb,
   "sensors_state" text,
-  "t1_in" real,
-  "t1_out" real,
-  "t2_in" real,
-  "t2_out" real,
-  "p1_in" real,
-  "p1_out" real,
-  "p2_in" real,
-  "p2_out" real,
-  "gvs_in" real,
-  "gvs_out" real,
-  "raw_data" jsonb,
-  "synced_at" timestamp DEFAULT now() NOT NULL,
+  "sensor_date" timestamp,
+  "t_forward" real,
+  "t_reverse" real,
+  "p_forward" real,
+  "p_revers" real,
+  "responsibles" jsonb DEFAULT '[]'::jsonb,
+  "fetched_at" timestamp DEFAULT now() NOT NULL,
   CONSTRAINT "sensor_readings_cache_id_cds_koteln_unique" UNIQUE("id_cds_koteln")
 );
 CREATE INDEX IF NOT EXISTS "sensor_readings_cache_id_cds_koteln_idx" ON "sensor_readings_cache" USING btree ("id_cds_koteln");
