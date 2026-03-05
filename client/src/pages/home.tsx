@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap } from "lucide-react";
+import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap, Wrench } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,6 +32,7 @@ import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
 import { ConsumerConnectDialog, type ConsumerFormData } from "@/components/consumer-connect-dialog";
 import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
+import { ReconstructionProgramDialog } from "@/components/reconstruction-program-dialog";
 import { AccidentAnalysisDialog, type AccidentSegmentResult, type AccidentAnalysisResult } from "@/components/accident-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
@@ -245,6 +246,7 @@ export default function Home() {
   const [aiComplaintNoTopoResult, setAiComplaintNoTopoResult] = useState<any>(null);
   const [aiSimulationResult, setAiSimulationResult] = useState<SimulationResult | null>(null);
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
+  const [showReconstructionProgram, setShowReconstructionProgram] = useState(false);
   const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
 
@@ -689,6 +691,19 @@ export default function Home() {
                 </TooltipTrigger>
                 <TooltipContent>Проверка топологии</TooltipContent>
               </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={showReconstructionProgram ? "default" : "ghost"}
+                    size="icon"
+                    onClick={() => setShowReconstructionProgram(prev => !prev)}
+                    data-testid="button-open-reconstruction-program"
+                  >
+                    <Wrench className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Программа реконструкции</TooltipContent>
+              </Tooltip>
               <Button 
                 variant={editMode ? "default" : "ghost"} 
                 size="sm"
@@ -915,6 +930,7 @@ export default function Home() {
               editableLayers={drawing.editableLayers}
               sceneId={currentSceneId || 0}
               initialNoTopoResult={aiComplaintNoTopoResult}
+              onOpenReconstructionProgram={() => { setShowReconstructionProgram(true); }}
               onAnalysisResult={(result) => {
                 setComplaintResult(result);
                 if (!result) {
@@ -1039,6 +1055,12 @@ export default function Home() {
               onClose={() => setShowGeoAnalysis(false)}
               editableLayers={drawing.editableLayers}
               sceneId={currentSceneId}
+            />
+
+            <ReconstructionProgramDialog
+              open={showReconstructionProgram}
+              onOpenChange={setShowReconstructionProgram}
+              sceneId={currentSceneId || 0}
             />
 
           </main>

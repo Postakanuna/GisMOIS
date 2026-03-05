@@ -40,6 +40,7 @@ import {
   Unlink,
   Save,
   Layers,
+  Wrench,
 } from "lucide-react";
 
 type AnalysisMode = "topology" | "no_topology";
@@ -163,6 +164,7 @@ interface ComplaintAnalysisDialogProps {
   onHighlightZone: (zone: FailureZone | null) => void;
   onHighlightPolygons: (data: { polygons: Array<{ coordinates: number[][] }>; points: Array<{ coordinates: [number, number]; type: string }> } | null) => void;
   initialNoTopoResult?: NoTopologyResult | null;
+  onOpenReconstructionProgram?: () => void;
 }
 
 export function ComplaintAnalysisDialog({
@@ -174,6 +176,7 @@ export function ComplaintAnalysisDialog({
   onHighlightZone,
   onHighlightPolygons,
   initialNoTopoResult,
+  onOpenReconstructionProgram,
 }: ComplaintAnalysisDialogProps) {
   const isMobile = useIsMobile();
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("topology");
@@ -1074,6 +1077,18 @@ export function ComplaintAnalysisDialog({
               >
                 Новый анализ
               </Button>
+              {onOpenReconstructionProgram && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={onOpenReconstructionProgram}
+                  data-testid="button-open-reconstruction-from-complaint"
+                >
+                  <Wrench className="h-3 w-3 mr-1" />
+                  Программа реконструкции
+                </Button>
+              )}
             </div>
           )}
         </div>
