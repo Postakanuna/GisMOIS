@@ -9265,6 +9265,80 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/reconstruction-programs/:id/objects/batch", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const programId = parseIntParam(req.params.id, res);
+      if (programId === null) return;
+
+      const program = await storage.getReconstructionProgram(programId);
+      if (!program) return res.status(404).json({ message: "Программа не найдена" });
+
+      const items: any[] = req.body.objects;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "Массив objects обязателен" });
+      }
+
+      const existingObjects = await storage.getProgramObjects(programId);
+      let sortOrder = existingObjects.length;
+
+      const created: any[] = [];
+      for (const item of items) {
+        const { objectType = "pipe", objectName, diameterMm, lengthM, capacityMw, layingType, workType, accidentCount, residentCount, featureId } = item;
+
+        const unitRate = await storage.findBestUnitRate(
+          objectType,
+          workType || "overhaul",
+          layingType,
+          diameterMm,
+          program.baseYear
+        );
+
+        let baseCost: string | null = null;
+        let unitRateValue: string | null = null;
+        if (unitRate) {
+          unitRateValue = unitRate.pricePerUnit;
+          const price = parseFloat(unitRate.pricePerUnit);
+          if (objectType === "pipe" && lengthM) {
+            baseCost = (price * parseFloat(String(lengthM))).toFixed(2);
+          } else if ((objectType === "ctp" || objectType === "source") && capacityMw) {
+            baseCost = (price * parseFloat(String(capacityMw))).toFixed(2);
+          }
+        }
+
+        const accsPerM = (accidentCount && lengthM && parseFloat(String(lengthM)) > 0)
+          ? (accidentCount / parseFloat(String(lengthM))).toFixed(4)
+          : null;
+
+        const obj = await storage.createProgramObject({
+          programId,
+          featureId: featureId ?? null,
+          objectType,
+          objectName: objectName || `Участок #${featureId ?? sortOrder}`,
+          diameterMm: diameterMm ?? null,
+          lengthM: lengthM ? String(lengthM) : null,
+          capacityMw: capacityMw ? String(capacityMw) : null,
+          layingType: layingType ?? "underground",
+          workType: workType || "overhaul",
+          unitRateId: unitRate?.id ?? null,
+          unitRateValue,
+          baseCost,
+          plannedYear: null,
+          indexedCost: null,
+          accidentCount: accidentCount ?? null,
+          accidentsPerM: accsPerM,
+          residentCount: residentCount ?? null,
+          geometry: null,
+          sortOrder: sortOrder++,
+        });
+        created.push(obj);
+      }
+
+      res.status(201).json({ count: created.length, objects: created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.patch("/api/reconstruction-programs/:id/objects/:oid", isAuthenticated, async (req: AuthRequest, res: Response) => {
     try {
       const programId = parseIntParam(req.params.id, res);

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +40,17 @@ import {
   X,
   ListChecks,
 } from "lucide-react";
+
+export interface SegmentImportData {
+  featureId: number;
+  objectName: string;
+  diameterMm?: number | null;
+  lengthM?: string | number | null;
+  accidentCount?: number | null;
+  residentCount?: number | null;
+  layingType?: string;
+  workType?: string;
+}
 
 interface ReconstructionProgram {
   id: number;
@@ -83,6 +94,7 @@ interface ReconstructionProgramDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sceneId: number;
+  initialSegments?: SegmentImportData[];
 }
 
 const OBJECT_TYPES = [
@@ -118,6 +130,7 @@ export function ReconstructionProgramDialog({
   open,
   onOpenChange,
   sceneId,
+  initialSegments,
 }: ReconstructionProgramDialogProps) {
   const { toast } = useToast();
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
@@ -126,6 +139,19 @@ export function ReconstructionProgramDialog({
   const [aiScheduleBudget, setAiScheduleBudget] = useState("");
   const [editingProgramName, setEditingProgramName] = useState(false);
   const [editProgramNameValue, setEditProgramNameValue] = useState("");
+  const [importingSegments, setImportingSegments] = useState(false);
+  const pendingSegmentsRef = useRef<SegmentImportData[]>([]);
+
+  useEffect(() => {
+    if (open && initialSegments && initialSegments.length > 0) {
+      pendingSegmentsRef.current = initialSegments;
+      setShowNewProgramForm(true);
+      setSelectedProgramId(null);
+    } else if (!open) {
+      pendingSegmentsRef.current = [];
+      setImportingSegments(false);
+    }
+  }, [open, initialSegments]);
 
   const [newProgram, setNewProgram] = useState({
     name: "",
@@ -186,12 +212,40 @@ export function ReconstructionProgramDialog({
       });
       return res.json();
     },
-    onSuccess: (program) => {
+    onSuccess: async (program) => {
       invalidatePrograms();
       setShowNewProgramForm(false);
       setNewProgram({ name: "", periodFrom: String(currentYear()), periodTo: String(currentYear() + 4), baseYear: String(currentYear()), inflationRate: "5" });
       setSelectedProgramId(program.id);
-      toast({ title: "Программа создана" });
+
+      const segments = pendingSegmentsRef.current;
+      if (segments.length > 0) {
+        pendingSegmentsRef.current = [];
+        setImportingSegments(true);
+        try {
+          await apiRequest("POST", `/api/reconstruction-programs/${program.id}/objects/batch`, {
+            objects: segments.map(s => ({
+              featureId: s.featureId,
+              objectType: "pipe",
+              objectName: s.objectName,
+              diameterMm: s.diameterMm ?? null,
+              lengthM: s.lengthM ?? null,
+              layingType: s.layingType ?? "underground",
+              workType: s.workType ?? "overhaul",
+              accidentCount: s.accidentCount ?? null,
+              residentCount: s.residentCount ?? null,
+            })),
+          });
+          queryClient.invalidateQueries({ queryKey: ["/api/reconstruction-programs", program.id, "detail"] });
+          toast({ title: "Программа создана", description: `Импортировано ${segments.length} участков из анализа аварийности` });
+        } catch (e: any) {
+          toast({ title: "Ошибка импорта участков", description: e.message, variant: "destructive" });
+        } finally {
+          setImportingSegments(false);
+        }
+      } else {
+        toast({ title: "Программа создана" });
+      }
     },
     onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
@@ -366,6 +420,12 @@ export function ReconstructionProgramDialog({
             {showNewProgramForm && (
               <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                 <p className="text-sm font-medium">Новая программа</p>
+                {pendingSegmentsRef.current.length > 0 && (
+                  <div className="flex items-center gap-1.5 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 px-2 py-1.5 text-xs text-blue-700 dark:text-blue-300">
+                    <ListChecks className="h-3.5 w-3.5 shrink-0" />
+                    После создания будет импортировано {pendingSegmentsRef.current.length} участков из анализа аварийности
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="col-span-2">
                     <Label className="text-xs">Название *</Label>
@@ -423,11 +483,11 @@ export function ReconstructionProgramDialog({
                   <Button
                     size="sm"
                     onClick={() => createProgramMutation.mutate()}
-                    disabled={!newProgram.name || createProgramMutation.isPending}
+                    disabled={!newProgram.name || createProgramMutation.isPending || importingSegments}
                     data-testid="button-create-program"
                   >
-                    {createProgramMutation.isPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-                    Создать
+                    {(createProgramMutation.isPending || importingSegments) && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                    {importingSegments ? "Импорт участков…" : "Создать"}
                   </Button>
                 </div>
               </div>

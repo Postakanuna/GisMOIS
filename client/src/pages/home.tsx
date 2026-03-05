@@ -32,7 +32,7 @@ import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
 import { ConsumerConnectDialog, type ConsumerFormData } from "@/components/consumer-connect-dialog";
 import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/components/complaint-analysis-dialog";
-import { ReconstructionProgramDialog } from "@/components/reconstruction-program-dialog";
+import { ReconstructionProgramDialog, type SegmentImportData } from "@/components/reconstruction-program-dialog";
 import { AccidentAnalysisDialog, type AccidentSegmentResult, type AccidentAnalysisResult } from "@/components/accident-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
 import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
@@ -247,6 +247,7 @@ export default function Home() {
   const [aiSimulationResult, setAiSimulationResult] = useState<SimulationResult | null>(null);
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
   const [showReconstructionProgram, setShowReconstructionProgram] = useState(false);
+  const [reconstructionImportSegments, setReconstructionImportSegments] = useState<SegmentImportData[]>([]);
   const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
 
@@ -973,7 +974,10 @@ export default function Home() {
               initialResult={aiAccidentResult}
               editableLayers={drawing.editableLayers}
               sceneId={currentSceneId || 0}
-              onOpenReconstructionProgram={() => setShowReconstructionProgram(true)}
+              onOpenReconstructionProgram={(segments: SegmentImportData[]) => {
+                setReconstructionImportSegments(segments);
+                setShowReconstructionProgram(true);
+              }}
               onHighlightSegment={(segment: AccidentSegmentResult | null) => {
                 if (!segment) {
                   setSimulationHighlightData(null);
@@ -1060,8 +1064,12 @@ export default function Home() {
 
             <ReconstructionProgramDialog
               open={showReconstructionProgram}
-              onOpenChange={setShowReconstructionProgram}
+              onOpenChange={(open) => {
+                setShowReconstructionProgram(open);
+                if (!open) setReconstructionImportSegments([]);
+              }}
               sceneId={currentSceneId || 0}
+              initialSegments={reconstructionImportSegments}
             />
 
           </main>

@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { type SegmentImportData } from "@/components/reconstruction-program-dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,7 +105,7 @@ interface AccidentAnalysisDialogProps {
   sceneId: number;
   onHighlightSegment: (segment: AccidentSegmentResult | null) => void;
   initialResult?: AccidentAnalysisResult | null;
-  onOpenReconstructionProgram?: () => void;
+  onOpenReconstructionProgram?: (segments: SegmentImportData[]) => void;
 }
 
 export function AccidentAnalysisDialog({
@@ -135,6 +136,24 @@ export function AccidentAnalysisDialog({
 
   const [result, setResult] = useState<AccidentAnalysisResult | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
+
+  const resultAsImportData = useMemo<SegmentImportData[]>(() => {
+    if (!result?.segments) return [];
+    return result.segments.map(s => ({
+      featureId: s.featureId,
+      objectName: s.beginUch && s.endUch
+        ? `${s.beginUch} — ${s.endUch}`
+        : s.sys
+          ? `${s.sys} #${s.featureId}`
+          : `Участок #${s.featureId}`,
+      diameterMm: s.dpod != null ? parseInt(String(s.dpod)) || null : null,
+      lengthM: s.length != null ? String(s.length) : null,
+      accidentCount: s.accidentCount,
+      residentCount: s.residentCount,
+      layingType: "underground",
+      workType: "overhaul",
+    }));
+  }, [result]);
   const [saveLayerId, setSaveLayerId] = useState<number | null>(null);
   const [showSavePopover, setShowSavePopover] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -496,8 +515,8 @@ export function AccidentAnalysisDialog({
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              onClick={onOpenReconstructionProgram}
-              title="Программа реконструкции"
+              onClick={() => onOpenReconstructionProgram(resultAsImportData)}
+              title={resultAsImportData.length > 0 ? `Программа реконструкции (${resultAsImportData.length} участков)` : "Программа реконструкции"}
               data-testid="button-open-reconstruction-accident-header"
             >
               <Wrench className="h-4 w-4" />
@@ -887,11 +906,11 @@ export function AccidentAnalysisDialog({
                       variant="outline"
                       size="sm"
                       className="h-6 text-xs gap-1"
-                      onClick={onOpenReconstructionProgram}
+                      onClick={() => onOpenReconstructionProgram(resultAsImportData)}
                       data-testid="button-open-reconstruction-accident-results"
                     >
                       <Wrench className="h-3 w-3" />
-                      Реконструкция
+                      Реконструкция ({resultAsImportData.length})
                     </Button>
                   )}
                   <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
