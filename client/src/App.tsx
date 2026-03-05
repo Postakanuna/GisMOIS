@@ -13,6 +13,7 @@ import LandingPage from "@/pages/landing";
 import Home from "@/pages/home";
 import AdminUsers from "@/pages/admin-users";
 import AdminLayerManager from "@/pages/admin-layer-manager";
+import AdminReferencesPage from "@/pages/admin-references";
 import LoginPage from "@/pages/login";
 import ScenesPage from "@/pages/scenes";
 import ProfilePage from "@/pages/profile";
@@ -45,6 +46,11 @@ function Router() {
       <Route path="/gis/admin/layers">
         <ProtectedRoute requireAdmin>
           <AdminLayerManager />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/gis/admin/references">
+        <ProtectedRoute requireAdmin>
+          <AdminReferencesPage />
         </ProtectedRoute>
       </Route>
       <Route path="/gis/admin">

@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Users, Layers } from "lucide-react";
+import { LogOut, Users, Layers, BookOpen } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 
@@ -67,6 +67,12 @@ export function UserButton() {
               <Link href="/gis/admin/layers" className="flex items-center cursor-pointer" data-testid="link-admin-layers">
                 <Layers className="mr-2 h-4 w-4" />
                 <span>Менеджер слоёв</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/gis/admin/references" className="flex items-center cursor-pointer" data-testid="link-admin-references">
+                <BookOpen className="mr-2 h-4 w-4" />
+                <span>Справочники</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />

@@ -39,8 +39,6 @@ import { ApiKeysManager } from "@/components/api-keys-manager";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { BugReportsPanel } from "@/components/bug-reports-panel";
 import { SensorIntegrationPanel } from "@/components/sensor-integration-panel";
-import { UnitRatesAdminTable } from "@/components/unit-rates-admin-table";
-
 type AdminAiProvider = {
   id: number;
   name: string;
@@ -468,7 +466,7 @@ export default function AdminUsers() {
       <div className="container mx-auto p-6">
 
       <Tabs defaultValue="users" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-8" data-testid="admin-tabs">
+        <TabsList className="grid w-full grid-cols-7" data-testid="admin-tabs">
           <TabsTrigger value="users" data-testid="tab-users">Пользователи</TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-audit">Журнал действий</TabsTrigger>
           <TabsTrigger value="geocoding" data-testid="tab-geocoding">Геокодирование</TabsTrigger>
@@ -476,7 +474,6 @@ export default function AdminUsers() {
           <TabsTrigger value="connections" data-testid="tab-connections">Внешние подключения</TabsTrigger>
           <TabsTrigger value="sensors" data-testid="tab-sensors">Датчики ТИ</TabsTrigger>
           <TabsTrigger value="bugs" data-testid="tab-bugs">Сведения об ошибках</TabsTrigger>
-          <TabsTrigger value="unit-rates" data-testid="tab-unit-rates">Удельные стоимости</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -811,17 +808,6 @@ export default function AdminUsers() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="unit-rates">
-          <Card>
-            <CardHeader>
-              <CardTitle>Удельные стоимости</CardTitle>
-              <CardDescription>Справочник удельных расценок для расчёта стоимости работ в программе реконструкции</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <UnitRatesAdminTable />
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
