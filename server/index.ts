@@ -94,4 +94,14 @@ app.use((req, res, next) => {
       log(`Sensor polling init error: ${err.message}`, "sensor-sync");
     });
   });
+
+  const shutdown = () => {
+    log("Shutting down gracefully...");
+    httpServer.close(() => {
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 5000);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 })();
