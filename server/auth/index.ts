@@ -115,21 +115,15 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       const { passwordHash, ...safeUser } = user;
-      
-      req.session.regenerate((err) => {
-        if (err) {
-          console.error("Session regeneration error:", err);
+
+      req.session.userId = user.id;
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error("Session save error:", saveErr);
           return res.status(500).json({ message: "Login failed" });
         }
-        req.session.userId = user.id;
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            console.error("Session save error:", saveErr);
-            return res.status(500).json({ message: "Login failed" });
-          }
-          logAction({ userId: user.id, username: user.username, action: "login", entityType: "auth" });
-          res.json(safeUser);
-        });
+        logAction({ userId: user.id, username: user.username, action: "login", entityType: "auth" });
+        res.json(safeUser);
       });
     } catch (error) {
       console.error("Login error:", error);

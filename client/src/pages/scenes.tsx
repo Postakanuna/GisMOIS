@@ -102,10 +102,12 @@ export default function ScenesPage() {
 
   const { data: scenes, isLoading: scenesLoading } = useQuery<Scene[]>({
     queryKey: ["/api/scenes"],
+    enabled: !!user,
   });
 
   const { data: folders, isLoading: foldersLoading } = useQuery<SceneFolder[]>({
     queryKey: ["/api/scene-folders"],
+    enabled: !!user,
   });
 
   const isLoading = scenesLoading || foldersLoading;
