@@ -1,6 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 
 interface Scene {
   id: number;
@@ -24,7 +23,6 @@ interface SceneContextType {
 const SceneContext = createContext<SceneContextType | null>(null);
 
 export function SceneProvider({ children }: { children: ReactNode }) {
-  const [location, setLocation] = useLocation();
   const [currentSceneId, setCurrentSceneIdState] = useState<number | null>(() => {
     const stored = localStorage.getItem("currentSceneId");
     return stored ? parseInt(stored) : null;
@@ -43,12 +41,6 @@ export function SceneProvider({ children }: { children: ReactNode }) {
     }
     setCurrentSceneIdState(id);
   };
-
-  useEffect(() => {
-    if (location === "/" && !currentSceneId && !isLoading) {
-      setLocation("/gis/scenes");
-    }
-  }, [location, currentSceneId, isLoading, setLocation]);
 
   const canEdit = currentScene?.role === "owner" || currentScene?.role === "editor";
   const isOwner = currentScene?.role === "owner";
