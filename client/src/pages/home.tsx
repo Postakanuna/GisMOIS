@@ -973,6 +973,7 @@ export default function Home() {
               initialResult={aiAccidentResult}
               editableLayers={drawing.editableLayers}
               sceneId={currentSceneId || 0}
+              onOpenReconstructionProgram={() => setShowReconstructionProgram(true)}
               onHighlightSegment={(segment: AccidentSegmentResult | null) => {
                 if (!segment) {
                   setSimulationHighlightData(null);

@@ -38,6 +38,7 @@ import {
   XCircle,
   Plus,
   Trash2,
+  Wrench,
 } from "lucide-react";
 
 interface EditableLayer {
@@ -103,6 +104,7 @@ interface AccidentAnalysisDialogProps {
   sceneId: number;
   onHighlightSegment: (segment: AccidentSegmentResult | null) => void;
   initialResult?: AccidentAnalysisResult | null;
+  onOpenReconstructionProgram?: () => void;
 }
 
 export function AccidentAnalysisDialog({
@@ -112,6 +114,7 @@ export function AccidentAnalysisDialog({
   sceneId,
   onHighlightSegment,
   initialResult,
+  onOpenReconstructionProgram,
 }: AccidentAnalysisDialogProps) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -487,9 +490,23 @@ export function AccidentAnalysisDialog({
           <Zap className="h-4 w-4 text-orange-500" />
           <span className="font-semibold text-sm">Анализ аварийности</span>
         </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)} data-testid="button-close-accident-dialog">
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {onOpenReconstructionProgram && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={onOpenReconstructionProgram}
+              title="Программа реконструкции"
+              data-testid="button-open-reconstruction-accident-header"
+            >
+              <Wrench className="h-4 w-4" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)} data-testid="button-close-accident-dialog">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -865,6 +882,18 @@ export function AccidentAnalysisDialog({
                     <Download className="h-3 w-3" />
                     Excel
                   </Button>
+                  {onOpenReconstructionProgram && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-xs gap-1"
+                      onClick={onOpenReconstructionProgram}
+                      data-testid="button-open-reconstruction-accident-results"
+                    >
+                      <Wrench className="h-3 w-3" />
+                      Реконструкция
+                    </Button>
+                  )}
                   <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="sm" className="h-6 text-xs gap-1" data-testid="button-save-to-layer">
