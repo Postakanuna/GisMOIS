@@ -287,7 +287,7 @@ export type InsertEditableLayer = z.infer<typeof insertEditableLayerSchema>;
 export * from "./models/auth";
 
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, jsonb, timestamp, real, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, jsonb, timestamp, real, index, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 // Layer folders for grouping layers
@@ -707,3 +707,72 @@ export const externalCreatePointSchema = z.object({
   properties: z.record(z.string(), z.unknown()).default({}),
 });
 export type ExternalCreatePoint = z.infer<typeof externalCreatePointSchema>;
+
+// ─── Reconstruction & Cost Estimation ────────────────────────────────────────
+
+// Справочник удельных стоимостей (заполняется администратором)
+export const costUnitRates = pgTable("cost_unit_rates", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  objectType: text("object_type").notNull(), // 'pipe' | 'ctp' | 'source'
+  layingType: text("laying_type"),           // 'underground' | 'above' | null (для ctp/source)
+  diameterMm: integer("diameter_mm"),        // только для pipe; null для ctp/source
+  workType: text("work_type").notNull(),     // 'overhaul' | 'reconstruction'
+  pricePerUnit: numeric("price_per_unit", { precision: 14, scale: 2 }).notNull(),
+  unit: text("unit").notNull(),              // 'rub_per_m' | 'rub_per_mw'
+  baseYear: integer("base_year").notNull().default(2025),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type CostUnitRate = typeof costUnitRates.$inferSelect;
+export type InsertCostUnitRate = typeof costUnitRates.$inferInsert;
+export const insertCostUnitRateSchema = createInsertSchema(costUnitRates).omit({ id: true, createdAt: true });
+
+// Программы реконструкции и капремонта
+export const reconstructionPrograms = pgTable("reconstruction_programs", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  sceneId: integer("scene_id").notNull(),
+  name: text("name").notNull(),
+  periodFrom: integer("period_from").notNull(),
+  periodTo: integer("period_to").notNull(),
+  baseYear: integer("base_year").notNull().default(2025),
+  inflationRate: numeric("inflation_rate", { precision: 5, scale: 2 }).notNull().default("5.00"),
+  totalBaseCost: numeric("total_base_cost", { precision: 14, scale: 2 }),
+  totalIndexedCost: numeric("total_indexed_cost", { precision: 14, scale: 2 }),
+  status: text("status").notNull().default("draft"), // 'draft' | 'approved'
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type ReconstructionProgram = typeof reconstructionPrograms.$inferSelect;
+export type InsertReconstructionProgram = typeof reconstructionPrograms.$inferInsert;
+export const insertReconstructionProgramSchema = createInsertSchema(reconstructionPrograms).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Объекты внутри программы реконструкции
+export const programObjects = pgTable("program_objects", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  programId: integer("program_id").notNull(),
+  featureId: integer("feature_id"),           // FK → drawn_features (опционально)
+  objectType: text("object_type").notNull(),  // 'pipe' | 'ctp' | 'source'
+  objectName: text("object_name").notNull(),
+  diameterMm: integer("diameter_mm"),
+  lengthM: numeric("length_m", { precision: 10, scale: 2 }),
+  capacityMw: numeric("capacity_mw", { precision: 10, scale: 3 }),
+  layingType: text("laying_type"),            // 'underground' | 'above'
+  workType: text("work_type").notNull().default("overhaul"),
+  unitRateId: integer("unit_rate_id"),
+  unitRateValue: numeric("unit_rate_value", { precision: 14, scale: 2 }),
+  baseCost: numeric("base_cost", { precision: 14, scale: 2 }),
+  plannedYear: integer("planned_year"),
+  indexedCost: numeric("indexed_cost", { precision: 14, scale: 2 }),
+  accidentCount: integer("accident_count"),
+  accidentsPerM: numeric("accidents_per_m", { precision: 10, scale: 6 }),
+  residentCount: integer("resident_count"),
+  geometry: jsonb("geometry"),               // GeoJSON для подсветки на карте
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export type ProgramObject = typeof programObjects.$inferSelect;
+export type InsertProgramObject = typeof programObjects.$inferInsert;
+export const insertProgramObjectSchema = createInsertSchema(programObjects).omit({ id: true });

@@ -19,10 +19,14 @@ import {
   type SensorIntegrationConfig, type InsertSensorIntegrationConfig,
   type SensorObjectBinding, type InsertSensorObjectBinding,
   type SensorReadingCache, type InsertSensorReadingCache,
+  type CostUnitRate, type InsertCostUnitRate,
+  type ReconstructionProgram, type InsertReconstructionProgram,
+  type ProgramObject, type InsertProgramObject,
   editableLayers, drawnFeatures, layerSchemas,
   scenes, sceneMembers, sceneFolders, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
   appSettings, bugReports,
-  sensorIntegrationConfig, sensorObjectBindings, sensorReadingsCache
+  sensorIntegrationConfig, sensorObjectBindings, sensorReadingsCache,
+  costUnitRates, reconstructionPrograms, programObjects
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { aiProviders, type AiProvider, type InsertAiProvider, type UpdateAiProvider } from "@shared/models/chat";
@@ -162,6 +166,29 @@ export interface IStorage {
   getSensorReadingByKotelnId(idCdsKoteln: number): Promise<SensorReadingCache | undefined>;
   upsertSensorReadingsCache(readings: InsertSensorReadingCache[]): Promise<void>;
   updateSensorLastSyncAt(timestamp: Date): Promise<void>;
+
+  // Cost unit rates (справочник удельников)
+  getCostUnitRates(filters?: { objectType?: string; workType?: string; layingType?: string }): Promise<CostUnitRate[]>;
+  getCostUnitRate(id: number): Promise<CostUnitRate | undefined>;
+  createCostUnitRate(data: InsertCostUnitRate): Promise<CostUnitRate>;
+  updateCostUnitRate(id: number, data: Partial<InsertCostUnitRate>): Promise<CostUnitRate | undefined>;
+  deleteCostUnitRate(id: number): Promise<boolean>;
+  findBestUnitRate(objectType: string, workType: string, layingType?: string, diameterMm?: number, baseYear?: number): Promise<CostUnitRate | undefined>;
+
+  // Reconstruction programs
+  getReconstructionPrograms(sceneId: number): Promise<ReconstructionProgram[]>;
+  getReconstructionProgram(id: number): Promise<ReconstructionProgram | undefined>;
+  createReconstructionProgram(data: InsertReconstructionProgram): Promise<ReconstructionProgram>;
+  updateReconstructionProgram(id: number, data: Partial<InsertReconstructionProgram>): Promise<ReconstructionProgram | undefined>;
+  deleteReconstructionProgram(id: number): Promise<boolean>;
+
+  // Program objects
+  getProgramObjects(programId: number): Promise<ProgramObject[]>;
+  getProgramObject(id: number): Promise<ProgramObject | undefined>;
+  createProgramObject(data: InsertProgramObject): Promise<ProgramObject>;
+  updateProgramObject(id: number, data: Partial<InsertProgramObject>): Promise<ProgramObject | undefined>;
+  deleteProgramObject(id: number): Promise<boolean>;
+  deleteProgramObjects(programId: number): Promise<void>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -1203,6 +1230,138 @@ export class DatabaseStorage implements IStorage {
         .set({ lastSyncAt: timestamp })
         .where(eq(sensorIntegrationConfig.id, existing.id));
     }
+  }
+
+  // ─── Cost Unit Rates ───────────────────────────────────────────────────────
+
+  async getCostUnitRates(filters?: { objectType?: string; workType?: string; layingType?: string }): Promise<CostUnitRate[]> {
+    let query = db.select().from(costUnitRates) as any;
+    const conditions = [];
+    if (filters?.objectType) conditions.push(eq(costUnitRates.objectType, filters.objectType));
+    if (filters?.workType) conditions.push(eq(costUnitRates.workType, filters.workType));
+    if (filters?.layingType) conditions.push(eq(costUnitRates.layingType, filters.layingType));
+    if (conditions.length > 0) query = query.where(and(...conditions));
+    return await query.orderBy(costUnitRates.objectType, costUnitRates.diameterMm);
+  }
+
+  async getCostUnitRate(id: number): Promise<CostUnitRate | undefined> {
+    const [row] = await db.select().from(costUnitRates).where(eq(costUnitRates.id, id));
+    return row;
+  }
+
+  async createCostUnitRate(data: InsertCostUnitRate): Promise<CostUnitRate> {
+    const [row] = await db.insert(costUnitRates).values(data).returning();
+    return row;
+  }
+
+  async updateCostUnitRate(id: number, data: Partial<InsertCostUnitRate>): Promise<CostUnitRate | undefined> {
+    const [row] = await db.update(costUnitRates).set(data).where(eq(costUnitRates.id, id)).returning();
+    return row;
+  }
+
+  async deleteCostUnitRate(id: number): Promise<boolean> {
+    const result = await db.delete(costUnitRates).where(eq(costUnitRates.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async findBestUnitRate(objectType: string, workType: string, layingType?: string, diameterMm?: number, baseYear?: number): Promise<CostUnitRate | undefined> {
+    const allRates = await db.select().from(costUnitRates)
+      .where(and(
+        eq(costUnitRates.objectType, objectType),
+        eq(costUnitRates.workType, workType)
+      ))
+      .orderBy(costUnitRates.baseYear, costUnitRates.diameterMm);
+
+    const targetYear = baseYear ?? new Date().getFullYear();
+    // Filter by year (closest <= target)
+    const yearFiltered = allRates.filter(r => r.baseYear <= targetYear);
+    const ratesForYear = yearFiltered.length > 0 ? yearFiltered : allRates;
+
+    if (objectType === 'pipe') {
+      // Filter by laying type
+      const layingFiltered = ratesForYear.filter(r => r.layingType === (layingType || 'underground'));
+      const pool = layingFiltered.length > 0 ? layingFiltered : ratesForYear;
+
+      if (diameterMm != null) {
+        // Exact match first
+        const exact = pool.find(r => r.diameterMm === diameterMm);
+        if (exact) return exact;
+        // Nearest larger
+        const larger = pool.filter(r => r.diameterMm != null && r.diameterMm > diameterMm).sort((a, b) => (a.diameterMm! - b.diameterMm!));
+        if (larger.length > 0) return larger[0];
+        // Nearest smaller
+        const smaller = pool.filter(r => r.diameterMm != null && r.diameterMm < diameterMm).sort((a, b) => (b.diameterMm! - a.diameterMm!));
+        if (smaller.length > 0) return smaller[0];
+      }
+      return pool[0];
+    } else {
+      // ctp or source — no diameter/laying needed
+      return ratesForYear[0];
+    }
+  }
+
+  // ─── Reconstruction Programs ───────────────────────────────────────────────
+
+  async getReconstructionPrograms(sceneId: number): Promise<ReconstructionProgram[]> {
+    return await db.select().from(reconstructionPrograms)
+      .where(eq(reconstructionPrograms.sceneId, sceneId))
+      .orderBy(desc(reconstructionPrograms.createdAt));
+  }
+
+  async getReconstructionProgram(id: number): Promise<ReconstructionProgram | undefined> {
+    const [row] = await db.select().from(reconstructionPrograms).where(eq(reconstructionPrograms.id, id));
+    return row;
+  }
+
+  async createReconstructionProgram(data: InsertReconstructionProgram): Promise<ReconstructionProgram> {
+    const [row] = await db.insert(reconstructionPrograms).values(data).returning();
+    return row;
+  }
+
+  async updateReconstructionProgram(id: number, data: Partial<InsertReconstructionProgram>): Promise<ReconstructionProgram | undefined> {
+    const [row] = await db.update(reconstructionPrograms)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(reconstructionPrograms.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteReconstructionProgram(id: number): Promise<boolean> {
+    await db.delete(programObjects).where(eq(programObjects.programId, id));
+    const result = await db.delete(reconstructionPrograms).where(eq(reconstructionPrograms.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ─── Program Objects ───────────────────────────────────────────────────────
+
+  async getProgramObjects(programId: number): Promise<ProgramObject[]> {
+    return await db.select().from(programObjects)
+      .where(eq(programObjects.programId, programId))
+      .orderBy(programObjects.sortOrder, programObjects.id);
+  }
+
+  async getProgramObject(id: number): Promise<ProgramObject | undefined> {
+    const [row] = await db.select().from(programObjects).where(eq(programObjects.id, id));
+    return row;
+  }
+
+  async createProgramObject(data: InsertProgramObject): Promise<ProgramObject> {
+    const [row] = await db.insert(programObjects).values(data).returning();
+    return row;
+  }
+
+  async updateProgramObject(id: number, data: Partial<InsertProgramObject>): Promise<ProgramObject | undefined> {
+    const [row] = await db.update(programObjects).set(data).where(eq(programObjects.id, id)).returning();
+    return row;
+  }
+
+  async deleteProgramObject(id: number): Promise<boolean> {
+    const result = await db.delete(programObjects).where(eq(programObjects.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async deleteProgramObjects(programId: number): Promise<void> {
+    await db.delete(programObjects).where(eq(programObjects.programId, programId));
   }
 }
 

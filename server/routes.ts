@@ -9075,6 +9075,581 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Cost Unit Rates (справочник удельников) ────────────────────────────────
+
+  app.get("/api/unit-rates", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const { object_type, work_type, laying_type } = req.query as Record<string, string>;
+      const rates = await storage.getCostUnitRates({
+        objectType: object_type,
+        workType: work_type,
+        layingType: laying_type,
+      });
+      res.json(rates);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/unit-rates", isAuthenticated, isAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const data = req.body;
+      if (!data.objectType || !data.workType || !data.pricePerUnit || !data.unit) {
+        return res.status(400).json({ message: "Обязательные поля: objectType, workType, pricePerUnit, unit" });
+      }
+      const rate = await storage.createCostUnitRate(data);
+      res.status(201).json(rate);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/unit-rates/:id", isAuthenticated, isAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const updated = await storage.updateCostUnitRate(id, req.body);
+      if (!updated) return res.status(404).json({ message: "Удельник не найден" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/unit-rates/:id", isAuthenticated, isAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const deleted = await storage.deleteCostUnitRate(id);
+      if (!deleted) return res.status(404).json({ message: "Удельник не найден" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Reconstruction Programs ─────────────────────────────────────────────────
+
+  app.get("/api/reconstruction-programs", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const sceneId = parseIntParam(req.query.sceneId as string, res);
+      if (sceneId === null) return;
+      const programs = await storage.getReconstructionPrograms(sceneId);
+      res.json(programs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/reconstruction-programs", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const { sceneId, name, periodFrom, periodTo, baseYear, inflationRate } = req.body;
+      if (!sceneId || !name || !periodFrom || !periodTo) {
+        return res.status(400).json({ message: "Обязательные поля: sceneId, name, periodFrom, periodTo" });
+      }
+      const program = await storage.createReconstructionProgram({
+        sceneId,
+        name,
+        periodFrom,
+        periodTo,
+        baseYear: baseYear ?? 2025,
+        inflationRate: inflationRate ?? "5.00",
+        status: "draft",
+        createdBy: req.user!.id,
+      });
+      res.status(201).json(program);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/reconstruction-programs/:id", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const program = await storage.getReconstructionProgram(id);
+      if (!program) return res.status(404).json({ message: "Программа не найдена" });
+      const objects = await storage.getProgramObjects(id);
+      res.json({ ...program, objects });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/reconstruction-programs/:id", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const updated = await storage.updateReconstructionProgram(id, req.body);
+      if (!updated) return res.status(404).json({ message: "Программа не найдена" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/reconstruction-programs/:id", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const deleted = await storage.deleteReconstructionProgram(id);
+      if (!deleted) return res.status(404).json({ message: "Программа не найдена" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Program Objects ─────────────────────────────────────────────────────────
+
+  app.post("/api/reconstruction-programs/:id/objects", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const programId = parseIntParam(req.params.id, res);
+      if (programId === null) return;
+
+      const program = await storage.getReconstructionProgram(programId);
+      if (!program) return res.status(404).json({ message: "Программа не найдена" });
+
+      const { objectType, objectName, diameterMm, lengthM, capacityMw, layingType, workType, accidentCount, accidentsPerM, residentCount, geometry, featureId } = req.body;
+
+      // Автоподбор удельника
+      const unitRate = await storage.findBestUnitRate(
+        objectType,
+        workType || 'overhaul',
+        layingType,
+        diameterMm,
+        program.baseYear
+      );
+
+      // Расчёт базовой стоимости
+      let baseCost: string | null = null;
+      let unitRateValue: string | null = null;
+      if (unitRate) {
+        unitRateValue = unitRate.pricePerUnit;
+        const price = parseFloat(unitRate.pricePerUnit);
+        if (objectType === 'pipe' && lengthM) {
+          baseCost = (price * parseFloat(lengthM)).toFixed(2);
+        } else if ((objectType === 'ctp' || objectType === 'source') && capacityMw) {
+          baseCost = (price * parseFloat(capacityMw)).toFixed(2);
+        }
+      }
+
+      const existingObjects = await storage.getProgramObjects(programId);
+      const sortOrder = existingObjects.length;
+
+      const obj = await storage.createProgramObject({
+        programId,
+        featureId: featureId ?? null,
+        objectType,
+        objectName,
+        diameterMm: diameterMm ?? null,
+        lengthM: lengthM ? String(lengthM) : null,
+        capacityMw: capacityMw ? String(capacityMw) : null,
+        layingType: layingType ?? null,
+        workType: workType || 'overhaul',
+        unitRateId: unitRate?.id ?? null,
+        unitRateValue,
+        baseCost,
+        plannedYear: null,
+        indexedCost: null,
+        accidentCount: accidentCount ?? null,
+        accidentsPerM: accidentsPerM ? String(accidentsPerM) : null,
+        residentCount: residentCount ?? null,
+        geometry: geometry ?? null,
+        sortOrder,
+      });
+
+      res.status(201).json({ ...obj, unitRate: unitRate || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/reconstruction-programs/:id/objects/:oid", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const programId = parseIntParam(req.params.id, res);
+      const oid = parseIntParam(req.params.oid, res);
+      if (programId === null || oid === null) return;
+
+      const program = await storage.getReconstructionProgram(programId);
+      if (!program) return res.status(404).json({ message: "Программа не найдена" });
+
+      const obj = await storage.getProgramObject(oid);
+      if (!obj) return res.status(404).json({ message: "Объект не найден" });
+
+      const updates = { ...req.body };
+
+      // Если изменился тип работ или прокладка — пересчитываем удельник
+      const needsRecalc = updates.workType || updates.layingType;
+      if (needsRecalc) {
+        const newWorkType = updates.workType || obj.workType;
+        const newLayingType = updates.layingType !== undefined ? updates.layingType : obj.layingType;
+        const unitRate = await storage.findBestUnitRate(
+          obj.objectType,
+          newWorkType,
+          newLayingType ?? undefined,
+          obj.diameterMm ?? undefined,
+          program.baseYear
+        );
+        if (unitRate) {
+          updates.unitRateId = unitRate.id;
+          updates.unitRateValue = unitRate.pricePerUnit;
+          const price = parseFloat(unitRate.pricePerUnit);
+          if (obj.objectType === 'pipe' && obj.lengthM) {
+            updates.baseCost = (price * parseFloat(obj.lengthM)).toFixed(2);
+          } else if ((obj.objectType === 'ctp' || obj.objectType === 'source') && obj.capacityMw) {
+            updates.baseCost = (price * parseFloat(obj.capacityMw)).toFixed(2);
+          }
+        }
+      }
+
+      // Пересчёт индексированной стоимости если задан год
+      if (updates.plannedYear !== undefined && updates.plannedYear !== null) {
+        const baseCostVal = updates.baseCost ? parseFloat(updates.baseCost) : (obj.baseCost ? parseFloat(obj.baseCost) : 0);
+        const inflationRate = parseFloat(program.inflationRate);
+        const yearsAhead = updates.plannedYear - program.baseYear;
+        if (yearsAhead > 0) {
+          updates.indexedCost = (baseCostVal * Math.pow(1 + inflationRate / 100, yearsAhead)).toFixed(2);
+        } else {
+          updates.indexedCost = baseCostVal.toFixed(2);
+        }
+      } else if (updates.plannedYear === null) {
+        updates.indexedCost = null;
+      }
+
+      const updated = await storage.updateProgramObject(oid, updates);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/reconstruction-programs/:id/objects/:oid", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const oid = parseIntParam(req.params.oid, res);
+      if (oid === null) return;
+      const deleted = await storage.deleteProgramObject(oid);
+      if (!deleted) return res.status(404).json({ message: "Объект не найден" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Пересчёт стоимости всей программы
+  app.post("/api/reconstruction-programs/:id/calculate", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+
+      const program = await storage.getReconstructionProgram(id);
+      if (!program) return res.status(404).json({ message: "Программа не найдена" });
+
+      const objects = await storage.getProgramObjects(id);
+      const inflationRate = parseFloat(program.inflationRate);
+      let totalBase = 0;
+      let totalIndexed = 0;
+
+      const updatedObjects = await Promise.all(objects.map(async obj => {
+        // Переподбор удельника (на случай если он изменился)
+        const unitRate = await storage.findBestUnitRate(
+          obj.objectType,
+          obj.workType,
+          obj.layingType ?? undefined,
+          obj.diameterMm ?? undefined,
+          program.baseYear
+        );
+
+        let baseCost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
+        let unitRateValue = obj.unitRateValue;
+        let unitRateId = obj.unitRateId;
+
+        if (unitRate) {
+          unitRateId = unitRate.id;
+          unitRateValue = unitRate.pricePerUnit;
+          const price = parseFloat(unitRate.pricePerUnit);
+          if (obj.objectType === 'pipe' && obj.lengthM) {
+            baseCost = price * parseFloat(obj.lengthM);
+          } else if ((obj.objectType === 'ctp' || obj.objectType === 'source') && obj.capacityMw) {
+            baseCost = price * parseFloat(obj.capacityMw);
+          }
+        }
+
+        let indexedCost: string | null = null;
+        if (obj.plannedYear != null) {
+          const yearsAhead = obj.plannedYear - program.baseYear;
+          indexedCost = yearsAhead > 0
+            ? (baseCost * Math.pow(1 + inflationRate / 100, yearsAhead)).toFixed(2)
+            : baseCost.toFixed(2);
+        }
+
+        totalBase += baseCost;
+        totalIndexed += indexedCost ? parseFloat(indexedCost) : baseCost;
+
+        return storage.updateProgramObject(obj.id, {
+          unitRateId,
+          unitRateValue,
+          baseCost: baseCost.toFixed(2),
+          indexedCost,
+        });
+      }));
+
+      await storage.updateReconstructionProgram(id, {
+        totalBaseCost: totalBase.toFixed(2),
+        totalIndexedCost: totalIndexed.toFixed(2),
+      });
+
+      const refreshed = await storage.getReconstructionProgram(id);
+      res.json({ program: refreshed, objects: updatedObjects });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ИИ-распределение объектов по годам
+  app.post("/api/reconstruction-programs/:id/ai-schedule", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+
+      const program = await storage.getReconstructionProgram(id);
+      if (!program) return res.status(404).json({ message: "Программа не найдена" });
+
+      const objects = await storage.getProgramObjects(id);
+      const { annualBudget } = req.body;
+
+      const years = Array.from({ length: program.periodTo - program.periodFrom + 1 }, (_, i) => program.periodFrom + i);
+      const objectList = objects.map(o => ({
+        id: o.id,
+        name: o.objectName,
+        type: o.objectType,
+        baseCost: o.baseCost,
+        accidentCount: o.accidentCount,
+        accidentsPerM: o.accidentsPerM,
+        residentCount: o.residentCount,
+      }));
+
+      let scheduleResult: { schedule: Array<{ objectId: number; year: number }>; comment: string } | null = null;
+
+      // Try AI scheduling
+      try {
+        const aiProvider = await storage.getDefaultAiProvider();
+        if (aiProvider && aiProvider.baseUrl && aiProvider.apiKey && aiProvider.model) {
+          const OpenAI = (await import("openai")).default;
+          const client = new OpenAI({ baseURL: aiProvider.baseUrl, apiKey: aiProvider.apiKey });
+          const prompt = `Ты помощник по планированию капитального ремонта инженерных сетей.
+Распредели следующие объекты по годам программы (${program.periodFrom}–${program.periodTo}).
+${annualBudget ? `Годовой лимит финансирования: ${annualBudget} руб.` : 'Годовой лимит не задан.'}
+Критерии приоритизации: объекты с большим количеством аварий и жителей под отключением — в первые годы.
+Постарайся равномерно распределить нагрузку по годам.
+
+Объекты:
+${objectList.map(o => `- ID ${o.id}: "${o.name}", тип: ${o.type}, стоимость: ${o.baseCost} руб., аварий: ${o.accidentCount ?? '?'}, жителей: ${o.residentCount ?? '?'}`).join('\n')}
+
+Доступные годы: ${years.join(', ')}
+
+Верни ТОЛЬКО JSON в формате:
+{"schedule": [{"objectId": <число>, "year": <число>}, ...], "comment": "<краткое объяснение логики>"}`;
+          const completion = await client.chat.completions.create({
+            model: aiProvider.model,
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 1000,
+          });
+          const aiText = completion.choices[0]?.message?.content ?? "";
+          const match = aiText.match(/\{[\s\S]*\}/);
+          if (match) scheduleResult = JSON.parse(match[0]);
+        }
+      } catch (e) {
+        console.error("[AI Schedule] AI call failed:", e);
+      }
+
+      // Fallback: сортировка по приоритету, равномерное распределение
+      if (!scheduleResult) {
+        const sorted = [...objects].sort((a, b) => {
+          const aScore = (a.accidentCount ?? 0) * 100 + (a.residentCount ?? 0);
+          const bScore = (b.accidentCount ?? 0) * 100 + (b.residentCount ?? 0);
+          return bScore - aScore;
+        });
+        scheduleResult = {
+          schedule: sorted.map((obj, i) => ({
+            objectId: obj.id,
+            year: years[i % years.length],
+          })),
+          comment: "Автоматическое распределение по приоритету аварийности (наиболее аварийные — в первые годы)",
+        };
+      }
+
+      if (scheduleResult) {
+        await Promise.all(scheduleResult.schedule.map(item => {
+          const obj = objects.find(o => o.id === item.objectId);
+          if (!obj) return Promise.resolve();
+          const inflationRate = parseFloat(program.inflationRate);
+          const baseCost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
+          const yearsAhead = item.year - program.baseYear;
+          const indexedCost = yearsAhead > 0
+            ? (baseCost * Math.pow(1 + inflationRate / 100, yearsAhead)).toFixed(2)
+            : baseCost.toFixed(2);
+          return storage.updateProgramObject(item.objectId, {
+            plannedYear: item.year,
+            indexedCost,
+          });
+        }));
+      }
+
+      const updatedObjects = await storage.getProgramObjects(id);
+      res.json({ objects: updatedObjects, comment: scheduleResult?.comment ?? "" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Экспорт программы в Excel
+  app.post("/api/reconstruction-programs/:id/export", isAuthenticated, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+
+      const program = await storage.getReconstructionProgram(id);
+      if (!program) return res.status(404).json({ message: "Программа не найдена" });
+
+      const objects = await storage.getProgramObjects(id);
+      const unitRates = await storage.getCostUnitRates();
+
+      const workbook = new ExcelJS.Workbook();
+      const fmt = (n: string | null | undefined) => n ? parseFloat(n) : 0;
+      const fmtM = (n: string | null | undefined) => n ? (parseFloat(n) / 1_000_000).toFixed(2) + ' млн' : '—';
+
+      // Лист 1 — Титул
+      const titleSheet = workbook.addWorksheet("Титул");
+      titleSheet.mergeCells("A1:D1");
+      titleSheet.getCell("A1").value = program.name;
+      titleSheet.getCell("A1").font = { bold: true, size: 16 };
+      titleSheet.getCell("A1").alignment = { horizontal: "center" };
+      titleSheet.addRow([]);
+      titleSheet.addRow(["Период реализации:", `${program.periodFrom}–${program.periodTo}`]);
+      titleSheet.addRow(["Год базовых цен:", program.baseYear]);
+      titleSheet.addRow(["Индексация цен:", `${program.inflationRate}% в год`]);
+      titleSheet.addRow(["Статус:", program.status === "approved" ? "Утверждена" : "Черновик"]);
+      titleSheet.addRow([]);
+      titleSheet.addRow(["Итого (базовые цены):", fmtM(program.totalBaseCost)]);
+      titleSheet.addRow(["Итого (с индексацией):", fmtM(program.totalIndexedCost)]);
+      titleSheet.addRow([]);
+      titleSheet.addRow(["Дата формирования:", new Date().toLocaleDateString("ru-RU")]);
+      titleSheet.columns = [{ width: 30 }, { width: 25 }, { width: 20 }, { width: 20 }];
+
+      // Лист 2 — Перечень объектов
+      const objSheet = workbook.addWorksheet("Перечень объектов");
+      objSheet.columns = [
+        { header: "Наименование", key: "name", width: 25 },
+        { header: "Тип", key: "type", width: 12 },
+        { header: "Д/МВт", key: "spec", width: 10 },
+        { header: "L, м", key: "length", width: 10 },
+        { header: "Прокладка", key: "laying", width: 14 },
+        { header: "Тип работ", key: "workType", width: 16 },
+        { header: "Удельник", key: "unitRate", width: 16 },
+        { header: "Стоим. баз., руб.", key: "baseCost", width: 18 },
+        { header: "Год", key: "year", width: 8 },
+        { header: "Стоим. инд., руб.", key: "indexedCost", width: 18 },
+      ];
+      objSheet.getRow(1).font = { bold: true };
+
+      const typeLabels: Record<string, string> = { pipe: "Трубопровод", ctp: "ЦТП/ИТП", source: "Источник" };
+      const workTypeLabels: Record<string, string> = { overhaul: "Кап. ремонт", reconstruction: "Реконструкция" };
+      const layingLabels: Record<string, string> = { underground: "Подземная", above: "Надземная" };
+
+      objects.forEach(obj => {
+        const spec = obj.objectType === 'pipe'
+          ? (obj.diameterMm ? `${obj.diameterMm} мм` : '—')
+          : (obj.capacityMw ? `${obj.capacityMw} МВт` : '—');
+        const unitRateLabel = obj.unitRateValue
+          ? (obj.objectType === 'pipe' ? `${Number(obj.unitRateValue).toLocaleString("ru-RU")} ₽/м` : `${(Number(obj.unitRateValue) / 1_000_000).toFixed(1)} М₽/МВт`)
+          : '—';
+        objSheet.addRow({
+          name: obj.objectName,
+          type: typeLabels[obj.objectType] ?? obj.objectType,
+          spec,
+          length: obj.lengthM ? parseFloat(obj.lengthM) : null,
+          laying: obj.layingType ? (layingLabels[obj.layingType] ?? obj.layingType) : '—',
+          workType: workTypeLabels[obj.workType] ?? obj.workType,
+          unitRate: unitRateLabel,
+          baseCost: obj.baseCost ? parseFloat(obj.baseCost) : null,
+          year: obj.plannedYear ?? '—',
+          indexedCost: obj.indexedCost ? parseFloat(obj.indexedCost) : null,
+        });
+      });
+
+      // Итого
+      const totalRow = objSheet.addRow({
+        name: "ИТОГО",
+        baseCost: objects.reduce((s, o) => s + fmt(o.baseCost), 0),
+        indexedCost: objects.reduce((s, o) => s + fmt(o.indexedCost || o.baseCost), 0),
+      });
+      totalRow.font = { bold: true };
+
+      // Лист 3 — Финансовый план
+      const finSheet = workbook.addWorksheet("Финансовый план");
+      const years = Array.from({ length: program.periodTo - program.periodFrom + 1 }, (_, i) => program.periodFrom + i);
+      const finCols: any[] = [{ header: "Объект", key: "name", width: 25 }];
+      years.forEach(y => finCols.push({ header: String(y), key: `y${y}`, width: 14 }));
+      finCols.push({ header: "ИТОГО", key: "total", width: 14 });
+      finSheet.columns = finCols;
+      finSheet.getRow(1).font = { bold: true };
+
+      objects.forEach(obj => {
+        const row: Record<string, any> = { name: obj.objectName };
+        years.forEach(y => {
+          row[`y${y}`] = obj.plannedYear === y ? (obj.indexedCost ? parseFloat(obj.indexedCost) : null) : null;
+        });
+        row.total = obj.indexedCost ? parseFloat(obj.indexedCost) : (obj.baseCost ? parseFloat(obj.baseCost) : null);
+        finSheet.addRow(row);
+      });
+
+      // Строка итогов по годам
+      const totalsRow: Record<string, any> = { name: "Итого по годам" };
+      let grandTotal = 0;
+      years.forEach(y => {
+        const sum = objects.filter(o => o.plannedYear === y).reduce((s, o) => s + fmt(o.indexedCost || o.baseCost), 0);
+        totalsRow[`y${y}`] = sum || null;
+        grandTotal += sum;
+      });
+      totalsRow.total = grandTotal;
+      const totalFinRow = finSheet.addRow(totalsRow);
+      totalFinRow.font = { bold: true };
+
+      // Лист 4 — Справочник удельников
+      const ratesSheet = workbook.addWorksheet("Справочник удельников");
+      ratesSheet.columns = [
+        { header: "Тип объекта", key: "type", width: 16 },
+        { header: "Прокладка", key: "laying", width: 14 },
+        { header: "Диаметр, мм", key: "diameter", width: 14 },
+        { header: "Тип работ", key: "workType", width: 16 },
+        { header: "Стоимость", key: "price", width: 18 },
+        { header: "Единица", key: "unit", width: 14 },
+        { header: "Год цен", key: "year", width: 10 },
+      ];
+      ratesSheet.getRow(1).font = { bold: true };
+      unitRates.forEach(r => {
+        ratesSheet.addRow({
+          type: typeLabels[r.objectType] ?? r.objectType,
+          laying: r.layingType ? (layingLabels[r.layingType] ?? r.layingType) : '—',
+          diameter: r.diameterMm ?? '—',
+          workType: workTypeLabels[r.workType] ?? r.workType,
+          price: parseFloat(r.pricePerUnit),
+          unit: r.unit === 'rub_per_m' ? 'руб./м' : 'руб./МВт',
+          year: r.baseYear,
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const safeName = program.name.replace(/[^а-яёА-ЯЁa-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '_');
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}.xlsx`);
+      res.send(Buffer.from(buffer));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
 
