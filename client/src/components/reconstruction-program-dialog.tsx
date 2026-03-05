@@ -17,17 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
   Plus,
   Trash2,
   Calculator,
@@ -141,6 +130,7 @@ export function ReconstructionProgramDialog({
   const [editProgramNameValue, setEditProgramNameValue] = useState("");
   const [importingSegments, setImportingSegments] = useState(false);
   const pendingSegmentsRef = useRef<SegmentImportData[]>([]);
+  const [confirmDeleteProgramId, setConfirmDeleteProgramId] = useState<number | null>(null);
 
   useEffect(() => {
     if (open && initialSegments && initialSegments.length > 0) {
@@ -528,36 +518,39 @@ export function ReconstructionProgramDialog({
                           </div>
                         )}
                       </div>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
+                      {confirmDeleteProgramId === p.id ? (
+                        <div className="flex items-center gap-1 ml-2" onClick={e => e.stopPropagation()}>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            onClick={() => { deleteProgramMutation.mutate(p.id); setConfirmDeleteProgramId(null); }}
+                            disabled={deleteProgramMutation.isPending}
+                            data-testid={`button-confirm-delete-program-${p.id}`}
+                          >
+                            {deleteProgramMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Удалить"}
+                          </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0 ml-2"
-                            onClick={e => e.stopPropagation()}
-                            data-testid={`button-delete-program-${p.id}`}
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            onClick={() => setConfirmDeleteProgramId(null)}
+                            data-testid={`button-cancel-delete-program-${p.id}`}
                           >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            Отмена
                           </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Удалить программу?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Программа «{p.name}» и все её объекты будут удалены. Действие необратимо.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Отмена</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteProgramMutation.mutate(p.id)}
-                              className="bg-destructive text-destructive-foreground"
-                            >
-                              Удалить
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 ml-2"
+                          onClick={e => { e.stopPropagation(); setConfirmDeleteProgramId(p.id); }}
+                          data-testid={`button-delete-program-${p.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -889,6 +882,7 @@ interface ObjectRowProps {
 }
 
 function ObjectRow({ obj, years, onSetYear, onDelete }: ObjectRowProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const typeLabel = OBJECT_TYPES.find(t => t.value === obj.objectType)?.label ?? obj.objectType;
   const workLabel = WORK_TYPES.find(t => t.value === obj.workType)?.label ?? obj.workType;
   const metrics = obj.objectType === "pipe"
@@ -927,23 +921,38 @@ function ObjectRow({ obj, years, onSetYear, onDelete }: ObjectRowProps) {
             {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
           </SelectContent>
         </Select>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-6 w-6" data-testid={`button-delete-object-${obj.id}`}>
-              <Trash2 className="h-3 w-3 text-destructive" />
+        {confirmDelete ? (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={() => { onDelete(); setConfirmDelete(false); }}
+              data-testid={`button-confirm-delete-object-${obj.id}`}
+            >
+              Удалить
             </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Удалить объект?</AlertDialogTitle>
-              <AlertDialogDescription>«{obj.objectName}» будет удалён из программы.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Отмена</AlertDialogCancel>
-              <AlertDialogAction onClick={onDelete} className="bg-destructive text-destructive-foreground">Удалить</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={() => setConfirmDelete(false)}
+              data-testid={`button-cancel-delete-object-${obj.id}`}
+            >
+              Отмена
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => setConfirmDelete(true)}
+            data-testid={`button-delete-object-${obj.id}`}
+          >
+            <Trash2 className="h-3 w-3 text-destructive" />
+          </Button>
+        )}
       </div>
     </div>
   );
