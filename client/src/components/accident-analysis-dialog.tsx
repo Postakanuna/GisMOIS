@@ -410,7 +410,7 @@ export function AccidentAnalysisDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ segments: result.segments, targetLayerId: saveLayerId, bufferMeters: 5 }),
+        body: JSON.stringify({ segments: result.segments, targetLayerId: saveLayerId, bufferMeters: maxDistance }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || `Ошибка ${res.status}`);
@@ -630,10 +630,7 @@ export function AccidentAnalysisDialog({
         {/* Progress block */}
         {isAnalyzing && progress && (
           <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2.5" data-testid="analysis-progress">
-            <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-500 shrink-0" />
-              <span>Анализ выполняется...</span>
-            </div>
+            <div className="text-xs font-medium text-foreground">Анализ выполняется...</div>
 
             {/* Binding row */}
             <div className="space-y-1">
@@ -745,7 +742,7 @@ export function AccidentAnalysisDialog({
                     </PopoverTrigger>
                     <PopoverContent className="w-64 p-3" align="end">
                       <div className="space-y-2">
-                        <p className="text-xs font-medium">Сохранить буферизованные полигоны (±5 м)</p>
+                        <p className="text-xs font-medium">Сохранить буферизованные полигоны (±{maxDistance} м)</p>
                         <Select value={saveLayerId ? String(saveLayerId) : ""} onValueChange={v => setSaveLayerId(Number(v))}>
                           <SelectTrigger className="h-7 text-xs" data-testid="select-save-layer">
                             <SelectValue placeholder="Выберите слой..." />
