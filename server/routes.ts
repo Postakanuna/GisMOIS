@@ -2532,6 +2532,8 @@ export async function registerRoutes(
         accidentLayerId,
         maxDistanceMeters = 50,
         attributeFilter,
+        networkFilters,
+        accidentFilters,
         runSimulation = false,
         consumerLayerId,
         residentField,
@@ -2561,7 +2563,7 @@ export async function registerRoutes(
         properties: (f.properties || {}) as Record<string, unknown>,
       }));
 
-      const accidentFeatures = accidentFeaturesRaw.map(f => ({
+      let accidentFeatures = accidentFeaturesRaw.map(f => ({
         id: f.id,
         geometry: { type: f.geometryType, coordinates: f.coordinates },
         properties: (f.properties || {}) as Record<string, unknown>,
@@ -2574,15 +2576,39 @@ export async function registerRoutes(
         return res.status(422).json({ message: "Network layer has no features" });
       }
 
-      if (attributeFilter && attributeFilter.field && attributeFilter.value !== undefined && attributeFilter.value !== null && attributeFilter.value !== "") {
-        const { field, value } = attributeFilter;
-        networkFeatures = networkFeatures.filter(f => {
-          const propVal = f.properties[field];
-          if (propVal === undefined || propVal === null) return false;
-          return String(propVal) === String(value);
-        });
+      const resolvedNetworkFilters: { field: string; value: string }[] = Array.isArray(networkFilters)
+        ? networkFilters.filter((f: any) => f.field && f.value !== undefined && f.value !== null && f.value !== "")
+        : (attributeFilter && attributeFilter.field && attributeFilter.value !== undefined && attributeFilter.value !== null && attributeFilter.value !== "")
+          ? [attributeFilter]
+          : [];
+
+      if (resolvedNetworkFilters.length > 0) {
+        networkFeatures = networkFeatures.filter(f =>
+          resolvedNetworkFilters.every(({ field, value }) => {
+            const propVal = f.properties[field];
+            if (propVal === undefined || propVal === null) return false;
+            return String(propVal) === String(value);
+          })
+        );
         if (networkFeatures.length === 0) {
           return res.status(422).json({ message: "No network features match the attribute filter" });
+        }
+      }
+
+      const resolvedAccidentFilters: { field: string; value: string }[] = Array.isArray(accidentFilters)
+        ? accidentFilters.filter((f: any) => f.field && f.value !== undefined && f.value !== null && f.value !== "")
+        : [];
+
+      if (resolvedAccidentFilters.length > 0) {
+        accidentFeatures = accidentFeatures.filter(f =>
+          resolvedAccidentFilters.every(({ field, value }) => {
+            const propVal = f.properties[field];
+            if (propVal === undefined || propVal === null) return false;
+            return String(propVal) === String(value);
+          })
+        );
+        if (accidentFeatures.length === 0) {
+          return res.status(422).json({ message: "No accident features match the attribute filter" });
         }
       }
 
@@ -2791,6 +2817,8 @@ export async function registerRoutes(
         accidentLayerId,
         maxDistanceMeters = 50,
         attributeFilter,
+        networkFilters,
+        accidentFilters,
         runSimulation = false,
         consumerLayerId,
         residentField,
@@ -2818,7 +2846,7 @@ export async function registerRoutes(
         properties: (f.properties || {}) as Record<string, unknown>,
       }));
 
-      const accidentFeatures = accidentFeaturesRaw.map(f => ({
+      let accidentFeatures = accidentFeaturesRaw.map(f => ({
         id: f.id,
         geometry: { type: f.geometryType, coordinates: f.coordinates },
         properties: (f.properties || {}) as Record<string, unknown>,
@@ -2829,15 +2857,40 @@ export async function registerRoutes(
         return res.end();
       }
 
-      if (attributeFilter && attributeFilter.field && attributeFilter.value !== undefined && attributeFilter.value !== null && attributeFilter.value !== "") {
-        const { field, value } = attributeFilter;
-        networkFeatures = networkFeatures.filter(f => {
-          const propVal = f.properties[field];
-          if (propVal === undefined || propVal === null) return false;
-          return String(propVal) === String(value);
-        });
+      const resolvedNetworkFilters: { field: string; value: string }[] = Array.isArray(networkFilters)
+        ? networkFilters.filter((f: any) => f.field && f.value !== undefined && f.value !== null && f.value !== "")
+        : (attributeFilter && attributeFilter.field && attributeFilter.value !== undefined && attributeFilter.value !== null && attributeFilter.value !== "")
+          ? [attributeFilter]
+          : [];
+
+      if (resolvedNetworkFilters.length > 0) {
+        networkFeatures = networkFeatures.filter(f =>
+          resolvedNetworkFilters.every(({ field, value }) => {
+            const propVal = f.properties[field];
+            if (propVal === undefined || propVal === null) return false;
+            return String(propVal) === String(value);
+          })
+        );
         if (networkFeatures.length === 0) {
           sendEvent("error", { message: "No network features match the attribute filter" });
+          return res.end();
+        }
+      }
+
+      const resolvedAccidentFilters: { field: string; value: string }[] = Array.isArray(accidentFilters)
+        ? accidentFilters.filter((f: any) => f.field && f.value !== undefined && f.value !== null && f.value !== "")
+        : [];
+
+      if (resolvedAccidentFilters.length > 0) {
+        accidentFeatures = accidentFeatures.filter(f =>
+          resolvedAccidentFilters.every(({ field, value }) => {
+            const propVal = f.properties[field];
+            if (propVal === undefined || propVal === null) return false;
+            return String(propVal) === String(value);
+          })
+        );
+        if (accidentFeatures.length === 0) {
+          sendEvent("error", { message: "No accident features match the attribute filter" });
           return res.end();
         }
       }

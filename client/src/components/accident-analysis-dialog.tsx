@@ -36,6 +36,8 @@ import {
   Network,
   BarChart3,
   XCircle,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 interface EditableLayer {
@@ -117,9 +119,12 @@ export function AccidentAnalysisDialog({
   const [networkLayerId, setNetworkLayerId] = useState<number | null>(null);
   const [accidentLayerId, setAccidentLayerId] = useState<number | null>(null);
   const [maxDistance, setMaxDistance] = useState<number>(15);
-  const [attributeFilter, setAttributeFilter] = useState<AttributeFilter>({ field: "", value: "" });
-  const [filterEnabled, setFilterEnabled] = useState(false);
+  const [networkFilterEnabled, setNetworkFilterEnabled] = useState(false);
+  const [networkFilters, setNetworkFilters] = useState<AttributeFilter[]>([{ field: "", value: "" }]);
   const [networkAttributes, setNetworkAttributes] = useState<string[]>([]);
+  const [accidentFilterEnabled, setAccidentFilterEnabled] = useState(false);
+  const [accidentFilters, setAccidentFilters] = useState<AttributeFilter[]>([{ field: "", value: "" }]);
+  const [accidentAttributes, setAccidentAttributes] = useState<string[]>([]);
   const [runSimulation, setRunSimulation] = useState(false);
   const [consumerLayerId, setConsumerLayerId] = useState<number | null>(null);
   const [residentField, setResidentField] = useState<string | null>(null);
@@ -166,8 +171,8 @@ export function AccidentAnalysisDialog({
   useEffect(() => {
     if (!networkLayerId) {
       setNetworkAttributes([]);
-      setFilterEnabled(false);
-      setAttributeFilter({ field: "", value: "" });
+      setNetworkFilterEnabled(false);
+      setNetworkFilters([{ field: "", value: "" }]);
       return;
     }
     fetch(`/api/editable-layers/${networkLayerId}/attributes`)
@@ -175,6 +180,19 @@ export function AccidentAnalysisDialog({
       .then((attrs: string[]) => setNetworkAttributes(attrs))
       .catch(() => setNetworkAttributes([]));
   }, [networkLayerId]);
+
+  useEffect(() => {
+    if (!accidentLayerId) {
+      setAccidentAttributes([]);
+      setAccidentFilterEnabled(false);
+      setAccidentFilters([{ field: "", value: "" }]);
+      return;
+    }
+    fetch(`/api/editable-layers/${accidentLayerId}/attributes`)
+      .then(r => r.ok ? r.json() : [])
+      .then((attrs: string[]) => setAccidentAttributes(attrs))
+      .catch(() => setAccidentAttributes([]));
+  }, [accidentLayerId]);
 
   useEffect(() => {
     if (!consumerLayerId) {
@@ -193,6 +211,10 @@ export function AccidentAnalysisDialog({
       setResult(null);
       setSelectedSegmentId(null);
       onHighlightSegment(null);
+      setNetworkFilterEnabled(false);
+      setNetworkFilters([{ field: "", value: "" }]);
+      setAccidentFilterEnabled(false);
+      setAccidentFilters([{ field: "", value: "" }]);
       if (isAnalyzing) {
         abortControllerRef.current?.abort();
         setIsAnalyzing(false);
@@ -231,8 +253,17 @@ export function AccidentAnalysisDialog({
       sceneId,
       runSimulation,
     };
-    if (filterEnabled && attributeFilter.field && attributeFilter.value) {
-      body.attributeFilter = attributeFilter;
+    const activeNetworkFilters = networkFilterEnabled
+      ? networkFilters.filter(f => f.field && f.value)
+      : [];
+    if (activeNetworkFilters.length > 0) {
+      body.networkFilters = activeNetworkFilters;
+    }
+    const activeAccidentFilters = accidentFilterEnabled
+      ? accidentFilters.filter(f => f.field && f.value)
+      : [];
+    if (activeAccidentFilters.length > 0) {
+      body.accidentFilters = activeAccidentFilters;
     }
     if (runSimulation && consumerLayerId) {
       body.consumerLayerId = consumerLayerId;
@@ -487,38 +518,66 @@ export function AccidentAnalysisDialog({
                   <span className="text-xs font-medium text-muted-foreground">Фильтр объектов сети</span>
                 </div>
                 <Button
-                  variant={filterEnabled ? "default" : "outline"}
+                  variant={networkFilterEnabled ? "default" : "outline"}
                   size="sm"
                   className="h-6 text-xs px-2"
-                  onClick={() => { setFilterEnabled(prev => !prev); if (filterEnabled) setAttributeFilter({ field: "", value: "" }); }}
-                  data-testid="button-toggle-filter"
+                  onClick={() => { setNetworkFilterEnabled(prev => !prev); if (networkFilterEnabled) setNetworkFilters([{ field: "", value: "" }]); }}
+                  data-testid="button-toggle-network-filter"
                 >
-                  {filterEnabled ? "Убрать фильтр" : "Добавить фильтр"}
+                  {networkFilterEnabled ? "Убрать фильтр" : "Добавить фильтр"}
                 </Button>
               </div>
-              {filterEnabled && (
-                <div className="flex gap-2 mt-2">
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs">Столбец</Label>
-                    <Select value={attributeFilter.field} onValueChange={v => setAttributeFilter(prev => ({ ...prev, field: v }))}>
-                      <SelectTrigger className="h-7 text-xs" data-testid="select-filter-field">
-                        <SelectValue placeholder="Атрибут..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {networkAttributes.map(attr => <SelectItem key={attr} value={attr}>{attr}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-28 space-y-1">
-                    <Label className="text-xs">Значение</Label>
-                    <Input
-                      className="h-7 text-xs"
-                      placeholder="например: 1"
-                      value={attributeFilter.value}
-                      onChange={e => setAttributeFilter(prev => ({ ...prev, value: e.target.value }))}
-                      data-testid="input-filter-value"
-                    />
-                  </div>
+              {networkFilterEnabled && (
+                <div className="space-y-1.5 mt-1">
+                  {networkFilters.map((f, idx) => (
+                    <div key={idx} className="flex gap-1.5 items-end">
+                      <div className="flex-1 space-y-1">
+                        {idx === 0 && <Label className="text-xs">Столбец</Label>}
+                        <Select value={f.field} onValueChange={v => setNetworkFilters(prev => prev.map((r, i) => i === idx ? { ...r, field: v } : r))}>
+                          <SelectTrigger className="h-7 text-xs" data-testid={`select-network-filter-field-${idx}`}>
+                            <SelectValue placeholder="Атрибут..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {networkAttributes.map(attr => <SelectItem key={attr} value={attr}>{attr}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="w-28 space-y-1">
+                        {idx === 0 && <Label className="text-xs">Значение</Label>}
+                        <Input
+                          className="h-7 text-xs"
+                          placeholder="значение"
+                          value={f.value}
+                          onChange={e => setNetworkFilters(prev => prev.map((r, i) => i === idx ? { ...r, value: e.target.value } : r))}
+                          data-testid={`input-network-filter-value-${idx}`}
+                        />
+                      </div>
+                      {networkFilters.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => setNetworkFilters(prev => prev.filter((_, i) => i !== idx))}
+                          data-testid={`button-remove-network-filter-${idx}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs gap-1 w-full mt-1"
+                    onClick={() => setNetworkFilters(prev => [...prev, { field: "", value: "" }])}
+                    data-testid="button-add-network-filter"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Добавить условие
+                  </Button>
+                  {networkFilters.length > 1 && (
+                    <p className="text-xs text-muted-foreground">Условия применяются вместе (AND)</p>
+                  )}
                 </div>
               )}
             </div>
@@ -539,6 +598,79 @@ export function AccidentAnalysisDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {accidentLayerId !== null && (
+            <div className="space-y-1.5 border border-border rounded-md p-2.5 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">Фильтр аварий</span>
+                </div>
+                <Button
+                  variant={accidentFilterEnabled ? "default" : "outline"}
+                  size="sm"
+                  className="h-6 text-xs px-2"
+                  onClick={() => { setAccidentFilterEnabled(prev => !prev); if (accidentFilterEnabled) setAccidentFilters([{ field: "", value: "" }]); }}
+                  data-testid="button-toggle-accident-filter"
+                >
+                  {accidentFilterEnabled ? "Убрать фильтр" : "Добавить фильтр"}
+                </Button>
+              </div>
+              {accidentFilterEnabled && (
+                <div className="space-y-1.5 mt-1">
+                  {accidentFilters.map((f, idx) => (
+                    <div key={idx} className="flex gap-1.5 items-end">
+                      <div className="flex-1 space-y-1">
+                        {idx === 0 && <Label className="text-xs">Столбец</Label>}
+                        <Select value={f.field} onValueChange={v => setAccidentFilters(prev => prev.map((r, i) => i === idx ? { ...r, field: v } : r))}>
+                          <SelectTrigger className="h-7 text-xs" data-testid={`select-accident-filter-field-${idx}`}>
+                            <SelectValue placeholder="Атрибут..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {accidentAttributes.map(attr => <SelectItem key={attr} value={attr}>{attr}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="w-28 space-y-1">
+                        {idx === 0 && <Label className="text-xs">Значение</Label>}
+                        <Input
+                          className="h-7 text-xs"
+                          placeholder="значение"
+                          value={f.value}
+                          onChange={e => setAccidentFilters(prev => prev.map((r, i) => i === idx ? { ...r, value: e.target.value } : r))}
+                          data-testid={`input-accident-filter-value-${idx}`}
+                        />
+                      </div>
+                      {accidentFilters.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => setAccidentFilters(prev => prev.filter((_, i) => i !== idx))}
+                          data-testid={`button-remove-accident-filter-${idx}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs gap-1 w-full mt-1"
+                    onClick={() => setAccidentFilters(prev => [...prev, { field: "", value: "" }])}
+                    data-testid="button-add-accident-filter"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Добавить условие
+                  </Button>
+                  {accidentFilters.length > 1 && (
+                    <p className="text-xs text-muted-foreground">Условия применяются вместе (AND)</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Макс. расстояние привязки (м)</Label>
