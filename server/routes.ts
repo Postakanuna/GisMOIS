@@ -9283,7 +9283,7 @@ export async function registerRoutes(
 
       const created: any[] = [];
       for (const item of items) {
-        const { objectType = "pipe", objectName, diameterMm, lengthM, capacityMw, layingType, workType, accidentCount, residentCount, featureId } = item;
+        const { objectType = "pipe", objectName, diameterMm, lengthM, capacityMw, layingType, workType, accidentCount, residentCount, consumerCount, featureId } = item;
 
         const unitRate = await storage.findBestUnitRate(
           objectType,
@@ -9327,6 +9327,7 @@ export async function registerRoutes(
           accidentCount: accidentCount ?? null,
           accidentsPerM: accsPerM,
           residentCount: residentCount ?? null,
+          consumerCount: consumerCount ?? null,
           geometry: null,
           sortOrder: sortOrder++,
         });
@@ -9480,8 +9481,8 @@ export async function registerRoutes(
     }
   });
 
-  // ИИ-распределение объектов по годам
-  app.post("/api/reconstruction-programs/:id/ai-schedule", isAuthenticated, async (req: AuthRequest, res: Response) => {
+  // Детерминированное распределение объектов по годам на основе скоринга критичности
+  app.post("/api/reconstruction-programs/:id/schedule", isAuthenticated, async (req: AuthRequest, res: Response) => {
     try {
       const id = parseIntParam(req.params.id, res);
       if (id === null) return;
@@ -9493,85 +9494,83 @@ export async function registerRoutes(
       const { annualBudget } = req.body;
 
       const years = Array.from({ length: program.periodTo - program.periodFrom + 1 }, (_, i) => program.periodFrom + i);
-      const objectList = objects.map(o => ({
-        id: o.id,
-        name: o.objectName,
-        type: o.objectType,
-        baseCost: o.baseCost,
-        accidentCount: o.accidentCount,
-        accidentsPerM: o.accidentsPerM,
-        residentCount: o.residentCount,
+
+      // --- Скоринг критичности ---
+      // Факторы (веса из аналитического отчёта):
+      //   F1 accidentsPerM  — 35% (удельная аварийность, главный показатель износа)
+      //   F2 residentCount  — 25% (жители под отключением, социальный риск)
+      //   F3 consumerCount  — 20% (потребители-объекты: больницы, школы и т.д.)
+      //   F4 accidentCount  — 15% (абсолютная аварийность)
+      //   F5 diameterMm     — 5%  (важность в сети: магистраль vs разводящий)
+      const W1 = 0.35, W2 = 0.25, W3 = 0.20, W4 = 0.15, W5 = 0.05;
+
+      const maxAccPerM    = Math.max(...objects.map(o => o.accidentsPerM    ? parseFloat(o.accidentsPerM)    : 0), 0);
+      const maxResidents  = Math.max(...objects.map(o => o.residentCount    ?? 0), 0);
+      const maxConsumers  = Math.max(...objects.map(o => o.consumerCount ?? 0), 0);
+      const maxAccidents  = Math.max(...objects.map(o => o.accidentCount    ?? 0), 0);
+      const maxDiameter   = Math.max(...objects.map(o => o.diameterMm       ?? 0), 0);
+
+      const norm = (val: number, max: number) => max > 0 ? val / max : 0;
+
+      const scored = objects.map(o => {
+        const f1 = norm(o.accidentsPerM    ? parseFloat(o.accidentsPerM)    : 0, maxAccPerM);
+        const f2 = norm(o.residentCount    ?? 0, maxResidents);
+        const f3 = norm(o.consumerCount ?? 0, maxConsumers);
+        const f4 = norm(o.accidentCount    ?? 0, maxAccidents);
+        const f5 = norm(o.diameterMm       ?? 0, maxDiameter);
+        const score = W1 * f1 + W2 * f2 + W3 * f3 + W4 * f4 + W5 * f5;
+        return { obj: o, score };
+      });
+
+      // Сортировка по убыванию скоринга (самые критичные — первые)
+      scored.sort((a, b) => b.score - a.score);
+
+      // --- Планирование по годам ---
+      const schedule: Array<{ objectId: number; year: number }> = [];
+
+      if (annualBudget && annualBudget > 0) {
+        // Бюджетное распределение: заполняем каждый год до лимита
+        let yearIdx = 0;
+        let budgetUsed = 0;
+        for (const { obj } of scored) {
+          if (yearIdx >= years.length) yearIdx = years.length - 1;
+          const cost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
+          if (cost > 0 && budgetUsed + cost > annualBudget && yearIdx < years.length - 1) {
+            yearIdx++;
+            budgetUsed = 0;
+          }
+          schedule.push({ objectId: obj.id, year: years[yearIdx] });
+          budgetUsed += cost;
+        }
+      } else {
+        // Равномерное распределение: делим объекты поровну по годам
+        const perYear = Math.ceil(scored.length / years.length);
+        scored.forEach(({ obj }, i) => {
+          const yearIdx = Math.min(Math.floor(i / perYear), years.length - 1);
+          schedule.push({ objectId: obj.id, year: years[yearIdx] });
+        });
+      }
+
+      // Сохраняем распределение и пересчитываем индексированную стоимость
+      await Promise.all(schedule.map(item => {
+        const obj = objects.find(o => o.id === item.objectId);
+        if (!obj) return Promise.resolve();
+        const inflationRate = parseFloat(program.inflationRate);
+        const baseCost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
+        const yearsAhead = item.year - program.baseYear;
+        const indexedCost = yearsAhead > 0
+          ? (baseCost * Math.pow(1 + inflationRate / 100, yearsAhead)).toFixed(2)
+          : baseCost.toFixed(2);
+        return storage.updateProgramObject(item.objectId, { plannedYear: item.year, indexedCost });
       }));
 
-      let scheduleResult: { schedule: Array<{ objectId: number; year: number }>; comment: string } | null = null;
-
-      // Try AI scheduling
-      try {
-        const aiProvider = await storage.getDefaultAiProvider();
-        if (aiProvider && aiProvider.baseUrl && aiProvider.apiKey && aiProvider.model) {
-          const OpenAI = (await import("openai")).default;
-          const client = new OpenAI({ baseURL: aiProvider.baseUrl, apiKey: aiProvider.apiKey });
-          const prompt = `Ты помощник по планированию капитального ремонта инженерных сетей.
-Распредели следующие объекты по годам программы (${program.periodFrom}–${program.periodTo}).
-${annualBudget ? `Годовой лимит финансирования: ${annualBudget} руб.` : 'Годовой лимит не задан.'}
-Критерии приоритизации: объекты с большим количеством аварий и жителей под отключением — в первые годы.
-Постарайся равномерно распределить нагрузку по годам.
-
-Объекты:
-${objectList.map(o => `- ID ${o.id}: "${o.name}", тип: ${o.type}, стоимость: ${o.baseCost} руб., аварий: ${o.accidentCount ?? '?'}, жителей: ${o.residentCount ?? '?'}`).join('\n')}
-
-Доступные годы: ${years.join(', ')}
-
-Верни ТОЛЬКО JSON в формате:
-{"schedule": [{"objectId": <число>, "year": <число>}, ...], "comment": "<краткое объяснение логики>"}`;
-          const completion = await client.chat.completions.create({
-            model: aiProvider.model,
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: 1000,
-          });
-          const aiText = completion.choices[0]?.message?.content ?? "";
-          const match = aiText.match(/\{[\s\S]*\}/);
-          if (match) scheduleResult = JSON.parse(match[0]);
-        }
-      } catch (e) {
-        console.error("[AI Schedule] AI call failed:", e);
-      }
-
-      // Fallback: сортировка по приоритету, равномерное распределение
-      if (!scheduleResult) {
-        const sorted = [...objects].sort((a, b) => {
-          const aScore = (a.accidentCount ?? 0) * 100 + (a.residentCount ?? 0);
-          const bScore = (b.accidentCount ?? 0) * 100 + (b.residentCount ?? 0);
-          return bScore - aScore;
-        });
-        scheduleResult = {
-          schedule: sorted.map((obj, i) => ({
-            objectId: obj.id,
-            year: years[i % years.length],
-          })),
-          comment: "Автоматическое распределение по приоритету аварийности (наиболее аварийные — в первые годы)",
-        };
-      }
-
-      if (scheduleResult) {
-        await Promise.all(scheduleResult.schedule.map(item => {
-          const obj = objects.find(o => o.id === item.objectId);
-          if (!obj) return Promise.resolve();
-          const inflationRate = parseFloat(program.inflationRate);
-          const baseCost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
-          const yearsAhead = item.year - program.baseYear;
-          const indexedCost = yearsAhead > 0
-            ? (baseCost * Math.pow(1 + inflationRate / 100, yearsAhead)).toFixed(2)
-            : baseCost.toFixed(2);
-          return storage.updateProgramObject(item.objectId, {
-            plannedYear: item.year,
-            indexedCost,
-          });
-        }));
-      }
-
       const updatedObjects = await storage.getProgramObjects(id);
-      res.json({ objects: updatedObjects, comment: scheduleResult?.comment ?? "" });
+      const usedBudget = annualBudget && annualBudget > 0;
+      const comment = usedBudget
+        ? `Распределение по скорингу критичности с годовым лимитом ${Number(annualBudget).toLocaleString("ru-RU")} ₽. Факторы: удельная аварийность (35%), жители (25%), потребители (20%), аварии (15%), диаметр (5%).`
+        : `Равномерное распределение по скорингу критичности. Факторы: удельная аварийность (35%), жители (25%), потребители (20%), аварии (15%), диаметр (5%).`;
+
+      res.json({ objects: updatedObjects, comment });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

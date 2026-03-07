@@ -150,6 +150,7 @@ export function AccidentAnalysisDialog({
       lengthM: s.length != null ? String(s.length) : null,
       accidentCount: s.accidentCount,
       residentCount: s.residentCount,
+      consumerCount: s.consumerCount,
       layingType: "underground",
       workType: "overhaul",
     }));

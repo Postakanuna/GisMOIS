@@ -22,7 +22,7 @@ import {
   Calculator,
   FileDown,
   ChevronLeft,
-  Sparkles,
+  CalendarClock,
   Loader2,
   Pencil,
   Check,
@@ -37,6 +37,7 @@ export interface SegmentImportData {
   lengthM?: string | number | null;
   accidentCount?: number | null;
   residentCount?: number | null;
+  consumerCount?: number | null;
   layingType?: string;
   workType?: string;
 }
@@ -76,6 +77,7 @@ interface ProgramObject {
   accidentCount: number | null;
   accidentsPerM: string | null;
   residentCount: number | null;
+  consumerCount: number | null;
   sortOrder: number;
 }
 
@@ -224,6 +226,7 @@ export function ReconstructionProgramDialog({
               workType: s.workType ?? "overhaul",
               accidentCount: s.accidentCount ?? null,
               residentCount: s.residentCount ?? null,
+              consumerCount: s.consumerCount ?? null,
             })),
           });
           queryClient.invalidateQueries({ queryKey: ["/api/reconstruction-programs", program.id, "detail"] });
@@ -318,7 +321,7 @@ export function ReconstructionProgramDialog({
 
   const aiScheduleMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/reconstruction-programs/${selectedProgramId}/ai-schedule`, {
+      const res = await apiRequest("POST", `/api/reconstruction-programs/${selectedProgramId}/schedule`, {
         annualBudget: aiScheduleBudget ? parseFloat(aiScheduleBudget) : undefined,
       });
       return res.json();
@@ -647,12 +650,12 @@ export function ReconstructionProgramDialog({
                   variant="outline" size="sm"
                   onClick={() => aiScheduleMutation.mutate()}
                   disabled={aiScheduleMutation.isPending}
-                  data-testid="button-ai-schedule"
+                  data-testid="button-schedule"
                 >
                   {aiScheduleMutation.isPending
                     ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                    : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-                  Распределить по годам
+                    : <CalendarClock className="h-3.5 w-3.5 mr-1" />}
+                  Расставить по годам
                 </Button>
               </div>
 
@@ -906,6 +909,7 @@ function ObjectRow({ obj, years, onSetYear, onDelete }: ObjectRowProps) {
           {obj.indexedCost && obj.plannedYear && <span>→ {fmt(obj.indexedCost)} ({obj.plannedYear})</span>}
           {obj.accidentCount != null && <span>⚡ {obj.accidentCount} ав.</span>}
           {obj.residentCount != null && <span>👥 {obj.residentCount} жит.</span>}
+          {obj.consumerCount != null && <span>🏢 {obj.consumerCount} потр.</span>}
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
