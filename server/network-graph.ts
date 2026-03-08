@@ -1248,6 +1248,27 @@ function getDepth(parentMap: Map<string, string | null>, key: string): number {
   return depth;
 }
 
+function bfsReachable(
+  startKey: string,
+  adjacency: Map<string, Set<string>>,
+  allowedNodes: Set<string>
+): Set<string> {
+  const visited = new Set<string>([startKey]);
+  const queue: string[] = [startKey];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const neighbors = adjacency.get(current);
+    if (!neighbors) continue;
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor) && allowedNodes.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+  return visited;
+}
+
 export async function simulateSpatialDisconnection(
   featureId: number,
   layerId: number,
@@ -1296,50 +1317,60 @@ export async function simulateSpatialDisconnection(
 
   let targetNodes: Set<string>;
 
-  if (!sourceKey) {
+  if (sourceKey && found.nodeKeys.includes(sourceKey)) {
     targetNodes = componentNodes;
-    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] No source found, using entire component as affected zone`);
-  } else {
-    const parentMap = spatialBfsFromSource(graph, sourceKey, componentNodes);
-    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] BFS tree: ${parentMap.size} nodes reachable from source`);
-
-    if (found.nodeKeys.includes(sourceKey)) {
-      targetNodes = componentNodes;
-      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Failure at source, entire component affected`);
-    } else if (found.isEdge && found.nodeKeys.length === 2) {
-      const [keyA, keyB] = found.nodeKeys;
-      const parentA = parentMap.get(keyA);
-      const parentB = parentMap.get(keyB);
-
-      let downstreamKey: string | null = null;
-      if (parentB === keyA) {
-        downstreamKey = keyB;
-      } else if (parentA === keyB) {
-        downstreamKey = keyA;
-      } else {
-        const depthA = getDepth(parentMap, keyA);
-        const depthB = getDepth(parentMap, keyB);
-        downstreamKey = depthA > depthB ? keyA : keyB;
-      }
-
-      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Edge failure: downstream endpoint = ${downstreamKey}`);
-
-      if (downstreamKey && parentMap.has(downstreamKey)) {
-        targetNodes = getSpatialDownstream(parentMap, [downstreamKey], sourceKey);
-      } else {
-        targetNodes = new Set(found.nodeKeys);
-      }
-      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Downstream nodes: ${targetNodes.size}`);
-    } else {
-      const failureKeys = found.nodeKeys.filter(k => k !== sourceKey);
-      const downstreamKeys = failureKeys.filter(k => parentMap.has(k));
-      if (downstreamKeys.length === 0) {
-        targetNodes = new Set(found.nodeKeys);
-      } else {
-        targetNodes = getSpatialDownstream(parentMap, downstreamKeys, sourceKey);
-      }
-      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Downstream nodes: ${targetNodes.size}`);
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Failure at source, entire component affected`);
+  } else if (sourceKey) {
+    const modifiedAdj = new Map<string, Set<string>>();
+    for (const [k, neighbors] of graph.adjacency) {
+      modifiedAdj.set(k, new Set(neighbors));
     }
+
+    if (found.isEdge && found.nodeKeys.length === 2) {
+      const [keyA, keyB] = found.nodeKeys;
+      modifiedAdj.get(keyA)?.delete(keyB);
+      modifiedAdj.get(keyB)?.delete(keyA);
+      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Removed edge ${keyA} ↔ ${keyB} from adjacency`);
+    } else {
+      for (const failedKey of found.nodeKeys) {
+        const neighbors = modifiedAdj.get(failedKey);
+        if (neighbors) {
+          for (const neighbor of neighbors) {
+            modifiedAdj.get(neighbor)?.delete(failedKey);
+          }
+          modifiedAdj.set(failedKey, new Set());
+        }
+      }
+      if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Removed node(s) ${found.nodeKeys.join(", ")} from adjacency`);
+    }
+
+    const reachable = bfsReachable(sourceKey, modifiedAdj, componentNodes);
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] After failure: reachable from source = ${reachable.size} / ${componentNodes.size} total`);
+
+    targetNodes = new Set<string>();
+    for (const key of componentNodes) {
+      if (!reachable.has(key) && !found.nodeKeys.includes(key)) {
+        targetNodes.add(key);
+      }
+    }
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Affected (unreachable) nodes: ${targetNodes.size}`);
+  } else {
+    const parentMap = spatialBfsFromSource(graph, found.nodeKeys[0], componentNodes);
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] No source found — fallback BFS from failure point, component size: ${componentNodes.size}`);
+
+    if (found.isEdge && found.nodeKeys.length === 2) {
+      const [keyA, keyB] = found.nodeKeys;
+      const depthA = getDepth(parentMap, keyA);
+      const depthB = getDepth(parentMap, keyB);
+      const downstreamKey = depthA > depthB ? keyA : keyB;
+      targetNodes = getSpatialDownstream(parentMap, [downstreamKey], found.nodeKeys[0]);
+    } else {
+      const downstreamKeys = found.nodeKeys.filter(k => parentMap.has(k));
+      targetNodes = downstreamKeys.length > 0
+        ? getSpatialDownstream(parentMap, downstreamKeys, found.nodeKeys[0])
+        : new Set(found.nodeKeys);
+    }
+    if (process.env.NODE_ENV !== "production") console.log(`[SpatialGraph] Fallback downstream nodes: ${targetNodes.size}`);
   }
 
   const affectedConsumers: SimulationResult["affectedConsumers"] = [];
