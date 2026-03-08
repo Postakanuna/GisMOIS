@@ -1349,7 +1349,7 @@ export async function simulateSpatialDisconnection(
 
     targetNodes = new Set<string>();
     for (const key of componentNodes) {
-      if (!reachable.has(key) && !found.nodeKeys.includes(key)) {
+      if (!reachable.has(key)) {
         targetNodes.add(key);
       }
     }
