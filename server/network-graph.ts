@@ -2,6 +2,8 @@ import { db } from "./db";
 import { drawnFeatures, editableLayers } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 
+const SNAP_CONSUMER_RADIUS = 5;
+
 export function normalizeName(name: string): string {
   return name
     .replace(/\s+/g, " ")
@@ -988,6 +990,12 @@ export async function buildSpatialNetworkGraph(sceneId: number): Promise<Spatial
       .from(drawnFeatures)
       .where(inArray(drawnFeatures.layerId, allPointLayerIds));
 
+    let snapUseHaversine = true;
+    if (graph.nodes.size > 0) {
+      const firstNode = graph.nodes.values().next().value;
+      if (firstNode) snapUseHaversine = Math.abs(firstNode.coordinates[0]) <= 180;
+    }
+
     for (const feat of pointFeatures) {
       const coord = extractPointCoord(feat.coordinates);
       if (!coord) continue;
@@ -1013,6 +1021,29 @@ export async function buildSpatialNetworkGraph(sceneId: number): Promise<Spatial
           existing.layerId = feat.layerId;
           existing.name = nameRaw || existing.name;
           existing.properties = props;
+        }
+      } else if (nodeType !== "other") {
+        let nearestKey: string | null = null;
+        let nearestDist = SNAP_CONSUMER_RADIUS;
+        for (const [nk, node] of graph.nodes) {
+          const dist = distanceBetweenPoints(coord, node.coordinates, snapUseHaversine);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestKey = nk;
+          }
+        }
+        if (nearestKey) {
+          const nearestNode = graph.nodes.get(nearestKey)!;
+          if (nearestNode.featureId === 0 || (nodeType !== "other" && nodeType !== "node")) {
+            nearestNode.type = nodeType;
+            nearestNode.featureId = feat.id;
+            nearestNode.layerId = feat.layerId;
+            nearestNode.name = nameRaw || nearestNode.name;
+            nearestNode.properties = props;
+          }
+          if (process.env.NODE_ENV !== "production") {
+            console.log(`[SpatialGraph] Snap: featureId=${feat.id} type=${nodeType} snapped to node ${nearestKey} (dist=${nearestDist.toFixed(2)}m)`);
+          }
         }
       }
     }

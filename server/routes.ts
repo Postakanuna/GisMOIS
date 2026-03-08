@@ -2707,7 +2707,8 @@ export async function registerRoutes(
 
       // Run disconnection simulation once per unique segment if requested
       if (runSimulation && sceneId) {
-        const { simulateSpatialDisconnection } = await import("./network-graph");
+        const { buildSpatialNetworkGraph, simulateSpatialDisconnection } = await import("./network-graph");
+        const accidentGraph = await buildSpatialNetworkGraph(Number(sceneId));
         // Load consumer features once if residentField is provided
         let consumerFeatures: Array<{ id: number; geometry: { type: string; coordinates: any }; properties: Record<string, unknown> }> = [];
         if (consumerLayerId && residentField) {
@@ -2723,7 +2724,7 @@ export async function registerRoutes(
 
         for (const seg of baseSegments) {
           try {
-            const simResult = await simulateSpatialDisconnection(seg.featureId, Number(networkLayerId), Number(sceneId));
+            const simResult = await simulateSpatialDisconnection(seg.featureId, Number(networkLayerId), Number(sceneId), accidentGraph);
             seg.consumerCount = simResult.stats?.totalConsumers ?? simResult.affectedConsumers?.length ?? 0;
           } catch (simErr) {
             console.warn(`[accident-analysis] simulation failed for featureId=${seg.featureId}:`, (simErr as Error).message);
