@@ -228,12 +228,12 @@ export function LinePicker({
           </TabsList>
 
           <TabsContent value="basic" className="p-2 m-0">
-            <div className="space-y-1">
+            <div className="grid grid-cols-2 gap-1">
               {BASIC_LINE_STYLES.map(({ value, label }) => (
                 <Tooltip key={value}>
                   <TooltipTrigger asChild>
                     <button
-                      className={`w-full h-8 flex items-center gap-2 px-2 rounded border ${
+                      className={`h-8 flex items-center gap-1.5 px-1.5 rounded border ${
                         selectedLineStyle === value
                           ? "bg-primary/20 border-primary"
                           : "border-border"
@@ -244,7 +244,7 @@ export function LinePicker({
                       <img
                         src={getBasicLinePreviewDataUrl(value, color)}
                         alt={label}
-                        className="h-4 w-12 object-contain flex-shrink-0"
+                        className="h-4 w-10 object-contain flex-shrink-0"
                       />
                       <span className="text-xs truncate">{label}</span>
                     </button>
@@ -258,12 +258,12 @@ export function LinePicker({
           </TabsContent>
 
           <TabsContent value="gost" className="p-2 m-0">
-            <div className="space-y-1">
+            <div className="grid grid-cols-2 gap-1">
               {heatStyles.map(({ value, label }) => (
                 <Tooltip key={value}>
                   <TooltipTrigger asChild>
                     <button
-                      className={`w-full h-8 flex items-center gap-2 px-2 rounded border ${
+                      className={`h-8 flex items-center gap-1.5 px-1.5 rounded border ${
                         selectedLineStyle === value
                           ? "bg-primary/20 border-primary"
                           : "border-border"
@@ -274,7 +274,7 @@ export function LinePicker({
                       <img
                         src={getLinePreviewDataUrl(value, color)}
                         alt={label}
-                        className="h-4 w-12 object-contain flex-shrink-0"
+                        className="h-4 w-10 object-contain flex-shrink-0"
                       />
                       <span className="text-xs truncate">{label}</span>
                     </button>
