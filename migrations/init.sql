@@ -1,9 +1,9 @@
 -- =====================================================
 -- ГИС МО "Инженерные сети" — Полная схема базы данных
--- Версия: 1.0.0-rc.4
--- Дата обновления: 2026-03-04
+-- Версия: 1.1.0
+-- Дата обновления: 2026-03-08
 --
--- Этот файл содержит ВСЕ таблицы приложения (25 шт.).
+-- Этот файл содержит ВСЕ таблицы приложения (28 шт.).
 -- Безопасен для повторного применения (IF NOT EXISTS).
 -- При добавлении новых таблиц/столбцов в schema.ts —
 -- ОБЯЗАТЕЛЬНО обновляйте этот файл.
@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS "users" (
   "organization" varchar,
   "phone" varchar,
   "email" varchar,
+  "profile_image_url" varchar,
   "is_active" varchar(5) DEFAULT 'true' NOT NULL,
   "created_at" timestamp DEFAULT now(),
   "updated_at" timestamp DEFAULT now(),
@@ -223,8 +224,8 @@ CREATE TABLE IF NOT EXISTS "api_keys" (
   "name" text NOT NULL,
   "token_hash" varchar(255) NOT NULL,
   "scene_id" integer,
-  "permissions" text[] DEFAULT ARRAY['create_point'] NOT NULL,
-  "is_active" integer DEFAULT 1 NOT NULL,
+  "permissions" text[] DEFAULT ARRAY['create_point'],
+  "is_active" integer DEFAULT 1,
   "last_used_at" timestamp,
   "created_at" timestamp DEFAULT now() NOT NULL
 );
@@ -345,8 +346,64 @@ CREATE TABLE IF NOT EXISTS "sensor_readings_cache" (
 );
 CREATE INDEX IF NOT EXISTS "sensor_readings_cache_id_cds_koteln_idx" ON "sensor_readings_cache" USING btree ("id_cds_koteln");
 
+-- 26. Программы реконструкции инженерных сетей
+CREATE TABLE IF NOT EXISTS "reconstruction_programs" (
+  "id" serial PRIMARY KEY,
+  "scene_id" integer NOT NULL,
+  "name" text NOT NULL,
+  "period_from" integer NOT NULL,
+  "period_to" integer NOT NULL,
+  "base_year" integer NOT NULL DEFAULT 2025,
+  "inflation_rate" numeric NOT NULL DEFAULT 5.00,
+  "total_base_cost" numeric,
+  "total_indexed_cost" numeric,
+  "status" text NOT NULL DEFAULT 'draft',
+  "created_by" varchar NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
+-- 27. Объекты программы реконструкции (участки/узлы, включённые в программу)
+CREATE TABLE IF NOT EXISTS "program_objects" (
+  "id" serial PRIMARY KEY,
+  "program_id" integer NOT NULL,
+  "feature_id" integer,
+  "object_type" text NOT NULL,
+  "object_name" text NOT NULL,
+  "diameter_mm" integer,
+  "length_m" numeric,
+  "capacity_mw" numeric,
+  "laying_type" text,
+  "work_type" text NOT NULL DEFAULT 'overhaul',
+  "unit_rate_id" integer,
+  "unit_rate_value" numeric,
+  "base_cost" numeric,
+  "planned_year" integer,
+  "indexed_cost" numeric,
+  "accident_count" integer,
+  "accidents_per_m" numeric,
+  "resident_count" integer,
+  "consumer_count" integer,
+  "geometry" jsonb,
+  "sort_order" integer NOT NULL DEFAULT 0
+);
+
+-- 28. Справочник удельных стоимостей работ
+CREATE TABLE IF NOT EXISTS "cost_unit_rates" (
+  "id" serial PRIMARY KEY,
+  "object_type" text NOT NULL,
+  "laying_type" text,
+  "diameter_mm" integer,
+  "work_type" text NOT NULL,
+  "price_per_unit" numeric NOT NULL,
+  "unit" text NOT NULL,
+  "base_year" integer NOT NULL DEFAULT 2025,
+  "notes" text,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+
 -- =====================================================
--- Конец схемы. Итого: 25 таблиц.
+-- Конец схемы. Итого: 28 таблиц.
 -- При добавлении новых таблиц в shared/schema.ts или
 -- shared/models/ — ОБЯЗАТЕЛЬНО добавляйте их сюда.
 -- =====================================================
