@@ -7,6 +7,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,7 @@ import type {
   StyleClassItem,
   AttributeField,
   CustomIcon,
+  LineLayer,
 } from "@shared/schema";
 
 const STYLE_COLORS = [
@@ -74,10 +76,72 @@ const BASIC_LINE_STYLES = [
   { value: "dotted", label: "Точечная" },
   { value: "long-dash", label: "Длинный пунктир" },
   { value: "dash-dot-dot", label: "Штрих-точка-точка" },
+  { value: "crossed", label: "Перечёркнутая" },
+  { value: "double-solid-dashed", label: "Двойная (верх сплошная)" },
+  { value: "double-dashed-solid", label: "Двойная (низ сплошная)" },
+  { value: "double-dashed", label: "Двойная прерывистая" },
+  { value: "custom-constructor", label: "Конструктор" },
 ];
 
 function generateColor(index: number): string {
   return STYLE_COLORS[index % STYLE_COLORS.length];
+}
+
+function ClassColorPicker({
+  color,
+  onChange,
+  testId,
+}: {
+  color: string;
+  onChange: (color: string) => void;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setShowAdvanced(false); }}>
+      <PopoverTrigger asChild>
+        <button
+          className="w-7 h-7 rounded border border-border cursor-pointer flex-shrink-0 hover:ring-2 hover:ring-primary/50"
+          style={{ backgroundColor: color }}
+          data-testid={testId}
+          title="Выбрать цвет"
+        />
+      </PopoverTrigger>
+      <PopoverContent className="w-52 p-2" align="start">
+        <div className="flex flex-wrap gap-1 mb-2">
+          {STYLE_COLORS.map((c) => (
+            <button
+              key={c}
+              className={`h-5 w-5 rounded-sm border border-border ${color === c ? "ring-2 ring-primary ring-offset-1" : ""}`}
+              style={{ backgroundColor: c }}
+              onClick={() => { onChange(c); setOpen(false); }}
+              data-testid={`class-color-swatch-${c}`}
+            />
+          ))}
+        </div>
+        <button
+          className="text-xs text-primary underline cursor-pointer"
+          onClick={() => setShowAdvanced((p) => !p)}
+        >
+          {showAdvanced ? "Скрыть" : "Другой цвет..."}
+        </button>
+        {showAdvanced && (
+          <div className="mt-1.5 flex items-center gap-2">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => onChange(e.target.value)}
+              className="w-8 h-8 rounded border cursor-pointer"
+              data-testid="class-color-advanced-input"
+            />
+            <span className="text-xs text-muted-foreground font-mono">{color}</span>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 interface LayerStylePanelProps {
@@ -137,6 +201,9 @@ export function LayerStylePanel({
   const [graduatedClasses, setGraduatedClasses] = useState<GraduatedClass[]>(
     existing?.graduatedClasses || []
   );
+  const [defaultConstructorLayers, setDefaultConstructorLayers] = useState<LineLayer[]>(
+    existing?.defaultStyle?.constructorLayers || []
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -153,6 +220,7 @@ export function LayerStylePanel({
     setField(sc?.field || "");
     setCategorizedClasses(sc?.categorizedClasses || []);
     setGraduatedClasses(sc?.graduatedClasses || []);
+    setDefaultConstructorLayers(sc?.defaultStyle?.constructorLayers || []);
   }, [layer, open]);
 
   const { data: schemaData } = useQuery<{ layerId: number; fields: AttributeField[] }>({
@@ -268,6 +336,7 @@ export function LayerStylePanel({
       pointStyle: pointStyle as any,
       lineStyle: lineStyle as any,
       customIconId,
+      constructorLayers: lineStyle === "custom-constructor" && defaultConstructorLayers.length > 0 ? defaultConstructorLayers : undefined,
     };
 
     const config: StyleConfig = {
@@ -506,7 +575,11 @@ export function LayerStylePanel({
                       <LinePicker
                         selectedLineStyle={lineStyle}
                         color={color}
-                        onSelect={(ls) => setLineStyle(ls)}
+                        constructorLayers={defaultConstructorLayers}
+                        onSelect={(ls, cLayers) => {
+                          setLineStyle(ls);
+                          if (cLayers !== undefined) setDefaultConstructorLayers(cLayers);
+                        }}
                       />
                       <span className="text-xs text-muted-foreground">
                         {BASIC_LINE_STYLES.find(s => s.value === lineStyle)?.label
@@ -585,7 +658,11 @@ export function LayerStylePanel({
                       <LinePicker
                         selectedLineStyle={lineStyle}
                         color={color}
-                        onSelect={(ls) => setLineStyle(ls)}
+                        constructorLayers={defaultConstructorLayers}
+                        onSelect={(ls, cLayers) => {
+                          setLineStyle(ls);
+                          if (cLayers !== undefined) setDefaultConstructorLayers(cLayers);
+                        }}
                       />
                     )}
                     <span className="text-xs text-muted-foreground">
@@ -682,19 +759,12 @@ export function LayerStylePanel({
                     className="flex items-center gap-1.5 p-1.5 rounded border border-border"
                     data-testid={`categorized-class-${i}`}
                   >
-                    <input
-                      type="color"
-                      value={cls.style.color}
-                      onChange={(e) =>
-                        updateCategorizedClass(i, {
-                          style: {
-                            ...cls.style,
-                            color: e.target.value,
-                          },
-                        })
+                    <ClassColorPicker
+                      color={cls.style.color}
+                      onChange={(c) =>
+                        updateCategorizedClass(i, { style: { ...cls.style, color: c } })
                       }
-                      className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
-                      data-testid={`input-class-color-${i}`}
+                      testId={`input-class-color-${i}`}
                     />
                     {isPoint && (
                       <IconPicker
@@ -716,11 +786,13 @@ export function LayerStylePanel({
                       <LinePicker
                         selectedLineStyle={cls.style.lineStyle || lineStyle}
                         color={cls.style.color}
-                        onSelect={(ls) => {
+                        constructorLayers={cls.style.constructorLayers}
+                        onSelect={(ls, cLayers) => {
                           updateCategorizedClass(i, {
                             style: {
                               ...cls.style,
                               lineStyle: ls as any,
+                              constructorLayers: cLayers,
                             },
                           });
                         }}
@@ -777,19 +849,12 @@ export function LayerStylePanel({
                     className="flex items-center gap-1.5 p-1.5 rounded border border-border"
                     data-testid={`graduated-class-${i}`}
                   >
-                    <input
-                      type="color"
-                      value={cls.style.color}
-                      onChange={(e) =>
-                        updateGraduatedClass(i, {
-                          style: {
-                            ...cls.style,
-                            color: e.target.value,
-                          },
-                        })
+                    <ClassColorPicker
+                      color={cls.style.color}
+                      onChange={(c) =>
+                        updateGraduatedClass(i, { style: { ...cls.style, color: c } })
                       }
-                      className="w-7 h-7 rounded border cursor-pointer flex-shrink-0"
-                      data-testid={`input-range-color-${i}`}
+                      testId={`input-range-color-${i}`}
                     />
                     {isPoint && (
                       <IconPicker
@@ -811,11 +876,13 @@ export function LayerStylePanel({
                       <LinePicker
                         selectedLineStyle={cls.style.lineStyle || lineStyle}
                         color={cls.style.color}
-                        onSelect={(ls) => {
+                        constructorLayers={cls.style.constructorLayers}
+                        onSelect={(ls, cLayers) => {
                           updateGraduatedClass(i, {
                             style: {
                               ...cls.style,
                               lineStyle: ls as any,
+                              constructorLayers: cLayers,
                             },
                           });
                         }}

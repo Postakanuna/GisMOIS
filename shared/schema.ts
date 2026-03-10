@@ -133,6 +133,13 @@ export type PointStyle = z.infer<typeof pointStyleSchema>;
 export const lineStyleSchema = z.enum([
   // Basic line styles
   "solid", "dashed", "double", "dash-dot", "dotted", "long-dash", "dash-dot-dot",
+  // Extended basic line styles
+  "crossed",               // Перечёркнутая
+  "double-solid-dashed",   // Двойная (верх сплошная, низ прерывистая)
+  "double-dashed-solid",   // Двойная (низ сплошная, верх прерывистая)
+  "double-dashed",         // Двойная прерывистая
+  // Custom constructor
+  "custom-constructor",    // Конструктор линий
   // ГОСТ heat network line styles
   "relaying",              // Под перекладку
   "bypass",                // Байпас (временная схема)
@@ -143,6 +150,15 @@ export const lineStyleSchema = z.enum([
   "state-program",         // Под перекладку в рамках госпрограммы
 ]);
 export type LineStyle = z.infer<typeof lineStyleSchema>;
+
+// Constructor line layer (one stroke in a composite line)
+export const lineLayerSchema = z.object({
+  offset: z.number().min(-10).max(10).default(0),
+  width: z.number().min(0.5).max(10).default(2),
+  color: z.string().default("#1976D2"),
+  dash: z.enum(["solid", "dashed", "dotted", "dash-dot"]).default("solid"),
+});
+export type LineLayer = z.infer<typeof lineLayerSchema>;
 
 // Layer source type
 export const layerSourceSchema = z.enum(["user", "import"]);
@@ -160,6 +176,7 @@ export const styleClassItemSchema = z.object({
   fillOpacity: z.number().min(0).max(1).optional(),
   iconSize: z.number().min(4).max(128).optional(),
   customIconId: z.number().optional(),
+  constructorLayers: z.array(lineLayerSchema).optional(),
 });
 export type StyleClassItem = z.infer<typeof styleClassItemSchema>;
 

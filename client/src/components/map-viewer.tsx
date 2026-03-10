@@ -362,6 +362,16 @@ function createPointImageStyle(
   }
 }
 
+// Helper function to get lineDash array for a dash pattern name
+function getDashArray(dash: string): number[] | undefined {
+  switch (dash) {
+    case "dashed": return [8, 4];
+    case "dotted": return [2, 4];
+    case "dash-dot": return [10, 4, 2, 4];
+    default: return undefined;
+  }
+}
+
 // Helper function to create stroke style based on lineStyle
 function createLineStroke(color: string, lineStyle: LineStyle = "solid"): Stroke | Stroke[] {
   // Check for heat network line styles first
@@ -393,32 +403,73 @@ function createLineStroke(color: string, lineStyle: LineStyle = "solid"): Stroke
   }
 }
 
+// Helper to build OL styles for compound/extended line types
+function createCompoundLineStyles(color: string, lineStyle: string, fillColor: string, pointImage?: any): Style[] | null {
+  switch (lineStyle) {
+    case "double":
+      return [
+        new Style({ stroke: new Stroke({ color, width: 4 }), fill: new Fill({ color: fillColor }), image: pointImage }),
+        new Style({ stroke: new Stroke({ color: "#fff", width: 1.5 }) }),
+      ];
+    case "crossed":
+      return [
+        new Style({ stroke: new Stroke({ color, width: 2 }), fill: new Fill({ color: fillColor }), image: pointImage }),
+        new Style({ stroke: new Stroke({ color, width: 4, lineDash: [1, 9] }) }),
+      ];
+    case "double-solid-dashed":
+      return [
+        new Style({ stroke: new Stroke({ color, width: 5 }), fill: new Fill({ color: fillColor }), image: pointImage }),
+        new Style({ stroke: new Stroke({ color: "#fff", width: 1.5 }) }),
+        new Style({ stroke: new Stroke({ color, width: 1, lineDash: [8, 8] }) }),
+      ];
+    case "double-dashed-solid":
+      return [
+        new Style({ stroke: new Stroke({ color, width: 5, lineDash: [8, 8] }), fill: new Fill({ color: fillColor }), image: pointImage }),
+        new Style({ stroke: new Stroke({ color: "#fff", width: 1.5 }) }),
+        new Style({ stroke: new Stroke({ color, width: 1 }) }),
+      ];
+    case "double-dashed":
+      return [
+        new Style({ stroke: new Stroke({ color, width: 5, lineDash: [8, 8] }), fill: new Fill({ color: fillColor }), image: pointImage }),
+        new Style({ stroke: new Stroke({ color: "#fff", width: 1.5 }) }),
+        new Style({ stroke: new Stroke({ color, width: 1, lineDash: [8, 8], lineDashOffset: 4 }) }),
+      ];
+    default:
+      return null;
+  }
+}
+
 // Create complete layer style based on layer properties
 function createEditableLayerStyle(layer: EditableLayer, zoom?: number): Style | Style[] {
   const color = layer.color || "#1976D2";
   const pointStyle = layer.pointStyle || "circle";
   const lineStyle = layer.lineStyle || "solid";
-  
-  // For double lines, return array of styles
-  if (lineStyle === "double") {
-    return [
-      new Style({
-        stroke: new Stroke({ color, width: 4 }),
-        fill: new Fill({ color: color + "40" }),
-        image: createPointImageStyle(color, pointStyle, zoom),
-      }),
-      new Style({
-        stroke: new Stroke({ color: "#fff", width: 1.5 }),
-      }),
-    ];
+  const fillColor = color + "40";
+
+  // Handle custom constructor line style
+  if (lineStyle === "custom-constructor") {
+    const constructorLayers = layer.styleConfig?.defaultStyle?.constructorLayers;
+    if (constructorLayers && constructorLayers.length > 0) {
+      return constructorLayers.map((l, idx) =>
+        new Style({
+          stroke: new Stroke({ color: l.color || color, width: l.width, lineDash: getDashArray(l.dash) }),
+          fill: idx === 0 ? new Fill({ color: fillColor }) : undefined,
+          image: idx === 0 ? createPointImageStyle(color, pointStyle, zoom) : undefined,
+        })
+      );
+    }
+    return new Style({ fill: new Fill({ color: fillColor }), stroke: new Stroke({ color, width: 2 }), image: createPointImageStyle(color, pointStyle, zoom) });
   }
-  
+
+  // Handle compound/extended basic line styles
+  const compoundStyles = createCompoundLineStyles(color, lineStyle, fillColor, createPointImageStyle(color, pointStyle, zoom));
+  if (compoundStyles) return compoundStyles;
+
   // Handle heat network line styles with special effects
   if (isHeatNetworkLineStyle(lineStyle)) {
     const config = getHeatNetworkLineConfig(lineStyle);
     const styles: Style[] = [];
     
-    // Add outline stroke if configured
     if (config.outline) {
       const outlineColor = config.outlineColor || "#666";
       styles.push(new Style({
@@ -427,18 +478,13 @@ function createEditableLayerStyle(layer: EditableLayer, zoom?: number): Style | 
           width: config.outlineWidth || config.width + 2,
           lineDash: config.lineDash
         }),
-        fill: new Fill({ color: color + "40" }),
+        fill: new Fill({ color: fillColor }),
       }));
     }
     
-    // Add main stroke
     styles.push(new Style({
-      stroke: new Stroke({ 
-        color, 
-        width: config.width, 
-        lineDash: config.lineDash 
-      }),
-      fill: config.outline ? undefined : new Fill({ color: color + "40" }),
+      stroke: new Stroke({ color, width: config.width, lineDash: config.lineDash }),
+      fill: config.outline ? undefined : new Fill({ color: fillColor }),
       image: createPointImageStyle(color, pointStyle, zoom),
     }));
     
@@ -446,7 +492,7 @@ function createEditableLayerStyle(layer: EditableLayer, zoom?: number): Style | 
   }
   
   return new Style({
-    fill: new Fill({ color: color + "40" }),
+    fill: new Fill({ color: fillColor }),
     stroke: createLineStroke(color, lineStyle) as Stroke,
     image: createPointImageStyle(color, pointStyle, zoom),
   });
@@ -459,21 +505,29 @@ function createStyleFromClassItem(classItem: StyleClassItem, fallbackLayer: Edit
   const strokeWidth = classItem.strokeWidth;
   const fillOpacity = classItem.fillOpacity !== undefined ? classItem.fillOpacity : 0.25;
   const fillHex = Math.round(fillOpacity * 255).toString(16).padStart(2, "0");
+  const fillColor = color + fillHex;
   const iconSize = classItem.iconSize;
   const customIconSvg = classItem.customIconId && customIconSvgMap ? customIconSvgMap.get(classItem.customIconId) : undefined;
+  const pointImage = createPointImageStyle(color, pointStyle, zoom, iconSize, customIconSvg);
 
-  if (lineStyle === "double") {
-    return [
-      new Style({
-        stroke: new Stroke({ color, width: strokeWidth || 4 }),
-        fill: new Fill({ color: color + fillHex }),
-        image: createPointImageStyle(color, pointStyle, zoom, iconSize, customIconSvg),
-      }),
-      new Style({
-        stroke: new Stroke({ color: "#fff", width: 1.5 }),
-      }),
-    ];
+  // Handle custom constructor line style
+  if (lineStyle === "custom-constructor") {
+    const constructorLayers = classItem.constructorLayers;
+    if (constructorLayers && constructorLayers.length > 0) {
+      return constructorLayers.map((l, idx) =>
+        new Style({
+          stroke: new Stroke({ color: l.color || color, width: l.width, lineDash: getDashArray(l.dash) }),
+          fill: idx === 0 ? new Fill({ color: fillColor }) : undefined,
+          image: idx === 0 ? pointImage : undefined,
+        })
+      );
+    }
+    return new Style({ fill: new Fill({ color: fillColor }), stroke: new Stroke({ color, width: 2 }), image: pointImage });
   }
+
+  // Handle compound/extended basic line styles
+  const compoundStyles = createCompoundLineStyles(color, lineStyle, fillColor, pointImage);
+  if (compoundStyles) return compoundStyles;
 
   if (isHeatNetworkLineStyle(lineStyle)) {
     const config = getHeatNetworkLineConfig(lineStyle);
@@ -481,23 +535,23 @@ function createStyleFromClassItem(classItem: StyleClassItem, fallbackLayer: Edit
     if (config.outline) {
       styles.push(new Style({
         stroke: new Stroke({ color: config.outlineColor || "#666", width: config.outlineWidth || config.width + 2, lineDash: config.lineDash }),
-        fill: new Fill({ color: color + fillHex }),
+        fill: new Fill({ color: fillColor }),
       }));
     }
     styles.push(new Style({
       stroke: new Stroke({ color, width: strokeWidth || config.width, lineDash: config.lineDash }),
-      fill: config.outline ? undefined : new Fill({ color: color + fillHex }),
-      image: createPointImageStyle(color, pointStyle, zoom, iconSize, customIconSvg),
+      fill: config.outline ? undefined : new Fill({ color: fillColor }),
+      image: pointImage,
     }));
     return styles.length === 1 ? styles[0] : styles;
   }
 
   return new Style({
-    fill: new Fill({ color: color + fillHex }),
+    fill: new Fill({ color: fillColor }),
     stroke: strokeWidth
       ? new Stroke({ color, width: strokeWidth })
       : createLineStroke(color, lineStyle) as Stroke,
-    image: createPointImageStyle(color, pointStyle, zoom, iconSize, customIconSvg),
+    image: pointImage,
   });
 }
 
