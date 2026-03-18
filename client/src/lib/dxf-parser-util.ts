@@ -41,19 +41,21 @@ export interface ParsedDxfResult {
   totalCount: number;
 }
 
-function transformCoord(x: number, y: number, crs: string): [number, number] {
-  if (crs === 'EPSG:4326' || crs === 'none') return [x, y];
+function transformCoord(x: number, y: number, crs: string, swapXY: boolean): [number, number] {
+  const ex = swapXY ? y : x;
+  const ey = swapXY ? x : y;
+  if (crs === 'EPSG:4326' || crs === 'none') return [ex, ey];
   const def = CRS_DEFINITIONS[crs];
-  if (!def) return [x, y];
+  if (!def) return [ex, ey];
   try {
-    const result = proj4(def, '+proj=longlat +datum=WGS84 +no_defs', [x, y]);
+    const result = proj4(def, '+proj=longlat +datum=WGS84 +no_defs', [ex, ey]);
     return [result[0], result[1]];
   } catch {
-    return [x, y];
+    return [ex, ey];
   }
 }
 
-export async function parseDxfContent(content: string, crs: string): Promise<ParsedDxfResult> {
+export async function parseDxfContent(content: string, crs: string, swapXY = false): Promise<ParsedDxfResult> {
   const { default: DxfParser } = await import('dxf-parser');
   const parser = new DxfParser();
 
@@ -91,12 +93,12 @@ export async function parseDxfContent(content: string, crs: string): Promise<Par
       const start = transformCoord(
         entity.vertices?.[0]?.x ?? entity.start?.x ?? 0,
         entity.vertices?.[0]?.y ?? entity.start?.y ?? 0,
-        crs
+        crs, swapXY
       );
       const end = transformCoord(
         entity.vertices?.[1]?.x ?? entity.end?.x ?? 0,
         entity.vertices?.[1]?.y ?? entity.end?.y ?? 0,
-        crs
+        crs, swapXY
       );
       feature = {
         type: 'LineString',
@@ -107,7 +109,7 @@ export async function parseDxfContent(content: string, crs: string): Promise<Par
     } else if (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
       const verts: any[] = entity.vertices || [];
       if (verts.length >= 2) {
-        const coords = verts.map((v: any) => transformCoord(v.x ?? 0, v.y ?? 0, crs));
+        const coords = verts.map((v: any) => transformCoord(v.x ?? 0, v.y ?? 0, crs, swapXY));
         feature = {
           type: 'LineString',
           coordinates: coords,
@@ -118,7 +120,7 @@ export async function parseDxfContent(content: string, crs: string): Promise<Par
     } else if (entity.type === 'SPLINE') {
       const pts: any[] = entity.controlPoints || entity.fitPoints || [];
       if (pts.length >= 2) {
-        const coords = pts.map((p: any) => transformCoord(p.x ?? 0, p.y ?? 0, crs));
+        const coords = pts.map((p: any) => transformCoord(p.x ?? 0, p.y ?? 0, crs, swapXY));
         feature = {
           type: 'LineString',
           coordinates: coords,
@@ -127,7 +129,7 @@ export async function parseDxfContent(content: string, crs: string): Promise<Par
         };
       }
     } else if (entity.type === 'POINT') {
-      const pt = transformCoord(entity.position?.x ?? 0, entity.position?.y ?? 0, crs);
+      const pt = transformCoord(entity.position?.x ?? 0, entity.position?.y ?? 0, crs, swapXY);
       feature = {
         type: 'Point',
         coordinates: [pt],
@@ -146,6 +148,23 @@ export async function parseDxfContent(content: string, crs: string): Promise<Par
   }
 
   const resultLayers = Array.from(layerMap.values()).filter(l => l.count > 0);
+
+  if (features.length > 0) {
+    const sample = features[0];
+    console.log('[DXF] Parsed features:', features.length, 'layers:', resultLayers.length);
+    console.log('[DXF] Sample raw feature type:', sample.type, 'coords count:', sample.coordinates.length);
+    if (sample.coordinates.length > 0) {
+      console.log('[DXF] Sample coord[0]:', sample.coordinates[0]);
+    }
+    if (sample.coordinates.length > 1) {
+      console.log('[DXF] Sample coord[1]:', sample.coordinates[1]);
+    }
+  } else {
+    console.warn('[DXF] No features extracted! Entities count:', entities.length);
+    if (entities.length > 0) {
+      console.log('[DXF] First entity type:', entities[0].type, entities[0]);
+    }
+  }
 
   return {
     layers: resultLayers,

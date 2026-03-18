@@ -3678,76 +3678,95 @@ export function MapViewer({
   }, [simulationHighlightData]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+    const applyDxfLayers = () => {
+      const map = mapRef.current;
+      if (!map) return false;
 
-    const existingIds = new Set(dxfOlLayersRef.current.keys());
-    const currentIds = new Set(surveyLayers.map(sl => sl.id));
+      const existingIds = new Set(dxfOlLayersRef.current.keys());
+      const currentIds = new Set(surveyLayers.map(sl => sl.id));
 
-    for (const id of existingIds) {
-      if (!currentIds.has(id)) {
-        const entry = dxfOlLayersRef.current.get(id);
-        if (entry) {
-          map.removeLayer(entry.olLayer);
-          dxfOlLayersRef.current.delete(id);
-        }
-      }
-    }
-
-    for (const sl of surveyLayers) {
-      const signature = `${sl.featureCount}-${sl.selectedLayers.join(',')}-${sl.color}`;
-      const existing = dxfOlLayersRef.current.get(sl.id);
-
-      if (existing && existing.signature === signature) {
-        existing.olLayer.setVisible(sl.visible);
-        existing.olLayer.setOpacity(sl.opacity);
-      } else {
-        if (existing) {
-          map.removeLayer(existing.olLayer);
-        }
-
-        const source = new VectorSource();
-
-        for (const feat of sl.features) {
-          if (feat.type === 'LineString' && feat.coordinates.length >= 2) {
-            const coords = feat.coordinates.map(([lon, lat]) => fromLonLat([lon, lat]));
-            const geom = new LineString(coords);
-            const feature = new Feature({ geometry: geom });
-            feature.set('dxfLayer', feat.layer);
-            feature.set('entityType', feat.entityType);
-            source.addFeature(feature);
-          } else if (feat.type === 'Point' && feat.coordinates.length > 0) {
-            const [lon, lat] = feat.coordinates[0];
-            const geom = new OlPoint(fromLonLat([lon, lat]));
-            const feature = new Feature({ geometry: geom });
-            feature.set('dxfLayer', feat.layer);
-            source.addFeature(feature);
+      for (const id of existingIds) {
+        if (!currentIds.has(id)) {
+          const entry = dxfOlLayersRef.current.get(id);
+          if (entry) {
+            map.removeLayer(entry.olLayer);
+            dxfOlLayersRef.current.delete(id);
           }
         }
-
-        const olLayer = new VectorLayer({
-          source,
-          zIndex: 500,
-          visible: sl.visible,
-          opacity: sl.opacity,
-          style: new Style({
-            stroke: new Stroke({
-              color: sl.color,
-              width: 1.5,
-              lineDash: [6, 4],
-            }),
-            image: new Circle({
-              radius: 4,
-              fill: new Fill({ color: sl.color }),
-              stroke: new Stroke({ color: '#fff', width: 1 }),
-            }),
-          }),
-        });
-
-        olLayer.set('dxfSurveyId', sl.id);
-        map.addLayer(olLayer);
-        dxfOlLayersRef.current.set(sl.id, { olLayer, signature });
       }
+
+      let newLayerAdded = false;
+
+      for (const sl of surveyLayers) {
+        const signature = `${sl.featureCount}-${sl.selectedLayers.join(',')}-${sl.color}`;
+        const existing = dxfOlLayersRef.current.get(sl.id);
+
+        if (existing && existing.signature === signature) {
+          existing.olLayer.setVisible(sl.visible);
+          existing.olLayer.setOpacity(sl.opacity);
+        } else {
+          if (existing) {
+            map.removeLayer(existing.olLayer);
+          }
+
+          const source = new VectorSource();
+
+          for (const feat of sl.features) {
+            if (feat.type === 'LineString' && feat.coordinates.length >= 2) {
+              const coords = feat.coordinates.map(([lon, lat]) => fromLonLat([lon, lat]));
+              const geom = new LineString(coords);
+              const feature = new Feature({ geometry: geom });
+              feature.set('dxfLayer', feat.layer);
+              feature.set('entityType', feat.entityType);
+              source.addFeature(feature);
+            } else if (feat.type === 'Point' && feat.coordinates.length > 0) {
+              const [lon, lat] = feat.coordinates[0];
+              const geom = new OlPoint(fromLonLat([lon, lat]));
+              const feature = new Feature({ geometry: geom });
+              feature.set('dxfLayer', feat.layer);
+              source.addFeature(feature);
+            }
+          }
+
+          const olLayer = new VectorLayer({
+            source,
+            zIndex: 500,
+            visible: sl.visible,
+            opacity: sl.opacity,
+            style: new Style({
+              stroke: new Stroke({
+                color: sl.color,
+                width: 1.5,
+                lineDash: [6, 4],
+              }),
+              image: new Circle({
+                radius: 4,
+                fill: new Fill({ color: sl.color }),
+                stroke: new Stroke({ color: '#fff', width: 1 }),
+              }),
+            }),
+          });
+
+          olLayer.set('dxfSurveyId', sl.id);
+          map.addLayer(olLayer);
+          dxfOlLayersRef.current.set(sl.id, { olLayer, signature });
+
+          if (sl.features.length > 0 && !existing) {
+            newLayerAdded = true;
+            const extent = source.getExtent();
+            if (extent && isFinite(extent[0]) && isFinite(extent[1]) && isFinite(extent[2]) && isFinite(extent[3])) {
+              map.getView().fit(extent, { padding: [60, 60, 60, 60], duration: 700, maxZoom: 18 });
+            }
+          }
+        }
+      }
+
+      return true;
+    };
+
+    if (!applyDxfLayers()) {
+      const timer = setTimeout(applyDxfLayers, 500);
+      return () => clearTimeout(timer);
     }
   }, [surveyLayers]);
 
