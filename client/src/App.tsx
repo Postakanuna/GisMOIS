@@ -7,6 +7,7 @@ import { ZuluConnectionProvider } from "@/contexts/zulu-connection-context";
 import { SceneProvider } from "@/contexts/scene-context";
 import { BaseLayersProvider } from "@/contexts/base-layers-context";
 import { ProjectionProvider } from "@/contexts/projection-context";
+import { DxfLayersProvider } from "@/contexts/dxf-layers-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -71,8 +72,10 @@ function App() {
           <ProjectionProvider>
             <BaseLayersProvider>
               <ZuluConnectionProvider>
-              <Toaster />
-              <Router />
+              <DxfLayersProvider>
+                <Toaster />
+                <Router />
+              </DxfLayersProvider>
             </ZuluConnectionProvider>
             </BaseLayersProvider>
           </ProjectionProvider>

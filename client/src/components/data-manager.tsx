@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect, createContext, useContext, useMemo } from "react";
+import { DxfImportDialog } from "@/components/dxf-import-dialog";
+import { useDxfLayers } from "@/contexts/dxf-layers-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,8 @@ import {
   AlertTriangle,
   MapPin,
   Plug,
+  Ruler,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
@@ -1100,6 +1104,9 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
   const [uploadPercent, setUploadPercent] = useState<number>(0);
+  const [showDxfDialog, setShowDxfDialog] = useState(false);
+
+  const { surveyLayers, removeSurveyLayer, toggleSurveyLayerVisibility, setSurveyLayerOpacity } = useDxfLayers();
   const SERVER_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1719,6 +1726,15 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => setShowDxfDialog(true)}
+                  data-testid="button-upload-dxf"
+                >
+                  <Ruler className="h-4 w-4 mr-2" />
+                  DXF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => excelInputRef.current?.click()}
                   disabled={isParsingExcel || !canEdit}
                   data-testid="button-upload-excel"
@@ -1811,6 +1827,72 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {surveyLayers.length > 0 && (
+              <div className="mb-3 border rounded-md overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b">
+                  <Ruler className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-medium">Подложки съёмки</span>
+                  <span className="text-[10px] text-muted-foreground">({surveyLayers.length})</span>
+                </div>
+                <div className="divide-y">
+                  {surveyLayers.map(sl => (
+                    <div key={sl.id} className="px-3 py-2 space-y-1.5" data-testid={`survey-layer-row-${sl.id}`}>
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-sm shrink-0" style={{ backgroundColor: sl.color }} />
+                        <span className="text-xs font-medium flex-1 truncate" title={sl.name}>{sl.name}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{sl.featureCount} объектов</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 shrink-0"
+                              onClick={() => toggleSurveyLayerVisibility(sl.id)}
+                              data-testid={`button-toggle-survey-${sl.id}`}
+                            >
+                              {sl.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{sl.visible ? 'Скрыть' : 'Показать'}</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 shrink-0 text-destructive hover:text-destructive"
+                              onClick={() => removeSurveyLayer(sl.id)}
+                              data-testid={`button-remove-survey-${sl.id}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Удалить подложку</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <SlidersHorizontal className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={sl.opacity}
+                          onChange={(e) => setSurveyLayerOpacity(sl.id, parseFloat(e.target.value))}
+                          className="flex-1 h-1 accent-primary cursor-pointer"
+                          data-testid={`slider-survey-opacity-${sl.id}`}
+                        />
+                        <span className="text-[10px] text-muted-foreground w-8 text-right shrink-0">{Math.round(sl.opacity * 100)}%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        {sl.selectedLayers.length} слой(-ёв) DXF • {sl.crs} • {sl.createdAt}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -2054,6 +2136,11 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           />
         );
       })()}
+
+      <DxfImportDialog
+        open={showDxfDialog}
+        onOpenChange={setShowDxfDialog}
+      />
     </div>
   );
 }

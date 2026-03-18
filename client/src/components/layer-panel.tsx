@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler } from "lucide-react";
+import { useDxfLayers } from "@/contexts/dxf-layers-context";
 import { useScene } from "@/contexts/scene-context";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { Switch } from "@/components/ui/switch";
@@ -165,6 +166,7 @@ export function LayerPanel({
   const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(new Set());
 
   const { baseLayers: baseLayerOptions, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
+  const { surveyLayers, toggleSurveyLayerVisibility, setSurveyLayerOpacity, removeSurveyLayer } = useDxfLayers();
 
   const { data: folders = [] } = useQuery<FolderData[]>({
     queryKey: ["/api/scenes", currentSceneId, "folders"],
@@ -484,7 +486,60 @@ export function LayerPanel({
     <div className="space-y-4 min-w-0">
       {headerContent}
 
-      <Accordion type="multiple" defaultValue={["base", "external", "uploaded", "editable"]} className="space-y-1 min-w-0">
+      <Accordion type="multiple" defaultValue={["base", "external", "uploaded", "editable", "survey"]} className="space-y-1 min-w-0">
+        {/* Survey layers (DXF underlays) */}
+        {surveyLayers.length > 0 && (
+          <AccordionItem value="survey" className="border-none min-w-0">
+            <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-survey-layers">
+              <div className="flex items-center gap-2 min-w-0">
+                <Ruler className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-xs font-medium truncate">Подложки съёмки</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">({surveyLayers.length})</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="space-y-1 pt-1 min-w-0">
+              {surveyLayers.map(sl => (
+                <div key={sl.id} className="rounded-md border border-sidebar-border p-2 space-y-1.5" data-testid={`survey-layer-panel-${sl.id}`}>
+                  <div className="flex items-center gap-1">
+                    <div className="h-3 w-3 rounded-sm shrink-0" style={{ backgroundColor: sl.color }} />
+                    <span className="text-xs font-medium flex-1 truncate min-w-0" title={sl.name}>{sl.name}</span>
+                    <button
+                      onClick={() => toggleSurveyLayerVisibility(sl.id)}
+                      className="h-5 w-5 flex items-center justify-center rounded hover:bg-accent/50 shrink-0"
+                      data-testid={`button-panel-toggle-survey-${sl.id}`}
+                    >
+                      {sl.visible
+                        ? <Eye className="h-3 w-3 text-muted-foreground" />
+                        : <EyeOff className="h-3 w-3 text-muted-foreground" />
+                      }
+                    </button>
+                    <button
+                      onClick={() => removeSurveyLayer(sl.id)}
+                      className="h-5 w-5 flex items-center justify-center rounded hover:bg-destructive/10 text-destructive shrink-0"
+                      data-testid={`button-panel-remove-survey-${sl.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 px-0.5">
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={sl.opacity}
+                      onChange={(e) => setSurveyLayerOpacity(sl.id, parseFloat(e.target.value))}
+                      className="flex-1 h-1 accent-primary cursor-pointer"
+                      data-testid={`slider-panel-survey-opacity-${sl.id}`}
+                    />
+                    <span className="text-[10px] text-muted-foreground w-7 text-right shrink-0">{Math.round(sl.opacity * 100)}%</span>
+                  </div>
+                </div>
+              ))}
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
         {/* Editable layers section - includes both created and imported layers */}
         <AccordionItem value="editable" className="border-none min-w-0">
           <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-editable-layers">
