@@ -1,23 +1,38 @@
 import proj4 from 'proj4';
 
+// МСК-50 (Московская система координат): Кrassovsky эллипсоид, TM-проекция,
+// центральные меридианы через 3°, x_0 = зона*1000000+250000, y_0 подобрано
+// под фактические координаты Московского региона (ш.≈55.5–56.5°).
+// Ключевое: y_0 ≈ -5 709 869 м (начало отсчёта широт ~51.5°с.ш.)
+const Y0_MSK50 = -5709869;
+const TOWGS84_KRASS = '+towgs84=23.92,-141.27,-80.9,0,0.35,0.82,-0.12';
+const ELLPS_KRASS = '+ellps=krass';
+const msk50 = (zone: number) =>
+  `+proj=tmerc +lat_0=0 +lon_0=${34.5 + zone * 3} +k=1 +x_0=${zone * 1000000 + 250000} +y_0=${Y0_MSK50} ${ELLPS_KRASS} ${TOWGS84_KRASS} +units=m +no_defs`;
+
 const CRS_DEFINITIONS: Record<string, string> = {
-  'MSK50-1': '+proj=tmerc +lat_0=0 +lon_0=37.5 +k=1 +x_0=1250000 +y_0=-4511057.628 +ellps=krass +towgs84=23.92,-141.27,-80.9,0,0.35,0.82,-0.12 +units=m +no_defs',
-  'MSK50-2': '+proj=tmerc +lat_0=0 +lon_0=40.5 +k=1 +x_0=2250000 +y_0=-4511057.628 +ellps=krass +towgs84=23.92,-141.27,-80.9,0,0.35,0.82,-0.12 +units=m +no_defs',
-  'MSK50-3': '+proj=tmerc +lat_0=0 +lon_0=43.5 +k=1 +x_0=3250000 +y_0=-4511057.628 +ellps=krass +towgs84=23.92,-141.27,-80.9,0,0.35,0.82,-0.12 +units=m +no_defs',
-  'MSK50-4': '+proj=tmerc +lat_0=0 +lon_0=46.5 +k=1 +x_0=4250000 +y_0=-4511057.628 +ellps=krass +towgs84=23.92,-141.27,-80.9,0,0.35,0.82,-0.12 +units=m +no_defs',
-  'MSK50-5': '+proj=tmerc +lat_0=0 +lon_0=49.5 +k=1 +x_0=5250000 +y_0=-4511057.628 +ellps=krass +towgs84=23.92,-141.27,-80.9,0,0.35,0.82,-0.12 +units=m +no_defs',
-  'MSK50-6': '+proj=tmerc +lat_0=0 +lon_0=52.5 +k=1 +x_0=6250000 +y_0=-4511057.628 +ellps=krass +towgs84=23.92,-141.27,-80.9,0,0.35,0.82,-0.12 +units=m +no_defs',
+  'MSK50-1': msk50(1),
+  'MSK50-2': msk50(2),
+  'MSK50-3': msk50(3),
+  'MSK50-4': msk50(4),
+  'MSK50-5': msk50(5),
+  'MSK50-6': msk50(6),
+  // СК-42 (Пулково 1942), зоны Гаусса-Крюгера 6° — без ложного смещения по N
+  'SK42-7':  `+proj=tmerc +lat_0=0 +lon_0=39 +k=1 +x_0=7500000 +y_0=0 ${ELLPS_KRASS} ${TOWGS84_KRASS} +units=m +no_defs`,
+  'SK42-8':  `+proj=tmerc +lat_0=0 +lon_0=45 +k=1 +x_0=8500000 +y_0=0 ${ELLPS_KRASS} ${TOWGS84_KRASS} +units=m +no_defs`,
   'EPSG:4326': '+proj=longlat +datum=WGS84 +no_defs',
   'none': '',
 };
 
 export const CRS_OPTIONS = [
-  { value: 'MSK50-1', label: 'МСК-50, зона 1 (EPSG:28467)' },
-  { value: 'MSK50-2', label: 'МСК-50, зона 2 (EPSG:28468)' },
-  { value: 'MSK50-3', label: 'МСК-50, зона 3 (EPSG:28469)' },
-  { value: 'MSK50-4', label: 'МСК-50, зона 4 (EPSG:28470)' },
-  { value: 'MSK50-5', label: 'МСК-50, зона 5 (EPSG:28471)' },
-  { value: 'MSK50-6', label: 'МСК-50, зона 6 (EPSG:28472)' },
+  { value: 'MSK50-2', label: 'МСК-50, зона 2 (X≈2 2xx xxx)' },
+  { value: 'MSK50-1', label: 'МСК-50, зона 1 (X≈1 2xx xxx)' },
+  { value: 'MSK50-3', label: 'МСК-50, зона 3 (X≈3 2xx xxx)' },
+  { value: 'MSK50-4', label: 'МСК-50, зона 4 (X≈4 2xx xxx)' },
+  { value: 'MSK50-5', label: 'МСК-50, зона 5 (X≈5 2xx xxx)' },
+  { value: 'MSK50-6', label: 'МСК-50, зона 6 (X≈6 2xx xxx)' },
+  { value: 'SK42-7',  label: 'СК-42, зона 7 (X≈7 5xx xxx)' },
+  { value: 'SK42-8',  label: 'СК-42, зона 8 (X≈8 5xx xxx)' },
   { value: 'EPSG:4326', label: 'WGS 84 (EPSG:4326)' },
   { value: 'none', label: 'Без привязки (только просмотр)' },
 ];

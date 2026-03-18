@@ -39,7 +39,7 @@ export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDial
   const [isParsing, setIsParsing] = useState(false);
   const [fileName, setFileName] = useState(() => editLayer ? '(загруженный файл)' : '');
   const [layerName, setLayerName] = useState(() => editLayer?.name ?? '');
-  const [crs, setCrs] = useState(() => editLayer?.crs ?? 'MSK50-1');
+  const [crs, setCrs] = useState(() => editLayer?.crs ?? 'MSK50-2');
   const [swapXY, setSwapXY] = useState(() => editLayer?.swapXY ?? false);
   const [color, setColor] = useState(() => editLayer?.color ?? '#e53935');
   const [dragOver, setDragOver] = useState(false);
@@ -57,7 +57,7 @@ export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDial
     if (!isEditMode) {
       setFileName('');
       setLayerName('');
-      setCrs('MSK50-1');
+      setCrs('MSK50-2');
       setSwapXY(false);
       setColor('#e53935');
       setRawContent(null);
@@ -74,7 +74,7 @@ export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDial
     onOpenChange(false);
   }, [resetState, onOpenChange]);
 
-  const doParseContent = useCallback(async (text: string, currentCrs: string, currentSwapXY: boolean) => {
+  const doParseContent = useCallback(async (text: string, currentCrs: string, currentSwapXY: boolean, autoDetectCrs = false) => {
     setIsParsing(true);
     try {
       const result = await parseDxfContent(text, currentCrs, currentSwapXY);
@@ -92,7 +92,36 @@ export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDial
 
       if (result.firstRawCoord) {
         const [rx, ry] = result.firstRawCoord;
-        setRawCoordHint(`Сырые координаты DXF: X=${rx.toFixed(2)}, Y=${ry.toFixed(2)}`);
+        const zoneDigit = Math.floor(Math.abs(rx) / 1000000);
+        const zoneSuggest = zoneDigit >= 1 && zoneDigit <= 6
+          ? ` → рекомендуется МСК-50 зона ${zoneDigit}`
+          : zoneDigit >= 7 && zoneDigit <= 8
+          ? ` → рекомендуется СК-42 зона ${zoneDigit}`
+          : '';
+        setRawCoordHint(`Сырые координаты DXF: X=${rx.toFixed(2)}, Y=${ry.toFixed(2)}${zoneSuggest}`);
+        // авто-выбор зоны только при первой загрузке файла + пересчёт
+        if (autoDetectCrs) {
+          let detectedCrs: string | null = null;
+          if (zoneDigit >= 1 && zoneDigit <= 6) detectedCrs = `MSK50-${zoneDigit}`;
+          else if (zoneDigit >= 7 && zoneDigit <= 8) detectedCrs = `SK42-${zoneDigit}`;
+          if (detectedCrs && detectedCrs !== currentCrs) {
+            setCrs(detectedCrs);
+            // пересчитать с правильной зоной сразу
+            const reResult = await parseDxfContent(text, detectedCrs, currentSwapXY);
+            setParsedLayers(reResult.layers);
+            setParsedFeatures(reResult.features);
+            if (reResult.features.length > 0 && reResult.features[0].coordinates.length > 0) {
+              const [lon2, lat2] = reResult.features[0].coordinates[0];
+              const inRu = lon2 >= 19 && lon2 <= 190 && lat2 >= 41 && lat2 <= 82;
+              setCoordHint(inRu
+                ? `✓ Трансформировано: lon=${lon2.toFixed(4)}, lat=${lat2.toFixed(4)} (Россия)`
+                : `⚠ Трансформировано: lon=${lon2.toFixed(4)}, lat=${lat2.toFixed(4)} (вне России — проверьте зону)`
+              );
+            }
+            setIsParsing(false);
+            return reResult;
+          }
+        }
       } else {
         setRawCoordHint('');
       }
@@ -133,7 +162,7 @@ export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDial
 
     const text = await file.text();
     setRawContent(text);
-    const result = await doParseContent(text, crs, swapXY);
+    const result = await doParseContent(text, crs, swapXY, true);
     if (result) setStep('layers');
   }, [crs, swapXY, layerName, doParseContent, toast]);
 
@@ -270,17 +299,18 @@ export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDial
               </Select>
             </div>
 
-            <div className="flex items-start gap-3 rounded-md border px-3 py-2.5 cursor-pointer" onClick={() => setSwapXY(v => !v)}>
+            <div className="flex items-start gap-3 rounded-md border px-3 py-2.5">
               <Checkbox
+                id="dxf-swapxy-upload"
                 checked={swapXY}
                 onCheckedChange={(v) => setSwapXY(!!v)}
                 data-testid="checkbox-dxf-swapxy"
                 className="mt-0.5"
               />
-              <div>
+              <label htmlFor="dxf-swapxy-upload" className="cursor-pointer">
                 <p className="text-sm font-medium">Поменять X/Y</p>
                 <p className="text-xs text-muted-foreground">Если объекты не отображаются (российская геодезическая конвенция X=север, Y=восток)</p>
-              </div>
+              </label>
             </div>
 
             <div className="flex items-start gap-2 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
@@ -327,16 +357,14 @@ export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDial
                   </Select>
                 </div>
                 <div className="space-y-1 flex flex-col justify-end">
-                  <div
-                    className="flex items-center gap-2 h-8 cursor-pointer"
-                    onClick={() => setSwapXY(v => !v)}
-                  >
+                  <div className="flex items-center gap-2 h-8">
                     <Checkbox
+                      id="dxf-swapxy-step2"
                       checked={swapXY}
                       onCheckedChange={(v) => setSwapXY(!!v)}
                       data-testid="checkbox-dxf-swapxy-step2"
                     />
-                    <Label className="text-xs cursor-pointer">Поменять X/Y</Label>
+                    <label htmlFor="dxf-swapxy-step2" className="text-xs cursor-pointer">Поменять X/Y</label>
                   </div>
                 </div>
               </div>
