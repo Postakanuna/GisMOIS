@@ -3698,7 +3698,7 @@ export function MapViewer({
       let newLayerAdded = false;
 
       for (const sl of surveyLayers) {
-        const signature = `${sl.featureCount}-${sl.selectedLayers.join(',')}-${sl.color}`;
+        const signature = `${sl.featureCount}-${sl.selectedLayers.join(',')}-${sl.color}-${sl.crs}-${sl.swapXY}`;
         const existing = dxfOlLayersRef.current.get(sl.id);
 
         if (existing && existing.signature === signature) {
@@ -3761,21 +3761,25 @@ export function MapViewer({
           map.addLayer(olLayer);
           dxfOlLayersRef.current.set(sl.id, { olLayer, signature });
 
-          if (sl.features.length > 0 && !existing) {
+          // Авто-зум: для новых слоёв всегда; для пересчитанных — при смене CRS/swapXY
+          const crsChanged = existing
+            ? !existing.signature.endsWith(`-${sl.crs}-${sl.swapXY}`)
+            : false;
+          const shouldZoom = sl.features.length > 0 && (!existing || crsChanged);
+
+          if (shouldZoom) {
             newLayerAdded = true;
             const extent = source.getExtent();
-            // Все features уже отфильтрованы через isInRussia, так что extent гарантированно
-            // в разумном диапазоне. Просто проверяем что extent непустой и конечный.
             const hasValidExtent =
               extent &&
               isFinite(extent[0]) && isFinite(extent[1]) && isFinite(extent[2]) && isFinite(extent[3]) &&
               extent[2] > extent[0] && extent[3] > extent[1] &&
-              extent[0] !== Infinity; // OL возвращает [Inf,Inf,-Inf,-Inf] для пустого source
+              extent[0] !== Infinity;
             if (hasValidExtent) {
-              console.log('[DXF] Авто-зум к extent:', extent, 'features в source:', source.getFeatures().length);
+              console.log('[DXF] Авто-зум к extent:', extent, 'features:', source.getFeatures().length, 'crs:', sl.crs);
               map.getView().fit(extent, { padding: [60, 60, 60, 60], duration: 700, maxZoom: 18 });
             } else {
-              console.warn('[DXF] Нет валидного extent для авто-зума. Features в source:', source.getFeatures().length, 'raw extent:', extent);
+              console.warn('[DXF] Нет валидного extent. Features:', source.getFeatures().length, 'extent:', extent);
             }
           }
         }

@@ -168,8 +168,25 @@ export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDial
 
   const handleReparse = useCallback(async () => {
     if (!rawContent) return;
-    await doParseContent(rawContent, crs, swapXY);
-  }, [rawContent, crs, swapXY, doParseContent]);
+    const result = await doParseContent(rawContent, crs, swapXY);
+    // В режиме редактирования — сразу обновляем слой на карте, чтобы можно было
+    // визуально подобрать правильную систему координат без закрытия диалога
+    if (result && isEditMode && editLayer) {
+      const name = layerName.trim() || editLayer.name;
+      updateSurveyLayerFull(editLayer.id, {
+        name,
+        crs,
+        swapXY,
+        color,
+        opacity: editLayer.opacity,
+        visible: editLayer.visible,
+        selectedLayers,
+        allLayers: result.layers,
+        allFeatures: result.features,
+        rawContent,
+      });
+    }
+  }, [rawContent, crs, swapXY, doParseContent, isEditMode, editLayer, layerName, color, selectedLayers, updateSurveyLayerFull]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
