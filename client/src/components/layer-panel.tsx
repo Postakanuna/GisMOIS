@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler } from "lucide-react";
-import { useDxfLayers } from "@/contexts/dxf-layers-context";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler, Settings2 } from "lucide-react";
+import { useDxfLayers, type DxfSurveyLayer } from "@/contexts/dxf-layers-context";
+import { DxfImportDialog } from "@/components/dxf-import-dialog";
 import { useScene } from "@/contexts/scene-context";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { Switch } from "@/components/ui/switch";
@@ -167,6 +168,7 @@ export function LayerPanel({
 
   const { baseLayers: baseLayerOptions, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const { surveyLayers, toggleSurveyLayerVisibility, setSurveyLayerOpacity, removeSurveyLayer } = useDxfLayers();
+  const [editDxfLayer, setEditDxfLayer] = useState<DxfSurveyLayer | null>(null);
 
   const { data: folders = [] } = useQuery<FolderData[]>({
     queryKey: ["/api/scenes", currentSceneId, "folders"],
@@ -512,6 +514,14 @@ export function LayerPanel({
                         ? <Eye className="h-3 w-3 text-muted-foreground" />
                         : <EyeOff className="h-3 w-3 text-muted-foreground" />
                       }
+                    </button>
+                    <button
+                      onClick={() => setEditDxfLayer(sl)}
+                      className="h-5 w-5 flex items-center justify-center rounded hover:bg-accent/50 shrink-0"
+                      data-testid={`button-panel-edit-survey-${sl.id}`}
+                      title="Настройки подложки"
+                    >
+                      <Settings2 className="h-3 w-3 text-muted-foreground" />
                     </button>
                     <button
                       onClick={() => removeSurveyLayer(sl.id)}
@@ -988,6 +998,14 @@ export function LayerPanel({
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      {editDxfLayer && (
+        <DxfImportDialog
+          open={true}
+          onOpenChange={(v) => { if (!v) setEditDxfLayer(null); }}
+          editLayer={editDxfLayer}
+        />
+      )}
 
       {layers.length === 0 && editableLayers.length === 0 && (
         <div className="flex flex-col items-center justify-center py-8 text-center">

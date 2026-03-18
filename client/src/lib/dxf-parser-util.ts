@@ -39,6 +39,7 @@ export interface ParsedDxfResult {
   layers: DxfLayerInfo[];
   features: DxfFeature[];
   totalCount: number;
+  firstRawCoord?: [number, number];
 }
 
 function transformCoord(x: number, y: number, crs: string, swapXY: boolean): [number, number] {
@@ -79,6 +80,8 @@ export async function parseDxfContent(content: string, crs: string, swapXY = fal
 
   const entities: any[] = dxf.entities || [];
 
+  let firstRawCoord: [number, number] | undefined;
+
   for (const entity of entities) {
     const layerName: string = entity.layer || '0';
 
@@ -88,6 +91,25 @@ export async function parseDxfContent(content: string, crs: string, swapXY = fal
 
     const layerInfo = layerMap.get(layerName)!;
     let feature: DxfFeature | null = null;
+
+    if (!firstRawCoord) {
+      let rawX: number | undefined;
+      let rawY: number | undefined;
+      if (entity.type === 'LINE') {
+        rawX = entity.vertices?.[0]?.x ?? entity.start?.x;
+        rawY = entity.vertices?.[0]?.y ?? entity.start?.y;
+      } else if (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
+        rawX = entity.vertices?.[0]?.x;
+        rawY = entity.vertices?.[0]?.y;
+      } else if (entity.type === 'POINT') {
+        rawX = entity.position?.x;
+        rawY = entity.position?.y;
+      }
+      if (rawX !== undefined && rawY !== undefined) {
+        firstRawCoord = [rawX, rawY];
+        console.log('[DXF] RAW first coord (before transform):', rawX, rawY, '| CRS:', crs, '| swapXY:', swapXY);
+      }
+    }
 
     if (entity.type === 'LINE') {
       const start = transformCoord(
@@ -170,6 +192,7 @@ export async function parseDxfContent(content: string, crs: string, swapXY = fal
     layers: resultLayers,
     features,
     totalCount: features.length,
+    firstRawCoord,
   };
 }
 

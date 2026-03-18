@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, FileUp, Info, ChevronLeft, RefreshCw } from 'lucide-react';
 import { parseDxfContent, CRS_OPTIONS, getEntityTypeIcon, type DxfLayerInfo, type DxfFeature } from '@/lib/dxf-parser-util';
-import { useDxfLayers } from '@/contexts/dxf-layers-context';
+import { useDxfLayers, type DxfSurveyLayer } from '@/contexts/dxf-layers-context';
 
 const COLOR_OPTIONS = [
   { value: '#e53935', label: 'Красный' },
@@ -24,46 +24,50 @@ const COLOR_OPTIONS = [
 interface DxfImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  editLayer?: DxfSurveyLayer;
 }
 
 type Step = 'upload' | 'layers';
 
-export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
+export function DxfImportDialog({ open, onOpenChange, editLayer }: DxfImportDialogProps) {
   const { toast } = useToast();
-  const { addSurveyLayer } = useDxfLayers();
+  const { addSurveyLayer, updateSurveyLayerFull } = useDxfLayers();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isEditMode = !!editLayer;
 
-  const [step, setStep] = useState<Step>('upload');
+  const [step, setStep] = useState<Step>(() => editLayer ? 'layers' : 'upload');
   const [isParsing, setIsParsing] = useState(false);
-  const [fileName, setFileName] = useState('');
-  const [layerName, setLayerName] = useState('');
-  const [crs, setCrs] = useState('MSK50-1');
-  const [swapXY, setSwapXY] = useState(false);
-  const [color, setColor] = useState('#e53935');
+  const [fileName, setFileName] = useState(() => editLayer ? '(загруженный файл)' : '');
+  const [layerName, setLayerName] = useState(() => editLayer?.name ?? '');
+  const [crs, setCrs] = useState(() => editLayer?.crs ?? 'MSK50-1');
+  const [swapXY, setSwapXY] = useState(() => editLayer?.swapXY ?? false);
+  const [color, setColor] = useState(() => editLayer?.color ?? '#e53935');
   const [dragOver, setDragOver] = useState(false);
 
-  const [rawContent, setRawContent] = useState<string | null>(null);
-  const [parsedLayers, setParsedLayers] = useState<DxfLayerInfo[]>([]);
-  const [parsedFeatures, setParsedFeatures] = useState<DxfFeature[]>([]);
-  const [selectedLayers, setSelectedLayers] = useState<string[]>([]);
+  const [rawContent, setRawContent] = useState<string | null>(() => editLayer?.rawContent ?? null);
+  const [parsedLayers, setParsedLayers] = useState<DxfLayerInfo[]>(() => editLayer?.allLayers ?? []);
+  const [parsedFeatures, setParsedFeatures] = useState<DxfFeature[]>(() => editLayer?.allFeatures ?? []);
+  const [selectedLayers, setSelectedLayers] = useState<string[]>(() => editLayer?.selectedLayers ?? []);
   const [coordHint, setCoordHint] = useState<string>('');
+  const [rawCoordHint, setRawCoordHint] = useState<string>('');
 
   const resetState = useCallback(() => {
-    setStep('upload');
+    setStep(isEditMode ? 'layers' : 'upload');
     setIsParsing(false);
-    setFileName('');
-    setLayerName('');
-    setCrs('MSK50-1');
-    setSwapXY(false);
-    setColor('#e53935');
-    setDragOver(false);
-    setRawContent(null);
-    setParsedLayers([]);
-    setParsedFeatures([]);
-    setSelectedLayers([]);
+    if (!isEditMode) {
+      setFileName('');
+      setLayerName('');
+      setCrs('MSK50-1');
+      setSwapXY(false);
+      setColor('#e53935');
+      setRawContent(null);
+      setParsedLayers([]);
+      setParsedFeatures([]);
+      setSelectedLayers([]);
+    }
     setCoordHint('');
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, []);
+  }, [isEditMode]);
 
   const handleClose = useCallback(() => {
     resetState();
@@ -81,20 +85,30 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
         .filter(l => l.types.some(t => ['LINE', 'LWPOLYLINE', 'POLYLINE', 'SPLINE'].includes(t)))
         .map(l => l.name);
       setSelectedLayers(prev => {
-        if (prev.length === 0 || prev.every(p => !result.layers.find(l => l.name === p))) {
-          return lineLayerNames.length > 0 ? lineLayerNames : result.layers.map(l => l.name);
-        }
-        return prev;
+        const valid = prev.filter(p => result.layers.find(l => l.name === p));
+        if (valid.length > 0) return valid;
+        return lineLayerNames.length > 0 ? lineLayerNames : result.layers.map(l => l.name);
       });
+
+      if (result.firstRawCoord) {
+        const [rx, ry] = result.firstRawCoord;
+        setRawCoordHint(`Сырые координаты DXF: X=${rx.toFixed(2)}, Y=${ry.toFixed(2)}`);
+      } else {
+        setRawCoordHint('');
+      }
 
       if (result.features.length > 0 && result.features[0].coordinates.length > 0) {
         const [lon, lat] = result.features[0].coordinates[0];
         const lonV = lon.toFixed(4);
         const latV = lat.toFixed(4);
-        const isValid = Math.abs(lon) <= 180 && Math.abs(lat) <= 90;
-        setCoordHint(isValid
-          ? `Первая точка: lon=${lonV}, lat=${latV} ✓`
-          : `Первая точка: x=${lonV}, y=${latV} — координаты могут быть некорректны`
+        const isValid = Math.abs(lon) <= 180 && Math.abs(lat) <= 90 && !(Math.abs(lon) < 1 && Math.abs(lat) < 1);
+        const inRussia = lon >= 19 && lon <= 190 && lat >= 41 && lat <= 82;
+        setCoordHint(
+          inRussia
+            ? `После преобразования: lon=${lonV}, lat=${latV} ✓`
+            : isValid
+            ? `После преобразования: lon=${lonV}, lat=${latV} — не в России, проверьте СК`
+            : `После преобразования: x=${lonV}, y=${latV} — ошибка, смените СК`
         );
       } else {
         setCoordHint('');
@@ -160,19 +174,28 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
       return;
     }
     const name = layerName.trim() || fileName.replace(/\.dxf$/i, '') || 'Съёмка';
-    addSurveyLayer({
+    const payload = {
       name,
       crs,
+      swapXY,
       color,
-      opacity: 0.8,
-      visible: true,
+      opacity: editLayer?.opacity ?? 0.8,
+      visible: editLayer?.visible ?? true,
       selectedLayers,
       allLayers: parsedLayers,
       allFeatures: parsedFeatures,
-    });
-    toast({ title: '✅ Подложка добавлена', description: `«${name}» отображается на карте` });
+      rawContent: rawContent ?? '',
+    };
+
+    if (isEditMode && editLayer) {
+      updateSurveyLayerFull(editLayer.id, payload);
+      toast({ title: '✅ Подложка обновлена', description: `«${name}» пересчитана на карте` });
+    } else {
+      addSurveyLayer(payload);
+      toast({ title: '✅ Подложка добавлена', description: `«${name}» отображается на карте` });
+    }
     handleClose();
-  }, [selectedLayers, layerName, fileName, crs, color, parsedLayers, parsedFeatures, addSurveyLayer, toast, handleClose]);
+  }, [selectedLayers, layerName, fileName, crs, swapXY, color, parsedLayers, parsedFeatures, rawContent, isEditMode, editLayer, addSurveyLayer, updateSurveyLayerFull, toast, handleClose]);
 
   const selectedFeatureCount = parsedFeatures.filter(f => selectedLayers.includes(f.layer)).length;
 
@@ -182,7 +205,9 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span>📐</span>
-            {step === 'upload' ? 'Загрузить файл топосъёмки (DXF)' : 'Выбор слоёв DXF'}
+            {isEditMode
+              ? `Настройки: ${editLayer?.name ?? 'подложка'}`
+              : step === 'upload' ? 'Загрузить файл топосъёмки (DXF)' : 'Выбор слоёв DXF'}
           </DialogTitle>
         </DialogHeader>
 
@@ -254,7 +279,7 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
               />
               <div>
                 <p className="text-sm font-medium">Поменять X/Y</p>
-                <p className="text-xs text-muted-foreground">Включить, если объекты не отображаются (российская геодезическая конвенция)</p>
+                <p className="text-xs text-muted-foreground">Если объекты не отображаются (российская геодезическая конвенция X=север, Y=восток)</p>
               </div>
             </div>
 
@@ -268,8 +293,14 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
         {step === 'layers' && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Файл: <strong>{fileName}</strong> — найдено слоёв: {parsedLayers.length}, объектов: {parsedFeatures.length}
+              {isEditMode ? 'Файл сохранён в памяти' : `Файл: <strong>${fileName}</strong>`} — слоёв: {parsedLayers.length}, объектов: {parsedFeatures.length}
             </p>
+
+            {rawCoordHint && (
+              <div className="rounded-md px-3 py-2 text-xs font-mono bg-muted text-muted-foreground">
+                {rawCoordHint}
+              </div>
+            )}
 
             {coordHint && (
               <div className={`rounded-md px-3 py-2 text-xs font-mono ${
@@ -280,10 +311,10 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
             )}
 
             <div className="rounded-md border p-3 space-y-3 bg-muted/30">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Настройки координат</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Система координат</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-xs">Система координат</Label>
+                  <Label className="text-xs">СК файла</Label>
                   <Select value={crs} onValueChange={setCrs}>
                     <SelectTrigger className="h-8 text-xs" data-testid="select-dxf-crs-step2">
                       <SelectValue />
@@ -296,7 +327,10 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
                   </Select>
                 </div>
                 <div className="space-y-1 flex flex-col justify-end">
-                  <div className="flex items-center gap-2 h-8 cursor-pointer" onClick={() => setSwapXY(v => !v)}>
+                  <div
+                    className="flex items-center gap-2 h-8 cursor-pointer"
+                    onClick={() => setSwapXY(v => !v)}
+                  >
                     <Checkbox
                       checked={swapXY}
                       onCheckedChange={(v) => setSwapXY(!!v)}
@@ -306,17 +340,19 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
                   </div>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full gap-2 h-7 text-xs"
-                onClick={handleReparse}
-                disabled={isParsing}
-                data-testid="button-dxf-reparse"
-              >
-                {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                Применить настройки и пересчитать
-              </Button>
+              {rawContent && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 h-7 text-xs"
+                  onClick={handleReparse}
+                  disabled={isParsing}
+                  data-testid="button-dxf-reparse"
+                >
+                  {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  Применить настройки и пересчитать координаты
+                </Button>
+              )}
             </div>
 
             <div className="space-y-1.5 max-h-44 overflow-y-auto border rounded-md p-2">
@@ -392,26 +428,29 @@ export function DxfImportDialog({ open, onOpenChange }: DxfImportDialogProps) {
 
         <DialogFooter className="gap-2">
           {step === 'upload' ? (
-            <>
-              <Button variant="outline" onClick={handleClose} data-testid="button-dxf-cancel">Отмена</Button>
-            </>
+            <Button variant="outline" onClick={handleClose} data-testid="button-dxf-cancel">Отмена</Button>
           ) : (
             <>
-              <Button
-                variant="outline"
-                onClick={() => setStep('upload')}
-                className="gap-1"
-                data-testid="button-dxf-back"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Назад
-              </Button>
+              {!isEditMode && (
+                <Button
+                  variant="outline"
+                  onClick={() => setStep('upload')}
+                  className="gap-1"
+                  data-testid="button-dxf-back"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Назад
+                </Button>
+              )}
+              {isEditMode && (
+                <Button variant="outline" onClick={handleClose} data-testid="button-dxf-cancel-edit">Отмена</Button>
+              )}
               <Button
                 onClick={handleAdd}
                 disabled={selectedLayers.length === 0 || isParsing}
                 data-testid="button-dxf-add"
               >
-                Добавить на карту
+                {isEditMode ? 'Сохранить изменения' : 'Добавить на карту'}
               </Button>
             </>
           )}

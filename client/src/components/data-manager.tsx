@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, createContext, useContext, useMemo } from "react";
 import { DxfImportDialog } from "@/components/dxf-import-dialog";
-import { useDxfLayers } from "@/contexts/dxf-layers-context";
+import { useDxfLayers, type DxfSurveyLayer } from "@/contexts/dxf-layers-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ import {
   Plug,
   Ruler,
   SlidersHorizontal,
+  Settings2,
 } from "lucide-react";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
@@ -1105,6 +1106,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [uploadProgress, setUploadProgress] = useState<string>("");
   const [uploadPercent, setUploadPercent] = useState<number>(0);
   const [showDxfDialog, setShowDxfDialog] = useState(false);
+  const [editDxfLayer, setEditDxfLayer] = useState<DxfSurveyLayer | null>(null);
 
   const { surveyLayers, removeSurveyLayer, toggleSurveyLayerVisibility, setSurveyLayerOpacity } = useDxfLayers();
   const SERVER_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
@@ -1863,6 +1865,20 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                             <Button
                               size="icon"
                               variant="ghost"
+                              className="h-5 w-5 shrink-0"
+                              onClick={() => setEditDxfLayer(sl)}
+                              data-testid={`button-edit-survey-${sl.id}`}
+                            >
+                              <Settings2 className="h-3 w-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Настройки подложки</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
                               className="h-5 w-5 shrink-0 text-destructive hover:text-destructive"
                               onClick={() => removeSurveyLayer(sl.id)}
                               data-testid={`button-remove-survey-${sl.id}`}
@@ -2141,6 +2157,14 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         open={showDxfDialog}
         onOpenChange={setShowDxfDialog}
       />
+
+      {editDxfLayer && (
+        <DxfImportDialog
+          open={true}
+          onOpenChange={(v) => { if (!v) setEditDxfLayer(null); }}
+          editLayer={editDxfLayer}
+        />
+      )}
     </div>
   );
 }

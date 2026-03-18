@@ -6,6 +6,7 @@ export interface DxfSurveyLayer {
   id: string;
   name: string;
   crs: string;
+  swapXY: boolean;
   color: string;
   opacity: number;
   visible: boolean;
@@ -15,11 +16,13 @@ export interface DxfSurveyLayer {
   features: DxfFeature[];
   featureCount: number;
   createdAt: string;
+  rawContent: string;
 }
 
 interface DxfLayersContextValue {
   surveyLayers: DxfSurveyLayer[];
   addSurveyLayer: (layer: Omit<DxfSurveyLayer, 'id' | 'createdAt' | 'features' | 'featureCount'>) => void;
+  updateSurveyLayerFull: (id: string, layer: Omit<DxfSurveyLayer, 'id' | 'createdAt' | 'features' | 'featureCount'>) => void;
   removeSurveyLayer: (id: string) => void;
   toggleSurveyLayerVisibility: (id: string) => void;
   setSurveyLayerOpacity: (id: string, opacity: number) => void;
@@ -44,6 +47,16 @@ export function DxfLayersProvider({ children }: { children: ReactNode }) {
         createdAt: new Date().toLocaleDateString('ru-RU'),
       },
     ]);
+  }, []);
+
+  const updateSurveyLayerFull = useCallback((id: string, layer: Omit<DxfSurveyLayer, 'id' | 'createdAt' | 'features' | 'featureCount'>) => {
+    const features = filterFeaturesByLayers(layer.allFeatures, layer.selectedLayers);
+    setSurveyLayers(prev =>
+      prev.map(l => l.id === id
+        ? { ...l, ...layer, features, featureCount: features.length }
+        : l
+      )
+    );
   }, []);
 
   const removeSurveyLayer = useCallback((id: string) => {
@@ -77,6 +90,7 @@ export function DxfLayersProvider({ children }: { children: ReactNode }) {
       value={{
         surveyLayers,
         addSurveyLayer,
+        updateSurveyLayerFull,
         removeSurveyLayer,
         toggleSurveyLayerVisibility,
         setSurveyLayerOpacity,
