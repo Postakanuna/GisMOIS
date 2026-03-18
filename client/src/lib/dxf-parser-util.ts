@@ -65,9 +65,14 @@ function transformCoord(x: number, y: number, crs: string, swapXY: boolean): [nu
   if (!def) return [ex, ey];
   try {
     const result = proj4(def, '+proj=longlat +datum=WGS84 +no_defs', [ex, ey]);
-    return [result[0], result[1]];
+    const lon = result[0], lat = result[1];
+    // Проверка результата — если вышли за допустимые WGS84 границы, координата невалидна
+    if (!isFinite(lon) || !isFinite(lat) || lon < -180 || lon > 180 || lat < -90 || lat > 90) {
+      return [999, 999]; // sentinel вне [-180,180]×[-90,90], отфильтруется в map-viewer
+    }
+    return [lon, lat];
   } catch {
-    return [ex, ey];
+    return [999, 999]; // sentinel вместо сырых MSK-координат
   }
 }
 
