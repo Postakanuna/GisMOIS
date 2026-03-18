@@ -1,3 +1,4 @@
+// @refresh reset
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import type { DxfFeature, DxfLayerInfo } from '@/lib/dxf-parser-util';
 import { filterFeaturesByLayers } from '@/lib/dxf-parser-util';

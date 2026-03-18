@@ -3711,14 +3711,16 @@ export function MapViewer({
 
           const source = new VectorSource();
 
-          // Валидация WGS84: lon ∈ [-180,180], lat ∈ [-90,90]
-          const isValidWgs84 = (lon: number, lat: number) =>
+          // Фильтр координат: только валидные WGS84 в пределах России (lon 18–190, lat 41–82).
+          // Исключает: сырые MSK-координаты (sentinel 999), AutoCAD origin (0,0),
+          // paper space элементы, dim-линии с нереальными координатами.
+          const isInRussia = (lon: number, lat: number) =>
             isFinite(lon) && isFinite(lat) &&
-            lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90;
+            lon >= 18 && lon <= 190 && lat >= 41 && lat <= 82;
 
           for (const feat of sl.features) {
             if (feat.type === 'LineString' && feat.coordinates.length >= 2) {
-              const validCoords = feat.coordinates.filter(([lon, lat]) => isValidWgs84(lon, lat));
+              const validCoords = feat.coordinates.filter(([lon, lat]) => isInRussia(lon, lat));
               if (validCoords.length < 2) continue;
               const coords = validCoords.map(([lon, lat]) => fromLonLat([lon, lat]));
               const geom = new LineString(coords);
@@ -3728,7 +3730,7 @@ export function MapViewer({
               source.addFeature(feature);
             } else if (feat.type === 'Point' && feat.coordinates.length > 0) {
               const [lon, lat] = feat.coordinates[0];
-              if (!isValidWgs84(lon, lat)) continue;
+              if (!isInRussia(lon, lat)) continue;
               const geom = new OlPoint(fromLonLat([lon, lat]));
               const feature = new Feature({ geometry: geom });
               feature.set('dxfLayer', feat.layer);
@@ -3762,21 +3764,18 @@ export function MapViewer({
           if (sl.features.length > 0 && !existing) {
             newLayerAdded = true;
             const extent = source.getExtent();
-            // extent[0..3] — в EPSG:3857 (метры). Разумный диапазон для России:
-            // lon 19–190° → x ≈ 2 115 070 – 21 150 700; lat 41–82° → y ≈ 5 012 341 – 14 010 543
-            const RUSSIA_X_MIN = 2_000_000, RUSSIA_X_MAX = 21_200_000;
-            const RUSSIA_Y_MIN = 5_000_000, RUSSIA_Y_MAX = 14_100_000;
-            const extentOk =
+            // Все features уже отфильтрованы через isInRussia, так что extent гарантированно
+            // в разумном диапазоне. Просто проверяем что extent непустой и конечный.
+            const hasValidExtent =
               extent &&
               isFinite(extent[0]) && isFinite(extent[1]) && isFinite(extent[2]) && isFinite(extent[3]) &&
-              extent[0] >= RUSSIA_X_MIN && extent[2] <= RUSSIA_X_MAX &&
-              extent[1] >= RUSSIA_Y_MIN && extent[3] <= RUSSIA_Y_MAX &&
-              (extent[2] - extent[0]) > 0 && (extent[3] - extent[1]) > 0;
-            if (extentOk) {
+              extent[2] > extent[0] && extent[3] > extent[1] &&
+              extent[0] !== Infinity; // OL возвращает [Inf,Inf,-Inf,-Inf] для пустого source
+            if (hasValidExtent) {
+              console.log('[DXF] Авто-зум к extent:', extent, 'features в source:', source.getFeatures().length);
               map.getView().fit(extent, { padding: [60, 60, 60, 60], duration: 700, maxZoom: 18 });
-            } else if (extent && isFinite(extent[0])) {
-              // Если extent за пределами России — просто предупреждаем в консоли
-              console.warn('[DXF] Extent выходит за пределы России, авто-зум пропущен:', extent);
+            } else {
+              console.warn('[DXF] Нет валидного extent для авто-зума. Features в source:', source.getFeatures().length, 'raw extent:', extent);
             }
           }
         }
