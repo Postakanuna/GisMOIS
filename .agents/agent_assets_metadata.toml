@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "d5W3PmpS5k8ha8hdvHp6E"
+uri = "file://docs/external-system-api-integration.md"
+type = "text"
+title = "Инструкция по подключению внешней системы к ГИС МО ИС"
