@@ -71,7 +71,7 @@ function correctSphericalLatitude(latDeg: number): number {
   for (let i = 0; i < 10; i++) {
     const sinPhi = Math.sin(phi);
     const eSinPhi = WGS84_E * sinPhi;
-    const conformalFactor = Math.pow((1 - eSinPhi) / (1 + eSinPhi), WGS84_E / 2);
+    const conformalFactor = Math.pow((1 + eSinPhi) / (1 - eSinPhi), WGS84_E / 2);
     const phiNew = 2 * Math.atan(Math.exp(y / R) * conformalFactor) - Math.PI / 2;
     
     if (Math.abs(phiNew - phi) < 1e-12) break;
@@ -555,10 +555,15 @@ export async function parseShapefileZip(arrayBuffer: ArrayBuffer): Promise<Parse
     
     
     try {
+      const isZuluPrj = !!(set.prj && (
+        set.prj.includes('Auxiliary_Sphere') ||
+        set.prj.includes('sradiusa=6378137')
+      ));
+
       const shapefileObj: any = {
         shp: set.shp,
         dbf: set.dbf,
-        prj: set.prj
+        prj: isZuluPrj ? null : set.prj
       };
       
       if (set.cpg) {

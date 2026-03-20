@@ -106,6 +106,41 @@ function extractCRS(geojson: any): string {
   return "EPSG:4326";
 }
 
+function isZuluSphericalPrj(prj: string | null): boolean {
+  if (!prj) return false;
+  return prj.includes('Auxiliary_Sphere') || prj.includes('sradiusa=6378137');
+}
+
+function sphericalMercatorInverse(x: number, y: number): [number, number] {
+  const R = 6378137;
+  const lon = (x / R) * (180 / Math.PI);
+  const lat = (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * (180 / Math.PI);
+  return [lon, lat];
+}
+
+function transformCoordsSphericalMercator(coordinates: any): any {
+  if (!coordinates || !Array.isArray(coordinates)) return coordinates;
+  if (typeof coordinates[0] === 'number') {
+    const [lon, lat] = sphericalMercatorInverse(coordinates[0], coordinates[1]);
+    return coordinates.length > 2 ? [lon, lat, coordinates[2]] : [lon, lat];
+  }
+  return coordinates.map((c: any) => transformCoordsSphericalMercator(c));
+}
+
+function applySphericalMercatorToCollection(collection: any): any {
+  if (!collection || !collection.features) return collection;
+  return {
+    ...collection,
+    features: collection.features.map((feature: any) => ({
+      ...feature,
+      geometry: feature.geometry ? {
+        ...feature.geometry,
+        coordinates: transformCoordsSphericalMercator(feature.geometry.coordinates)
+      } : feature.geometry
+    }))
+  };
+}
+
 export async function parseShapefileBuffer(
   buffer: Buffer,
   options: { simplifyTolerance?: number } = {}
@@ -215,19 +250,27 @@ export async function parseShapefileBuffer(
     
     fileList.push(...firstSet.fileNames);
     
+    const zuluPrj = isZuluSphericalPrj(firstSet.prj);
+
     const shapefileObj: any = {
       shp: firstSet.shp,
       dbf: firstSet.dbf,
-      prj: firstSet.prj,
+      prj: zuluPrj ? null : firstSet.prj,
     };
     
     const cpgEncoding = firstSet.cpg?.trim() || 'CP1251';
     const cpgBuffer = new TextEncoder().encode(cpgEncoding);
     shapefileObj.cpg = cpgBuffer.buffer;
     
-    console.log(`Parsing shapefile with encoding: ${cpgEncoding}, files: ${firstSet.fileNames.join(', ')}`);
+    console.log(`Parsing shapefile with encoding: ${cpgEncoding}, files: ${firstSet.fileNames.join(', ')}${zuluPrj ? ', ZuluGIS spherical Mercator detected' : ''}`);
     
     geojson = await shp(shapefileObj);
+
+    if (zuluPrj) {
+      const raw = Array.isArray(geojson) ? geojson[0] : geojson;
+      geojson = applySphericalMercatorToCollection(raw);
+      console.log('Applied spherical Mercator → WGS84 transform for ZuluGIS file');
+    }
   } catch (parseError: any) {
     console.error("shpjs parse error:", parseError);
     if (parseError.message?.includes("memory") || parseError.message?.includes("heap")) {
