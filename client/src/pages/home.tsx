@@ -974,6 +974,15 @@ export default function Home() {
               initialResult={aiAccidentResult}
               editableLayers={drawing.editableLayers}
               sceneId={currentSceneId || 0}
+              onSavedToLayer={(layerId, layerName) => {
+                const notifyMsg: ChatMessage = {
+                  id: `ai-saved-${Date.now()}`,
+                  role: "assistant",
+                  content: `Результаты анализа аварийности сохранены в слой "${layerName}". Теперь я знаю об этом слое и смогу ответить на ваши вопросы по данным о проблемных участках — спрашивайте.`,
+                  timestamp: new Date(),
+                };
+                setAiChatMessages(prev => [...prev, notifyMsg]);
+              }}
               onOpenReconstructionProgram={(segments: SegmentImportData[]) => {
                 setReconstructionImportSegments(segments);
                 setShowReconstructionProgram(true);

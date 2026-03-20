@@ -341,7 +341,7 @@ export async function getLayersSummaryForContext(sceneId?: number | null): Promi
   try {
     const sceneFilter = sceneId ? sql`AND scene_id = ${sceneId}` : sql``;
     const rows = await db.execute(sql`
-      SELECT id, name, geometry_type, feature_count, network_type
+      SELECT id, name, geometry_type, feature_count, network_type, metadata
       FROM editable_layers
       WHERE feature_count > 0
       ${sceneFilter}
@@ -355,7 +355,18 @@ export async function getLayersSummaryForContext(sceneId?: number | null): Promi
     for (const l of layers) {
       const networkLabel = l.network_type ? NETWORK_TYPE_LABELS[l.network_type] || l.network_type : null;
       const typeInfo = networkLabel ? `, тип сети: ${networkLabel}` : "";
-      summary += `- ${l.name} (ID: ${l.id}, ${l.geometry_type}, ${l.feature_count} объектов${typeInfo})\n`;
+
+      // Detect accident analysis result layers
+      let meta: Record<string, any> = {};
+      if (l.metadata) {
+        try { meta = typeof l.metadata === "string" ? JSON.parse(l.metadata) : l.metadata; } catch {}
+      }
+      const isAccidentResult = meta.analysisType === "accident_analysis";
+      const accidentTag = isAccidentResult
+        ? ` [РЕЗУЛЬТАТ АНАЛИЗА АВАРИЙНОСТИ от ${meta.analysisDate ? new Date(meta.analysisDate).toLocaleDateString("ru-RU") : "неизвестной даты"}]`
+        : "";
+
+      summary += `- ${l.name} (ID: ${l.id}, ${l.geometry_type}, ${l.feature_count} объектов${typeInfo}${accidentTag})\n`;
 
       const attrs = await getLayerAttributes(l.id);
       if (attrs.length > 0) {

@@ -106,6 +106,7 @@ interface AccidentAnalysisDialogProps {
   onHighlightSegment: (segment: AccidentSegmentResult | null) => void;
   initialResult?: AccidentAnalysisResult | null;
   onOpenReconstructionProgram?: (segments: SegmentImportData[]) => void;
+  onSavedToLayer?: (layerId: number, layerName: string) => void;
 }
 
 export function AccidentAnalysisDialog({
@@ -116,6 +117,7 @@ export function AccidentAnalysisDialog({
   onHighlightSegment,
   initialResult,
   onOpenReconstructionProgram,
+  onSavedToLayer,
 }: AccidentAnalysisDialogProps) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -471,6 +473,9 @@ export function AccidentAnalysisDialog({
       toast({ title: "Сохранено", description: `${data.saved} полигонов сохранено в слой${data.errors > 0 ? ` (ошибок: ${data.errors})` : ""}` });
       setShowSavePopover(false);
       window.dispatchEvent(new Event("viewport-features-invalidate"));
+      if (onSavedToLayer && data.layerId && data.layerName) {
+        onSavedToLayer(data.layerId, data.layerName);
+      }
     } catch (e: any) {
       toast({ title: "Ошибка сохранения", description: e.message || "Не удалось сохранить в слой", variant: "destructive" });
     } finally {

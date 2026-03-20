@@ -3207,6 +3207,20 @@ export async function registerRoutes(
 
       const created = await storage.createDrawnFeaturesBatch(features);
 
+      // Mark layer as accident analysis result layer in metadata
+      try {
+        const existingMeta = (targetLayer.metadata as Record<string, unknown>) || {};
+        await storage.updateEditableLayer(Number(targetLayerId), {
+          metadata: {
+            ...existingMeta,
+            analysisType: "accident_analysis",
+            analysisDate: new Date().toISOString(),
+          },
+        });
+      } catch (metaErr: any) {
+        console.warn("[save-buffer] Metadata update failed (non-fatal):", metaErr.message);
+      }
+
       // Update layer schema so attribute table shows all saved fields
       try {
         // Determine which fields are present across all saved segments
@@ -3249,7 +3263,7 @@ export async function registerRoutes(
         console.warn("[save-buffer] Schema update failed (non-fatal):", schemaErr.message);
       }
 
-      return res.json({ saved: created.length, errors: errorCount });
+      return res.json({ saved: created.length, errors: errorCount, layerName: targetLayer.name, layerId: Number(targetLayerId) });
     } catch (error: any) {
       console.error("Buffer-save error:", error);
       return res.status(500).json({ message: error.message || "Internal server error" });
@@ -8264,6 +8278,10 @@ export async function registerRoutes(
 
 НЕ добавляй маркер [ACTION:ACCIDENT_ANALYSIS] если пользователь ещё не подтвердил запуск.
 НЕ используй этот инструмент для справочных вопросов об авариях (сроки устранения, нормативы и т.д.).
+
+АНАЛИТИКА ПО РЕЗУЛЬТАТАМ АНАЛИЗА АВАРИЙНОСТИ:
+В списке слоёв могут присутствовать слои с пометкой [РЕЗУЛЬТАТ АНАЛИЗА АВАРИЙНОСТИ]. Эти слои содержат сохранённые итоги ранее выполненного анализа аварийности с полями: AccidentCount (количество аварий), Begin_uch/End_uch (начало и конец участка), Dpod (диаметр подачи), L (длина), Sys (система), Kol_potreb (количество потребителей), Kol_zhit (количество жителей).
+Если пользователь задаёт вопросы об авариях, проблемных участках, рейтинге аварийности — сначала ищи такой слой среди доступных и используй его данные как первичный источник. Явно указывай пользователю, из какого слоя взята информация.
 
 ВАЖНО: Если ниже приведены данные из базы — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${ragContext}`,
       };
