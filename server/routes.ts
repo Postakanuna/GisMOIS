@@ -3245,7 +3245,6 @@ export async function registerRoutes(
         const newFields: AttributeField[] = Array.from(allPropKeys).map(key => ({
           name: key,
           type: (knownTypes[key] ?? "text") as "text" | "number",
-          label: key,
           required: false,
         }));
 
@@ -4742,7 +4741,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/editable-layers/:layerId/schema", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+  const handleUpsertLayerSchema = async (req: AuthRequest, res: Response) => {
     try {
       const layerId = parseIntParam(req.params.layerId, res);
       if (layerId === null) return;
@@ -4765,7 +4764,9 @@ export async function registerRoutes(
       console.error("Error updating layer schema:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
-  });
+  };
+  app.put("/api/editable-layers/:layerId/schema", isAuthenticated as any, handleUpsertLayerSchema);
+  app.patch("/api/editable-layers/:layerId/schema", isAuthenticated as any, handleUpsertLayerSchema);
 
   // ============================================
   // EXPORT API (Export layers to various formats)

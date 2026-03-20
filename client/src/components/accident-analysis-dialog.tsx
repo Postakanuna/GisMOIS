@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { type SegmentImportData } from "@/components/reconstruction-program-dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -121,6 +122,7 @@ export function AccidentAnalysisDialog({
 }: AccidentAnalysisDialogProps) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
 
   const [networkLayerId, setNetworkLayerId] = useState<number | null>(null);
   const [accidentLayerId, setAccidentLayerId] = useState<number | null>(null);
@@ -473,6 +475,11 @@ export function AccidentAnalysisDialog({
       toast({ title: "Сохранено", description: `${data.saved} полигонов сохранено в слой${data.errors > 0 ? ` (ошибок: ${data.errors})` : ""}` });
       setShowSavePopover(false);
       window.dispatchEvent(new Event("viewport-features-invalidate"));
+      // Invalidate schema and features cache for the target layer so attribute table shows fresh data
+      if (saveLayerId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", saveLayerId, "schema"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/editable-layers", saveLayerId, "features"] });
+      }
       if (onSavedToLayer && data.layerId && data.layerName) {
         onSavedToLayer(data.layerId, data.layerName);
       }
