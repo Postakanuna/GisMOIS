@@ -53,6 +53,7 @@ import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
 import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { LayerLegendIcon } from "@/components/layer-legend-icon";
 
 const truncateName = (name: string, maxLength: number = 30): string => {
   if (name.length <= maxLength) return name;
@@ -596,9 +597,13 @@ export function LayerPanel({
                         data-testid={`editable-layer-item-${layer.id}`}
                       >
                         <div className="flex items-center gap-1 shrink-0">
-                          <div
-                            className="h-3 w-3 rounded-sm"
-                            style={{ backgroundColor: layer.color }}
+                          <LayerLegendIcon
+                            geometryType={layer.geometryType}
+                            color={layer.color}
+                            pointStyle={layer.pointStyle}
+                            lineStyle={layer.lineStyle}
+                            styleConfig={layer.styleConfig}
+                            customIconId={(layer as any).customIconId}
                           />
                         </div>
                         <div className="flex-1 min-w-0 flex items-center gap-1">
@@ -777,19 +782,28 @@ export function LayerPanel({
                             <div className="space-y-0.5">
                               {sc.categorizedClasses.map((cls: any, i: number) => (
                                 <div key={i} className="flex items-center gap-1.5">
-                                  <span
-                                    className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                                    style={{ backgroundColor: cls.style.color }}
-                                  />
+                                  <span className="flex-shrink-0">
+                                    <LayerLegendIcon
+                                      geometryType={layer.geometryType}
+                                      color={cls.style?.color || layer.color}
+                                      pointStyle={cls.style?.pointStyle || layer.pointStyle}
+                                      lineStyle={layer.lineStyle}
+                                      customIconId={cls.style?.customIconId}
+                                    />
+                                  </span>
                                   <span className="text-[11px] truncate">{cls.label || String(cls.value)}</span>
                                 </div>
                               ))}
                               {sc.defaultStyle && (
                                 <div className="flex items-center gap-1.5">
-                                  <span
-                                    className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                                    style={{ backgroundColor: sc.defaultStyle.color }}
-                                  />
+                                  <span className="flex-shrink-0">
+                                    <LayerLegendIcon
+                                      geometryType={layer.geometryType}
+                                      color={sc.defaultStyle.color}
+                                      pointStyle={layer.pointStyle}
+                                      lineStyle={layer.lineStyle}
+                                    />
+                                  </span>
                                   <span className="text-[11px] truncate text-muted-foreground">Прочее</span>
                                 </div>
                               )}
@@ -799,10 +813,14 @@ export function LayerPanel({
                             <div className="space-y-0.5">
                               {sc.graduatedClasses.map((cls: any, i: number) => (
                                 <div key={i} className="flex items-center gap-1.5">
-                                  <span
-                                    className="w-3 h-3 rounded-sm flex-shrink-0 border border-border/50"
-                                    style={{ backgroundColor: cls.style.color }}
-                                  />
+                                  <span className="flex-shrink-0">
+                                    <LayerLegendIcon
+                                      geometryType={layer.geometryType}
+                                      color={cls.style?.color || layer.color}
+                                      pointStyle={layer.pointStyle}
+                                      lineStyle={layer.lineStyle}
+                                    />
+                                  </span>
                                   <span className="text-[11px] truncate">{cls.label}</span>
                                 </div>
                               ))}
