@@ -553,7 +553,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
         <div className="flex-1 flex items-center justify-center p-6" data-testid="ai-disabled-message">
           <div className="text-center space-y-3">
             <Bot className="h-12 w-12 text-muted-foreground mx-auto" />
-            <p className="text-sm text-muted-foreground max-w-xs">
+            <p className="text-xs text-muted-foreground max-w-xs">
               ИИ-агент отключён администратором системы, обратитесь в техническую поддержку.
             </p>
           </div>
@@ -571,7 +571,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
                   <Bot className="h-3.5 w-3.5 text-primary" />
                 </div>
               )}
-              <div className={`rounded-md px-3 py-2 text-sm max-w-[85%] ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+              <div className={`rounded-md px-3 py-2 text-xs max-w-[85%] ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                 {msg.content && <div className="whitespace-pre-wrap">{msg.content}</div>}
                 {msg.action && (
                   <div className={msg.content ? "mt-2" : ""}>
@@ -601,7 +601,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
                 <Bot className="h-3.5 w-3.5 text-primary" />
               </div>
-              <div className="rounded-md px-3 py-2 text-sm bg-muted">
+              <div className="rounded-md px-3 py-2 text-xs bg-muted">
                 <span className="inline-flex gap-1">
                   <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
                   <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
