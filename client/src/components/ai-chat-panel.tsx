@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search } from "lucide-react";
+import { Send, Bot, User, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search, Paperclip, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,8 +73,12 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<{ name: string; content: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const MAX_FILE_SIZE = 100 * 1024;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -82,19 +86,55 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
     }
   }, [messages]);
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_FILE_SIZE) {
+      alert(`Файл слишком большой. Максимальный размер — 100 КБ.`);
+      e.target.value = "";
+      return;
+    }
+    try {
+      let content = "";
+      if (file.name.endsWith(".docx")) {
+        const mammoth = (await import("mammoth")).default;
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        content = result.value;
+      } else {
+        content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsText(file, "UTF-8");
+        });
+      }
+      setAttachedFile({ name: file.name, content: content.trim() });
+    } catch {
+      alert("Не удалось прочитать файл.");
+    }
+    e.target.value = "";
+  };
+
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || isLoading || isDisabled) return;
+    if ((!text && !attachedFile) || isLoading || isDisabled) return;
+
+    let fullContent = text;
+    if (attachedFile) {
+      fullContent = `[Файл: ${attachedFile.name}]\n${attachedFile.content}${text ? `\n\nВопрос: ${text}` : ""}`;
+    }
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
-      content: text,
+      content: fullContent,
       timestamp: new Date(),
     };
     const updatedMessages = [...messages, userMsg];
     onMessagesChange(updatedMessages);
     setInput("");
+    setAttachedFile(null);
     setIsLoading(true);
 
     try {
@@ -601,7 +641,32 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
       )}
 
       <div className="border-t p-3 shrink-0">
-        <div className="flex items-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".txt,.csv,.md,.docx"
+          className="hidden"
+          onChange={handleFileSelect}
+          data-testid="input-file-attach"
+        />
+        {attachedFile && (
+          <div className="flex items-center gap-1 mb-2">
+            <span className="flex items-center gap-1 text-xs bg-muted rounded px-2 py-1 max-w-[200px] truncate">
+              <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+              <span className="truncate">{attachedFile.name}</span>
+            </span>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5"
+              onClick={() => setAttachedFile(null)}
+              data-testid="button-remove-attachment"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+        <div className="flex items-start gap-2">
           <Textarea
             ref={textareaRef}
             value={input}
@@ -613,15 +678,28 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
             disabled={isLoading || isDisabled}
             data-testid="input-ai-chat"
           />
-          <Button
-            size="icon"
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading || isDisabled}
-            className="h-9 w-9 shrink-0 self-end"
-            data-testid="button-send-ai-chat"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+          <div className="flex flex-col gap-1 shrink-0">
+            <Button
+              size="icon"
+              onClick={handleSend}
+              disabled={(!input.trim() && !attachedFile) || isLoading || isDisabled}
+              className="h-9 w-9"
+              data-testid="button-send-ai-chat"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || isDisabled}
+              className="h-9 w-9"
+              title="Прикрепить файл (.txt, .csv, .md, .docx)"
+              data-testid="button-attach-file"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
