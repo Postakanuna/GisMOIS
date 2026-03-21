@@ -113,8 +113,8 @@ function SidebarContentPanel({
   connectionStatus,
 }: SidebarContentPanelProps) {
   return (
-    <ScrollArea className="h-full w-full min-w-0">
-      <div className="p-4 min-w-0 max-w-full overflow-hidden">
+    <div className="h-full w-full min-w-0 overflow-hidden flex flex-col">
+      <div className="p-4 min-w-0 max-w-full overflow-hidden flex flex-col flex-1 min-h-0">
         <LayerPanel
           layers={layers}
           onToggleVisibility={toggleLayerVisibility}
@@ -139,7 +139,7 @@ function SidebarContentPanel({
           connectionStatus={connectionStatus}
         />
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 
