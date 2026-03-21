@@ -523,7 +523,7 @@ export default function Home() {
   const aiIsDisabled = !aiEnabled || aiProviders.length === 0;
   const aiHasHistory = aiChatMessages.some(m => m.id !== "welcome");
 
-  const aiHeaderActions: ReactNode = !aiIsDisabled && aiHasHistory ? (
+  const aiHeaderActions: ReactNode = aiHasHistory ? (
     <Button
       size="icon"
       variant="ghost"
