@@ -1,13 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search, Paperclip, X } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Send, Bot, User, Play, BarChart3, Loader2, Zap, Search, Paperclip, X } from "lucide-react";
 
 export interface ChatAction {
   type:
@@ -533,19 +527,12 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
     }
   };
 
-  const handleClearChat = () => {
-    onMessagesChange([WELCOME_MESSAGE]);
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
-
-  const currentProvider = providers.find(p => p.id === selectedProvider);
-  const hasHistory = messages.some(m => m.id !== "welcome");
 
   const getActionIcon = (type: ChatAction["type"]) => {
     switch (type) {
@@ -561,20 +548,6 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1">
-      {!isDisabled && hasHistory && (
-        <div className="flex items-center justify-end pb-1 shrink-0">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={handleClearChat}
-            className="h-7 w-7"
-            title="Очистить чат"
-            data-testid="button-clear-chat"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
 
       {isDisabled && providersLoaded ? (
         <div className="flex-1 flex items-center justify-center p-6" data-testid="ai-disabled-message">

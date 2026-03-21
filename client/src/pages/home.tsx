@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, type ReactNode } from "react"
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap, Wrench } from "lucide-react";
+import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap, Wrench, Trash2 } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -529,29 +529,46 @@ export default function Home() {
 
   const currentAiProvider = aiProviders.find(p => p.id === selectedAiProvider);
   const aiIsDisabled = !aiEnabled || aiProviders.length === 0;
+  const aiHasHistory = aiChatMessages.some(m => m.id !== "welcome");
 
-  const aiHeaderActions: ReactNode = aiIsDisabled ? null : (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
-          {currentAiProvider?.name || "Модель"}
-          <ChevronDown className="h-3 w-3" />
+  const aiHeaderActions: ReactNode = (
+    <>
+      {!aiIsDisabled && aiHasHistory && (
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => setAiChatMessages([WELCOME_MESSAGE])}
+          className="h-7 w-7"
+          title="Очистить чат"
+          data-testid="button-clear-chat"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {aiProviders.map(p => (
-          <DropdownMenuItem
-            key={p.id}
-            onClick={() => setSelectedAiProvider(p.id)}
-            disabled={!p.available}
-            data-testid={`provider-option-${p.id}`}
-          >
-            <span className={selectedAiProvider === p.id ? "font-semibold" : ""}>{p.name}</span>
-            {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      )}
+      {!aiIsDisabled && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
+              {currentAiProvider?.name || "Модель"}
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {aiProviders.map(p => (
+              <DropdownMenuItem
+                key={p.id}
+                onClick={() => setSelectedAiProvider(p.id)}
+                disabled={!p.available}
+                data-testid={`provider-option-${p.id}`}
+              >
+                <span className={selectedAiProvider === p.id ? "font-semibold" : ""}>{p.name}</span>
+                {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </>
   );
 
   return (
