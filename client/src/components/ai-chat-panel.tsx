@@ -601,7 +601,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
       )}
 
       <div className="border-t p-3 shrink-0">
-        <div className="flex gap-2">
+        <div className="flex items-end gap-2">
           <Textarea
             ref={textareaRef}
             value={input}
