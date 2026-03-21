@@ -586,7 +586,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
           </div>
         </div>
       ) : (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 scrollbar-thin">
           {messages.map((msg) => (
             <div
               key={msg.id}
