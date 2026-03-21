@@ -617,6 +617,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
             size="icon"
             onClick={handleSend}
             disabled={!input.trim() || isLoading || isDisabled}
+            className="h-9 w-9 shrink-0 self-end"
             data-testid="button-send-ai-chat"
           >
             <Send className="h-4 w-4" />
