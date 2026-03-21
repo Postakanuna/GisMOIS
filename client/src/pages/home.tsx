@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -85,6 +85,8 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   onOpenStyleConfig?: (layerId: number) => void;
   onOpenGeocodeDialog?: (layerId: number) => void;
   onToggleAiChat?: () => void;
+  aiChatActive?: boolean;
+  aiChatContent?: ReactNode;
   onOpenDataManager?: () => void;
   connectionStatus: ConnectionStatus;
 }
@@ -109,6 +111,8 @@ function SidebarContentPanel({
   onOpenStyleConfig,
   onOpenGeocodeDialog,
   onToggleAiChat,
+  aiChatActive,
+  aiChatContent,
   onOpenDataManager,
   connectionStatus,
 }: SidebarContentPanelProps) {
@@ -135,6 +139,8 @@ function SidebarContentPanel({
           onOpenStyleConfig={onOpenStyleConfig}
           onOpenGeocodeDialog={onOpenGeocodeDialog}
           onToggleAiChat={onToggleAiChat}
+          aiChatActive={aiChatActive}
+          aiChatContent={aiChatContent}
           onOpenDataManager={onOpenDataManager}
           connectionStatus={connectionStatus}
         />
@@ -285,6 +291,10 @@ export default function Home() {
 
   const handleBackToLayers = useCallback(() => {
     setSidebarView("layers");
+  }, []);
+
+  const handleToggleAiChat = useCallback(() => {
+    setSidebarView(v => v === "ai-chat" ? "layers" : "ai-chat");
   }, []);
 
   const toggleEditMode = useCallback(() => {
@@ -509,12 +519,15 @@ export default function Home() {
             onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
           />
 
-          <SidebarContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex flex-col" : "overflow-hidden"}`}>
-            <SidebarGroup className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
-              <SidebarGroupContent className={`min-w-0 ${sidebarView === "ai-chat" ? "overflow-hidden flex-1 flex flex-col min-h-0" : "overflow-hidden"}`}>
-                {sidebarView === "ai-chat" ? (
-                  <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />
-                ) : sidebarView === "layers" ? (
+          <SidebarContent className="min-w-0 overflow-hidden flex flex-col">
+            <SidebarGroup className="min-w-0 overflow-hidden flex-1 flex flex-col min-h-0">
+              <SidebarGroupContent className="min-w-0 overflow-hidden flex-1 flex flex-col min-h-0">
+                {sidebarView === "featureInfo" ? (
+                  <FeatureInfoSidebarPanel
+                    features={selectedFeatures}
+                    onBack={handleBackToLayers}
+                  />
+                ) : (
                   <SidebarContentPanel
                     layers={zuluConnection.layers}
                     toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
@@ -542,14 +555,11 @@ export default function Home() {
                     }}
                     onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
-                    onToggleAiChat={() => setSidebarView("ai-chat")}
+                    onToggleAiChat={handleToggleAiChat}
+                    aiChatActive={sidebarView === "ai-chat"}
+                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />}
                     onOpenDataManager={() => setShowDataManager(true)}
                     connectionStatus={zuluConnection.status}
-                  />
-                ) : (
-                  <FeatureInfoSidebarPanel
-                    features={selectedFeatures}
-                    onBack={handleBackToLayers}
                   />
                 )}
               </SidebarGroupContent>
@@ -580,35 +590,33 @@ export default function Home() {
                     </div>
                     <span className="font-semibold text-sm">ГИС МО «Инженерные сети»</span>
                   </Link>
-                  {sidebarView === "ai-chat" ? (
-                    <AiChatPanel onBack={handleBackToLayers} messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />
-                  ) : (
-                    <SidebarContentPanel
-                      layers={zuluConnection.layers}
-                      toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
-                      setLayerOpacity={zuluConnection.setLayerOpacity}
-                      layerFilters={zuluConnection.layerFilters}
-                      activeFilters={zuluConnection.activeFilters}
-                      toggleFilter={zuluConnection.toggleFilter}
-                      editableLayers={drawing.editableLayers}
-                      activeEditableLayer={drawing.activeLayer}
-                      onSelectEditableLayer={drawing.selectLayer}
-                      onCreateEditableLayer={handleCreateEditableLayer}
-                      onDeleteEditableLayer={drawing.deleteLayer}
-                      editMode={editMode}
-                      onToggleEditMode={toggleEditMode}
-                      activeSceneDataset={activeSceneDataset}
-                      onSelectSceneDataset={handleSelectSceneDataset}
-                      onOpenAttributeTable={(layerId, layerName) => {
-                        setImportedLayerTable({ layerId, layerName });
-                      }}
-                      onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
-                      onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
-                      onToggleAiChat={() => setSidebarView("ai-chat")}
-                      onOpenDataManager={() => setShowDataManager(true)}
-                      connectionStatus={zuluConnection.status}
-                    />
-                  )}
+                  <SidebarContentPanel
+                    layers={zuluConnection.layers}
+                    toggleLayerVisibility={zuluConnection.toggleLayerVisibility}
+                    setLayerOpacity={zuluConnection.setLayerOpacity}
+                    layerFilters={zuluConnection.layerFilters}
+                    activeFilters={zuluConnection.activeFilters}
+                    toggleFilter={zuluConnection.toggleFilter}
+                    editableLayers={drawing.editableLayers}
+                    activeEditableLayer={drawing.activeLayer}
+                    onSelectEditableLayer={drawing.selectLayer}
+                    onCreateEditableLayer={handleCreateEditableLayer}
+                    onDeleteEditableLayer={drawing.deleteLayer}
+                    editMode={editMode}
+                    onToggleEditMode={toggleEditMode}
+                    activeSceneDataset={activeSceneDataset}
+                    onSelectSceneDataset={handleSelectSceneDataset}
+                    onOpenAttributeTable={(layerId, layerName) => {
+                      setImportedLayerTable({ layerId, layerName });
+                    }}
+                    onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
+                    onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
+                    onToggleAiChat={handleToggleAiChat}
+                    aiChatActive={sidebarView === "ai-chat"}
+                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />}
+                    onOpenDataManager={() => setShowDataManager(true)}
+                    connectionStatus={zuluConnection.status}
+                  />
                 </SheetContent>
               </Sheet>
 

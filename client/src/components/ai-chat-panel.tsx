@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, ArrowLeft, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search } from "lucide-react";
+import { Send, Bot, User, ChevronDown, Trash2, Play, BarChart3, Loader2, Zap, Search } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,7 +51,7 @@ const WELCOME_MESSAGE: ChatMessage = {
 };
 
 interface AiChatPanelProps {
-  onBack: () => void;
+  onBack?: () => void;
   messages: ChatMessage[];
   onMessagesChange: (messages: ChatMessage[]) => void;
   sceneId?: number | null;
@@ -536,52 +536,45 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1">
-      <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
-        <Button size="icon" variant="ghost" onClick={onBack} data-testid="button-back-to-layers">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <Bot className="h-4 w-4 text-primary" />
-        <span className="text-sm font-semibold">ИИ-ассистент</span>
-        {!isDisabled && (
-          <div className="ml-auto flex items-center gap-1">
-            {hasHistory && (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleClearChat}
-                className="h-7 w-7"
-                title="Очистить чат"
-                data-testid="button-clear-chat"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
+      {!isDisabled && (
+        <div className="flex items-center justify-end gap-1 pb-2 shrink-0">
+          {hasHistory && (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={handleClearChat}
+              className="h-7 w-7"
+              title="Очистить чат"
+              data-testid="button-clear-chat"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
+                {currentProvider?.name || "Модель"}
+                <ChevronDown className="h-3 w-3" />
               </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
-                  {currentProvider?.name || "Модель"}
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {providers.map(p => (
-                  <DropdownMenuItem
-                    key={p.id}
-                    onClick={() => setSelectedProvider(p.id)}
-                    disabled={!p.available}
-                    data-testid={`provider-option-${p.id}`}
-                  >
-                    <span className={selectedProvider === p.id ? "font-semibold" : ""}>
-                      {p.name}
-                    </span>
-                    {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        )}
-      </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {providers.map(p => (
+                <DropdownMenuItem
+                  key={p.id}
+                  onClick={() => setSelectedProvider(p.id)}
+                  disabled={!p.available}
+                  data-testid={`provider-option-${p.id}`}
+                >
+                  <span className={selectedProvider === p.id ? "font-semibold" : ""}>
+                    {p.name}
+                  </span>
+                  {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
 
       {isDisabled && providersLoaded ? (
         <div className="flex-1 flex items-center justify-center p-6" data-testid="ai-disabled-message">

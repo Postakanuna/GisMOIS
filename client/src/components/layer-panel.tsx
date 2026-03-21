@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler, Settings2 } from "lucide-react";
 import { useDxfLayers, type DxfSurveyLayer } from "@/contexts/dxf-layers-context";
@@ -129,6 +129,8 @@ interface LayerPanelProps {
   onOpenStyleConfig?: (layerId: number) => void;
   onOpenGeocodeDialog?: (layerId: number) => void;
   onToggleAiChat?: () => void;
+  aiChatActive?: boolean;
+  aiChatContent?: ReactNode;
   onOpenDataManager?: () => void;
   connectionStatus?: ConnectionStatus;
 }
@@ -153,6 +155,8 @@ export function LayerPanel({
   onOpenStyleConfig,
   onOpenGeocodeDialog,
   onToggleAiChat,
+  aiChatActive = false,
+  aiChatContent,
   onOpenDataManager,
   connectionStatus,
 }: LayerPanelProps) {
@@ -382,18 +386,23 @@ export function LayerPanel({
   const headerContent = (
     <div className="flex items-center justify-between gap-2 pb-2 border-b border-sidebar-border">
       <div className="flex items-center gap-2">
-        <Layers className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-lg font-medium">Слои карты</h2>
         {onToggleAiChat && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="icon" variant="ghost" onClick={onToggleAiChat} data-testid="button-toggle-ai-chat">
+              <Button
+                size="icon"
+                variant={aiChatActive ? "secondary" : "ghost"}
+                onClick={onToggleAiChat}
+                data-testid="button-toggle-ai-chat"
+              >
                 <Bot className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>ИИ-ассистент</TooltipContent>
+            <TooltipContent>{aiChatActive ? "Вернуться к слоям" : "ИИ-ассистент"}</TooltipContent>
           </Tooltip>
         )}
+        <Layers className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-lg font-medium">{aiChatActive ? "ИИ-ассистент" : "Слои карты"}</h2>
       </div>
       <div className="flex items-center gap-1">
         <Dialog open={newLayerDialogOpen} onOpenChange={setNewLayerDialogOpen}>
@@ -484,13 +493,8 @@ export function LayerPanel({
     </div>
   );
 
-  return (
-    <div className="flex flex-col h-full min-w-0">
-      <div className="shrink-0">
-        {headerContent}
-      </div>
-
-      <div className="flex-1 overflow-y-auto min-h-0 min-w-0 scrollbar-thin">
+  const layerContent = (
+    <Fragment>
       <Accordion type="multiple" defaultValue={["base", "external", "uploaded", "editable", "survey"]} className="space-y-1 min-w-0">
         {/* Survey layers (DXF underlays) */}
         {surveyLayers.length > 0 && (
@@ -1020,6 +1024,16 @@ export function LayerPanel({
           </p>
         </div>
       )}
+    </Fragment>
+  );
+
+  return (
+    <div className="flex flex-col h-full min-w-0">
+      <div className="shrink-0">
+        {headerContent}
+      </div>
+      <div className="flex-1 overflow-y-auto min-h-0 min-w-0 scrollbar-thin">
+        {aiChatActive ? aiChatContent : layerContent}
       </div>
     </div>
   );
