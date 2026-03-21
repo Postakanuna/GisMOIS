@@ -608,8 +608,8 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={isDisabled ? "ИИ-агент недоступен" : "Задайте вопрос..."}
-            className="resize-none min-h-[40px] max-h-[120px] text-sm"
-            rows={1}
+            className="resize-none min-h-[80px] max-h-[200px] text-sm"
+            rows={2}
             disabled={isLoading || isDisabled}
             data-testid="input-ai-chat"
           />
