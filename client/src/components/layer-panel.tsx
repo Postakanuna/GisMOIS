@@ -490,7 +490,7 @@ export function LayerPanel({
         {headerContent}
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0 min-w-0">
+      <div className="flex-1 overflow-y-auto min-h-0 min-w-0 scrollbar-thin">
       <Accordion type="multiple" defaultValue={["base", "external", "uploaded", "editable", "survey"]} className="space-y-1 min-w-0">
         {/* Survey layers (DXF underlays) */}
         {surveyLayers.length > 0 && (
