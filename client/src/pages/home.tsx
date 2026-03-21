@@ -41,13 +41,6 @@ import { SensorTelemetryBlock } from "@/components/sensor-telemetry-block";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
 import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage, type AiProvider } from "@/components/ai-chat-panel";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
 import { MapSearchBar } from "@/components/map-search-bar";
 import { BugReportButton } from "@/components/bug-report-button";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
@@ -527,49 +520,21 @@ export default function Home() {
     "--sidebar-width-icon": "4rem",
   } as React.CSSProperties;
 
-  const currentAiProvider = aiProviders.find(p => p.id === selectedAiProvider);
   const aiIsDisabled = !aiEnabled || aiProviders.length === 0;
   const aiHasHistory = aiChatMessages.some(m => m.id !== "welcome");
 
-  const aiHeaderActions: ReactNode = (
-    <>
-      {!aiIsDisabled && aiHasHistory && (
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => setAiChatMessages([WELCOME_MESSAGE])}
-          className="h-7 w-7"
-          title="Очистить чат"
-          data-testid="button-clear-chat"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      )}
-      {!aiIsDisabled && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
-              {currentAiProvider?.name || "Модель"}
-              <ChevronDown className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {aiProviders.map(p => (
-              <DropdownMenuItem
-                key={p.id}
-                onClick={() => setSelectedAiProvider(p.id)}
-                disabled={!p.available}
-                data-testid={`provider-option-${p.id}`}
-              >
-                <span className={selectedAiProvider === p.id ? "font-semibold" : ""}>{p.name}</span>
-                {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </>
-  );
+  const aiHeaderActions: ReactNode = !aiIsDisabled && aiHasHistory ? (
+    <Button
+      size="icon"
+      variant="ghost"
+      onClick={() => setAiChatMessages([WELCOME_MESSAGE])}
+      className="h-7 w-7"
+      title="Очистить чат"
+      data-testid="button-clear-chat"
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+    </Button>
+  ) : null;
 
   return (
     <SidebarProvider style={sidebarStyle}>
