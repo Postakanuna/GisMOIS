@@ -31,7 +31,7 @@ export interface ChatMessage {
   action?: ChatAction;
 }
 
-interface AiProvider {
+export interface AiProvider {
   id: string;
   name: string;
   available: boolean;
@@ -55,6 +55,11 @@ interface AiChatPanelProps {
   messages: ChatMessage[];
   onMessagesChange: (messages: ChatMessage[]) => void;
   sceneId?: number | null;
+  providers: AiProvider[];
+  selectedProvider: string;
+  onProviderChange: (id: string) => void;
+  isDisabled: boolean;
+  providersLoaded: boolean;
   onComplaintAnalysisResult?: (result: any) => void;
   onSimulationResult?: (result: any, featureInfo: { featureId: number; layerId: number; name: string; featureType: string }) => void;
   onAccidentAnalysisResult?: (result: any) => void;
@@ -64,38 +69,18 @@ const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*
 const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^:\]]+):([^\]]*)\]/;
 const ACCIDENT_ANALYSIS_REGEX = /\[ACTION:ACCIDENT_ANALYSIS:([^:\]]*):([^\]]*)\]/;
 
-export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult }: AiChatPanelProps) {
+export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, providers, selectedProvider, onProviderChange, isDisabled, providersLoaded, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult }: AiChatPanelProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [providers, setProviders] = useState<AiProvider[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState<string>("");
-  const [aiEnabled, setAiEnabled] = useState(true);
-  const [providersLoaded, setProvidersLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    fetch("/api/ai/providers")
-      .then(r => r.json())
-      .then((data: ProvidersResponse) => {
-        setAiEnabled(data.enabled);
-        if (data.providers) setProviders(data.providers);
-        if (data.default) setSelectedProvider(data.default);
-        setProvidersLoaded(true);
-      })
-      .catch(() => {
-        setProvidersLoaded(true);
-      });
-  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  const isDisabled = !aiEnabled || providers.length === 0;
 
   const handleSend = async () => {
     const text = input.trim();
@@ -536,43 +521,18 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, onCom
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1">
-      {!isDisabled && (
-        <div className="flex items-center justify-end gap-1 pb-2 shrink-0">
-          {hasHistory && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={handleClearChat}
-              className="h-7 w-7"
-              title="Очистить чат"
-              data-testid="button-clear-chat"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
-                {currentProvider?.name || "Модель"}
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {providers.map(p => (
-                <DropdownMenuItem
-                  key={p.id}
-                  onClick={() => setSelectedProvider(p.id)}
-                  disabled={!p.available}
-                  data-testid={`provider-option-${p.id}`}
-                >
-                  <span className={selectedProvider === p.id ? "font-semibold" : ""}>
-                    {p.name}
-                  </span>
-                  {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+      {!isDisabled && hasHistory && (
+        <div className="flex items-center justify-end pb-1 shrink-0">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={handleClearChat}
+            className="h-7 w-7"
+            title="Очистить чат"
+            data-testid="button-clear-chat"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
       )}
 

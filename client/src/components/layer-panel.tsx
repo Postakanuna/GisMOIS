@@ -131,6 +131,7 @@ interface LayerPanelProps {
   onToggleAiChat?: () => void;
   aiChatActive?: boolean;
   aiChatContent?: ReactNode;
+  aiHeaderActions?: ReactNode;
   onOpenDataManager?: () => void;
   connectionStatus?: ConnectionStatus;
 }
@@ -157,6 +158,7 @@ export function LayerPanel({
   onToggleAiChat,
   aiChatActive = false,
   aiChatContent,
+  aiHeaderActions,
   onOpenDataManager,
   connectionStatus,
 }: LayerPanelProps) {
@@ -401,93 +403,96 @@ export function LayerPanel({
             <TooltipContent>{aiChatActive ? "Вернуться к слоям" : "ИИ-ассистент"}</TooltipContent>
           </Tooltip>
         )}
-        <Layers className="h-4 w-4 text-muted-foreground" />
         <h2 className="text-lg font-medium">{aiChatActive ? "ИИ-ассистент" : "Слои карты"}</h2>
       </div>
       <div className="flex items-center gap-1">
-        <Dialog open={newLayerDialogOpen} onOpenChange={setNewLayerDialogOpen}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DialogTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  data-testid="button-create-editable-layer"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </DialogTrigger>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Создать редактируемый слой</p>
-            </TooltipContent>
-          </Tooltip>
-          <DialogContent className="sm:max-w-[400px]">
-            <DialogHeader>
-              <DialogTitle>Новый редактируемый слой</DialogTitle>
-              <DialogDescription>
-                Создайте слой для рисования объектов на карте
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="new-layer-name">Название слоя</Label>
-                <Input
-                  id="new-layer-name"
-                  value={newLayerName}
-                  onChange={(e) => setNewLayerName(e.target.value)}
-                  placeholder="Например: Мои объекты"
-                  data-testid="input-new-layer-name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-layer-geom">Тип геометрии</Label>
-                <Select value={newLayerGeomType} onValueChange={(v) => setNewLayerGeomType(v as GeometryType)}>
-                  <SelectTrigger id="new-layer-geom" data-testid="select-new-layer-geom">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Point">Точки</SelectItem>
-                    <SelectItem value="LineString">Линии</SelectItem>
-                    <SelectItem value="Polygon">Полигоны</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={() => {
-                  if (newLayerName.trim() && onCreateEditableLayer) {
-                    onCreateEditableLayer(newLayerName.trim(), newLayerGeomType);
-                    setNewLayerName("");
-                    setNewLayerDialogOpen(false);
-                  }
-                }}
-                disabled={!newLayerName.trim()}
-                data-testid="button-confirm-create-layer"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Создать
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        {onOpenDataManager && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={onOpenDataManager}
-                data-testid="button-open-data-manager"
-              >
-                <Database className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Менеджер данных</p>
-            </TooltipContent>
-          </Tooltip>
+        {aiChatActive ? aiHeaderActions : (
+          <>
+            <Dialog open={newLayerDialogOpen} onOpenChange={setNewLayerDialogOpen}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      data-testid="button-create-editable-layer"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Создать редактируемый слой</p>
+                </TooltipContent>
+              </Tooltip>
+              <DialogContent className="sm:max-w-[400px]">
+                <DialogHeader>
+                  <DialogTitle>Новый редактируемый слой</DialogTitle>
+                  <DialogDescription>
+                    Создайте слой для рисования объектов на карте
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-layer-name">Название слоя</Label>
+                    <Input
+                      id="new-layer-name"
+                      value={newLayerName}
+                      onChange={(e) => setNewLayerName(e.target.value)}
+                      placeholder="Например: Мои объекты"
+                      data-testid="input-new-layer-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-layer-geom">Тип геометрии</Label>
+                    <Select value={newLayerGeomType} onValueChange={(v) => setNewLayerGeomType(v as GeometryType)}>
+                      <SelectTrigger id="new-layer-geom" data-testid="select-new-layer-geom">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Point">Точки</SelectItem>
+                        <SelectItem value="LineString">Линии</SelectItem>
+                        <SelectItem value="Polygon">Полигоны</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={() => {
+                      if (newLayerName.trim() && onCreateEditableLayer) {
+                        onCreateEditableLayer(newLayerName.trim(), newLayerGeomType);
+                        setNewLayerName("");
+                        setNewLayerDialogOpen(false);
+                      }
+                    }}
+                    disabled={!newLayerName.trim()}
+                    data-testid="button-confirm-create-layer"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Создать
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            {onOpenDataManager && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={onOpenDataManager}
+                    data-testid="button-open-data-manager"
+                  >
+                    <Database className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Менеджер данных</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </>
         )}
       </div>
     </div>

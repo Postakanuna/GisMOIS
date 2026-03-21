@@ -40,7 +40,14 @@ import { FeatureInfoModal } from "@/components/feature-info-modal";
 import { SensorTelemetryBlock } from "@/components/sensor-telemetry-block";
 import { GeocodeDialog } from "@/components/geocode-dialog";
 import { LayerStylePanel } from "@/components/layer-style-panel";
-import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage } from "@/components/ai-chat-panel";
+import { AiChatPanel, WELCOME_MESSAGE, type ChatMessage, type AiProvider } from "@/components/ai-chat-panel";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
 import { MapSearchBar } from "@/components/map-search-bar";
 import { BugReportButton } from "@/components/bug-report-button";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
@@ -87,6 +94,7 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   onToggleAiChat?: () => void;
   aiChatActive?: boolean;
   aiChatContent?: ReactNode;
+  aiHeaderActions?: ReactNode;
   onOpenDataManager?: () => void;
   connectionStatus: ConnectionStatus;
 }
@@ -113,6 +121,7 @@ function SidebarContentPanel({
   onToggleAiChat,
   aiChatActive,
   aiChatContent,
+  aiHeaderActions,
   onOpenDataManager,
   connectionStatus,
 }: SidebarContentPanelProps) {
@@ -141,6 +150,7 @@ function SidebarContentPanel({
           onToggleAiChat={onToggleAiChat}
           aiChatActive={aiChatActive}
           aiChatContent={aiChatContent}
+          aiHeaderActions={aiHeaderActions}
           onOpenDataManager={onOpenDataManager}
           connectionStatus={connectionStatus}
         />
@@ -207,6 +217,10 @@ export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarView, setSidebarView] = useState<"layers" | "featureInfo" | "ai-chat">("layers");
   const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+  const [aiProviders, setAiProviders] = useState<AiProvider[]>([]);
+  const [selectedAiProvider, setSelectedAiProvider] = useState<string>("");
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiProvidersLoaded, setAiProvidersLoaded] = useState(false);
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeatureData[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
@@ -280,6 +294,18 @@ export default function Home() {
       setLocation("/gis/scenes");
     }
   }, [currentSceneId, setLocation]);
+
+  useEffect(() => {
+    fetch("/api/ai/providers")
+      .then(r => r.json())
+      .then((data: { enabled: boolean; providers?: AiProvider[]; default?: string }) => {
+        setAiEnabled(data.enabled);
+        if (data.providers) setAiProviders(data.providers);
+        if (data.default) setSelectedAiProvider(data.default);
+        setAiProvidersLoaded(true);
+      })
+      .catch(() => setAiProvidersLoaded(true));
+  }, []);
 
   const handleSelectedFeaturesChange = useCallback((features: SelectedFeatureData[]) => {
     setSelectedFeatures(features);
@@ -501,6 +527,33 @@ export default function Home() {
     "--sidebar-width-icon": "4rem",
   } as React.CSSProperties;
 
+  const currentAiProvider = aiProviders.find(p => p.id === selectedAiProvider);
+  const aiIsDisabled = !aiEnabled || aiProviders.length === 0;
+
+  const aiHeaderActions: ReactNode = aiIsDisabled ? null : (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2" data-testid="button-provider-selector">
+          {currentAiProvider?.name || "Модель"}
+          <ChevronDown className="h-3 w-3" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {aiProviders.map(p => (
+          <DropdownMenuItem
+            key={p.id}
+            onClick={() => setSelectedAiProvider(p.id)}
+            disabled={!p.available}
+            data-testid={`provider-option-${p.id}`}
+          >
+            <span className={selectedAiProvider === p.id ? "font-semibold" : ""}>{p.name}</span>
+            {!p.available && <span className="ml-2 text-muted-foreground text-xs">(не настроен)</span>}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full overflow-hidden">
@@ -557,7 +610,8 @@ export default function Home() {
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                     onToggleAiChat={handleToggleAiChat}
                     aiChatActive={sidebarView === "ai-chat"}
-                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />}
+                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} providers={aiProviders} selectedProvider={selectedAiProvider} onProviderChange={setSelectedAiProvider} isDisabled={aiIsDisabled} providersLoaded={aiProvidersLoaded} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />}
+                    aiHeaderActions={aiHeaderActions}
                     onOpenDataManager={() => setShowDataManager(true)}
                     connectionStatus={zuluConnection.status}
                   />
@@ -613,7 +667,8 @@ export default function Home() {
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                     onToggleAiChat={handleToggleAiChat}
                     aiChatActive={sidebarView === "ai-chat"}
-                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />}
+                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} providers={aiProviders} selectedProvider={selectedAiProvider} onProviderChange={setSelectedAiProvider} isDisabled={aiIsDisabled} providersLoaded={aiProvidersLoaded} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} />}
+                    aiHeaderActions={aiHeaderActions}
                     onOpenDataManager={() => setShowDataManager(true)}
                     connectionStatus={zuluConnection.status}
                   />
