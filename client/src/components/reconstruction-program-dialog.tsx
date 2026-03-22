@@ -78,6 +78,7 @@ interface ProgramObject {
   accidentsPerM: string | null;
   residentCount: number | null;
   consumerCount: number | null;
+  criticalityScore: string | null;
   sortOrder: number;
 }
 
@@ -372,6 +373,9 @@ export function ReconstructionProgramDialog({
     onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
 
+  const sortByScore = (arr: ProgramObject[]) =>
+    [...arr].sort((a, b) => (parseFloat(b.criticalityScore ?? "0") || 0) - (parseFloat(a.criticalityScore ?? "0") || 0));
+
   const objectsByYear = (() => {
     if (!selectedProgram) return {};
     const map: Record<string, ProgramObject[]> = { unscheduled: [] };
@@ -386,6 +390,10 @@ export function ReconstructionProgramDialog({
       } else {
         map.unscheduled.push(obj);
       }
+    }
+    // Сортируем внутри каждой группы по убыванию скорингового балла
+    for (const key of Object.keys(map)) {
+      map[key] = sortByScore(map[key]);
     }
     return map;
   })();
@@ -893,6 +901,23 @@ interface ObjectRowProps {
   onDelete: () => void;
 }
 
+function ScoreBadge({ score }: { score: string | null }) {
+  if (!score) return null;
+  const val = parseFloat(score);
+  const color = val >= 7 ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
+    : val >= 4 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
+    : "bg-muted text-muted-foreground";
+  return (
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums shrink-0 ${color}`}
+      title="Скоринг критичности (0–10)"
+      data-testid="score-badge"
+    >
+      {val.toFixed(2)}
+    </span>
+  );
+}
+
 function ObjectRow({ obj, years, onSetYear, onDelete }: ObjectRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const typeLabel = OBJECT_TYPES.find(t => t.value === obj.objectType)?.label ?? obj.objectType;
@@ -908,6 +933,7 @@ function ObjectRow({ obj, years, onSetYear, onDelete }: ObjectRowProps) {
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 flex-wrap">
+          <ScoreBadge score={obj.criticalityScore} />
           <span className="font-medium truncate">{obj.objectName}</span>
           <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{typeLabel}</Badge>
           <Badge variant="secondary" className="text-[10px] h-4 px-1 shrink-0">{workLabel}</Badge>

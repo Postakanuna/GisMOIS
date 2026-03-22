@@ -787,6 +787,7 @@ export const programObjects = pgTable("program_objects", {
   accidentsPerM: numeric("accidents_per_m", { precision: 10, scale: 6 }),
   residentCount: integer("resident_count"),
   consumerCount: integer("consumer_count"),
+  criticalityScore: numeric("criticality_score", { precision: 5, scale: 2 }),
   geometry: jsonb("geometry"),               // GeoJSON для подсветки на карте
   sortOrder: integer("sort_order").notNull().default(0),
 });

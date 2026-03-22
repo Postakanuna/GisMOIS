@@ -9690,20 +9690,29 @@ export async function registerRoutes(
       //   F5 diameterMm     — 5%  (важность в сети: магистраль vs разводящий)
       const W1 = 0.35, W2 = 0.25, W3 = 0.20, W4 = 0.15, W5 = 0.05;
 
-      const maxAccPerM    = Math.max(...objects.map(o => o.accidentsPerM    ? parseFloat(o.accidentsPerM)    : 0), 0);
-      const maxResidents  = Math.max(...objects.map(o => o.residentCount    ?? 0), 0);
-      const maxConsumers  = Math.max(...objects.map(o => o.consumerCount ?? 0), 0);
-      const maxAccidents  = Math.max(...objects.map(o => o.accidentCount    ?? 0), 0);
-      const maxDiameter   = Math.max(...objects.map(o => o.diameterMm       ?? 0), 0);
+      // Вычисляем accidentsPerM на лету если в БД NULL — из accidentCount / lengthM
+      const getAccPerM = (o: typeof objects[0]) => {
+        if (o.accidentsPerM) return parseFloat(o.accidentsPerM);
+        if (o.accidentCount && o.lengthM && parseFloat(o.lengthM) > 0) {
+          return o.accidentCount / parseFloat(o.lengthM);
+        }
+        return 0;
+      };
+
+      const maxAccPerM   = Math.max(...objects.map(getAccPerM), 0);
+      const maxResidents = Math.max(...objects.map(o => o.residentCount ?? 0), 0);
+      const maxConsumers = Math.max(...objects.map(o => o.consumerCount ?? 0), 0);
+      const maxAccidents = Math.max(...objects.map(o => o.accidentCount ?? 0), 0);
+      const maxDiameter  = Math.max(...objects.map(o => o.diameterMm ?? 0), 0);
 
       const norm = (val: number, max: number) => max > 0 ? val / max : 0;
 
       const scored = objects.map(o => {
-        const f1 = norm(o.accidentsPerM    ? parseFloat(o.accidentsPerM)    : 0, maxAccPerM);
-        const f2 = norm(o.residentCount    ?? 0, maxResidents);
+        const f1 = norm(getAccPerM(o), maxAccPerM);
+        const f2 = norm(o.residentCount ?? 0, maxResidents);
         const f3 = norm(o.consumerCount ?? 0, maxConsumers);
-        const f4 = norm(o.accidentCount    ?? 0, maxAccidents);
-        const f5 = norm(o.diameterMm       ?? 0, maxDiameter);
+        const f4 = norm(o.accidentCount ?? 0, maxAccidents);
+        const f5 = norm(o.diameterMm ?? 0, maxDiameter);
         const score = W1 * f1 + W2 * f2 + W3 * f3 + W4 * f4 + W5 * f5;
         return { obj: o, score };
       });
@@ -9742,30 +9751,51 @@ export async function registerRoutes(
         });
       }
 
-      // Сохраняем распределение: плановый год + индексированная стоимость
+      // Сохраняем распределение: плановый год + индексированная стоимость + скоринговый балл + sortOrder
       const scheduledIds = new Set(schedule.map(s => s.objectId));
+      const inflationRate = parseFloat(program.inflationRate);
 
-      await Promise.all(objects.map(obj => {
+      await Promise.all(scored.map(({ obj, score }, rank) => {
+        const criticalityScore = (score * 10).toFixed(2);
+        const sortOrderVal = rank; // ранг по убыванию критичности
+
         if (scheduledIds.has(obj.id)) {
           const item = schedule.find(s => s.objectId === obj.id)!;
-          const inflationRate = parseFloat(program.inflationRate);
           const baseCost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
           const yearsAhead = item.year - program.baseYear;
           const indexedCost = yearsAhead > 0
             ? (baseCost * Math.pow(1 + inflationRate / 100, yearsAhead)).toFixed(2)
             : baseCost.toFixed(2);
-          return storage.updateProgramObject(obj.id, { plannedYear: item.year, indexedCost });
+          return storage.updateProgramObject(obj.id, {
+            plannedYear: item.year,
+            indexedCost,
+            criticalityScore,
+            sortOrder: sortOrderVal,
+          });
         } else {
-          // Объект не вошёл в бюджет — сбрасываем год планирования
-          return storage.updateProgramObject(obj.id, { plannedYear: null, indexedCost: null });
+          // Объект не вошёл в бюджет — сбрасываем год планирования, сохраняем балл и ранг
+          return storage.updateProgramObject(obj.id, {
+            plannedYear: null,
+            indexedCost: null,
+            criticalityScore,
+            sortOrder: sortOrderVal,
+          });
         }
       }));
 
       const updatedObjects = await storage.getProgramObjects(id);
       const usedBudget = annualBudget && annualBudget > 0;
+
+      // Предупреждение о неполных данных скоринга
+      const missingResidents = maxResidents === 0;
+      const missingConsumers = maxConsumers === 0;
+      const dataWarning = (missingResidents || missingConsumers)
+        ? ` ⚠ Данные неполные: ${[missingResidents && "жители (25%)", missingConsumers && "потребители (20%)"].filter(Boolean).join(", ")} отсутствуют — запустите симуляцию отключений для полного скоринга.`
+        : "";
+
       const comment = usedBudget
-        ? `Распределение по скорингу критичности с годовым лимитом ${Number(annualBudget).toLocaleString("ru-RU")} ₽. Факторы: удельная аварийность (35%), жители (25%), потребители (20%), аварии (15%), диаметр (5%).`
-        : `Равномерное распределение по скорингу критичности. Факторы: удельная аварийность (35%), жители (25%), потребители (20%), аварии (15%), диаметр (5%).`;
+        ? `Распределение по скорингу критичности с годовым лимитом ${Number(annualBudget).toLocaleString("ru-RU")} ₽. Факторы: удельная аварийность (35%), жители (25%), потребители (20%), аварии (15%), диаметр (5%).${dataWarning}`
+        : `Равномерное распределение по скорингу критичности. Факторы: удельная аварийность (35%), жители (25%), потребители (20%), аварии (15%), диаметр (5%).${dataWarning}`;
 
       res.json({ objects: updatedObjects, comment });
     } catch (err: any) {
