@@ -42,7 +42,7 @@ interface ProvidersResponse {
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content: "Здравствуйте! Я ИИ-агент ГИС МО \"Инженерные сети\". Задайте интересующий вас вопрос.",
+  content: "Здравствуйте! Я ИИ-ассистент ГИС МО \"Инженерные сети\". Задайте интересующий вас вопрос.",
   timestamp: new Date(),
 };
 
