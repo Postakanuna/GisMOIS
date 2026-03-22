@@ -857,9 +857,11 @@ export function ReconstructionProgramDialog({
                         <ObjectRow
                           key={obj.id}
                           obj={obj}
+                          programId={selectedProgramId!}
                           years={years}
                           onSetYear={(year) => updateObjectYearMutation.mutate({ oid: obj.id, plannedYear: year })}
                           onDelete={() => deleteObjectMutation.mutate(obj.id)}
+                          onEdited={() => queryClient.invalidateQueries({ queryKey: ["/api/reconstruction-programs", selectedProgramId] })}
                           scoringMaxes={scoringMaxes}
                         />
                       ))}
@@ -891,9 +893,11 @@ export function ReconstructionProgramDialog({
                             <ObjectRow
                               key={obj.id}
                               obj={obj}
+                              programId={selectedProgramId!}
                               years={years}
                               onSetYear={(year) => updateObjectYearMutation.mutate({ oid: obj.id, plannedYear: year })}
                               onDelete={() => deleteObjectMutation.mutate(obj.id)}
+                              onEdited={() => queryClient.invalidateQueries({ queryKey: ["/api/reconstruction-programs", selectedProgramId] })}
                               scoringMaxes={scoringMaxes}
                             />
                           ))}
@@ -929,9 +933,11 @@ interface ScoringMaxes {
 
 interface ObjectRowProps {
   obj: ProgramObject;
+  programId: number;
   years: number[];
   onSetYear: (year: number | null) => void;
   onDelete: () => void;
+  onEdited: () => void;
   scoringMaxes: ScoringMaxes;
 }
 
@@ -1006,13 +1012,182 @@ function ScoreBadge({ score, obj, maxes }: { score: string | null; obj?: Program
   );
 }
 
-function ObjectRow({ obj, years, onSetYear, onDelete, scoringMaxes }: ObjectRowProps) {
+function ObjectRow({ obj, programId, years, onSetYear, onDelete, onEdited, scoringMaxes }: ObjectRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    objectName: obj.objectName,
+    diameterMm: obj.diameterMm != null ? String(obj.diameterMm) : "",
+    lengthM: obj.lengthM ?? "",
+    workType: obj.workType,
+    layingType: obj.layingType ?? "underground",
+    accidentCount: obj.accidentCount != null ? String(obj.accidentCount) : "",
+    residentCount: obj.residentCount != null ? String(obj.residentCount) : "",
+    consumerCount: obj.consumerCount != null ? String(obj.consumerCount) : "",
+  });
+
+  const editMutation = useMutation({
+    mutationFn: async (updates: Record<string, unknown>) => {
+      const res = await apiRequest("PATCH", `/api/reconstruction-programs/${programId}/objects/${obj.id}`, updates);
+      return res.json();
+    },
+    onSuccess: () => {
+      setEditing(false);
+      onEdited();
+    },
+  });
+
+  const handleSave = () => {
+    const updates: Record<string, unknown> = {
+      objectName: draft.objectName.trim() || obj.objectName,
+      workType: draft.workType,
+      layingType: draft.layingType,
+    };
+    const dMm = parseInt(draft.diameterMm);
+    if (!isNaN(dMm) && dMm > 0) updates.diameterMm = dMm;
+    else if (draft.diameterMm === "") updates.diameterMm = null;
+    const lM = parseFloat(draft.lengthM as string);
+    if (!isNaN(lM) && lM > 0) updates.lengthM = String(lM);
+    const ac = parseInt(draft.accidentCount);
+    updates.accidentCount = isNaN(ac) || draft.accidentCount === "" ? null : ac;
+    const rc = parseInt(draft.residentCount);
+    updates.residentCount = isNaN(rc) || draft.residentCount === "" ? null : rc;
+    const cc = parseInt(draft.consumerCount);
+    updates.consumerCount = isNaN(cc) || draft.consumerCount === "" ? null : cc;
+    editMutation.mutate(updates);
+  };
+
   const typeLabel = OBJECT_TYPES.find(t => t.value === obj.objectType)?.label ?? obj.objectType;
   const workLabel = WORK_TYPES.find(t => t.value === obj.workType)?.label ?? obj.workType;
   const metrics = obj.objectType === "pipe"
     ? [obj.diameterMm ? `Ø${obj.diameterMm} мм` : null, obj.lengthM ? `${parseFloat(obj.lengthM).toFixed(0)} м` : null].filter(Boolean).join(", ")
     : obj.capacityMw ? `${obj.capacityMw} МВт` : null;
+
+  if (editing) {
+    return (
+      <div
+        className="rounded border bg-muted/30 px-3 py-2 text-xs space-y-2"
+        data-testid={`row-edit-${obj.id}`}
+      >
+        <div className="grid grid-cols-2 gap-2">
+          <div className="col-span-2">
+            <Label className="text-[10px] text-muted-foreground mb-0.5 block">Название</Label>
+            <Input
+              className="h-6 text-xs"
+              value={draft.objectName}
+              onChange={e => setDraft(d => ({ ...d, objectName: e.target.value }))}
+              data-testid={`input-edit-name-${obj.id}`}
+            />
+          </div>
+          {obj.objectType === "pipe" && (
+            <>
+              <div>
+                <Label className="text-[10px] text-muted-foreground mb-0.5 block">Диаметр (мм)</Label>
+                <Input
+                  className="h-6 text-xs"
+                  type="number"
+                  min={0}
+                  value={draft.diameterMm}
+                  onChange={e => setDraft(d => ({ ...d, diameterMm: e.target.value }))}
+                  data-testid={`input-edit-diameter-${obj.id}`}
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground mb-0.5 block">Длина (м)</Label>
+                <Input
+                  className="h-6 text-xs"
+                  type="number"
+                  min={0}
+                  value={draft.lengthM}
+                  onChange={e => setDraft(d => ({ ...d, lengthM: e.target.value }))}
+                  data-testid={`input-edit-length-${obj.id}`}
+                />
+              </div>
+            </>
+          )}
+          <div>
+            <Label className="text-[10px] text-muted-foreground mb-0.5 block">Тип работ</Label>
+            <Select value={draft.workType} onValueChange={v => setDraft(d => ({ ...d, workType: v }))}>
+              <SelectTrigger className="h-6 text-xs" data-testid={`select-edit-worktype-${obj.id}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WORK_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {obj.objectType === "pipe" && (
+            <div>
+              <Label className="text-[10px] text-muted-foreground mb-0.5 block">Прокладка</Label>
+              <Select value={draft.layingType} onValueChange={v => setDraft(d => ({ ...d, layingType: v }))}>
+                <SelectTrigger className="h-6 text-xs" data-testid={`select-edit-laying-${obj.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LAYING_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div>
+            <Label className="text-[10px] text-muted-foreground mb-0.5 block">Аварий</Label>
+            <Input
+              className="h-6 text-xs"
+              type="number"
+              min={0}
+              value={draft.accidentCount}
+              onChange={e => setDraft(d => ({ ...d, accidentCount: e.target.value }))}
+              data-testid={`input-edit-accidents-${obj.id}`}
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] text-muted-foreground mb-0.5 block">Жителей</Label>
+            <Input
+              className="h-6 text-xs"
+              type="number"
+              min={0}
+              value={draft.residentCount}
+              onChange={e => setDraft(d => ({ ...d, residentCount: e.target.value }))}
+              data-testid={`input-edit-residents-${obj.id}`}
+            />
+          </div>
+          <div>
+            <Label className="text-[10px] text-muted-foreground mb-0.5 block">Потребителей</Label>
+            <Input
+              className="h-6 text-xs"
+              type="number"
+              min={0}
+              value={draft.consumerCount}
+              onChange={e => setDraft(d => ({ ...d, consumerCount: e.target.value }))}
+              data-testid={`input-edit-consumers-${obj.id}`}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-1 justify-end pt-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-xs px-2"
+            onClick={() => setEditing(false)}
+            disabled={editMutation.isPending}
+            data-testid={`button-cancel-edit-${obj.id}`}
+          >
+            Отмена
+          </Button>
+          <Button
+            size="sm"
+            className="h-6 text-xs px-2"
+            onClick={handleSave}
+            disabled={editMutation.isPending}
+            data-testid={`button-save-edit-${obj.id}`}
+          >
+            {editMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            Сохранить
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1048,6 +1223,27 @@ function ObjectRow({ obj, years, onSetYear, onDelete, scoringMaxes }: ObjectRowP
             {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => {
+            setDraft({
+              objectName: obj.objectName,
+              diameterMm: obj.diameterMm != null ? String(obj.diameterMm) : "",
+              lengthM: obj.lengthM ?? "",
+              workType: obj.workType,
+              layingType: obj.layingType ?? "underground",
+              accidentCount: obj.accidentCount != null ? String(obj.accidentCount) : "",
+              residentCount: obj.residentCount != null ? String(obj.residentCount) : "",
+              consumerCount: obj.consumerCount != null ? String(obj.consumerCount) : "",
+            });
+            setEditing(true);
+          }}
+          data-testid={`button-edit-object-${obj.id}`}
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
         {confirmDelete ? (
           <div className="flex items-center gap-1">
             <Button
