@@ -8719,9 +8719,9 @@ export async function registerRoutes(
 
       const refreshed = await storage.getReconstructionProgram(program.id);
       const totalBaseCostM = refreshed?.totalBaseCost ? (parseFloat(refreshed.totalBaseCost) / 1_000_000).toFixed(1) : "—";
-      const objectsInBudget = annualBudgetThousands
-        ? schedData.objects?.filter((o: any) => o.plannedYear !== null).length ?? 0
-        : schedData.objects?.length ?? 0;
+      const allObjects: any[] = schedData.objects ?? [];
+      const objectsScheduled = allObjects.filter((o: any) => o.plannedYear !== null).length;
+      const objectsExcluded = allObjects.length - objectsScheduled;
 
       invalidateLayersCache(Number(sceneId));
 
@@ -8729,7 +8729,8 @@ export async function registerRoutes(
         programId: program.id,
         programName: name,
         totalObjects: features.length,
-        objectsScheduled: objectsInBudget,
+        objectsScheduled,
+        objectsExcluded,
         totalBaseCostMln: totalBaseCostM,
         periodFrom: from,
         periodTo: to,
@@ -9720,9 +9721,14 @@ export async function registerRoutes(
         for (const { obj } of scored) {
           if (yearIdx >= years.length) yearIdx = years.length - 1;
           const cost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
-          if (cost > 0 && budgetUsed + cost > annualBudget && yearIdx < years.length - 1) {
-            yearIdx++;
-            budgetUsed = 0;
+          if (cost > 0 && budgetUsed + cost > annualBudget) {
+            if (yearIdx < years.length - 1) {
+              yearIdx++;
+              budgetUsed = 0;
+            } else {
+              // Последний год заполнен — остальные объекты не планируются
+              break;
+            }
           }
           schedule.push({ objectId: obj.id, year: years[yearIdx] });
           budgetUsed += cost;
@@ -9736,17 +9742,23 @@ export async function registerRoutes(
         });
       }
 
-      // Сохраняем распределение и пересчитываем индексированную стоимость
-      await Promise.all(schedule.map(item => {
-        const obj = objects.find(o => o.id === item.objectId);
-        if (!obj) return Promise.resolve();
-        const inflationRate = parseFloat(program.inflationRate);
-        const baseCost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
-        const yearsAhead = item.year - program.baseYear;
-        const indexedCost = yearsAhead > 0
-          ? (baseCost * Math.pow(1 + inflationRate / 100, yearsAhead)).toFixed(2)
-          : baseCost.toFixed(2);
-        return storage.updateProgramObject(item.objectId, { plannedYear: item.year, indexedCost });
+      // Сохраняем распределение: плановый год + индексированная стоимость
+      const scheduledIds = new Set(schedule.map(s => s.objectId));
+
+      await Promise.all(objects.map(obj => {
+        if (scheduledIds.has(obj.id)) {
+          const item = schedule.find(s => s.objectId === obj.id)!;
+          const inflationRate = parseFloat(program.inflationRate);
+          const baseCost = obj.baseCost ? parseFloat(obj.baseCost) : 0;
+          const yearsAhead = item.year - program.baseYear;
+          const indexedCost = yearsAhead > 0
+            ? (baseCost * Math.pow(1 + inflationRate / 100, yearsAhead)).toFixed(2)
+            : baseCost.toFixed(2);
+          return storage.updateProgramObject(obj.id, { plannedYear: item.year, indexedCost });
+        } else {
+          // Объект не вошёл в бюджет — сбрасываем год планирования
+          return storage.updateProgramObject(obj.id, { plannedYear: null, indexedCost: null });
+        }
       }));
 
       const updatedObjects = await storage.getProgramObjects(id);

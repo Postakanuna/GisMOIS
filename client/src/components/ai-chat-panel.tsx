@@ -584,7 +584,10 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
         const budgetInfo = data.annualBudgetThousands
           ? `, годовой лимит ${(data.annualBudgetThousands / 1000).toFixed(0)} млн руб.`
           : "";
-        const summaryText = `Программа реконструкции "${data.programName}" создана. Период: ${data.periodFrom}–${data.periodTo}${budgetInfo}. Участков: ${data.totalObjects}, запланировано: ${data.objectsScheduled}. Базовая стоимость: ${data.totalBaseCostMln} млн руб. ${data.scheduleComment}`;
+        const excludedInfo = data.objectsExcluded > 0
+          ? ` Не вошли в бюджет: ${data.objectsExcluded} уч. (исключены из расписания).`
+          : "";
+        const summaryText = `Программа реконструкции "${data.programName}" создана. Период: ${data.periodFrom}–${data.periodTo}${budgetInfo}. Всего участков: ${data.totalObjects}, запланировано (в рамках бюджета): ${data.objectsScheduled}.${excludedInfo} Базовая стоимость запланированных: ${data.totalBaseCostMln} млн руб. ${data.scheduleComment}`;
 
         const summaryMsg: ChatMessage = {
           id: `ai-${Date.now()}`,
