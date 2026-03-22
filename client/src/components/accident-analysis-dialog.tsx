@@ -150,7 +150,7 @@ export function AccidentAnalysisDialog({
         : s.sys
           ? `${s.sys} #${s.featureId}`
           : `Участок #${s.featureId}`,
-      diameterMm: s.dpod != null ? parseInt(String(s.dpod)) || null : null,
+      diameterMm: s.dpod != null ? (Math.round(parseFloat(String(s.dpod)) * 1000) || null) : null,
       lengthM: s.length != null ? String(s.length) : null,
       accidentCount: s.accidentCount,
       residentCount: s.residentCount,

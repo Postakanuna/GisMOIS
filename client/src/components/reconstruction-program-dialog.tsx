@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +29,12 @@ import {
   X,
   ListChecks,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export interface SegmentImportData {
   featureId: number;
@@ -401,6 +407,23 @@ export function ReconstructionProgramDialog({
   const years = selectedProgram
     ? Array.from({ length: selectedProgram.periodTo - selectedProgram.periodFrom + 1 }, (_, i) => selectedProgram.periodFrom + i)
     : [];
+
+  const scoringMaxes: ScoringMaxes = useMemo(() => {
+    const objs = selectedProgram?.objects || [];
+    const getAccPerM = (o: ProgramObject) => {
+      if (o.accidentsPerM) return parseFloat(o.accidentsPerM);
+      if (o.accidentCount && o.lengthM && parseFloat(o.lengthM) > 0)
+        return o.accidentCount / parseFloat(o.lengthM);
+      return 0;
+    };
+    return {
+      accPerM:   Math.max(...objs.map(getAccPerM), 0),
+      residents: Math.max(...objs.map(o => o.residentCount ?? 0), 0),
+      consumers: Math.max(...objs.map(o => o.consumerCount ?? 0), 0),
+      accidents: Math.max(...objs.map(o => o.accidentCount ?? 0), 0),
+      diameter:  Math.max(...objs.map(o => o.diameterMm ?? 0), 0),
+    };
+  }, [selectedProgram?.objects]);
 
   return (
     <DraggableModal
@@ -837,6 +860,7 @@ export function ReconstructionProgramDialog({
                           years={years}
                           onSetYear={(year) => updateObjectYearMutation.mutate({ oid: obj.id, plannedYear: year })}
                           onDelete={() => deleteObjectMutation.mutate(obj.id)}
+                          scoringMaxes={scoringMaxes}
                         />
                       ))}
                     </div>
@@ -870,6 +894,7 @@ export function ReconstructionProgramDialog({
                               years={years}
                               onSetYear={(year) => updateObjectYearMutation.mutate({ oid: obj.id, plannedYear: year })}
                               onDelete={() => deleteObjectMutation.mutate(obj.id)}
+                              scoringMaxes={scoringMaxes}
                             />
                           ))}
                         </div>
@@ -894,31 +919,94 @@ export function ReconstructionProgramDialog({
   );
 }
 
+interface ScoringMaxes {
+  accPerM: number;
+  residents: number;
+  consumers: number;
+  accidents: number;
+  diameter: number;
+}
+
 interface ObjectRowProps {
   obj: ProgramObject;
   years: number[];
   onSetYear: (year: number | null) => void;
   onDelete: () => void;
+  scoringMaxes: ScoringMaxes;
 }
 
-function ScoreBadge({ score }: { score: string | null }) {
+function ScoreBadge({ score, obj, maxes }: { score: string | null; obj?: ProgramObject; maxes?: ScoringMaxes }) {
   if (!score) return null;
   const val = parseFloat(score);
   const color = val >= 7 ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
     : val >= 4 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
     : "bg-muted text-muted-foreground";
-  return (
+
+  const badgeEl = (
     <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums shrink-0 ${color}`}
-      title="Скоринг критичности (0–10)"
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums shrink-0 cursor-help ${color}`}
       data-testid="score-badge"
     >
       {val.toFixed(2)}
     </span>
   );
+
+  if (!obj || !maxes) return badgeEl;
+
+  const norm = (v: number, max: number) => max > 0 ? v / max : 0;
+  const accPerM = obj.accidentsPerM
+    ? parseFloat(obj.accidentsPerM)
+    : (obj.accidentCount && obj.lengthM && parseFloat(obj.lengthM) > 0
+      ? obj.accidentCount / parseFloat(obj.lengthM)
+      : 0);
+
+  const factors = [
+    { label: "Удельная аварийность", weight: 0.35, value: accPerM,             max: maxes.accPerM,   decimals: 5, unit: "авт/м" },
+    { label: "Жители",               weight: 0.25, value: obj.residentCount ?? 0, max: maxes.residents, decimals: 0, unit: "чел."  },
+    { label: "Потребители",          weight: 0.20, value: obj.consumerCount ?? 0, max: maxes.consumers, decimals: 0, unit: "объ."  },
+    { label: "Аварии",               weight: 0.15, value: obj.accidentCount ?? 0, max: maxes.accidents, decimals: 0, unit: "шт."   },
+    { label: "Диаметр",              weight: 0.05, value: obj.diameterMm ?? 0,    max: maxes.diameter,  decimals: 0, unit: "мм"    },
+  ];
+
+  const fmtV = (v: number, dec: number) => dec > 0 ? v.toFixed(dec) : String(Math.round(v));
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{badgeEl}</TooltipTrigger>
+        <TooltipContent side="right" className="p-0 z-[9999]">
+          <div className="text-xs p-3 space-y-1.5 min-w-[290px]">
+            <p className="font-semibold border-b pb-1.5 mb-1.5">Расчёт скоринга критичности</p>
+            {factors.map(f => {
+              const n = norm(f.value, f.max);
+              const contrib = f.weight * n * 10;
+              return (
+                <div key={f.label} className="grid items-center gap-x-2" style={{ gridTemplateColumns: "1fr auto auto" }}>
+                  <span className="text-muted-foreground">
+                    {f.label} <span className="opacity-60">({(f.weight * 100).toFixed(0)}%)</span>
+                  </span>
+                  <span className="tabular-nums text-muted-foreground text-right">
+                    {fmtV(f.value, f.decimals)} / {f.max > 0 ? fmtV(f.max, f.decimals) : "—"}
+                  </span>
+                  <span className={`font-mono font-semibold tabular-nums text-right ${contrib > 0 ? "" : "text-muted-foreground"}`}>
+                    +{contrib.toFixed(2)}
+                  </span>
+                </div>
+              );
+            })}
+            <div className="grid items-center gap-x-2 border-t pt-1.5 font-semibold" style={{ gridTemplateColumns: "1fr auto auto" }}>
+              <span>Итого</span>
+              <span />
+              <span className="font-mono tabular-nums text-right">{val.toFixed(2)} / 10</span>
+            </div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
-function ObjectRow({ obj, years, onSetYear, onDelete }: ObjectRowProps) {
+function ObjectRow({ obj, years, onSetYear, onDelete, scoringMaxes }: ObjectRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const typeLabel = OBJECT_TYPES.find(t => t.value === obj.objectType)?.label ?? obj.objectType;
   const workLabel = WORK_TYPES.find(t => t.value === obj.workType)?.label ?? obj.workType;
@@ -933,7 +1021,7 @@ function ObjectRow({ obj, years, onSetYear, onDelete }: ObjectRowProps) {
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 flex-wrap">
-          <ScoreBadge score={obj.criticalityScore} />
+          <ScoreBadge score={obj.criticalityScore} obj={obj} maxes={scoringMaxes} />
           <span className="font-medium truncate">{obj.objectName}</span>
           <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{typeLabel}</Badge>
           <Badge variant="secondary" className="text-[10px] h-4 px-1 shrink-0">{workLabel}</Badge>
