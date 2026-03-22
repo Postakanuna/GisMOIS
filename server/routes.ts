@@ -2720,62 +2720,38 @@ export async function registerRoutes(
           }));
         }
 
-        const isValidPt = (p: any) => Array.isArray(p) && p.length >= 2 && p.every((n: any) => typeof n === "number" && isFinite(n));
+        // Build a fast featureId → properties lookup map for resident counting
+        const consumerPropsMap = new Map<number, Record<string, unknown>>();
+        for (const cf of consumerFeatures) {
+          consumerPropsMap.set(cf.id, cf.properties);
+        }
 
         for (const seg of baseSegments) {
+          let simResult: Awaited<ReturnType<typeof simulateSpatialDisconnection>> | null = null;
           try {
-            const simResult = await simulateSpatialDisconnection(seg.featureId, Number(networkLayerId), Number(sceneId), accidentGraph);
+            simResult = await simulateSpatialDisconnection(seg.featureId, Number(networkLayerId), Number(sceneId), accidentGraph);
             seg.consumerCount = simResult.stats?.totalConsumers ?? simResult.affectedConsumers?.length ?? 0;
           } catch (simErr) {
             console.warn(`[accident-analysis] simulation failed for featureId=${seg.featureId}:`, (simErr as Error).message);
             seg.consumerCount = 0;
           }
 
-          // Sum residents from consumer layer if configured
-          if (consumerLayerId && residentField && consumerFeatures.length > 0) {
-            try {
-              const geomType = seg.geometry.type;
-              let segGeoFeature: any = null;
-              if (geomType === "LineString") {
-                const cleaned = (seg.geometry.coordinates as any[]).filter(isValidPt);
-                if (cleaned.length >= 2) {
-                  segGeoFeature = turf.buffer(turf.lineString(cleaned), 5, { units: "meters" });
-                }
-              } else if (geomType === "MultiLineString") {
-                const cleanedParts = (seg.geometry.coordinates as any[][])
-                  .map(part => (Array.isArray(part) ? part : []).filter(isValidPt))
-                  .filter(part => part.length >= 2);
-                if (cleanedParts.length > 0) {
-                  segGeoFeature = turf.buffer(turf.multiLineString(cleanedParts), 5, { units: "meters" });
+          // Sum residents using simulation-identified consumers (featureId lookup)
+          if (simResult) {
+            if (consumerLayerId && residentField && consumerFeatures.length > 0) {
+              let resTotal = 0;
+              for (const consumer of simResult.affectedConsumers) {
+                const props = consumerPropsMap.get(consumer.featureId);
+                if (props) {
+                  const val = props[residentField as string];
+                  const num = typeof val === "number" ? val : Number(val);
+                  if (!isNaN(num)) resTotal += num;
                 }
               }
-
-              if (segGeoFeature) {
-                let total = 0;
-                for (const cf of consumerFeatures) {
-                  if (!cf.geometry) continue;
-                  try {
-                    let pt: any = null;
-                    if (cf.geometry.type === "Point") {
-                      const c = cf.geometry.coordinates as number[];
-                      if (isValidPt(c)) pt = turf.point(c);
-                    } else if (cf.geometry.type === "Polygon" || cf.geometry.type === "MultiPolygon") {
-                      pt = turf.centroid({ type: "Feature", geometry: cf.geometry as any, properties: {} });
-                    }
-                    if (pt && turf.booleanPointInPolygon(pt, segGeoFeature)) {
-                      const val = cf.properties[residentField as string];
-                      const num = typeof val === "number" ? val : Number(val);
-                      if (!isNaN(num)) total += num;
-                    }
-                  } catch { /* skip */ }
-                }
-                seg.residentCount = total;
-              } else {
-                seg.residentCount = 0;
-              }
-            } catch (resErr) {
-              console.warn(`[accident-analysis] residentCount failed for featureId=${seg.featureId}:`, (resErr as Error).message);
-              seg.residentCount = 0;
+              seg.residentCount = resTotal;
+            } else {
+              // Fall back to residents read directly from graph node properties (Njil)
+              seg.residentCount = simResult.stats?.totalResidents ?? 0;
             }
           }
         }
@@ -2988,7 +2964,6 @@ export async function registerRoutes(
         });
 
         // Load consumer features once
-        const isValidPt = (p: any) => Array.isArray(p) && p.length >= 2 && p.every((n: any) => typeof n === "number" && isFinite(n));
         let consumerFeatures: Array<{ id: number; geometry: { type: string; coordinates: any }; properties: Record<string, unknown> }> = [];
         if (consumerLayerId && residentField) {
           const raw = await storage.getDrawnFeatures(Number(consumerLayerId));
@@ -3000,57 +2975,41 @@ export async function registerRoutes(
           sendEvent("consumers_loaded", { consumerCount: consumerFeatures.length });
         }
 
+        // Build a fast featureId → properties lookup map for resident counting
+        const consumerPropsMap = new Map<number, Record<string, unknown>>();
+        for (const cf of consumerFeatures) {
+          consumerPropsMap.set(cf.id, cf.properties);
+        }
+
         const total = baseSegments.length;
         for (let i = 0; i < baseSegments.length; i++) {
           const seg = baseSegments[i];
 
           // Simulation
+          let simResult: Awaited<ReturnType<typeof simulateSpatialDisconnection>> | null = null;
           try {
-            const simResult = await simulateSpatialDisconnection(seg.featureId, Number(networkLayerId), Number(sceneId), spatialGraph);
+            simResult = await simulateSpatialDisconnection(seg.featureId, Number(networkLayerId), Number(sceneId), spatialGraph);
             seg.consumerCount = simResult.stats?.totalConsumers ?? simResult.affectedConsumers?.length ?? 0;
           } catch {
             seg.consumerCount = 0;
           }
 
-          // Resident count
-          if (consumerLayerId && residentField && consumerFeatures.length > 0) {
-            try {
-              let segGeoFeature: any = null;
-              const geomType = seg.geometry.type;
-              if (geomType === "LineString") {
-                const cleaned = (seg.geometry.coordinates as any[]).filter(isValidPt);
-                if (cleaned.length >= 2) segGeoFeature = turf.buffer(turf.lineString(cleaned), 5, { units: "meters" });
-              } else if (geomType === "MultiLineString") {
-                const cleanedParts = (seg.geometry.coordinates as any[][])
-                  .map(part => (Array.isArray(part) ? part : []).filter(isValidPt))
-                  .filter(part => part.length >= 2);
-                if (cleanedParts.length > 0) segGeoFeature = turf.buffer(turf.multiLineString(cleanedParts), 5, { units: "meters" });
-              }
-              if (segGeoFeature) {
-                let resTotal = 0;
-                for (const cf of consumerFeatures) {
-                  if (!cf.geometry) continue;
-                  try {
-                    let pt: any = null;
-                    if (cf.geometry.type === "Point") {
-                      const c = cf.geometry.coordinates as number[];
-                      if (isValidPt(c)) pt = turf.point(c);
-                    } else if (cf.geometry.type === "Polygon" || cf.geometry.type === "MultiPolygon") {
-                      pt = turf.centroid({ type: "Feature", geometry: cf.geometry as any, properties: {} });
-                    }
-                    if (pt && turf.booleanPointInPolygon(pt, segGeoFeature)) {
-                      const val = cf.properties[residentField as string];
-                      const num = typeof val === "number" ? val : Number(val);
-                      if (!isNaN(num)) resTotal += num;
-                    }
-                  } catch { /* skip */ }
+          // Sum residents using simulation-identified consumers (featureId lookup)
+          if (simResult) {
+            if (consumerLayerId && residentField && consumerFeatures.length > 0) {
+              let resTotal = 0;
+              for (const consumer of simResult.affectedConsumers) {
+                const props = consumerPropsMap.get(consumer.featureId);
+                if (props) {
+                  const val = props[residentField as string];
+                  const num = typeof val === "number" ? val : Number(val);
+                  if (!isNaN(num)) resTotal += num;
                 }
-                seg.residentCount = resTotal;
-              } else {
-                seg.residentCount = 0;
               }
-            } catch {
-              seg.residentCount = 0;
+              seg.residentCount = resTotal;
+            } else {
+              // Fall back to residents read directly from graph node properties (Njil)
+              seg.residentCount = simResult.stats?.totalResidents ?? 0;
             }
           }
 

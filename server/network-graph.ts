@@ -35,6 +35,7 @@ interface SimulationResult {
     name: string;
     address: string;
     coordinates: any;
+    residents: number;
   }>;
   affectedSegments: Array<{
     featureId: number;
@@ -59,6 +60,7 @@ interface SimulationResult {
   }>;
   stats: {
     totalConsumers: number;
+    totalResidents: number;
     totalSegments: number;
     totalCTPs: number;
     totalNodes: number;
@@ -1382,15 +1384,19 @@ export async function simulateSpatialDisconnection(
     if (!node || node.featureId === 0) continue;
 
     switch (node.type) {
-      case "consumer":
+      case "consumer": {
+        const njilVal = node.properties?.Njil;
+        const residents = typeof njilVal === "number" ? njilVal : (njilVal !== undefined && njilVal !== null ? Number(njilVal) : 0);
         affectedConsumers.push({
           featureId: node.featureId,
           layerId: node.layerId,
           name: node.name,
           address: (node.properties.Adres as string) || node.name,
           coordinates: node.coordinates,
+          residents: isNaN(residents) ? 0 : residents,
         });
         break;
+      }
       case "ctp":
         affectedCTPs.push({
           featureId: node.featureId,
@@ -1470,6 +1476,7 @@ export async function simulateSpatialDisconnection(
     affectedNodes,
     stats: {
       totalConsumers: affectedConsumers.length,
+      totalResidents: affectedConsumers.reduce((sum, c) => sum + c.residents, 0),
       totalSegments: affectedSegments.length,
       totalCTPs: affectedCTPs.length,
       totalNodes: affectedNodes.length,

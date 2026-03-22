@@ -23,6 +23,7 @@ import {
   X,
   GripHorizontal,
   Download,
+  Users,
 } from "lucide-react";
 
 type SimulationMode = "spatial";
@@ -46,6 +47,7 @@ interface SimulationResult {
     name: string;
     address: string;
     coordinates: any;
+    residents: number;
   }>;
   affectedSegments: Array<{
     featureId: number;
@@ -70,6 +72,7 @@ interface SimulationResult {
   }>;
   stats: {
     totalConsumers: number;
+    totalResidents: number;
     totalSegments: number;
     totalCTPs: number;
     totalNodes: number;
@@ -281,6 +284,12 @@ export function NetworkSimulationDialog({
                     testId="text-stat-consumers"
                   />
                   <StatItem
+                    icon={<Users className="h-4 w-4" />}
+                    label="Жителей"
+                    value={result.stats.totalResidents}
+                    testId="text-stat-residents"
+                  />
+                  <StatItem
                     icon={<GitBranch className="h-4 w-4" />}
                     label="Участков"
                     value={result.stats.totalSegments}
@@ -315,7 +324,12 @@ export function NetworkSimulationDialog({
                   {result.affectedConsumers.map((c, i) => (
                     <div key={c.featureId + "-" + i} className="text-xs py-1 border-b last:border-b-0 flex items-center gap-2" data-testid={`item-consumer-${i}`}>
                       <Home className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="truncate">{c.address || c.name}</span>
+                      <span className="truncate flex-1">{c.address || c.name}</span>
+                      {c.residents > 0 && (
+                        <span className="shrink-0 text-muted-foreground flex items-center gap-0.5">
+                          <Users className="h-3 w-3" />{c.residents}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </CollapsibleSection>
