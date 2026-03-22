@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, Play, BarChart3, Loader2, Zap, Search, Paperclip, X } from "lucide-react";
+import { Send, Bot, User, Play, BarChart3, Loader2, Zap, Search, Paperclip, X, ClipboardList } from "lucide-react";
 
 export interface ChatAction {
   type:
@@ -11,7 +11,9 @@ export interface ChatAction {
     | "run_simulation"
     | "show_simulation_result"
     | "start_accident_analysis"
-    | "show_accident_result";
+    | "show_accident_result"
+    | "start_reconstruction_program"
+    | "open_reconstruction_program";
   label: string;
   payload?: any;
   done?: boolean;
@@ -62,8 +64,9 @@ interface AiChatPanelProps {
 const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
 const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^:\]]+):([^\]]*)\]/;
 const ACCIDENT_ANALYSIS_REGEX = /\[ACTION:ACCIDENT_ANALYSIS:([^:\]]*):([^\]]*)\]/;
+const RECONSTRUCTION_PROGRAM_REGEX = /\[ACTION:RECONSTRUCTION_PROGRAM:(\d+):([^:]+):(\d+):(\d+):(\d*):([^\]]*)\]/;
 
-export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, providers, selectedProvider, onProviderChange, isDisabled, providersLoaded, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult }: AiChatPanelProps) {
+export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, providers, selectedProvider, onProviderChange, isDisabled, providersLoaded, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult, onReconstructionProgramCreated }: AiChatPanelProps & { onReconstructionProgramCreated?: (programId: number) => void }) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -152,6 +155,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
       const complaintMatch = aiContent.match(ACTION_MARKER_REGEX);
       const simulationMatch = aiContent.match(SIMULATION_SEARCH_REGEX);
       const accidentMatch = aiContent.match(ACCIDENT_ANALYSIS_REGEX);
+      const reconstructionMatch = aiContent.match(RECONSTRUCTION_PROGRAM_REGEX);
 
       const newMessages = [...updatedMessages];
 
@@ -303,6 +307,35 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
             type: "start_accident_analysis",
             label: "Запустить анализ аварийности",
             payload: { zMode, dpodMin },
+          },
+        };
+        newMessages.push(actionMsg);
+      } else if (reconstructionMatch) {
+        const layerId = parseInt(reconstructionMatch[1]);
+        const programName = reconstructionMatch[2].trim();
+        const periodFrom = parseInt(reconstructionMatch[3]);
+        const periodTo = parseInt(reconstructionMatch[4]);
+        const annualBudgetThousands = reconstructionMatch[5] ? parseInt(reconstructionMatch[5]) : null;
+        const workType = reconstructionMatch[6] || "overhaul";
+        aiContent = aiContent.replace(RECONSTRUCTION_PROGRAM_REGEX, "").trim();
+
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: "assistant",
+          content: aiContent,
+          timestamp: new Date(),
+        };
+        newMessages.push(aiMsg);
+
+        const actionMsg: ChatMessage = {
+          id: `action-${Date.now()}`,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+          action: {
+            type: "start_reconstruction_program",
+            label: "Создать программу реконструкции",
+            payload: { layerId, programName, periodFrom, periodTo, annualBudgetThousands, workType },
           },
         };
         newMessages.push(actionMsg);
@@ -524,6 +557,70 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
       if (onAccidentAnalysisResult && msg.action.payload) {
         onAccidentAnalysisResult(msg.action.payload);
       }
+    } else if (msg.action.type === "start_reconstruction_program") {
+      const { layerId, programName, periodFrom, periodTo, annualBudgetThousands, workType } = msg.action.payload;
+      const updatedMsg = { ...msg, action: { ...msg.action, done: true } };
+      const currentMessages = messages.map(m => m.id === msg.id ? updatedMsg : m);
+
+      const loadingMsg: ChatMessage = {
+        id: `reconstructing-${Date.now()}`,
+        role: "assistant",
+        content: `Создаю программу реконструкции "${programName}"...`,
+        timestamp: new Date(),
+      };
+      onMessagesChange([...currentMessages, loadingMsg]);
+      setIsAnalyzing(true);
+
+      try {
+        const res = await fetch("/api/ai/run-reconstruction-from-layer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ layerId, sceneId, programName, periodFrom, periodTo, annualBudgetThousands, workType }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
+
+        const budgetInfo = data.annualBudgetThousands
+          ? `, годовой лимит ${(data.annualBudgetThousands / 1000).toFixed(0)} млн руб.`
+          : "";
+        const summaryText = `Программа реконструкции "${data.programName}" создана. Период: ${data.periodFrom}–${data.periodTo}${budgetInfo}. Участков: ${data.totalObjects}, запланировано: ${data.objectsScheduled}. Базовая стоимость: ${data.totalBaseCostMln} млн руб. ${data.scheduleComment}`;
+
+        const summaryMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: "assistant",
+          content: summaryText,
+          timestamp: new Date(),
+        };
+        const openMsg: ChatMessage = {
+          id: `action-${Date.now() + 1}`,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+          action: {
+            type: "open_reconstruction_program",
+            label: "Открыть программу реконструкции",
+            payload: { programId: data.programId },
+          },
+        };
+        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+        onMessagesChange([...finalMessages, summaryMsg, openMsg]);
+      } catch (err: any) {
+        const errMsg: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: `Ошибка создания программы: ${err.message}`,
+          timestamp: new Date(),
+        };
+        const finalMessages = currentMessages.filter(m => m.id !== loadingMsg.id);
+        onMessagesChange([...finalMessages, errMsg]);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    } else if (msg.action.type === "open_reconstruction_program") {
+      if (onReconstructionProgramCreated && msg.action.payload?.programId) {
+        onReconstructionProgramCreated(msg.action.payload.programId);
+      }
     }
   };
 
@@ -542,6 +639,8 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
       case "show_simulation_result": return <Search className="h-3.5 w-3.5" />;
       case "start_accident_analysis": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />;
       case "show_accident_result": return <BarChart3 className="h-3.5 w-3.5" />;
+      case "start_reconstruction_program": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardList className="h-3.5 w-3.5" />;
+      case "open_reconstruction_program": return <ClipboardList className="h-3.5 w-3.5" />;
       default: return null;
     }
   };

@@ -42,6 +42,11 @@ const IMPORTANT_FIELDS = [
   "ZType", "ZMode",
 ];
 
+const ACCIDENT_LAYER_FIELDS = [
+  "Begin_uch", "End_uch", "L", "Dpod", "AccidentCount",
+  "Sys", "Kol_potreb", "Kol_zhit",
+];
+
 function normalizeRussianAdjective(word: string): string | null {
   const lower = word.toLowerCase();
   if (lower.endsWith("ой") && lower.length > 4)
@@ -356,7 +361,6 @@ export async function getLayersSummaryForContext(sceneId?: number | null): Promi
       const networkLabel = l.network_type ? NETWORK_TYPE_LABELS[l.network_type] || l.network_type : null;
       const typeInfo = networkLabel ? `, тип сети: ${networkLabel}` : "";
 
-      // Detect accident analysis result layers
       let meta: Record<string, any> = {};
       if (l.metadata) {
         try { meta = typeof l.metadata === "string" ? JSON.parse(l.metadata) : l.metadata; } catch {}
@@ -379,5 +383,209 @@ export async function getLayersSummaryForContext(sceneId?: number | null): Promi
   } catch (e) {
     console.error("[RAG] layers summary error:", e);
     return cached?.summary || "";
+  }
+}
+
+export function invalidateLayersCache(sceneId?: number | null) {
+  const cacheKey = sceneId ? String(sceneId) : "all";
+  layersCacheByScene.delete(cacheKey);
+}
+
+/**
+ * Загружает данные слоя с результатами анализа аварийности.
+ * Если объектов <= SMALL_THRESHOLD — все; иначе топ-N по AccidentCount + агрегаты.
+ */
+export async function getAccidentLayerDataForContext(layerId: number, layerName: string): Promise<string> {
+  const SMALL_THRESHOLD = 50;
+  const TOP_N = 20;
+
+  try {
+    const countRows = await db.execute(sql`
+      SELECT COUNT(*) as cnt FROM drawn_features WHERE layer_id = ${layerId}
+    `);
+    const total = parseInt((countRows as any).rows?.[0]?.cnt ?? "0", 10);
+
+    if (total === 0) return "";
+
+    if (total <= SMALL_THRESHOLD) {
+      const rows = await db.execute(sql`
+        SELECT properties FROM drawn_features WHERE layer_id = ${layerId} ORDER BY id
+      `);
+      const dbRows = (rows as any).rows || [];
+      let ctx = `\n\n--- ДАННЫЕ СЛОЯ "${layerName}" (все ${total} участков) ---\n`;
+      dbRows.forEach((row: any, i: number) => {
+        const p = typeof row.properties === "string" ? JSON.parse(row.properties) : row.properties;
+        const fields = ACCIDENT_LAYER_FIELDS.map(f => p[f] !== undefined && p[f] !== null ? `${f}=${p[f]}` : null).filter(Boolean).join(", ");
+        ctx += `${i + 1}. ${fields}\n`;
+      });
+      ctx += `--- КОНЕЦ ДАННЫХ СЛОЯ ---`;
+      return ctx;
+    }
+
+    const topRows = await db.execute(sql`
+      SELECT properties FROM drawn_features
+      WHERE layer_id = ${layerId}
+      ORDER BY (properties->>'AccidentCount')::numeric DESC NULLS LAST
+      LIMIT ${TOP_N}
+    `);
+    const aggRows = await db.execute(sql`
+      SELECT
+        COUNT(*) as cnt,
+        SUM((properties->>'AccidentCount')::numeric) as total_accidents,
+        AVG((properties->>'AccidentCount')::numeric)::numeric(10,2) as avg_accidents,
+        MAX((properties->>'AccidentCount')::numeric) as max_accidents,
+        SUM((properties->>'L')::numeric)::numeric(12,1) as total_length_m,
+        MIN((properties->>'Dpod')::numeric) as min_dpod,
+        MAX((properties->>'Dpod')::numeric) as max_dpod
+      FROM drawn_features
+      WHERE layer_id = ${layerId}
+    `);
+
+    const agg = (aggRows as any).rows?.[0] || {};
+    let ctx = `\n\n--- ДАННЫЕ СЛОЯ "${layerName}" (всего ${total} участков, показан топ-${TOP_N} по аварийности) ---\n`;
+    ctx += `Агрегаты по всем участкам: аварий всего=${agg.total_accidents ?? "?"}, среднее=${agg.avg_accidents ?? "?"}, макс=${agg.max_accidents ?? "?"}, суммарная длина=${agg.total_length_m ?? "?"} м, диаметр от ${agg.min_dpod ?? "?"} до ${agg.max_dpod ?? "?"} м\n\n`;
+    ctx += `Топ-${TOP_N} наиболее аварийных участков:\n`;
+
+    const dbRows = (topRows as any).rows || [];
+    dbRows.forEach((row: any, i: number) => {
+      const p = typeof row.properties === "string" ? JSON.parse(row.properties) : row.properties;
+      const fields = ACCIDENT_LAYER_FIELDS.map(f => p[f] !== undefined && p[f] !== null ? `${f}=${p[f]}` : null).filter(Boolean).join(", ");
+      ctx += `${i + 1}. ${fields}\n`;
+    });
+    ctx += `--- КОНЕЦ ДАННЫХ СЛОЯ ---`;
+    return ctx;
+  } catch (e) {
+    console.error("[RAG] accident layer data error:", e);
+    return "";
+  }
+}
+
+/**
+ * Умная загрузка данных произвольного слоя.
+ * Если объектов <= SMALL_THRESHOLD — все; иначе первые TOP_N + агрегаты по числовым полям.
+ */
+export async function getSmartLayerDataForContext(layerId: number, layerName: string, featureCount: number): Promise<string> {
+  const SMALL_THRESHOLD = 40;
+  const TOP_N = 15;
+
+  try {
+    if (featureCount <= SMALL_THRESHOLD) {
+      const rows = await db.execute(sql`
+        SELECT properties FROM drawn_features WHERE layer_id = ${layerId} ORDER BY id
+      `);
+      const dbRows = (rows as any).rows || [];
+      let ctx = `\n\n--- ДАННЫЕ СЛОЯ "${layerName}" (все ${featureCount} объектов) ---\n`;
+      dbRows.forEach((row: any, i: number) => {
+        const p = typeof row.properties === "string" ? JSON.parse(row.properties) : row.properties;
+        const importantPairs = IMPORTANT_FIELDS
+          .filter(f => p[f] !== undefined && p[f] !== null && p[f] !== "" && p[f] !== 0)
+          .map(f => `${f}=${p[f]}`);
+        const otherPairs = importantPairs.length === 0
+          ? Object.entries(p).slice(0, 10).filter(([, v]) => v !== null && v !== "").map(([k, v]) => `${k}=${v}`)
+          : [];
+        const line = [...importantPairs, ...otherPairs].join(", ");
+        ctx += `${i + 1}. ${line}\n`;
+      });
+      ctx += `--- КОНЕЦ ДАННЫХ СЛОЯ ---`;
+      return ctx;
+    }
+
+    const rows = await db.execute(sql`
+      SELECT properties FROM drawn_features WHERE layer_id = ${layerId} ORDER BY id LIMIT ${TOP_N}
+    `);
+    const dbRows = (rows as any).rows || [];
+    let ctx = `\n\n--- ДАННЫЕ СЛОЯ "${layerName}" (всего ${featureCount} объектов, показаны первые ${TOP_N}) ---\n`;
+    dbRows.forEach((row: any, i: number) => {
+      const p = typeof row.properties === "string" ? JSON.parse(row.properties) : row.properties;
+      const importantPairs = IMPORTANT_FIELDS
+        .filter(f => p[f] !== undefined && p[f] !== null && p[f] !== "" && p[f] !== 0)
+        .map(f => `${f}=${p[f]}`);
+      const otherPairs = importantPairs.length === 0
+        ? Object.entries(p).slice(0, 10).filter(([, v]) => v !== null && v !== "").map(([k, v]) => `${k}=${v}`)
+        : [];
+      const line = [...importantPairs, ...otherPairs].join(", ");
+      ctx += `${i + 1}. ${line}\n`;
+    });
+    ctx += `(Для работы со всеми объектами слоя используйте инструмент "Программа реконструкции" или другие аналитические функции.)\n`;
+    ctx += `--- КОНЕЦ ДАННЫХ СЛОЯ ---`;
+    return ctx;
+  } catch (e) {
+    console.error("[RAG] smart layer data error:", e);
+    return "";
+  }
+}
+
+/**
+ * Возвращает список программ реконструкции для текущей сцены.
+ */
+export async function getReconstructionProgramsForContext(sceneId?: number | null): Promise<string> {
+  if (!sceneId) return "";
+  try {
+    const rows = await db.execute(sql`
+      SELECT rp.id, rp.name, rp.period_from, rp.period_to, rp.total_base_cost, rp.total_indexed_cost,
+             COUNT(po.id) as object_count
+      FROM reconstruction_programs rp
+      LEFT JOIN program_objects po ON po.program_id = rp.id
+      WHERE rp.scene_id = ${sceneId}
+      GROUP BY rp.id, rp.name, rp.period_from, rp.period_to, rp.total_base_cost, rp.total_indexed_cost
+      ORDER BY rp.id DESC
+    `);
+    const programs = (rows as any).rows || [];
+    if (programs.length === 0) return "";
+
+    let ctx = "\n\nПрограммы реконструкции в текущей сцене:\n";
+    for (const p of programs) {
+      const baseCostM = p.total_base_cost ? (parseFloat(p.total_base_cost) / 1000).toFixed(1) : "не рассчитана";
+      ctx += `- "${p.name}" (ID: ${p.id}, период: ${p.period_from}–${p.period_to}, объектов: ${p.object_count}, базовая стоимость: ${baseCostM} млн руб.)\n`;
+    }
+    return ctx;
+  } catch (e) {
+    console.error("[RAG] reconstruction programs context error:", e);
+    return "";
+  }
+}
+
+/**
+ * Определяет, является ли сообщение запросом на получение данных конкретного слоя,
+ * и возвращает его данные для контекста.
+ */
+export async function detectAndFetchLayerData(userMessage: string, sceneId?: number | null): Promise<string> {
+  const lower = userMessage.toLowerCase();
+
+  const reconstructionKeywords = ["реконструкц", "программ", "план перекладк", "лимит", "бюджет", "млн", "стоимост"];
+  const accidentDataKeywords = ["участк", "аварий", "проблемн", "рейтинг", "список"];
+
+  const wantsLayerData = reconstructionKeywords.some(k => lower.includes(k)) ||
+    accidentDataKeywords.some(k => lower.includes(k));
+
+  if (!wantsLayerData || !sceneId) return "";
+
+  try {
+    const sceneFilter = sql`AND scene_id = ${sceneId}`;
+    const rows = await db.execute(sql`
+      SELECT id, name, feature_count, metadata
+      FROM editable_layers
+      WHERE feature_count > 0
+      ${sceneFilter}
+      ORDER BY id DESC
+    `);
+    const layers = (rows as any).rows || [];
+
+    let combined = "";
+    for (const l of layers) {
+      let meta: Record<string, any> = {};
+      if (l.metadata) {
+        try { meta = typeof l.metadata === "string" ? JSON.parse(l.metadata) : l.metadata; } catch {}
+      }
+      if (meta.analysisType === "accident_analysis") {
+        const data = await getAccidentLayerDataForContext(Number(l.id), l.name);
+        combined += data;
+        break;
+      }
+    }
+    return combined;
+  } catch (e) {
+    console.error("[RAG] detectAndFetchLayerData error:", e);
+    return "";
   }
 }

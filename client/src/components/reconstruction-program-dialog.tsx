@@ -86,6 +86,7 @@ interface ReconstructionProgramDialogProps {
   onOpenChange: (open: boolean) => void;
   sceneId: number;
   initialSegments?: SegmentImportData[];
+  initialProgramId?: number | null;
 }
 
 const OBJECT_TYPES = [
@@ -122,6 +123,7 @@ export function ReconstructionProgramDialog({
   onOpenChange,
   sceneId,
   initialSegments,
+  initialProgramId,
 }: ReconstructionProgramDialogProps) {
   const { toast } = useToast();
   const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
@@ -144,6 +146,13 @@ export function ReconstructionProgramDialog({
       setImportingSegments(false);
     }
   }, [open, initialSegments]);
+
+  useEffect(() => {
+    if (open && initialProgramId) {
+      setSelectedProgramId(initialProgramId);
+      setShowNewProgramForm(false);
+    }
+  }, [open, initialProgramId]);
 
   const [newProgram, setNewProgram] = useState({
     name: "",

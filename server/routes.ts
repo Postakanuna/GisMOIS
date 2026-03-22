@@ -19,7 +19,7 @@ import path from "path";
 import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
 import { transformPropertyKeys } from "@shared/field-labels";
-import { searchObjectsForRAG, getLayersSummaryForContext } from "./ai-rag";
+import { searchObjectsForRAG, getLayersSummaryForContext, detectAndFetchLayerData, getReconstructionProgramsForContext, invalidateLayersCache } from "./ai-rag";
 import { logAction } from "./audit";
 import crypto from "crypto";
 
@@ -8188,14 +8188,20 @@ export async function registerRoutes(
 
       let ragContext = "";
       let layersSummary = "";
+      let layerDataContext = "";
+      let programsContext = "";
       try {
         const parsedSceneId = sceneId ? parseInt(sceneId) : null;
-        const [ragResult, layersResult] = await Promise.all([
+        const [ragResult, layersResult, layerDataResult, programsResult] = await Promise.all([
           searchObjectsForRAG(lastUserMessage, parsedSceneId),
           getLayersSummaryForContext(parsedSceneId),
+          detectAndFetchLayerData(lastUserMessage, parsedSceneId),
+          getReconstructionProgramsForContext(parsedSceneId),
         ]);
         ragContext = ragResult;
         layersSummary = layersResult;
+        layerDataContext = layerDataResult;
+        programsContext = programsResult;
       } catch (e) {
         console.error("[RAG] Error during search:", e);
       }
@@ -8283,8 +8289,46 @@ export async function registerRoutes(
 АНАЛИТИКА ПО РЕЗУЛЬТАТАМ АНАЛИЗА АВАРИЙНОСТИ:
 В списке слоёв могут присутствовать слои с пометкой [РЕЗУЛЬТАТ АНАЛИЗА АВАРИЙНОСТИ]. Эти слои содержат сохранённые итоги ранее выполненного анализа аварийности с полями: AccidentCount (количество аварий), Begin_uch/End_uch (начало и конец участка), Dpod (диаметр подачи), L (длина), Sys (система), Kol_potreb (количество потребителей), Kol_zhit (количество жителей).
 Если пользователь задаёт вопросы об авариях, проблемных участках, рейтинге аварийности — сначала ищи такой слой среди доступных и используй его данные как первичный источник. Явно указывай пользователю, из какого слоя взята информация.
+Если ниже в разделе "ДАННЫЕ СЛОЯ" приведены фактические данные участков из слоя аварийности — используй их для ответа на вопросы об участках, диаметрах, длинах, количестве аварий.
 
-ВАЖНО: Если ниже приведены данные из базы — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${ragContext}`,
+ИНСТРУМЕНТ "ПРОГРАММА РЕКОНСТРУКЦИИ":
+В системе существует модуль "Программа реконструкции", который позволяет:
+- Автоматически рассчитать стоимость замены участков по справочнику удельных стоимостей (учитывает тип работ, диаметр, тип прокладки)
+- Ранжировать участки по скорингу критичности (удельная аварийность 35%, жители 25%, потребители 20%, аварии 15%, диаметр 5%)
+- Распределить работы по годам с учётом годового бюджетного лимита
+- Выгрузить итоговый план в Excel
+
+Ниже могут быть указаны уже существующие программы реконструкции для текущей сцены.
+
+Если пользователь просит:
+- сформировать план реконструкции / перекладки
+- составить список участков под реконструкцию с учётом бюджета
+- ранжировать участки по приоритету
+- рассчитать стоимость ремонта участков
+- создать программу реконструкции
+
+Тогда (строго по шагам):
+Шаг 1. Убедись, что в сцене есть слой с результатами анализа аварийности [РЕЗУЛЬТАТ АНАЛИЗА АВАРИЙНОСТИ]. Если нет — предложи сначала выполнить анализ аварийности.
+Шаг 2. Уточни у пользователя (если не указано):
+  а) Название программы (по умолчанию: "Программа реконструкции <текущий год>")
+  б) Период программы (начальный и конечный год, например 2025–2030)
+  в) Годовой бюджет в млн руб. (или общий бюджет)
+  г) Тип работ: капитальный ремонт или реконструкция (по умолчанию: капитальный ремонт)
+Шаг 3. Подтверди параметры с пользователем.
+Шаг 4. После подтверждения — в САМОМ КОНЦЕ ответа добавь маркер:
+[ACTION:RECONSTRUCTION_PROGRAM:LAYER_ID:PROGRAM_NAME:PERIOD_FROM:PERIOD_TO:ANNUAL_BUDGET_THOUSANDS:WORK_TYPE]
+Где:
+- LAYER_ID — ID слоя с результатами анализа аварийности (из списка слоёв)
+- PROGRAM_NAME — название программы (без двоеточий)
+- PERIOD_FROM — начальный год (число)
+- PERIOD_TO — конечный год (число)
+- ANNUAL_BUDGET_THOUSANDS — годовой бюджет в тыс. руб. (например, 100000 для 100 млн; если не указан — пустая строка)
+- WORK_TYPE — overhaul (кап. ремонт) или reconstruction (реконструкция)
+Пример: [ACTION:RECONSTRUCTION_PROGRAM:387:Программа реконструкции 2025:2025:2030:100000:overhaul]
+
+НЕ добавляй маркер [ACTION:RECONSTRUCTION_PROGRAM] если пользователь ещё не подтвердил параметры.
+
+ВАЖНО: Если ниже приведены данные из базы или данные слоя — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${programsContext}${layerDataContext}${ragContext}`,
       };
 
       const apiMessages = [systemMessage, ...messages.map((m: any) => ({
@@ -8574,6 +8618,127 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("AI accident analysis error:", error);
       return res.status(500).json({ error: error.message || "Ошибка анализа аварийности" });
+    }
+  });
+
+  // ─── AI: Run Reconstruction Program from Accident Layer ──────────────────────
+  app.post("/api/ai/run-reconstruction-from-layer", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layerId, sceneId, programName, periodFrom, periodTo, annualBudgetThousands, workType } = req.body;
+
+      if (!layerId || !sceneId) {
+        return res.status(400).json({ error: "layerId и sceneId обязательны" });
+      }
+
+      const layer = await storage.getEditableLayer(Number(layerId));
+      if (!layer) {
+        return res.status(404).json({ error: `Слой с ID ${layerId} не найден` });
+      }
+
+      const features = await storage.getDrawnFeatures(Number(layerId));
+      if (!features || features.length === 0) {
+        return res.status(422).json({ error: "Слой не содержит объектов" });
+      }
+
+      const name = programName || `Программа реконструкции ${new Date().getFullYear()}`;
+      const from = parseInt(String(periodFrom)) || new Date().getFullYear();
+      const to = parseInt(String(periodTo)) || from + 4;
+      const wType = workType || "overhaul";
+
+      const program = await storage.createReconstructionProgram({
+        sceneId: Number(sceneId),
+        name,
+        periodFrom: from,
+        periodTo: to,
+        baseYear: from,
+        inflationRate: "5",
+        status: "draft",
+        createdBy: (req as AuthRequest).user!.id,
+      });
+
+      const objects: any[] = features.map(f => {
+        const p = (f.properties || {}) as Record<string, any>;
+        const dpodM = parseFloat(p["Dpod"] ?? p["dpod"] ?? "0") || 0;
+        const diameterMm = dpodM > 0 ? Math.round(dpodM * 1000) : null;
+        const lengthM = parseFloat(p["L"] ?? p["l"] ?? "0") || null;
+        const accidentCount = parseInt(p["AccidentCount"] ?? p["accidentCount"] ?? "0") || null;
+        const residentCount = parseInt(p["Kol_zhit"] ?? p["kol_zhit"] ?? "0") || null;
+        const consumerCount = parseInt(p["Kol_potreb"] ?? p["kol_potreb"] ?? "0") || null;
+        const beginUch = p["Begin_uch"] ?? "";
+        const endUch = p["End_uch"] ?? "";
+        const objectName = [beginUch, endUch].filter(Boolean).join(" – ") || `Участок #${f.id}`;
+        return {
+          objectType: "pipe",
+          objectName,
+          diameterMm,
+          lengthM,
+          layingType: "underground",
+          workType: wType,
+          accidentCount,
+          residentCount,
+          consumerCount,
+          featureId: f.id,
+        };
+      });
+
+      const batchResponse = await fetch(`http://localhost:${process.env.PORT || 5000}/api/reconstruction-programs/${program.id}/objects/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: req.headers.cookie || "" },
+        body: JSON.stringify({ objects }),
+      });
+      if (!batchResponse.ok) {
+        const err = await batchResponse.json().catch(() => ({}));
+        throw new Error(err.message || "Ошибка импорта объектов в программу");
+      }
+
+      const calcResponse = await fetch(`http://localhost:${process.env.PORT || 5000}/api/reconstruction-programs/${program.id}/calculate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: req.headers.cookie || "" },
+        body: JSON.stringify({}),
+      });
+      if (!calcResponse.ok) {
+        const err = await calcResponse.json().catch(() => ({}));
+        throw new Error(err.message || "Ошибка расчёта стоимости");
+      }
+      const calcData = await calcResponse.json();
+
+      const schedBody: Record<string, any> = {};
+      if (annualBudgetThousands && Number(annualBudgetThousands) > 0) {
+        schedBody.annualBudget = Number(annualBudgetThousands) * 1000;
+      }
+      const schedResponse = await fetch(`http://localhost:${process.env.PORT || 5000}/api/reconstruction-programs/${program.id}/schedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: req.headers.cookie || "" },
+        body: JSON.stringify(schedBody),
+      });
+      if (!schedResponse.ok) {
+        const err = await schedResponse.json().catch(() => ({}));
+        throw new Error(err.message || "Ошибка расчёта расписания");
+      }
+      const schedData = await schedResponse.json();
+
+      const refreshed = await storage.getReconstructionProgram(program.id);
+      const totalBaseCostM = refreshed?.totalBaseCost ? (parseFloat(refreshed.totalBaseCost) / 1_000_000).toFixed(1) : "—";
+      const objectsInBudget = annualBudgetThousands
+        ? schedData.objects?.filter((o: any) => o.plannedYear !== null).length ?? 0
+        : schedData.objects?.length ?? 0;
+
+      invalidateLayersCache(Number(sceneId));
+
+      return res.json({
+        programId: program.id,
+        programName: name,
+        totalObjects: features.length,
+        objectsScheduled: objectsInBudget,
+        totalBaseCostMln: totalBaseCostM,
+        periodFrom: from,
+        periodTo: to,
+        annualBudgetThousands: annualBudgetThousands || null,
+        scheduleComment: schedData.comment || "",
+      });
+    } catch (error: any) {
+      console.error("AI run-reconstruction-from-layer error:", error);
+      return res.status(500).json({ error: error.message || "Ошибка создания программы реконструкции" });
     }
   });
 
