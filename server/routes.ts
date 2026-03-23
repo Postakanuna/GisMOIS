@@ -19,6 +19,7 @@ import path from "path";
 import os from "os";
 import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
 import { transformPropertyKeys } from "@shared/field-labels";
+import { refreshFieldLabelsCache } from "./field-labels-cache";
 import { searchObjectsForRAG, getLayersSummaryForContext, detectAndFetchLayerData, getReconstructionProgramsForContext, invalidateLayersCache } from "./ai-rag";
 import { logAction } from "./audit";
 import crypto from "crypto";
@@ -9295,6 +9296,7 @@ export async function registerRoutes(
         return res.status(409).json({ message: "Запись с таким именем поля уже существует" });
       }
       const created = await storage.createZuluFieldLabel({ fieldName, label, category: category ?? null });
+      refreshFieldLabelsCache().catch(() => {});
       res.status(201).json(created);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -9311,6 +9313,7 @@ export async function registerRoutes(
       }
       const updated = await storage.updateZuluFieldLabel(id, { label, category: category ?? null });
       if (!updated) return res.status(404).json({ message: "Запись не найдена" });
+      refreshFieldLabelsCache().catch(() => {});
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -9323,6 +9326,7 @@ export async function registerRoutes(
       if (id === null) return;
       const deleted = await storage.deleteZuluFieldLabel(id);
       if (!deleted) return res.status(404).json({ message: "Запись не найдена" });
+      refreshFieldLabelsCache().catch(() => {});
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
