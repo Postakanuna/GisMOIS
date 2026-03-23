@@ -615,11 +615,8 @@ export function LayerPanel({
                           {(layer as any).networkType && NETWORK_TYPE_LABELS[(layer as any).networkType] && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span
-                                  className="inline-flex items-center justify-center shrink-0 rounded-full w-3.5 h-3.5 bg-muted-foreground/30"
-                                  data-testid={`badge-network-type-${layer.id}`}
-                                >
-                                  <Check className="h-2 w-2 text-muted-foreground" strokeWidth={3} />
+                                <span data-testid={`badge-network-type-${layer.id}`}>
+                                  <Check className="h-3 w-3 text-muted-foreground" strokeWidth={2.5} />
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="right">
