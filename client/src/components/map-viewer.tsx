@@ -3591,31 +3591,28 @@ export function MapViewer({
         }
       }
 
+      // Collect accident point coords for postrender ring drawing (pixel-fixed, never scales)
+      const accidentMapCoords: Array<[number, number]> = [];
+
       for (const pt of simulationHighlightData.points) {
         const coords = pt.coordinates;
         if (coords) {
-          const pointCoords = Array.isArray(coords[0])
-            ? fromLonLat(coords[0], currentProjectionRef.current)
-            : fromLonLat(coords as [number, number], currentProjectionRef.current);
-          const pointFeature = new Feature({
-            geometry: new OlPoint(pointCoords),
-          });
+          const pointCoords = (Array.isArray(coords[0])
+            ? fromLonLat(coords[0] as [number, number], currentProjectionRef.current)
+            : fromLonLat(coords as [number, number], currentProjectionRef.current)) as [number, number];
+
           if (pt.type === "accident") {
-            // Render a fixed-pixel SVG ring (Icon) so the original icon stays visible
-            // underneath and the ring size never changes with zoom level
-            const ringD = 30;
-            const ringR = ringD / 2 - 2;
-            const svgRing = `<svg xmlns="http://www.w3.org/2000/svg" width="${ringD}" height="${ringD}"><circle cx="${ringD / 2}" cy="${ringD / 2}" r="${ringR}" fill="none" stroke="rgba(239,68,68,0.9)" stroke-width="3"/></svg>`;
-            pointFeature.setStyle(new Style({
-              image: new Icon({
-                src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgRing)}`,
-                scale: 1,
-              }),
-            }));
+            // Don't add as OL feature — draw via postrender to guarantee fixed pixel size at any zoom
+            accidentMapCoords.push(pointCoords);
+            // Add a zero-radius invisible point so the extent calculation still includes this coord
+            const phantom = new Feature({ geometry: new OlPoint(pointCoords) });
+            phantom.setStyle(new Style({}));
+            highlightSource.addFeature(phantom);
           } else {
             const color = pt.type === "consumer" ? "rgba(239, 68, 68, 0.9)" :
                           pt.type === "ctp" ? "rgba(249, 115, 22, 0.9)" :
                           "rgba(234, 179, 8, 0.9)";
+            const pointFeature = new Feature({ geometry: new OlPoint(pointCoords) });
             pointFeature.setStyle(new Style({
               image: new Circle({
                 radius: 7,
@@ -3623,8 +3620,8 @@ export function MapViewer({
                 stroke: new Stroke({ color: "#fff", width: 2 }),
               }),
             }));
+            highlightSource.addFeature(pointFeature);
           }
-          highlightSource.addFeature(pointFeature);
         }
       }
 
@@ -3682,6 +3679,29 @@ export function MapViewer({
           source: highlightSource,
           zIndex: 9998,
         });
+        // Draw accident rings directly on the canvas at a fixed pixel size (14px radius)
+        // so they never scale when the user changes zoom level
+        if (accidentMapCoords.length > 0) {
+          highlightLayer.on('postrender', (event: any) => {
+            const ctx = event.context as CanvasRenderingContext2D;
+            if (!ctx || !mapRef.current) return;
+            const pixelRatio: number = event.frameState?.pixelRatio ?? window.devicePixelRatio ?? 1;
+            ctx.save();
+            // Reset canvas transform to physical pixels so radius stays fixed regardless of zoom
+            ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
+            ctx.lineWidth = 3;
+            for (const mapCoord of accidentMapCoords) {
+              const pixel = mapRef.current.getPixelFromCoordinate(mapCoord);
+              if (!pixel) continue;
+              ctx.beginPath();
+              ctx.arc(pixel[0], pixel[1], 14, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+            ctx.restore();
+          });
+        }
+
         map.addLayer(highlightLayer);
         simulationHighlightLayerRef.current = highlightLayer;
 
