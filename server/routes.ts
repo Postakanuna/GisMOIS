@@ -8723,6 +8723,8 @@ export async function registerRoutes(
         source: string;
         sourceFileName?: string;
         networkType?: string | null;
+        adminGroupId?: number | null;
+        metadata?: any;
         instances: Array<{
           layerId: number;
           sceneId: number | null;
@@ -8747,6 +8749,8 @@ export async function registerRoutes(
             source: layer.source,
             sourceFileName: layer.sourceFileName,
             networkType: null,
+            adminGroupId: layer.adminGroupId ?? null,
+            metadata: layer.metadata ?? null,
             instances: [],
           });
         }
@@ -8772,8 +8776,9 @@ export async function registerRoutes(
         return group;
       });
       const scenes = allScenes.map(s => ({ id: s.id, name: s.name }));
+      const adminGroups = await storage.getAdminLayerGroups();
 
-      return res.json({ matrix, scenes });
+      return res.json({ matrix, scenes, adminGroups });
     } catch (error) {
       console.error("Error getting layer matrix:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -8912,6 +8917,105 @@ export async function registerRoutes(
       return res.json({ success: true, updated });
     } catch (error) {
       console.error("Error applying palette:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin layer groups CRUD
+  app.get("/api/admin/layer-groups", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const groups = await storage.getAdminLayerGroups();
+      return res.json(groups);
+    } catch (error) {
+      console.error("Error fetching admin layer groups:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/layer-groups", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { name, displayOrder } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "name is required" });
+      }
+      const group = await storage.createAdminLayerGroup({ name: name.trim(), displayOrder: displayOrder ?? 0 });
+      return res.status(201).json(group);
+    } catch (error) {
+      console.error("Error creating admin layer group:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/layer-groups/:id", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const { name, displayOrder } = req.body;
+      const updates: Partial<{ name: string; displayOrder: number }> = {};
+      if (name !== undefined) updates.name = String(name).trim();
+      if (displayOrder !== undefined) updates.displayOrder = Number(displayOrder);
+      const group = await storage.updateAdminLayerGroup(id, updates);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      return res.json(group);
+    } catch (error) {
+      console.error("Error updating admin layer group:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/layer-groups/:id", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const deleted = await storage.deleteAdminLayerGroup(id);
+      if (!deleted) return res.status(404).json({ message: "Group not found" });
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting admin layer group:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/assign-layer-group", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layerName, geometryType, adminGroupId } = req.body;
+      if (!layerName || !geometryType) {
+        return res.status(400).json({ message: "layerName and geometryType are required" });
+      }
+      await storage.setLayerAdminGroup(layerName, geometryType, adminGroupId ?? null);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error assigning layer group:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Rename layer globally (all instances)
+  app.post("/api/admin/rename-layer", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { oldName, geometryType, newName } = req.body;
+      if (!oldName || !geometryType || !newName || !newName.trim()) {
+        return res.status(400).json({ message: "oldName, geometryType and newName are required" });
+      }
+      await storage.renameLayerGlobal(oldName, geometryType, newName.trim());
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error renaming layer:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update layer metadata globally (all instances)
+  app.post("/api/admin/layer-metadata", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layerName, geometryType, metadata } = req.body;
+      if (!layerName || !geometryType || !metadata || typeof metadata !== "object") {
+        return res.status(400).json({ message: "layerName, geometryType and metadata are required" });
+      }
+      await storage.updateLayerMetadataGlobal(layerName, geometryType, metadata);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error updating layer metadata:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

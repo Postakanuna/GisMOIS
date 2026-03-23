@@ -276,6 +276,7 @@ export const editableLayerSchema = z.object({
   id: z.number(),
   sceneId: z.number().nullable().optional(),
   folderId: z.number().nullable().optional(),
+  adminGroupId: z.number().nullable().optional(),
   name: z.string(),
   geometryType: geometryTypeSchema,
   color: z.string().default("#1976D2"),
@@ -306,6 +307,18 @@ export * from "./models/auth";
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, jsonb, timestamp, real, index, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+
+// Admin-level layer groups (global folders for the admin layer manager)
+export const adminLayerGroups = pgTable("admin_layer_groups", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type AdminLayerGroup = typeof adminLayerGroups.$inferSelect;
+export type InsertAdminLayerGroup = typeof adminLayerGroups.$inferInsert;
+export const insertAdminLayerGroupSchema = createInsertSchema(adminLayerGroups).omit({ id: true, createdAt: true });
 
 // Layer folders for grouping layers
 export const layerFolders = pgTable("layer_folders", {
@@ -339,6 +352,7 @@ export const editableLayers = pgTable("editable_layers", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   sceneId: integer("scene_id"), // null for global layers, scene ID for scene-specific layers
   folderId: integer("folder_id"), // null = not in any folder
+  adminGroupId: integer("admin_group_id"), // null = not in any admin group
   name: text("name").notNull(),
   geometryType: text("geometry_type").notNull(), // Point, LineString, Polygon
   color: text("color").notNull().default("#1976D2"),

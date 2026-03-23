@@ -23,11 +23,12 @@ import {
   type ReconstructionProgram, type InsertReconstructionProgram,
   type ProgramObject, type InsertProgramObject,
   type ZuluFieldLabel, type InsertZuluFieldLabel,
+  type AdminLayerGroup,
   editableLayers, drawnFeatures, layerSchemas,
   scenes, sceneMembers, sceneFolders, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
   appSettings, bugReports,
   sensorIntegrationConfig, sensorObjectBindings, sensorReadingsCache,
-  costUnitRates, reconstructionPrograms, programObjects, zuluFieldLabels
+  costUnitRates, reconstructionPrograms, programObjects, zuluFieldLabels, adminLayerGroups
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { aiProviders, type AiProvider, type InsertAiProvider, type UpdateAiProvider } from "@shared/models/chat";
@@ -199,6 +200,15 @@ export interface IStorage {
   updateZuluFieldLabel(id: number, data: Partial<InsertZuluFieldLabel>): Promise<ZuluFieldLabel | undefined>;
   deleteZuluFieldLabel(id: number): Promise<boolean>;
   seedZuluFieldLabels(entries: { fieldName: string; label: string; category?: string }[]): Promise<void>;
+
+  // Admin layer groups methods
+  getAdminLayerGroups(): Promise<AdminLayerGroup[]>;
+  createAdminLayerGroup(data: { name: string; displayOrder?: number }): Promise<AdminLayerGroup>;
+  updateAdminLayerGroup(id: number, updates: Partial<{ name: string; displayOrder: number }>): Promise<AdminLayerGroup | undefined>;
+  deleteAdminLayerGroup(id: number): Promise<boolean>;
+  setLayerAdminGroup(layerName: string, geometryType: string, adminGroupId: number | null): Promise<void>;
+  renameLayerGlobal(oldName: string, geometryType: string, newName: string): Promise<void>;
+  updateLayerMetadataGlobal(name: string, geometryType: string, metadata: Record<string, unknown>): Promise<void>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -206,6 +216,7 @@ function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer
     id: row.id,
     sceneId: row.sceneId ?? undefined,
     folderId: row.folderId ?? undefined,
+    adminGroupId: row.adminGroupId ?? undefined,
     name: row.name,
     geometryType: row.geometryType as EditableLayer["geometryType"],
     color: row.color,
@@ -1412,6 +1423,45 @@ export class DatabaseStorage implements IStorage {
         .values({ fieldName: entry.fieldName, label: entry.label, category: entry.category ?? null })
         .onConflictDoNothing();
     }
+  }
+
+  // Admin layer groups
+  async getAdminLayerGroups(): Promise<AdminLayerGroup[]> {
+    return db.select().from(adminLayerGroups).orderBy(adminLayerGroups.displayOrder);
+  }
+
+  async createAdminLayerGroup(data: { name: string; displayOrder?: number }): Promise<AdminLayerGroup> {
+    const [row] = await db.insert(adminLayerGroups).values({ name: data.name, displayOrder: data.displayOrder ?? 0 }).returning();
+    return row;
+  }
+
+  async updateAdminLayerGroup(id: number, updates: Partial<{ name: string; displayOrder: number }>): Promise<AdminLayerGroup | undefined> {
+    const [row] = await db.update(adminLayerGroups).set(updates).where(eq(adminLayerGroups.id, id)).returning();
+    return row;
+  }
+
+  async deleteAdminLayerGroup(id: number): Promise<boolean> {
+    await db.update(editableLayers).set({ adminGroupId: null }).where(eq(editableLayers.adminGroupId, id));
+    const result = await db.delete(adminLayerGroups).where(eq(adminLayerGroups.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async setLayerAdminGroup(layerName: string, geometryType: string, adminGroupId: number | null): Promise<void> {
+    await db.update(editableLayers)
+      .set({ adminGroupId })
+      .where(and(eq(editableLayers.name, layerName), eq(editableLayers.geometryType, geometryType)));
+  }
+
+  async renameLayerGlobal(oldName: string, geometryType: string, newName: string): Promise<void> {
+    await db.update(editableLayers)
+      .set({ name: newName })
+      .where(and(eq(editableLayers.name, oldName), eq(editableLayers.geometryType, geometryType)));
+  }
+
+  async updateLayerMetadataGlobal(name: string, geometryType: string, metadata: Record<string, unknown>): Promise<void> {
+    await db.update(editableLayers)
+      .set({ metadata: metadata as any })
+      .where(and(eq(editableLayers.name, name), eq(editableLayers.geometryType, geometryType)));
   }
 }
 

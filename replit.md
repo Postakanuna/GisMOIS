@@ -31,7 +31,7 @@ Preferred communication style: Simple, everyday language.
 
 The frontend is a React 18, TypeScript, and Vite-based single-page application using Wouter for routing. State management relies on React Query and React Hooks. UI components are built with shadcn/ui (Radix UI) and styled with Tailwind CSS, supporting light/dark themes and Material Design 3 principles. Map rendering is handled by OpenLayers, supporting WMS/WFS layers from ZuluServer and OpenStreetMap. It includes features like zoom, coordinate display, GeoJSON rendering with viewport optimization, and "properties-on-demand." Attribute styling (single, categorized, graduated renderers) is configurable via `StyleConfigDialog`.
 
-Key components include `MapViewer`, `DataManager`, `ScenesPage`, and `AdminLayerManager` for cross-scene layer management. The `AdminLayerManager` provides a matrix view to manage layers across scenes, allowing quick cloning, bulk cloning, removal, and unified style palette configuration.
+Key components include `MapViewer`, `DataManager`, `ScenesPage`, and `AdminLayerManager` for cross-scene layer management. The `AdminLayerManager` provides a matrix view to manage layers across scenes with the following features: scene visibility management (modal with checkboxes), layer renaming (global across all instances), attribute table viewer (reuses `LayerAttributeTableWrapper`), layer export (GeoJSON/SHP via existing API), layer metadata/description editor, SHP upload directly from the manager, and grouping layers into admin-level folders (`admin_layer_groups` table). Palette management reuses the shared `LayerStylePanel` component.
 
 ### Backend
 
