@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
-import { fieldLabels } from "@shared/field-labels";
+import { getFieldLabelPlain } from "@shared/field-labels";
 
 interface FoundObject {
   layerName: string;
@@ -157,7 +157,7 @@ function formatPropertiesForContext(props: Record<string, any>): string {
 
   for (const key of IMPORTANT_FIELDS) {
     if (props[key] !== undefined && props[key] !== null && props[key] !== "" && props[key] !== 0) {
-      const label = fieldLabels[key] || key;
+      const label = getFieldLabelPlain(key);
       lines.push(`  ${label}: ${props[key]}`);
     }
   }
@@ -166,7 +166,7 @@ function formatPropertiesForContext(props: Record<string, any>): string {
     const allKeys = Object.keys(props).slice(0, 20);
     for (const key of allKeys) {
       if (props[key] !== undefined && props[key] !== null && props[key] !== "" && props[key] !== 0) {
-        const label = fieldLabels[key] || key;
+        const label = getFieldLabelPlain(key);
         lines.push(`  ${label}: ${props[key]}`);
       }
     }

@@ -5,8 +5,6 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startAuditCleanup } from "./audit";
 import { startSensorPolling } from "./sensor-sync";
-import { storage } from "./storage";
-import { fieldLabels } from "@shared/field-labels";
 import { refreshFieldLabelsCache } from "./field-labels-cache";
 
 const app = express();
@@ -59,14 +57,12 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
 
-  // Seed field labels from static dictionary (skip existing), then load into server cache
+  // Load field labels from DB into server cache
   try {
-    const entries = Object.entries(fieldLabels).map(([fieldName, label]) => ({ fieldName, label }));
-    await storage.seedZuluFieldLabels(entries);
     await refreshFieldLabelsCache();
-    log(`Seeded ${entries.length} field labels, cache loaded`, "init");
+    log("Field labels cache loaded from DB", "init");
   } catch (err: any) {
-    log(`Field labels init warning: ${err.message}`, "init");
+    log(`Field labels cache warning: ${err.message}`, "init");
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
