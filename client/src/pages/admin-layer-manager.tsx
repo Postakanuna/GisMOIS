@@ -565,15 +565,20 @@ export default function AdminLayerManager() {
   };
 
   // ─── render helpers ───────────────────────────────────────
-  const renderLayerRow = (group: LayerGroup, idx: number) => {
+  const renderLayerRow = (group: LayerGroup, idx: number, isGrouped = false) => {
     const sourceInst = getAnySourceInstance(group);
     return (
       <tr
         key={`${group.name}__${group.geometryType}`}
-        className={`border-b hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
+        className={`border-b hover:bg-muted/30 transition-colors ${
+          isGrouped ? "bg-primary/[0.03]" : idx % 2 === 0 ? "" : "bg-muted/10"
+        }`}
         style={{ height: "52px" }}
       >
-        <td className="px-3 py-0 border-r" style={{ height: "52px", width: "380px", minWidth: "380px" }}>
+        <td
+          className={`py-0 border-r ${isGrouped ? "border-l-[3px] border-l-primary/30 pl-7 pr-3" : "px-3"}`}
+          style={{ height: "52px", width: "380px", minWidth: "380px" }}
+        >
           <div className="flex items-center gap-1.5 h-full">
             <div className="w-3 h-3 rounded-full flex-shrink-0 border" style={{ backgroundColor: sourceInst?.color || "#ccc" }} />
             <div className="min-w-0 flex-1">
@@ -715,30 +720,40 @@ export default function AdminLayerManager() {
 
   const renderGroupHeader = (ag: AdminLayerGroup) => {
     const isCollapsed = collapsedGroups.has(ag.id);
+    const layerCount = (groupedLayers[ag.id] || []).length;
     return (
-      <tr key={`group-header-${ag.id}`} className="bg-muted/40 border-b">
-        <td colSpan={1} className="px-3 py-1 border-r">
+      <tr key={`group-header-${ag.id}`} className="border-b bg-muted/50">
+        <td colSpan={1} className="py-0 border-r border-l-[3px] border-l-primary/60 pl-2 pr-3">
           <button
-            className="flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+            className="flex items-center gap-1.5 text-xs font-semibold text-foreground/80 hover:text-foreground transition-colors w-full text-left py-1.5"
             onClick={() => setCollapsedGroups(prev => {
               const next = new Set(prev);
               if (next.has(ag.id)) next.delete(ag.id);
               else next.add(ag.id);
               return next;
             })}
+            data-testid={`button-group-header-${ag.id}`}
           >
-            {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            <FolderOpen className="h-3 w-3" />
-            {ag.name}
-            <Badge variant="secondary" className="text-[10px] px-1 py-0 ml-1">
-              {(groupedLayers[ag.id] || []).length}
+            {isCollapsed
+              ? <ChevronRight className="h-3.5 w-3.5 text-primary/70 flex-shrink-0" />
+              : <ChevronDown className="h-3.5 w-3.5 text-primary/70 flex-shrink-0" />}
+            <FolderOpen className="h-3.5 w-3.5 text-primary/70 flex-shrink-0" />
+            <span className="truncate">{ag.name}</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-1 flex-shrink-0 bg-primary/10 text-primary/80 border-0">
+              {layerCount}
             </Badge>
           </button>
         </td>
-        <td />
+        <td className="bg-muted/50" />
       </tr>
     );
   };
+
+  const renderGroupFooter = (ag: AdminLayerGroup) => (
+    <tr key={`group-footer-${ag.id}`}>
+      <td colSpan={2} className="border-l-[3px] border-l-primary/20 bg-primary/[0.02]" style={{ height: "4px", padding: 0 }} />
+    </tr>
+  );
 
   if (isLoading) {
     return (
@@ -752,7 +767,7 @@ export default function AdminLayerManager() {
   }
 
   // ─── build rows ───────────────────────────────────────────
-  const leftRows = [] as ReturnType<typeof renderLayerRow>[];
+  const leftRows: JSX.Element[] = [];
   let rowIdx = 0;
 
   for (const ag of adminGroups) {
@@ -761,9 +776,10 @@ export default function AdminLayerManager() {
     leftRows.push(renderGroupHeader(ag));
     if (!collapsedGroups.has(ag.id)) {
       for (const g of agLayers) {
-        leftRows.push(renderLayerRow(g, rowIdx));
+        leftRows.push(renderLayerRow(g, rowIdx, true));
         rowIdx++;
       }
+      leftRows.push(renderGroupFooter(ag));
     }
   }
   for (const g of ungroupedLayers) {
