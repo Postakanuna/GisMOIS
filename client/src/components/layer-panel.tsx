@@ -1,6 +1,6 @@
 import { useState, Fragment, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler, Settings2 } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler, Settings2, Check } from "lucide-react";
 import { useDxfLayers, type DxfSurveyLayer } from "@/contexts/dxf-layers-context";
 import { useHiddenCategories } from "@/contexts/hidden-categories-context";
 import { DxfImportDialog } from "@/components/dxf-import-dialog";
@@ -613,14 +613,20 @@ export function LayerPanel({
                             {truncateName(layer.name)}
                           </span>
                           {(layer as any).networkType && NETWORK_TYPE_LABELS[(layer as any).networkType] && (
-                            <span
-                              className="text-[9px] px-1 py-0 rounded shrink-0 font-medium text-white leading-tight"
-                              style={{ backgroundColor: NETWORK_TYPE_LABELS[(layer as any).networkType].color }}
-                              title={`Тип сети: ${NETWORK_TYPE_LABELS[(layer as any).networkType].label}`}
-                              data-testid={`badge-network-type-${layer.id}`}
-                            >
-                              {NETWORK_TYPE_LABELS[(layer as any).networkType].label}
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className="inline-flex items-center justify-center shrink-0 rounded-full w-3.5 h-3.5"
+                                  style={{ backgroundColor: NETWORK_TYPE_LABELS[(layer as any).networkType].color }}
+                                  data-testid={`badge-network-type-${layer.id}`}
+                                >
+                                  <Check className="h-2 w-2 text-white" strokeWidth={3} />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="right">
+                                Тип сети: {NETWORK_TYPE_LABELS[(layer as any).networkType].label}
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                           {layer.source === "import" && (
                             <FileArchive className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
