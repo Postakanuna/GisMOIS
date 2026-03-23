@@ -3601,12 +3601,15 @@ export function MapViewer({
             geometry: new OlPoint(pointCoords),
           });
           if (pt.type === "accident") {
-            // Render a stroke-only ring so the original icon stays visible underneath
+            // Render a fixed-pixel SVG ring (Icon) so the original icon stays visible
+            // underneath and the ring size never changes with zoom level
+            const ringD = 30;
+            const ringR = ringD / 2 - 2;
+            const svgRing = `<svg xmlns="http://www.w3.org/2000/svg" width="${ringD}" height="${ringD}"><circle cx="${ringD / 2}" cy="${ringD / 2}" r="${ringR}" fill="none" stroke="rgba(239,68,68,0.9)" stroke-width="3"/></svg>`;
             pointFeature.setStyle(new Style({
-              image: new Circle({
-                radius: 14,
-                fill: new Fill({ color: "rgba(0,0,0,0)" }),
-                stroke: new Stroke({ color: "rgba(239, 68, 68, 0.9)", width: 3 }),
+              image: new Icon({
+                src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgRing)}`,
+                scale: 1,
               }),
             }));
           } else {
