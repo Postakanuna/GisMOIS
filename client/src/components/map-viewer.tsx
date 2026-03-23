@@ -3600,16 +3600,27 @@ export function MapViewer({
           const pointFeature = new Feature({
             geometry: new OlPoint(pointCoords),
           });
-          const color = pt.type === "consumer" ? "rgba(239, 68, 68, 0.9)" :
-                        pt.type === "ctp" ? "rgba(249, 115, 22, 0.9)" :
-                        "rgba(234, 179, 8, 0.9)";
-          pointFeature.setStyle(new Style({
-            image: new Circle({
-              radius: 7,
-              fill: new Fill({ color }),
-              stroke: new Stroke({ color: "#fff", width: 2 }),
-            }),
-          }));
+          if (pt.type === "accident") {
+            // Render a stroke-only ring so the original icon stays visible underneath
+            pointFeature.setStyle(new Style({
+              image: new Circle({
+                radius: 14,
+                fill: new Fill({ color: "rgba(0,0,0,0)" }),
+                stroke: new Stroke({ color: "rgba(239, 68, 68, 0.9)", width: 3 }),
+              }),
+            }));
+          } else {
+            const color = pt.type === "consumer" ? "rgba(239, 68, 68, 0.9)" :
+                          pt.type === "ctp" ? "rgba(249, 115, 22, 0.9)" :
+                          "rgba(234, 179, 8, 0.9)";
+            pointFeature.setStyle(new Style({
+              image: new Circle({
+                radius: 7,
+                fill: new Fill({ color }),
+                stroke: new Stroke({ color: "#fff", width: 2 }),
+              }),
+            }));
+          }
           highlightSource.addFeature(pointFeature);
         }
       }
