@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Zap,
   Download,
@@ -910,29 +911,41 @@ export function AccidentAnalysisDialog({
                   Участков с авариями: {result.segmentsWithAccidents}
                 </span>
                 <div className="flex items-center gap-1">
-                  <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={handleExportExcel} data-testid="button-export-excel">
-                    <Download className="h-3 w-3" />
-                    Excel
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-6 w-6" onClick={handleExportExcel} data-testid="button-export-excel">
+                        <Download className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Экспорт в Excel</TooltipContent>
+                  </Tooltip>
                   {onOpenReconstructionProgram && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-xs gap-1"
-                      onClick={() => onOpenReconstructionProgram(resultAsImportData)}
-                      data-testid="button-open-reconstruction-accident-results"
-                    >
-                      <Wrench className="h-3 w-3" />
-                      Реконструкция ({resultAsImportData.length})
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => onOpenReconstructionProgram(resultAsImportData)}
+                          data-testid="button-open-reconstruction-accident-results"
+                        >
+                          <Wrench className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Передать в программу реконструкции ({resultAsImportData.length} участков)</TooltipContent>
+                    </Tooltip>
                   )}
                   <Popover open={showSavePopover} onOpenChange={setShowSavePopover}>
+                    <Tooltip>
+                    <TooltipTrigger asChild>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-6 text-xs gap-1" data-testid="button-save-to-layer">
+                      <Button variant="outline" size="icon" className="h-6 w-6" data-testid="button-save-to-layer">
                         <Layers className="h-3 w-3" />
-                        В слой
                       </Button>
                     </PopoverTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Сохранить результаты в слой</TooltipContent>
+                    </Tooltip>
                     <PopoverContent className="w-64 p-3" align="end">
                       <div className="space-y-2">
                         <p className="text-xs font-medium">Сохранить буферизованные полигоны (±{maxDistance} м)</p>
