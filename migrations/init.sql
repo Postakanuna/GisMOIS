@@ -402,8 +402,18 @@ CREATE TABLE IF NOT EXISTS "cost_unit_rates" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
+-- 29. Справочник атрибутов SHP-файлов Zulu
+CREATE TABLE IF NOT EXISTS "zulu_field_labels" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "field_name" text NOT NULL UNIQUE,
+  "label" text NOT NULL,
+  "category" text,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
 -- =====================================================
--- Конец схемы. Итого: 28 таблиц.
+-- Конец схемы. Итого: 29 таблиц.
 -- При добавлении новых таблиц в shared/schema.ts или
 -- shared/models/ — ОБЯЗАТЕЛЬНО добавляйте их сюда.
 -- =====================================================

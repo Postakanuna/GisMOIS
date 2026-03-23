@@ -467,7 +467,22 @@ for (const [key, value] of Object.entries(fieldLabels)) {
   fieldLabelsLower[key.toLowerCase()] = value;
 }
 
+let _dynamicLabels: Record<string, string> = {};
+let _dynamicLabelsLower: Record<string, string> = {};
+
+export function setDynamicFieldLabels(labels: Record<string, string>): void {
+  _dynamicLabels = labels;
+  _dynamicLabelsLower = {};
+  for (const [key, value] of Object.entries(labels)) {
+    _dynamicLabelsLower[key.toLowerCase()] = value;
+  }
+}
+
 export function getFieldLabel(technicalName: string): string {
+  const dynamic = _dynamicLabels[technicalName] ?? _dynamicLabelsLower[technicalName.toLowerCase()];
+  if (dynamic) {
+    return `${dynamic} (${technicalName})`;
+  }
   const label = fieldLabels[technicalName] ?? fieldLabelsLower[technicalName.toLowerCase()];
   if (label) {
     return `${label} (${technicalName})`;

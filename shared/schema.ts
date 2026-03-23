@@ -795,3 +795,17 @@ export const programObjects = pgTable("program_objects", {
 export type ProgramObject = typeof programObjects.$inferSelect;
 export type InsertProgramObject = typeof programObjects.$inferInsert;
 export const insertProgramObjectSchema = createInsertSchema(programObjects).omit({ id: true });
+
+// Справочник полей Zulu (расшифровка технических имён атрибутов SHP-файлов)
+export const zuluFieldLabels = pgTable("zulu_field_labels", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  fieldName: text("field_name").notNull().unique(),
+  label: text("label").notNull(),
+  category: text("category"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type ZuluFieldLabel = typeof zuluFieldLabels.$inferSelect;
+export type InsertZuluFieldLabel = typeof zuluFieldLabels.$inferInsert;
+export const insertZuluFieldLabelSchema = createInsertSchema(zuluFieldLabels).omit({ id: true, createdAt: true, updatedAt: true });

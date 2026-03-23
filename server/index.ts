@@ -5,6 +5,8 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startAuditCleanup } from "./audit";
 import { startSensorPolling } from "./sensor-sync";
+import { storage } from "./storage";
+import { fieldLabels } from "@shared/field-labels";
 
 const app = express();
 const httpServer = createServer(app);
@@ -55,6 +57,15 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Seed field labels from static dictionary (skip existing)
+  try {
+    const entries = Object.entries(fieldLabels).map(([fieldName, label]) => ({ fieldName, label }));
+    await storage.seedZuluFieldLabels(entries);
+    log(`Seeded ${entries.length} field labels`, "init");
+  } catch (err: any) {
+    log(`Field labels seed warning: ${err.message}`, "init");
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

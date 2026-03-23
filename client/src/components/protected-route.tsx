@@ -2,6 +2,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
+import { FieldLabelsLoader } from "@/components/field-labels-loader";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -37,5 +38,10 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <FieldLabelsLoader />
+      {children}
+    </>
+  );
 }

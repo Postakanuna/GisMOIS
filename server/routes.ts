@@ -9273,6 +9273,62 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Zulu Field Labels (справочник атрибутов SHP) ────────────────────────────
+
+  app.get("/api/field-labels", isAuthenticated, async (_req: AuthRequest, res: Response) => {
+    try {
+      const labels = await storage.getZuluFieldLabels();
+      res.json(labels);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/field-labels", isAuthenticated, isAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const { fieldName, label, category } = req.body;
+      if (!fieldName || !label) {
+        return res.status(400).json({ message: "Поля fieldName и label обязательны" });
+      }
+      const existing = await storage.getZuluFieldLabelByName(fieldName);
+      if (existing) {
+        return res.status(409).json({ message: "Запись с таким именем поля уже существует" });
+      }
+      const created = await storage.createZuluFieldLabel({ fieldName, label, category: category ?? null });
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/field-labels/:id", isAuthenticated, isAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const { label, category } = req.body;
+      if (!label) {
+        return res.status(400).json({ message: "Поле label обязательно" });
+      }
+      const updated = await storage.updateZuluFieldLabel(id, { label, category: category ?? null });
+      if (!updated) return res.status(404).json({ message: "Запись не найдена" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/field-labels/:id", isAuthenticated, isAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseIntParam(req.params.id, res);
+      if (id === null) return;
+      const deleted = await storage.deleteZuluFieldLabel(id);
+      if (!deleted) return res.status(404).json({ message: "Запись не найдена" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ─── Reconstruction Programs ─────────────────────────────────────────────────
 
   app.get("/api/reconstruction-programs", isAuthenticated, async (req: AuthRequest, res: Response) => {
