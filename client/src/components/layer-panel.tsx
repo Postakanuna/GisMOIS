@@ -616,11 +616,10 @@ export function LayerPanel({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span
-                                  className="inline-flex items-center justify-center shrink-0 rounded-full w-3.5 h-3.5"
-                                  style={{ backgroundColor: NETWORK_TYPE_LABELS[(layer as any).networkType].color }}
+                                  className="inline-flex items-center justify-center shrink-0 rounded-full w-3.5 h-3.5 bg-muted-foreground/30"
                                   data-testid={`badge-network-type-${layer.id}`}
                                 >
-                                  <Check className="h-2 w-2 text-white" strokeWidth={3} />
+                                  <Check className="h-2 w-2 text-muted-foreground" strokeWidth={3} />
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="right">
