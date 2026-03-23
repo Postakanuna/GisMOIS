@@ -12,6 +12,8 @@ interface BaseLayersContextType {
   baseLayers: BaseLayerConfig[];
   activeBaseLayer: BaseLayerType;
   setActiveBaseLayer: (layerId: BaseLayerType) => void;
+  baseLayerOpacity: number;
+  setBaseLayerOpacity: (opacity: number) => void;
 }
 
 const defaultBaseLayers: BaseLayerConfig[] = [
@@ -25,6 +27,7 @@ const BaseLayersContext = createContext<BaseLayersContextType | null>(null);
 
 export function BaseLayersProvider({ children }: { children: ReactNode }) {
   const [activeBaseLayer, setActiveBaseLayerState] = useState<BaseLayerType>("yandex-map");
+  const [baseLayerOpacity, setBaseLayerOpacityState] = useState<number>(1);
 
   const baseLayers = defaultBaseLayers.map(layer => ({
     ...layer,
@@ -35,12 +38,18 @@ export function BaseLayersProvider({ children }: { children: ReactNode }) {
     setActiveBaseLayerState(layerId);
   }, []);
 
+  const setBaseLayerOpacity = useCallback((opacity: number) => {
+    setBaseLayerOpacityState(opacity);
+  }, []);
+
   return (
     <BaseLayersContext.Provider
       value={{
         baseLayers,
         activeBaseLayer,
         setActiveBaseLayer,
+        baseLayerOpacity,
+        setBaseLayerOpacity,
       }}
     >
       {children}

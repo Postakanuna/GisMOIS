@@ -998,7 +998,7 @@ export function MapViewer({
   const dxfOlLayersRef = useRef<Map<string, { olLayer: VectorLayer<VectorSource>; signature: string }>>(new Map());
   const { toast } = useToast();
   const { surveyLayers } = useDxfLayers();
-  const { activeBaseLayer } = useBaseLayers();
+  const { activeBaseLayer, baseLayerOpacity } = useBaseLayers();
   const { currentProjection } = useProjection();
   const { hiddenCategories } = useHiddenCategories();
   const hiddenCategoriesRef = useRef(hiddenCategories);
@@ -1638,6 +1638,15 @@ export function MapViewer({
       yandexSatelliteLayer.setVisible(activeBaseLayer === "yandex-satellite");
     }
   }, [activeBaseLayer]);
+
+  useEffect(() => {
+    const osmLayer = layersRef.current["osm-base"];
+    const yandexMapLayer = layersRef.current["yandex-map"];
+    const yandexSatelliteLayer = layersRef.current["yandex-satellite"];
+    if (osmLayer) osmLayer.setOpacity(baseLayerOpacity);
+    if (yandexMapLayer) yandexMapLayer.setOpacity(baseLayerOpacity);
+    if (yandexSatelliteLayer) yandexSatelliteLayer.setOpacity(baseLayerOpacity);
+  }, [baseLayerOpacity]);
 
   useEffect(() => {
     const map = mapRef.current;

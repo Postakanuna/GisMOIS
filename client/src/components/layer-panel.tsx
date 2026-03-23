@@ -174,7 +174,7 @@ export function LayerPanel({
   const [popoverLayerId, setPopoverLayerId] = useState<number | null>(null);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(new Set());
 
-  const { baseLayers: baseLayerOptions, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
+  const { baseLayers: baseLayerOptions, activeBaseLayer, setActiveBaseLayer, baseLayerOpacity, setBaseLayerOpacity } = useBaseLayers();
   const { surveyLayers, toggleSurveyLayerVisibility, setSurveyLayerOpacity, removeSurveyLayer } = useDxfLayers();
   const { toggleCategory, isHidden } = useHiddenCategories();
   const [editDxfLayer, setEditDxfLayer] = useState<DxfSurveyLayer | null>(null);
@@ -1048,6 +1048,21 @@ export function LayerPanel({
                 )}
               </div>
             ))}
+            <div className="flex items-center gap-2 pt-1 px-1" data-testid="base-layer-opacity-row">
+              <span className="text-[10px] text-muted-foreground shrink-0 w-16">Прозрачность</span>
+              <Slider
+                min={0}
+                max={1}
+                step={0.01}
+                value={[baseLayerOpacity]}
+                onValueChange={([v]) => setBaseLayerOpacity(v)}
+                className="flex-1"
+                data-testid="base-layer-opacity-slider"
+              />
+              <span className="text-[10px] text-muted-foreground shrink-0 w-7 text-right">
+                {Math.round(baseLayerOpacity * 100)}%
+              </span>
+            </div>
           </AccordionContent>
         </AccordionItem>
       </Accordion>
