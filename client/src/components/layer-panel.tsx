@@ -2,6 +2,7 @@ import { useState, Fragment, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler, Settings2 } from "lucide-react";
 import { useDxfLayers, type DxfSurveyLayer } from "@/contexts/dxf-layers-context";
+import { useHiddenCategories } from "@/contexts/hidden-categories-context";
 import { DxfImportDialog } from "@/components/dxf-import-dialog";
 import { useScene } from "@/contexts/scene-context";
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
@@ -175,6 +176,7 @@ export function LayerPanel({
 
   const { baseLayers: baseLayerOptions, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const { surveyLayers, toggleSurveyLayerVisibility, setSurveyLayerOpacity, removeSurveyLayer } = useDxfLayers();
+  const { toggleCategory, isHidden } = useHiddenCategories();
   const [editDxfLayer, setEditDxfLayer] = useState<DxfSurveyLayer | null>(null);
 
   const { data: folders = [] } = useQuery<FolderData[]>({
@@ -780,22 +782,41 @@ export function LayerPanel({
                           </p>
                           {sc.renderer === "categorized" && sc.categorizedClasses && (
                             <div className="space-y-0.5">
-                              {sc.categorizedClasses.map((cls: any, i: number) => (
-                                <div key={i} className="flex items-center gap-1.5">
-                                  <span className="flex-shrink-0">
-                                    <LayerLegendIcon
-                                      geometryType={layer.geometryType}
-                                      color={cls.style?.color || layer.color}
-                                      pointStyle={cls.style?.pointStyle || layer.pointStyle}
-                                      lineStyle={layer.lineStyle}
-                                      customIconId={cls.style?.customIconId}
-                                    />
-                                  </span>
-                                  <span className="text-[11px] truncate">{cls.label || String(cls.value)}</span>
-                                </div>
-                              ))}
+                              {sc.categorizedClasses.map((cls: any, i: number) => {
+                                const valKey = String(cls.value);
+                                const hidden = isHidden(layer.id, valKey);
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`flex items-center gap-1.5 group/catrow ${hidden ? "opacity-40" : ""}`}
+                                  >
+                                    <span className="flex-shrink-0">
+                                      <LayerLegendIcon
+                                        geometryType={layer.geometryType}
+                                        color={cls.style?.color || layer.color}
+                                        pointStyle={cls.style?.pointStyle || layer.pointStyle}
+                                        lineStyle={layer.lineStyle}
+                                        customIconId={cls.style?.customIconId}
+                                      />
+                                    </span>
+                                    <span className={`text-[11px] truncate flex-1 ${hidden ? "line-through text-muted-foreground" : ""}`}>
+                                      {cls.label || String(cls.value)}
+                                    </span>
+                                    <button
+                                      className="opacity-0 group-hover/catrow:opacity-100 transition-opacity flex-shrink-0 text-muted-foreground hover:text-foreground"
+                                      onClick={() => toggleCategory(layer.id, valKey)}
+                                      title={hidden ? "Показать категорию" : "Скрыть категорию"}
+                                      data-testid={`button-cat-vis-${layer.id}-${i}`}
+                                    >
+                                      {hidden
+                                        ? <EyeOff className="h-3 w-3" />
+                                        : <Eye className="h-3 w-3" />}
+                                    </button>
+                                  </div>
+                                );
+                              })}
                               {sc.defaultStyle && (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 group/catrow">
                                   <span className="flex-shrink-0">
                                     <LayerLegendIcon
                                       geometryType={layer.geometryType}
@@ -804,7 +825,7 @@ export function LayerPanel({
                                       lineStyle={layer.lineStyle}
                                     />
                                   </span>
-                                  <span className="text-[11px] truncate text-muted-foreground">Прочее</span>
+                                  <span className="text-[11px] truncate text-muted-foreground flex-1">Прочее</span>
                                 </div>
                               )}
                             </div>

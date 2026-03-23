@@ -45,6 +45,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useDxfLayers } from "@/contexts/dxf-layers-context";
+import { useHiddenCategories } from "@/contexts/hidden-categories-context";
 
 export interface SelectedFeatureData {
   layerId: number;
@@ -610,7 +611,9 @@ function applyGeometryAwareFill(style: Style | Style[], feature: Feature): Style
   return style;
 }
 
-function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, customIconSvgMap?: Map<number, string>): (feature: Feature) => Style | Style[] {
+const INVISIBLE_STYLE = new Style({});
+
+function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, customIconSvgMap?: Map<number, string>, hiddenValues?: Set<string>): (feature: Feature) => Style | Style[] {
   const styleConfig = layer.styleConfig as StyleConfig | undefined;
   const iconMap = customIconSvgMap || new Map<number, string>();
 
@@ -637,7 +640,9 @@ function createEditableLayerStyleFunction(layer: EditableLayer, zoom?: number, c
     return (feature: Feature) => {
       const val = feature.get(styleConfig.field!);
       if (val === undefined || val === null) return applyGeometryAwareFill(defaultStyle, feature);
-      const cached = styleCache.get(String(val));
+      const valStr = String(val);
+      if (hiddenValues?.has(valStr)) return INVISIBLE_STYLE;
+      const cached = styleCache.get(valStr);
       return applyGeometryAwareFill(cached || defaultStyle, feature);
     };
   }
@@ -995,6 +1000,8 @@ export function MapViewer({
   const { surveyLayers } = useDxfLayers();
   const { activeBaseLayer } = useBaseLayers();
   const { currentProjection } = useProjection();
+  const { hiddenCategories } = useHiddenCategories();
+  const hiddenCategoriesRef = useRef(hiddenCategories);
   const currentProjectionRef = useRef<ProjectionType>(currentProjection);
   
   const connectionRef = useRef<ZuluConnection | null>(connection);
@@ -1120,6 +1127,25 @@ export function MapViewer({
   useEffect(() => {
     allEditableLayersDataRef.current = allEditableLayers;
   }, [allEditableLayers]);
+
+  useEffect(() => {
+    hiddenCategoriesRef.current = hiddenCategories;
+  }, [hiddenCategories]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const zoom = map.getView().getZoom();
+    allEditableLayersRef.current.forEach((olLayer, layerId) => {
+      const layerData = allEditableLayersDataRef.current?.find(l => l.id === layerId);
+      if (!layerData) return;
+      const sc = layerData.styleConfig as any;
+      if (sc?.renderer !== "categorized") return;
+      const iconIds = collectCustomIconIds(layerData.styleConfig as StyleConfig | undefined);
+      const cachedMap = iconIds.length > 0 ? buildIconMapFromCache(iconIds) : undefined;
+      olLayer.setStyle(createEditableLayerStyleFunction(layerData, zoom, cachedMap, hiddenCategories[layerId]) as any);
+    });
+  }, [hiddenCategories]);
 
   useEffect(() => {
     onEditableFeatureSelectRef.current = onEditableFeatureSelect;
@@ -1879,7 +1905,7 @@ export function MapViewer({
           if (layerData) {
             const iconIds = collectCustomIconIds(layerData.styleConfig as StyleConfig | undefined);
             const cachedMap = iconIds.length > 0 ? buildIconMapFromCache(iconIds) : undefined;
-            layer.setStyle(createEditableLayerStyleFunction(layerData, roundedZoom, cachedMap) as any);
+            layer.setStyle(createEditableLayerStyleFunction(layerData, roundedZoom, cachedMap, hiddenCategoriesRef.current[editableLayerId]) as any);
             layer.set("lastZoom", roundedZoom);
           }
         });
@@ -2264,7 +2290,7 @@ export function MapViewer({
 
         vectorLayer = new VectorLayer({
           source: vectorSource,
-          style: createEditableLayerStyleFunction(editableLayerItem, currentZoom, cachedIconMap) as any,
+          style: createEditableLayerStyleFunction(editableLayerItem, currentZoom, cachedIconMap, hiddenCategoriesRef.current[editableLayerItem.id]) as any,
           updateWhileAnimating: true,
           updateWhileInteracting: true,
           properties: { 
@@ -2289,7 +2315,7 @@ export function MapViewer({
           const layerStyleKey = styleKey;
           loadCustomIconSvgs(iconIds).then(iconMap => {
             if (layerRef.get("styleKey") === layerStyleKey) {
-              layerRef.setStyle(createEditableLayerStyleFunction(editableLayerItem, currentZoom, iconMap) as any);
+              layerRef.setStyle(createEditableLayerStyleFunction(editableLayerItem, currentZoom, iconMap, hiddenCategoriesRef.current[editableLayerItem.id]) as any);
             }
           });
         }
@@ -2377,7 +2403,7 @@ export function MapViewer({
         const newFullStyleKey = `${editableLayerItem.color}|${editableLayerItem.pointStyle}|${editableLayerItem.lineStyle}|${newStyleConfigStr}|${newZoom}`;
         const iconIds = collectCustomIconIds(editableLayerItem.styleConfig as StyleConfig | undefined);
         const cachedMap = iconIds.length > 0 ? buildIconMapFromCache(iconIds) : undefined;
-        vectorLayer.setStyle(createEditableLayerStyleFunction(editableLayerItem, newZoom, cachedMap) as any);
+        vectorLayer.setStyle(createEditableLayerStyleFunction(editableLayerItem, newZoom, cachedMap, hiddenCategoriesRef.current[editableLayerItem.id]) as any);
         vectorLayer.set("styleKey", newFullStyleKey);
         vectorLayer.set("lastZoom", newZoom);
 
@@ -2385,7 +2411,7 @@ export function MapViewer({
           const layerRef = vectorLayer;
           loadCustomIconSvgs(iconIds).then(iconMap => {
             if (layerRef.get("styleKey") === newFullStyleKey) {
-              layerRef.setStyle(createEditableLayerStyleFunction(editableLayerItem, newZoom, iconMap) as any);
+              layerRef.setStyle(createEditableLayerStyleFunction(editableLayerItem, newZoom, iconMap, hiddenCategoriesRef.current[editableLayerItem.id]) as any);
             }
           });
         }
