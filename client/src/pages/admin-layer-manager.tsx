@@ -577,12 +577,12 @@ export default function AdminLayerManager() {
       >
         <td
           className={`py-0 border-r ${isGrouped ? "border-l-[3px] border-l-primary/30 pl-7 pr-3" : "px-3"}`}
-          style={{ height: "52px", width: "380px", minWidth: "380px" }}
+          style={{ height: "52px" }}
         >
           <div className="flex items-center gap-1.5 h-full">
             <div className="w-3 h-3 rounded-full flex-shrink-0 border" style={{ backgroundColor: sourceInst?.color || "#ccc" }} />
             <div className="min-w-0 flex-1">
-              <div className="font-medium truncate max-w-[200px] text-sm" data-testid={`text-layer-name-${idx}`}>
+              <div className="font-medium truncate text-sm" data-testid={`text-layer-name-${idx}`}>
                 {group.name}
               </div>
               <div className="flex items-center gap-1 mt-0.5 flex-wrap">
@@ -611,8 +611,8 @@ export default function AdminLayerManager() {
         </td>
 
         {/* Action buttons */}
-        <td className="px-2 py-0" style={{ height: "52px" }}>
-          <div className="flex items-center gap-0.5 justify-center flex-wrap">
+        <td className="px-2 py-0" style={{ height: "52px", width: "230px", minWidth: "230px" }}>
+          <div className="flex items-center gap-0.5 justify-center flex-nowrap">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openRename(group)} data-testid={`button-rename-${idx}`}>
@@ -848,8 +848,8 @@ export default function AdminLayerManager() {
             <table className="border-collapse text-sm w-full">
               <thead>
                 <tr className="border-b bg-muted/50" style={{ height: "44px" }}>
-                  <th className="px-3 py-0 text-left font-medium border-r" style={{ height: "44px", width: "380px", minWidth: "380px" }}>Слой</th>
-                  <th className="px-2 py-0 text-center font-medium" style={{ height: "44px" }}>Действия</th>
+                  <th className="px-3 py-0 text-left font-medium border-r" style={{ height: "44px" }}>Слой</th>
+                  <th className="px-2 py-0 text-center font-medium" style={{ height: "44px", width: "230px", minWidth: "230px" }}>Действия</th>
                 </tr>
               </thead>
               <tbody>
