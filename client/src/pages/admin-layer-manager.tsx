@@ -53,7 +53,6 @@ import {
   Trash2,
   Loader2,
   Search,
-  Minus,
   Filter,
   Pencil,
   Table2,
@@ -204,7 +203,6 @@ export default function AdminLayerManager() {
 
   const scenes = matrixData?.scenes || [];
   const adminGroups = matrixData?.adminGroups || [];
-  const mainScrollRef = useRef<HTMLDivElement>(null);
 
   // ─── mutations ────────────────────────────────────────────
   const cloneMutation = useMutation({
@@ -364,9 +362,6 @@ export default function AdminLayerManager() {
   }, [filteredMatrix]);
 
   // ─── helpers ──────────────────────────────────────────────
-  const getInstanceForScene = (group: LayerGroup, sceneId: number) =>
-    group.instances.find(inst => inst.sceneId === sceneId);
-
   const getAnySourceInstance = (group: LayerGroup) => group.instances[0];
 
   const handleOpenPalette = (group: LayerGroup) => { setSelectedGroup(group); setPaletteOpen(true); };
@@ -578,7 +573,7 @@ export default function AdminLayerManager() {
         className={`border-b hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
         style={{ height: "52px" }}
       >
-        <td className="px-3 py-0 border-r min-w-[320px] w-[320px]" style={{ height: "52px" }}>
+        <td className="px-3 py-0 border-r" style={{ height: "52px", width: "380px", minWidth: "380px" }}>
           <div className="flex items-center gap-1.5 h-full">
             <div className="w-3 h-3 rounded-full flex-shrink-0 border" style={{ backgroundColor: sourceInst?.color || "#ccc" }} />
             <div className="min-w-0 flex-1">
@@ -611,7 +606,7 @@ export default function AdminLayerManager() {
         </td>
 
         {/* Action buttons */}
-        <td className="px-1 py-0 w-[160px] border-r" style={{ height: "52px" }}>
+        <td className="px-2 py-0" style={{ height: "52px" }}>
           <div className="flex items-center gap-0.5 justify-center flex-wrap">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -718,47 +713,6 @@ export default function AdminLayerManager() {
     );
   };
 
-  const renderSceneRow = (group: LayerGroup, idx: number) => (
-    <tr
-      key={`${group.name}__${group.geometryType}`}
-      className={`border-b hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
-      style={{ height: "52px" }}
-      data-testid={`row-layer-${idx}`}
-    >
-      {scenes.map((scene) => {
-        const instance = getInstanceForScene(group, scene.id);
-        return (
-          <td key={scene.id} className="px-2 py-0 text-center min-w-[100px] w-[100px] border-r last:border-r-0" style={{ height: "52px" }}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`w-7 h-7 rounded border-2 flex items-center justify-center transition-all mx-auto ${
-                    instance
-                      ? "border-primary bg-primary/10 hover:bg-primary/20 cursor-pointer"
-                      : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
-                  }`}
-                  onClick={() => openSceneVisibility(group)}
-                  data-testid={`cell-layer-${idx}-scene-${scene.id}`}
-                >
-                  {instance ? (
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: instance.color }} />
-                  ) : (
-                    <Minus className="h-3 w-3 text-muted-foreground/30" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {instance
-                  ? `${group.name} в "${scene.name}" (${instance.featureCount} объектов)`
-                  : `Нет в "${scene.name}" — нажмите для управления`}
-              </TooltipContent>
-            </Tooltip>
-          </td>
-        );
-      })}
-    </tr>
-  );
-
   const renderGroupHeader = (ag: AdminLayerGroup) => {
     const isCollapsed = collapsedGroups.has(ag.id);
     return (
@@ -781,18 +735,7 @@ export default function AdminLayerManager() {
             </Badge>
           </button>
         </td>
-        <td className="px-1 py-1 w-[160px]" />
-      </tr>
-    );
-  };
-
-  const renderGroupHeaderScene = (ag: AdminLayerGroup) => {
-    const isCollapsed = collapsedGroups.has(ag.id);
-    return (
-      <tr key={`group-header-scene-${ag.id}`} className="bg-muted/40 border-b" style={{ height: "28px" }}>
-        {scenes.map(scene => (
-          <td key={scene.id} className="border-r last:border-r-0 min-w-[100px] w-[100px]" />
-        ))}
+        <td />
       </tr>
     );
   };
@@ -810,25 +753,21 @@ export default function AdminLayerManager() {
 
   // ─── build rows ───────────────────────────────────────────
   const leftRows = [] as ReturnType<typeof renderLayerRow>[];
-  const rightRows = [] as ReturnType<typeof renderSceneRow>[];
   let rowIdx = 0;
 
   for (const ag of adminGroups) {
     const agLayers = groupedLayers[ag.id] || [];
     if (agLayers.length === 0 && searchFilter) continue;
     leftRows.push(renderGroupHeader(ag));
-    rightRows.push(renderGroupHeaderScene(ag));
     if (!collapsedGroups.has(ag.id)) {
       for (const g of agLayers) {
         leftRows.push(renderLayerRow(g, rowIdx));
-        rightRows.push(renderSceneRow(g, rowIdx));
         rowIdx++;
       }
     }
   }
   for (const g of ungroupedLayers) {
     leftRows.push(renderLayerRow(g, rowIdx));
-    rightRows.push(renderSceneRow(g, rowIdx));
     rowIdx++;
   }
 
@@ -890,51 +829,23 @@ export default function AdminLayerManager() {
 
         <Card>
           <CardContent className="p-0">
-            <div className="flex">
-              <div className="flex-shrink-0 z-10 border-r">
-                <table className="border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50" style={{ height: "44px" }}>
-                      <th className="px-3 py-0 text-left font-medium min-w-[320px] w-[320px] border-r" style={{ height: "44px" }}>Слой</th>
-                      <th className="px-2 py-0 text-center font-medium w-[160px]" style={{ height: "44px" }}>Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leftRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={2} className="text-center py-12 text-muted-foreground min-w-[480px]">
-                          {searchFilter || geometryFilter !== "all" ? "Нет слоёв, подходящих под фильтр" : "Нет загруженных слоёв"}
-                        </td>
-                      </tr>
-                    ) : leftRows}
-                  </tbody>
-                </table>
-              </div>
-
-              <div ref={mainScrollRef} className="flex-1 min-w-0 overflow-x-auto">
-                <table className="border-collapse text-sm" style={{ minWidth: `${scenes.length * 100}px` }}>
-                  <thead>
-                    <tr className="border-b bg-muted/50" style={{ height: "44px" }}>
-                      {scenes.map((scene) => (
-                        <th key={scene.id} className="px-2 py-0 text-center font-medium min-w-[100px] w-[100px] border-r last:border-r-0" style={{ height: "44px" }}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block truncate max-w-[90px] mx-auto cursor-default text-xs" data-testid={`text-scene-header-${scene.id}`}>{scene.name}</span>
-                            </TooltipTrigger>
-                            <TooltipContent>{scene.name}</TooltipContent>
-                          </Tooltip>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rightRows.length === 0 ? (
-                      <tr><td colSpan={scenes.length} className="text-center py-12 text-muted-foreground">&nbsp;</td></tr>
-                    ) : rightRows}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <table className="border-collapse text-sm w-full">
+              <thead>
+                <tr className="border-b bg-muted/50" style={{ height: "44px" }}>
+                  <th className="px-3 py-0 text-left font-medium border-r" style={{ height: "44px", width: "380px", minWidth: "380px" }}>Слой</th>
+                  <th className="px-2 py-0 text-center font-medium" style={{ height: "44px" }}>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leftRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="text-center py-12 text-muted-foreground">
+                      {searchFilter || geometryFilter !== "all" ? "Нет слоёв, подходящих под фильтр" : "Нет загруженных слоёв"}
+                    </td>
+                  </tr>
+                ) : leftRows}
+              </tbody>
+            </table>
           </CardContent>
         </Card>
       </div>
