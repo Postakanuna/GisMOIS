@@ -404,7 +404,7 @@ export default function ScenesPage() {
       </header>
 
       <main className="mx-auto px-4 md:px-6 py-8 max-w-[1600px]">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2 min-w-0">
             {currentFolderId !== null && (
               <Button
@@ -442,17 +442,6 @@ export default function ScenesPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Поиск сцен (мин. 4 символа)..."
-                className="pl-9 pr-3 py-1.5 h-9 w-60 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                data-testid="input-search-scenes"
-              />
-            </div>
             <Button
               variant="outline"
               onClick={() => {
@@ -515,6 +504,18 @@ export default function ScenesPage() {
               </DialogContent>
             </Dialog>
           </div>
+        </div>
+
+        <div className="relative mb-6">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Поиск сцен (введите минимум 4 символа)..."
+            className="w-full pl-10 pr-4 py-2 h-10 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            data-testid="input-search-scenes"
+          />
         </div>
 
         {isLoading ? (
@@ -638,7 +639,13 @@ export default function ScenesPage() {
             </Card>
           )
         ) : (currentFolders.length > 0 || currentScenes.length > 0) ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="space-y-8">
+            {currentFolders.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-1.5">
+                  <Folder className="h-3.5 w-3.5" /> Папки
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {currentFolders.map((folder) => (
               <Card
                 key={`folder-${folder.id}`}
@@ -689,8 +696,16 @@ export default function ScenesPage() {
                   </p>
                 </CardContent>
               </Card>
-            ))}
-
+                ))}
+                </div>
+              </div>
+            )}
+            {currentScenes.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" /> Сцены
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {currentScenes.map((scene) => (
               <Card
                 key={`scene-${scene.id}`}
@@ -783,7 +798,10 @@ export default function ScenesPage() {
                   )}
                 </CardHeader>
               </Card>
-            ))}
+                ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <Card className="max-w-md mx-auto">
