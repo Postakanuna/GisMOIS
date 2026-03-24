@@ -233,7 +233,7 @@ export default function Home() {
   const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
   const [showTraceDialog, setShowTraceDialog] = useState(false);
-  const [importedLayerTable, setImportedLayerTable] = useState<{ layerId: number; layerName: string } | null>(null);
+  const [importedLayerTable, setImportedLayerTable] = useState<{ layerId: number; layerName: string; networkType?: string | null } | null>(null);
   const [traceSourceInfo, setTraceSourceInfo] = useState<{
     coords: [number, number];
     layerName: string;
@@ -590,7 +590,7 @@ export default function Home() {
                         drawing.selectLayer(editableLayer);
                         setShowAttributeTable(true);
                       } else {
-                        setImportedLayerTable({ layerId, layerName });
+                        setImportedLayerTable({ layerId, layerName, networkType: editableLayer?.networkType });
                       }
                     }}
                     onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
@@ -666,7 +666,8 @@ export default function Home() {
                     activeSceneDataset={activeSceneDataset}
                     onSelectSceneDataset={handleSelectSceneDataset}
                     onOpenAttributeTable={(layerId, layerName) => {
-                      setImportedLayerTable({ layerId, layerName });
+                      const nt = drawing.editableLayers.find(l => l.id === layerId)?.networkType;
+                      setImportedLayerTable({ layerId, layerName, networkType: nt });
                     }}
                     onOpenStyleConfig={(layerId) => setLayerPanelStyleConfigId(layerId)}
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
@@ -893,6 +894,7 @@ export default function Home() {
                   closeRef={attributeTableCloseRef}
                   layerName={drawing.activeLayer.name}
                   readOnly={!editMode}
+                  networkType={drawing.activeLayer.networkType}
                 />
               )}
             </DraggableModal>
@@ -909,7 +911,8 @@ export default function Home() {
               <DataManager 
                 onClose={() => setShowDataManager(false)} 
                 onOpenAttributeTable={(layerId, layerName) => {
-                  setImportedLayerTable({ layerId, layerName });
+                  const nt = drawing.editableLayers.find(l => l.id === layerId)?.networkType;
+                  setImportedLayerTable({ layerId, layerName, networkType: nt });
                 }}
               />
             )}
@@ -919,6 +922,7 @@ export default function Home() {
               <LayerAttributeTableWrapper
                 layerId={importedLayerTable.layerId}
                 layerName={importedLayerTable.layerName}
+                networkType={importedLayerTable.networkType}
                 onClose={() => setImportedLayerTable(null)}
                 onZoomToFeature={(feature) => mapActionsRef.current?.zoomToFeature(feature)}
               />
@@ -940,6 +944,7 @@ export default function Home() {
                     opacity: layer.opacity,
                     geometryType: layer.geometryType,
                     styleConfig: layer.styleConfig,
+                    networkType: layer.networkType,
                   }}
                   onSave={async (updates) => {
                     await apiRequest("PATCH", `/api/editable-layers/${layer.id}`, updates);

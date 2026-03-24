@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { getFieldValueLabel } from "@shared/field-labels";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -156,6 +157,7 @@ interface LayerStylePanelProps {
     lineStyle: string;
     opacity: number;
     styleConfig?: any;
+    networkType?: string | null;
   };
   onSave: (updates: {
     color?: string;
@@ -798,18 +800,29 @@ export function LayerStylePanel({
                         }}
                       />
                     )}
-                    <Input
-                      value={String(cls.value)}
-                      onChange={(e) =>
-                        updateCategorizedClass(i, {
-                          value: e.target.value,
-                          label: e.target.value,
-                        })
-                      }
-                      placeholder="Значение"
-                      className="flex-1 h-8 text-sm"
-                      data-testid={`input-class-value-${i}`}
-                    />
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        value={String(cls.value)}
+                        onChange={(e) =>
+                          updateCategorizedClass(i, {
+                            value: e.target.value,
+                            label: e.target.value,
+                          })
+                        }
+                        placeholder="Значение"
+                        className="h-8 text-sm w-full"
+                        data-testid={`input-class-value-${i}`}
+                      />
+                      {(() => {
+                        const rawVal = String(cls.value);
+                        const decodedVal = rawVal ? getFieldValueLabel(field, rawVal, layer.networkType ?? undefined) : "";
+                        return decodedVal && decodedVal !== rawVal ? (
+                          <div className="text-[10px] text-muted-foreground mt-0.5 truncate px-0.5">
+                            → {decodedVal}
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
                     <Input
                       type="number"
                       value={cls.style.iconSize || iconSize}

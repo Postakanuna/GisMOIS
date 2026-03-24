@@ -1211,6 +1211,7 @@ export default function AdminLayerManager() {
               lineStyle: source.lineStyle,
               opacity: source.opacity,
               styleConfig: source.styleConfig,
+              networkType: selectedGroup.networkType,
             }}
             onSave={handlePaletteSave}
           />

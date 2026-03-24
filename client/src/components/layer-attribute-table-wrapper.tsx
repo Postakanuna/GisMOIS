@@ -9,6 +9,7 @@ import type { DrawnFeature, LayerSchemaDefinition, AttributeField } from "@share
 interface LayerAttributeTableWrapperProps {
   layerId: number;
   layerName: string;
+  networkType?: string | null;
   onClose: () => void;
   onZoomToFeature?: (feature: DrawnFeature) => void;
 }
@@ -16,6 +17,7 @@ interface LayerAttributeTableWrapperProps {
 export function LayerAttributeTableWrapper({
   layerId,
   layerName,
+  networkType,
   onClose,
   onZoomToFeature,
 }: LayerAttributeTableWrapperProps) {
@@ -161,6 +163,7 @@ export function LayerAttributeTableWrapper({
         onRequestClose={handleRequestClose}
         closeRef={closeRef}
         layerName={layerName}
+        networkType={networkType}
       />
     </DraggableModal>
   );

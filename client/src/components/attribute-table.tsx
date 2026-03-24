@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { getFieldLabel } from "@shared/field-labels";
+import { getFieldLabel, getFieldValueLabel } from "@shared/field-labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,6 +66,7 @@ interface AttributeTableProps {
   closeRef?: React.MutableRefObject<AttributeTableCloseRef | null>;
   layerName: string;
   readOnly?: boolean;
+  networkType?: string | null;
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -99,6 +100,7 @@ export function AttributeTable({
   closeRef,
   layerName,
   readOnly = false,
+  networkType = null,
 }: AttributeTableProps) {
   const [showSchemaDialog, setShowSchemaDialog] = useState(false);
   const [editingFields, setEditingFields] = useState<AttributeField[]>([]);
@@ -629,12 +631,19 @@ export function AttributeTable({
       );
     }
 
+    const rawStr = displayValue?.toString() ?? "";
+    const decoded = rawStr ? getFieldValueLabel(field.name, rawStr, networkType ?? undefined) : "";
+    const hasDecoding = decoded && decoded !== rawStr;
     return (
       <span 
         className={readOnly ? "px-1 truncate block text-muted-foreground" : `cursor-pointer hover:bg-muted px-1 rounded truncate block ${hasChange ? "bg-primary/10 ring-1 ring-primary/30" : ""}`}
         onClick={readOnly ? undefined : () => startEditing(feature.id, field.name, displayValue)}
       >
-        {displayValue?.toString() || "-"}
+        {rawStr
+          ? hasDecoding
+            ? <>{decoded} <span className="text-muted-foreground/60">({rawStr})</span></>
+            : rawStr
+          : "-"}
       </span>
     );
   };

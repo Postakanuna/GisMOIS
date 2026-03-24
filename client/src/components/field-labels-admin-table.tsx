@@ -28,9 +28,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Fragment } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Pencil, Trash2, Plus, Search,
-  ChevronDown, ChevronRight, Tag, Check,
+  ChevronDown, ChevronRight, Tag,
 } from "lucide-react";
 
 // ─── Network Type definitions ─────────────────────────────────────────────────
@@ -75,7 +76,70 @@ interface FieldValue {
 }
 
 // ─── NetworkType badge picker ─────────────────────────────────────────────────
-function NetworkTypePicker({
+function multiPickerLabel(values: string[]): string {
+  if (values.length === 0) return "Для всех";
+  if (values.length === 1) return networkTypeLabel(values[0]);
+  return `${values.length} типа(ов)`;
+}
+
+function NetworkTypeMultiPicker({
+  values,
+  onChange,
+}: {
+  values: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const allSelected = values.length === 0;
+  const toggle = (nt: string) => {
+    if (values.includes(nt)) {
+      onChange(values.filter(v => v !== nt));
+    } else {
+      onChange([...values, nt]);
+    }
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs justify-start gap-1.5"
+          type="button"
+          data-testid="button-network-type-picker"
+        >
+          <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-foreground">{multiPickerLabel(values)}</span>
+          <ChevronDown className="h-3.5 w-3.5 ml-auto text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-48 p-1" align="start">
+        <button
+          className="flex w-full items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-muted transition-colors"
+          type="button"
+          onClick={() => onChange([])}
+        >
+          <Checkbox checked={allSelected} className="h-3.5 w-3.5 pointer-events-none" />
+          <span>Для всех</span>
+        </button>
+        <div className="my-1 border-t" />
+        {NETWORK_TYPES.map(nt => (
+          <button
+            key={nt.value}
+            type="button"
+            className="flex w-full items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-muted transition-colors"
+            onClick={() => toggle(nt.value)}
+          >
+            <Checkbox checked={values.includes(nt.value)} className="h-3.5 w-3.5 pointer-events-none" />
+            <span>{nt.label}</span>
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function NetworkTypeSinglePicker({
   value,
   onChange,
 }: {
@@ -93,37 +157,30 @@ function NetworkTypePicker({
           type="button"
           data-testid="button-network-type-picker"
         >
-          <Tag className="h-3.5 w-3.5" />
-          <span
-            className="font-medium"
-            style={{ color: networkTypeColor(value) }}
-          >
-            {networkTypeLabel(value)}
-          </span>
+          <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-foreground">{networkTypeLabel(value)}</span>
           <ChevronDown className="h-3.5 w-3.5 ml-auto text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-44 p-1" align="start">
+      <PopoverContent className="w-48 p-1" align="start">
         <button
+          type="button"
           className="flex w-full items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-muted transition-colors"
           onClick={() => { onChange(null); setOpen(false); }}
         >
-          {value === null && <Check className="h-3 w-3 text-primary" />}
-          <span className={value === null ? "font-semibold" : ""}>Для всех</span>
+          <Checkbox checked={value === null} className="h-3.5 w-3.5 pointer-events-none" />
+          <span>Для всех</span>
         </button>
+        <div className="my-1 border-t" />
         {NETWORK_TYPES.map(nt => (
           <button
             key={nt.value}
+            type="button"
             className="flex w-full items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-muted transition-colors"
             onClick={() => { onChange(nt.value); setOpen(false); }}
           >
-            {value === nt.value && <Check className="h-3 w-3 text-primary" />}
-            <span
-              className={`${value === nt.value ? "font-semibold" : ""}`}
-              style={{ color: nt.color }}
-            >
-              {nt.label}
-            </span>
+            <Checkbox checked={value === nt.value} className="h-3.5 w-3.5 pointer-events-none" />
+            <span>{nt.label}</span>
           </button>
         ))}
       </PopoverContent>
@@ -147,7 +204,7 @@ export function FieldLabelsAdminTable() {
   // ── Field value CRUD state ─────────────────────────────────────────────────
   const [addValueOpen, setAddValueOpen] = useState(false);
   const [addValueForm, setAddValueForm] = useState({
-    fieldName: "", fieldValue: "", label: "", networkType: null as string | null,
+    fieldName: "", fieldValue: "", label: "", networkTypes: [] as string[],
   });
   const [editingValue, setEditingValue] = useState<FieldValue | null>(null);
   const [editValueForm, setEditValueForm] = useState({
@@ -198,11 +255,20 @@ export function FieldLabelsAdminTable() {
 
   // ── Field value mutations ──────────────────────────────────────────────────
   const createValueMutation = useMutation({
-    mutationFn: (data: typeof addValueForm) => apiRequest("POST", "/api/field-values", data),
+    mutationFn: async (data: typeof addValueForm) => {
+      const { networkTypes, ...base } = data;
+      if (networkTypes.length === 0) {
+        await apiRequest("POST", "/api/field-values", { ...base, networkType: null });
+      } else {
+        for (const nt of networkTypes) {
+          await apiRequest("POST", "/api/field-values", { ...base, networkType: nt });
+        }
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/field-values"] });
       setAddValueOpen(false);
-      setAddValueForm({ fieldName: "", fieldValue: "", label: "", networkType: null });
+      setAddValueForm({ fieldName: "", fieldValue: "", label: "", networkTypes: [] });
       toast({ title: "Значение добавлено" });
     },
     onError: (err: any) => toast({ title: "Ошибка", description: err.message, variant: "destructive" }),
@@ -251,7 +317,7 @@ export function FieldLabelsAdminTable() {
   }
 
   function openAddValue(fieldName: string) {
-    setAddValueForm({ fieldName, fieldValue: "", label: "", networkType: null });
+    setAddValueForm({ fieldName, fieldValue: "", label: "", networkTypes: [] });
     setAddValueOpen(true);
   }
 
@@ -408,13 +474,7 @@ export function FieldLabelsAdminTable() {
                                         {fv.fieldValue}
                                       </td>
                                       <td className="px-3 py-1.5">
-                                        <span
-                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                          style={{
-                                            backgroundColor: networkTypeColor(fv.networkType) + "22",
-                                            color: networkTypeColor(fv.networkType),
-                                          }}
-                                        >
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground">
                                           <Tag className="h-2.5 w-2.5" />
                                           {networkTypeLabel(fv.networkType)}
                                         </span>
@@ -614,9 +674,9 @@ export function FieldLabelsAdminTable() {
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Тип сети (бейдж)</label>
-              <NetworkTypePicker
-                value={addValueForm.networkType}
-                onChange={(v) => setAddValueForm(f => ({ ...f, networkType: v }))}
+              <NetworkTypeMultiPicker
+                values={addValueForm.networkTypes}
+                onChange={(v) => setAddValueForm(f => ({ ...f, networkTypes: v }))}
               />
               <p className="text-[10px] text-muted-foreground mt-1">
                 «Для всех» — расшифровка применяется ко всем типам слоёв
@@ -672,7 +732,7 @@ export function FieldLabelsAdminTable() {
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Тип сети (бейдж)</label>
-              <NetworkTypePicker
+              <NetworkTypeSinglePicker
                 value={editValueForm.networkType}
                 onChange={(v) => setEditValueForm(f => ({ ...f, networkType: v }))}
               />
