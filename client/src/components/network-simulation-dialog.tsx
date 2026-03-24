@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -21,7 +21,6 @@ import {
   AlertTriangle,
   Thermometer,
   X,
-  GripHorizontal,
   Download,
   Users,
 } from "lucide-react";
@@ -103,7 +102,6 @@ export function NetworkSimulationDialog({
   onSimulationResult,
   initialResult,
 }: NetworkSimulationDialogProps) {
-  const isMobile = useIsMobile();
   const [result, setResult] = useState<SimulationResult | null>(initialResult ?? null);
 
   useEffect(() => {
@@ -119,38 +117,6 @@ export function NetworkSimulationDialog({
   const [ctpsOpen, setCtpsOpen] = useState(false);
   const [nodesOpen, setNodesOpen] = useState(false);
 
-  const [position, setPosition] = useState({ x: 20, y: 80 });
-  const dragRef = useRef<HTMLDivElement>(null);
-  const isDragging = useRef(false);
-  const dragStart = useRef({ x: 0, y: 0 });
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    isDragging.current = true;
-    dragStart.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    };
-    e.preventDefault();
-  }, [position]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-      setPosition({
-        x: e.clientX - dragStart.current.x,
-        y: e.clientY - dragStart.current.y,
-      });
-    };
-    const handleMouseUp = () => {
-      isDragging.current = false;
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   const simulationMutation = useMutation({
     mutationFn: async (_selectedMode: SimulationMode) => {
@@ -218,29 +184,16 @@ export function NetworkSimulationDialog({
   if (!open) return null;
 
   return (
-    <div
-      ref={dragRef}
-      className={isMobile
-        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
-        : "fixed z-[9999] w-[420px] max-h-[80vh] flex flex-col rounded-md border bg-background shadow-lg"}
-      style={isMobile ? undefined : { left: position.x, top: position.y }}
-      data-testid="dialog-network-simulation"
+    <DraggableModal
+      isOpen={open}
+      onClose={handleClose}
+      title="Анализ сети"
+      defaultWidth={420}
+      autoHeight
+      resizable={false}
+      headerIcon={<AlertTriangle className="h-5 w-5 text-destructive" />}
     >
-      <div
-        className={isMobile
-          ? "flex items-center gap-2 px-4 py-3 border-b shrink-0 bg-muted/40"
-          : "flex items-center gap-2 px-4 py-3 border-b cursor-grab active:cursor-grabbing select-none shrink-0"}
-        onMouseDown={isMobile ? undefined : handleMouseDown}
-      >
-        {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />}
-        <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-        <span className="text-sm font-semibold flex-1">Анализ сети</span>
-        <Button size="icon" variant="ghost" onClick={handleClose} data-testid="button-close-simulation">
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="space-y-3 flex-1 min-h-0 overflow-hidden flex flex-col p-4">
+      <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: "calc(100vh - 160px)" }}>
         <Card className="p-3 space-y-2">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs">{featureTypeLabel}</Badge>
@@ -434,7 +387,7 @@ export function NetworkSimulationDialog({
           )}
         </div>
       </div>
-    </div>
+    </DraggableModal>
   );
 }
 

@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type SegmentImportData } from "@/components/reconstruction-program-dialog";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -24,7 +24,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   Zap,
   Download,
-  GripHorizontal,
   Loader2,
   X,
   Filter,
@@ -122,7 +121,6 @@ export function AccidentAnalysisDialog({
   onSavedToLayer,
 }: AccidentAnalysisDialogProps) {
   const { toast } = useToast();
-  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 
   const [networkLayerId, setNetworkLayerId] = useState<number | null>(null);
@@ -168,29 +166,6 @@ export function AccidentAnalysisDialog({
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const [position, setPosition] = useState({ x: 20, y: 80 });
-  const isDragging = useRef(false);
-  const dragStart = useRef({ x: 0, y: 0 });
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    isDragging.current = true;
-    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
-    e.preventDefault();
-  }, [position]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-      setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
-    };
-    const handleMouseUp = () => { isDragging.current = false; };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   useEffect(() => {
     if (initialResult && open) setResult(initialResult);
@@ -505,32 +480,16 @@ export function AccidentAnalysisDialog({
   const displaySegments = result?.segments ?? (progress?.partialSegments ?? []);
 
   return (
-    <div
-      className={isMobile
-        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
-        : "fixed z-50 w-[420px] bg-background border border-border rounded-lg shadow-2xl flex flex-col"}
-      style={isMobile ? undefined : { left: position.x, top: position.y, maxHeight: "calc(100vh - 100px)" }}
-      data-testid="accident-analysis-dialog"
+    <DraggableModal
+      isOpen={open}
+      onClose={() => onOpenChange(false)}
+      title="Анализ аварийности"
+      defaultWidth={420}
+      autoHeight
+      resizable={false}
+      headerIcon={<Zap className="h-4 w-4 text-orange-500" />}
     >
-      <div
-        className={isMobile
-          ? "flex items-center justify-between px-4 py-3 border-b border-border bg-muted/40 shrink-0"
-          : "flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40 rounded-t-lg cursor-grab select-none"}
-        onMouseDown={isMobile ? undefined : handleMouseDown}
-      >
-        <div className="flex items-center gap-2">
-          {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground" />}
-          <Zap className="h-4 w-4 text-orange-500" />
-          <span className="font-semibold text-sm">Анализ аварийности</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)} data-testid="button-close-accident-dialog">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="overflow-y-auto p-4 space-y-4" style={{ maxHeight: "calc(100vh - 160px)" }}>
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Слой сетей (линии)</Label>
@@ -1048,7 +1007,7 @@ export function AccidentAnalysisDialog({
           </div>
         )}
       </div>
-    </div>
+    </DraggableModal>
   );
 }
 

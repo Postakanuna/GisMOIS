@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
-  GripHorizontal,
   ShieldCheck,
   X,
   Loader2,
@@ -119,7 +118,6 @@ export function TopologyValidationDialog({
   onOpenChange,
   sceneId,
 }: TopologyValidationDialogProps) {
-  const isMobile = useIsMobile();
   const [tabMode, setTabMode] = useState<TabMode>("validate");
   const [result, setResult] = useState<TopologyValidationResult | null>(null);
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
@@ -130,29 +128,6 @@ export function TopologyValidationDialog({
   const [selectedRecalcFixes, setSelectedRecalcFixes] = useState<Map<string, { featureId: number; field: string; newValue: string }>>(new Map());
   const [recalcFixResult, setRecalcFixResult] = useState<{ applied: number; failed: number } | null>(null);
 
-  const [position, setPosition] = useState({ x: 20, y: 80 });
-  const isDragging = useRef(false);
-  const dragStart = useRef({ x: 0, y: 0 });
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    isDragging.current = true;
-    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
-    e.preventDefault();
-  }, [position]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-      setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
-    };
-    const handleMouseUp = () => { isDragging.current = false; };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   const validateMutation = useMutation({
     mutationFn: async () => {
@@ -304,28 +279,15 @@ export function TopologyValidationDialog({
   if (!open) return null;
 
   return (
-    <div
-      className={isMobile
-        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
-        : "fixed z-50 bg-background border rounded-md shadow-lg"}
-      style={isMobile ? undefined : { left: position.x, top: position.y, width: 500, maxHeight: "calc(100vh - 100px)" }}
-      data-testid="topology-validation-dialog"
+    <DraggableModal
+      isOpen={open}
+      onClose={handleClose}
+      title="Проверка топологии"
+      defaultWidth={500}
+      autoHeight
+      resizable={false}
+      headerIcon={<ShieldCheck className="h-4 w-4 text-blue-500" />}
     >
-      <div
-        className={isMobile
-          ? "flex items-center justify-between px-3 py-3 border-b bg-muted/40 shrink-0"
-          : "flex items-center justify-between px-3 py-2 border-b cursor-move select-none"}
-        onMouseDown={isMobile ? undefined : handleMouseDown}
-      >
-        <div className="flex items-center gap-2">
-          {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground" />}
-          <ShieldCheck className="h-4 w-4 text-blue-500" />
-          <span className="font-medium text-sm">Проверка топологии</span>
-        </div>
-        <Button size="icon" variant="ghost" onClick={handleClose} data-testid="button-close-topology">
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
 
       <div className="flex border-b">
         <button
@@ -344,7 +306,7 @@ export function TopologyValidationDialog({
         </button>
       </div>
 
-      <div className={isMobile ? "flex-1 overflow-y-auto" : "overflow-y-auto"} style={isMobile ? undefined : { maxHeight: "calc(100vh - 250px)" }}>
+      <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 210px)" }}>
         <div className="p-3 space-y-3">
           {tabMode === "validate" && (
             <>
@@ -657,7 +619,7 @@ export function TopologyValidationDialog({
           )}
         </div>
       </div>
-    </div>
+    </DraggableModal>
   );
 }
 

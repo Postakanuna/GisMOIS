@@ -24,6 +24,7 @@ import {
 import { LayerPanel } from "@/components/layer-panel";
 import { MapViewer, type SelectedFeatureData } from "@/components/map-viewer";
 import { HiddenCategoriesProvider } from "@/contexts/hidden-categories-context";
+import { ModalManagerProvider } from "@/contexts/modal-manager-context";
 import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
 import { DraggableModal } from "@/components/ui/draggable-modal";
@@ -539,6 +540,7 @@ export default function Home() {
   ) : null;
 
   return (
+    <ModalManagerProvider>
     <HiddenCategoriesProvider>
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full overflow-hidden">
@@ -1139,5 +1141,6 @@ export default function Home() {
       <BugReportButton />
     </SidebarProvider>
     </HiddenCategoriesProvider>
+    </ModalManagerProvider>
   );
 }

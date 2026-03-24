@@ -1,19 +1,24 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { X, GripHorizontal, Minimize2, Maximize2, Minus } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useModalManager } from "@/contexts/modal-manager-context";
 
 interface DraggableModalProps {
   isOpen: boolean;
   onClose: () => void;
   onBeforeClose?: () => boolean | void;
   title: string;
-  children: React.ReactNode;
+  headerIcon?: ReactNode;
+  children: ReactNode;
   defaultWidth?: number;
   defaultHeight?: number;
   minWidth?: number;
   minHeight?: number;
+  resizable?: boolean;
+  autoHeight?: boolean;
+  maxHeight?: string;
 }
 
 export function DraggableModal({
@@ -21,13 +26,19 @@ export function DraggableModal({
   onClose,
   onBeforeClose,
   title,
+  headerIcon,
   children,
   defaultWidth = 800,
   defaultHeight = 400,
   minWidth = 400,
   minHeight = 200,
+  resizable = true,
+  autoHeight = false,
+  maxHeight = "calc(100vh - 100px)",
 }: DraggableModalProps) {
   const isMobile = useIsMobile();
+  const { bringToFront } = useModalManager();
+
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [size, setSize] = useState({ width: defaultWidth, height: defaultHeight });
   const [isDragging, setIsDragging] = useState(false);
@@ -37,7 +48,8 @@ export function DraggableModal({
   const [isMinimized, setIsMinimized] = useState(false);
   const [preMinimizeSize, setPreMinimizeSize] = useState(size);
   const [preMaximizeState, setPreMaximizeState] = useState({ position, size });
-  
+  const [zIndex, setZIndex] = useState(100);
+
   const modalRef = useRef<HTMLDivElement>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
@@ -50,18 +62,20 @@ export function DraggableModal({
       const y = Math.max(50, (window.innerHeight - defaultHeight) / 2);
       setPosition({ x, y });
       setSize({ width: defaultWidth, height: defaultHeight });
+      setZIndex(bringToFront());
     }
-  }, [isOpen, defaultWidth, defaultHeight, isMobile]);
+  }, [isOpen, defaultWidth, defaultHeight, isMobile, bringToFront]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isMaximized || isMobile) return;
     e.preventDefault();
     setIsDragging(true);
+    setZIndex(bringToFront());
     dragOffset.current = {
       x: e.clientX - position.x,
       y: e.clientY - position.y,
     };
-  }, [position, isMaximized, isMobile]);
+  }, [position, isMaximized, isMobile, bringToFront]);
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent, direction: string) => {
     if (isMaximized || isMobile) return;
@@ -86,16 +100,16 @@ export function DraggableModal({
         const newY = Math.max(0, Math.min(window.innerHeight - 50, e.clientY - dragOffset.current.y));
         setPosition({ x: newX, y: newY });
       }
-      
+
       if (isResizing && resizeDirection) {
         const deltaX = e.clientX - resizeStart.current.x;
         const deltaY = e.clientY - resizeStart.current.y;
-        
+
         let newWidth = resizeStart.current.width;
         let newHeight = resizeStart.current.height;
         let newX = resizeStart.current.posX;
         let newY = resizeStart.current.posY;
-        
+
         if (resizeDirection.includes("e")) {
           newWidth = Math.max(minWidth, resizeStart.current.width + deltaX);
         }
@@ -116,7 +130,7 @@ export function DraggableModal({
             newY = resizeStart.current.posY + deltaY;
           }
         }
-        
+
         setSize({ width: newWidth, height: newHeight });
         setPosition({ x: newX, y: newY });
       }
@@ -191,12 +205,15 @@ export function DraggableModal({
 
   if (isMobile) {
     return (
-      <div 
+      <div
         className="fixed inset-0 z-[60] bg-background flex flex-col"
         data-testid="draggable-modal-mobile"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50 shrink-0">
-          <CardTitle className="text-sm font-medium truncate pr-2">{title}</CardTitle>
+          <div className="flex items-center gap-2 min-w-0">
+            {headerIcon && <span className="shrink-0">{headerIcon}</span>}
+            <CardTitle className="text-sm font-medium truncate pr-2">{title}</CardTitle>
+          </div>
           <Button
             size="icon"
             variant="ghost"
@@ -214,28 +231,44 @@ export function DraggableModal({
     );
   }
 
+  const cardStyle: React.CSSProperties = {
+    left: position.x,
+    top: position.y,
+    zIndex,
+    ...(isMaximized
+      ? { width: window.innerWidth - 20, height: window.innerHeight - 20 }
+      : autoHeight
+        ? {
+            width: isMinimized ? Math.min(size.width, 320) : size.width,
+            maxHeight: isMinimized ? undefined : maxHeight,
+          }
+        : {
+            width: isMinimized ? Math.min(size.width, 320) : size.width,
+            height: isMinimized ? undefined : size.height,
+          }),
+  };
+
+  const showResizeHandles = resizable && !isMaximized && !isMinimized;
+
   return (
-    <div 
-      className="fixed inset-0 z-[60] pointer-events-none"
+    <div
+      className="fixed inset-0 pointer-events-none"
+      style={{ zIndex }}
       data-testid="draggable-modal-overlay"
     >
       <Card
         ref={modalRef}
         className="absolute pointer-events-auto bg-background shadow-xl border flex flex-col"
-        style={{
-          left: position.x,
-          top: position.y,
-          width: isMinimized ? Math.min(size.width, 320) : size.width,
-          height: isMinimized ? 'auto' : size.height,
-        }}
+        style={cardStyle}
         data-testid="draggable-modal"
       >
-        <CardHeader 
-          className="py-2 px-3 flex flex-row items-center justify-between gap-2 cursor-move border-b shrink-0"
+        <CardHeader
+          className="py-2 px-3 flex flex-row items-center justify-between gap-2 cursor-grab active:cursor-grabbing border-b shrink-0 select-none"
           onMouseDown={handleMouseDown}
         >
           <div className="flex items-center gap-2 min-w-0">
             <GripHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />
+            {headerIcon && <span className="shrink-0">{headerIcon}</span>}
             <CardTitle className="text-sm font-medium truncate">{title}</CardTitle>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -244,17 +277,19 @@ export function DraggableModal({
               variant="ghost"
               className="h-6 w-6"
               onClick={toggleMinimize}
+              onMouseDown={(e) => e.stopPropagation()}
               data-testid="button-toggle-minimize"
               title={isMinimized ? "Развернуть" : "Свернуть"}
             >
               {isMinimized ? <Maximize2 className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
             </Button>
-            {!isMinimized && (
+            {!isMinimized && resizable && (
               <Button
                 size="icon"
                 variant="ghost"
                 className="h-6 w-6"
                 onClick={toggleMaximize}
+                onMouseDown={(e) => e.stopPropagation()}
                 data-testid="button-toggle-maximize"
               >
                 {isMaximized ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
@@ -265,53 +300,30 @@ export function DraggableModal({
               variant="ghost"
               className="h-6 w-6"
               onClick={handleClose}
+              onMouseDown={(e) => e.stopPropagation()}
               data-testid="button-close-modal"
             >
               <X className="h-3 w-3" />
             </Button>
           </div>
         </CardHeader>
-        
+
         {!isMinimized && (
-          <CardContent className="p-0 flex-1 overflow-hidden">
+          <CardContent className="p-0 flex-1 overflow-hidden min-h-0">
             {children}
           </CardContent>
         )}
 
-        {!isMaximized && !isMinimized && (
+        {showResizeHandles && (
           <>
-            <div
-              className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-              onMouseDown={(e) => handleResizeMouseDown(e, "se")}
-            />
-            <div
-              className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize"
-              onMouseDown={(e) => handleResizeMouseDown(e, "sw")}
-            />
-            <div
-              className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize"
-              onMouseDown={(e) => handleResizeMouseDown(e, "ne")}
-            />
-            <div
-              className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize"
-              onMouseDown={(e) => handleResizeMouseDown(e, "nw")}
-            />
-            <div
-              className="absolute top-4 bottom-4 right-0 w-1 cursor-e-resize"
-              onMouseDown={(e) => handleResizeMouseDown(e, "e")}
-            />
-            <div
-              className="absolute top-4 bottom-4 left-0 w-1 cursor-w-resize"
-              onMouseDown={(e) => handleResizeMouseDown(e, "w")}
-            />
-            <div
-              className="absolute left-4 right-4 bottom-0 h-1 cursor-s-resize"
-              onMouseDown={(e) => handleResizeMouseDown(e, "s")}
-            />
-            <div
-              className="absolute left-4 right-4 top-0 h-1 cursor-n-resize"
-              onMouseDown={(e) => handleResizeMouseDown(e, "n")}
-            />
+            <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onMouseDown={(e) => handleResizeMouseDown(e, "se")} />
+            <div className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize" onMouseDown={(e) => handleResizeMouseDown(e, "sw")} />
+            <div className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize" onMouseDown={(e) => handleResizeMouseDown(e, "ne")} />
+            <div className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize" onMouseDown={(e) => handleResizeMouseDown(e, "nw")} />
+            <div className="absolute top-4 bottom-4 right-0 w-1 cursor-e-resize" onMouseDown={(e) => handleResizeMouseDown(e, "e")} />
+            <div className="absolute top-4 bottom-4 left-0 w-1 cursor-w-resize" onMouseDown={(e) => handleResizeMouseDown(e, "w")} />
+            <div className="absolute left-4 right-4 bottom-0 h-1 cursor-s-resize" onMouseDown={(e) => handleResizeMouseDown(e, "s")} />
+            <div className="absolute left-4 right-4 top-0 h-1 cursor-n-resize" onMouseDown={(e) => handleResizeMouseDown(e, "n")} />
           </>
         )}
       </Card>

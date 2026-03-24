@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +27,6 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  GripHorizontal,
   Home,
   Loader2,
   Search,
@@ -178,7 +177,6 @@ export function ComplaintAnalysisDialog({
   initialNoTopoResult,
   onOpenReconstructionProgram,
 }: ComplaintAnalysisDialogProps) {
-  const isMobile = useIsMobile();
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("topology");
   const [selectedLayerIds, setSelectedLayerIds] = useState<number[]>([]);
   const [layerFieldMappings, setLayerFieldMappings] = useState<Record<number, { dateField: string; addressField: string }>>({});
@@ -190,35 +188,6 @@ export function ComplaintAnalysisDialog({
   const [highlightedZoneKey, setHighlightedZoneKey] = useState<string | null>(null);
   const [layerAttributesCache, setLayerAttributesCache] = useState<Record<number, string[]>>({});
 
-  const [position, setPosition] = useState({ x: 20, y: 80 });
-  const isDragging = useRef(false);
-  const dragStart = useRef({ x: 0, y: 0 });
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    isDragging.current = true;
-    dragStart.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    };
-    e.preventDefault();
-  }, [position]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-      setPosition({
-        x: e.clientX - dragStart.current.x,
-        y: e.clientY - dragStart.current.y,
-      });
-    };
-    const handleMouseUp = () => { isDragging.current = false; };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   useEffect(() => {
     if (initialNoTopoResult && open) {
@@ -486,44 +455,24 @@ export function ComplaintAnalysisDialog({
   if (!open) return null;
 
   return (
-    <div
-      className={isMobile
-        ? "fixed inset-0 z-[9999] bg-background flex flex-col"
-        : "fixed z-50 bg-background border rounded-md shadow-lg"}
-      style={isMobile ? undefined : { left: position.x, top: position.y, width: 420, maxHeight: "calc(100vh - 100px)" }}
-      data-testid="complaint-analysis-dialog"
+    <DraggableModal
+      isOpen={open}
+      onClose={handleClose}
+      title="Анализ жалоб"
+      defaultWidth={420}
+      autoHeight
+      resizable={false}
+      headerIcon={<AlertTriangle className="h-4 w-4 text-orange-500" />}
     >
-      <div
-        className={isMobile
-          ? "flex items-center justify-between px-3 py-3 border-b bg-muted/40 shrink-0"
-          : "flex items-center justify-between px-3 py-2 border-b cursor-move select-none"}
-        onMouseDown={isMobile ? undefined : handleMouseDown}
-      >
-        <div className="flex items-center gap-2">
-          {!isMobile && <GripHorizontal className="h-4 w-4 text-muted-foreground" />}
-          <AlertTriangle className="h-4 w-4 text-orange-500" />
-          <span className="font-medium text-sm">Анализ жалоб</span>
-        </div>
-        <div className="flex items-center gap-1">
-          {result && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={handleExport}
-              disabled={exporting}
-              data-testid="button-export-complaints"
-            >
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            </Button>
-          )}
-          <Button size="icon" variant="ghost" onClick={handleClose} data-testid="button-close-complaints">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className={isMobile ? "flex-1 overflow-y-auto" : "overflow-y-auto"} style={isMobile ? undefined : { maxHeight: "calc(100vh - 200px)" }}>
+      <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
         <div className="p-3 space-y-3">
+          {result && (
+            <div className="flex justify-end">
+              <Button size="icon" variant="ghost" onClick={handleExport} disabled={exporting} data-testid="button-export-complaints">
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              </Button>
+            </div>
+          )}
           {!hasAnyResult && (
             <>
               <div className="flex gap-1" data-testid="mode-selector-complaints">
@@ -1105,7 +1054,7 @@ export function ComplaintAnalysisDialog({
           )}
         </div>
       </div>
-    </div>
+    </DraggableModal>
   );
 }
 

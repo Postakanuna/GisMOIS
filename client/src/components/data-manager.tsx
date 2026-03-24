@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useScene } from "@/contexts/scene-context";
 import { parseShapefileWithEncoding } from "@/lib/shapefile-parser";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { ExcelImportModal } from "@/components/excel-import-modal";
 import {
   X,
@@ -791,17 +791,10 @@ function SortableFolderRow({
 export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps) {
   const { toast } = useToast();
   const { currentSceneId, canEdit } = useScene();
-  const isMobile = useIsMobile();
   const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const { currentProjection, setProjection, projectionInfo } = useProjection();
   const { connect, connectZws, connectCustomZws, disconnect, status: zuluStatus, error: zuluError } = useZuluConnectionContext();
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ x: 100, y: 100 });
-  const [size, setSize] = useState({ width: 700, height: 450 });
-  const [isDraggingWindow, setIsDraggingWindow] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
   const [editingLayerId, setEditingLayerId] = useState<number | null>(null);
@@ -1048,59 +1041,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     }
   };
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (isMobile) return;
-    if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
-    setIsDraggingWindow(true);
-    dragOffset.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    };
-  }, [position, isMobile]);
-
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    if (isMobile) return;
-    e.stopPropagation();
-    setIsResizing(true);
-    dragOffset.current = {
-      x: e.clientX,
-      y: e.clientY,
-    };
-  }, [isMobile]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDraggingWindow) {
-        setPosition({
-          x: Math.max(0, e.clientX - dragOffset.current.x),
-          y: Math.max(0, e.clientY - dragOffset.current.y),
-        });
-      } else if (isResizing) {
-        const deltaX = e.clientX - dragOffset.current.x;
-        const deltaY = e.clientY - dragOffset.current.y;
-        setSize(prev => ({
-          width: Math.max(MIN_WIDTH, prev.width + deltaX),
-          height: Math.max(MIN_HEIGHT, prev.height + deltaY),
-        }));
-        dragOffset.current = { x: e.clientX, y: e.clientY };
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsDraggingWindow(false);
-      setIsResizing(false);
-    };
-
-    if (isDraggingWindow || isResizing) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isDraggingWindow, isResizing]);
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
@@ -1584,19 +1524,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       .map(fi => fi.type === "folder" ? `folder-${fi.folderId}` : `layer-${fi.layerId}`);
   }, [folders, sceneLayers]);
 
-  const containerClasses = isMobile
-    ? "fixed inset-0 bg-card flex flex-col z-50"
-    : "fixed bg-card border rounded-lg shadow-lg flex flex-col z-50";
-
-  const containerStyle = isMobile
-    ? {}
-    : {
-      left: position.x,
-      top: position.y,
-      width: size.width,
-      height: size.height,
-    };
-
   const layerRowCtxValue = useMemo<LayerRowCtx>(() => ({
     expandedLayerId,
     setExpandedLayerId,
@@ -1649,31 +1576,15 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     : null;
 
   return (
-    <div
-      ref={containerRef}
-      className={containerClasses}
-      style={containerStyle}
-      data-testid="data-manager-window"
+    <DraggableModal
+      isOpen={true}
+      onClose={onClose}
+      title="Менеджер данных"
+      headerIcon={<Database className="h-4 w-4" />}
+      defaultWidth={700}
+      defaultHeight={450}
+      resizable={true}
     >
-      <div
-        className={`flex items-center justify-between px-3 py-2 border-b bg-muted/50 ${isMobile ? "" : "cursor-move rounded-t-lg"}`}
-        onMouseDown={handleMouseDown}
-      >
-        <div className="flex items-center gap-2">
-          {!isMobile && <GripVertical className="h-4 w-4 text-muted-foreground" />}
-          <Database className="h-4 w-4" />
-          <span className="font-medium text-sm">Менеджер данных</span>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          data-no-drag
-          data-testid="button-close-data-manager"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
 
       <div className="flex-1 flex flex-col overflow-hidden" data-no-drag>
         <Tabs defaultValue="layers" className="flex-1 flex flex-col overflow-hidden">
@@ -2092,14 +2003,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         </Tabs>
       </div>
 
-      {!isMobile && (
-        <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-          onMouseDown={handleResizeMouseDown}
-          data-testid="resize-handle"
-        />
-      )}
-
       {excelParseResult && (
         <ExcelImportModal
           parseResult={excelParseResult}
@@ -2165,6 +2068,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           editLayer={editDxfLayer}
         />
       )}
-    </div>
+    </DraggableModal>
   );
 }
