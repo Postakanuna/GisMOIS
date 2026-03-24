@@ -23,12 +23,13 @@ import {
   type ReconstructionProgram, type InsertReconstructionProgram,
   type ProgramObject, type InsertProgramObject,
   type ZuluFieldLabel, type InsertZuluFieldLabel,
+  type ZuluFieldValue, type InsertZuluFieldValue,
   type AdminLayerGroup,
   editableLayers, drawnFeatures, layerSchemas,
   scenes, sceneMembers, sceneFolders, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
   appSettings, bugReports,
   sensorIntegrationConfig, sensorObjectBindings, sensorReadingsCache,
-  costUnitRates, reconstructionPrograms, programObjects, zuluFieldLabels, adminLayerGroups
+  costUnitRates, reconstructionPrograms, programObjects, zuluFieldLabels, zuluFieldValues, adminLayerGroups
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { aiProviders, type AiProvider, type InsertAiProvider, type UpdateAiProvider } from "@shared/models/chat";
@@ -200,6 +201,13 @@ export interface IStorage {
   updateZuluFieldLabel(id: number, data: Partial<InsertZuluFieldLabel>): Promise<ZuluFieldLabel | undefined>;
   deleteZuluFieldLabel(id: number): Promise<boolean>;
   seedZuluFieldLabels(entries: { fieldName: string; label: string; category?: string }[]): Promise<void>;
+
+  getZuluFieldValues(): Promise<ZuluFieldValue[]>;
+  getZuluFieldValue(id: number): Promise<ZuluFieldValue | undefined>;
+  createZuluFieldValue(data: InsertZuluFieldValue): Promise<ZuluFieldValue>;
+  updateZuluFieldValue(id: number, data: Partial<InsertZuluFieldValue>): Promise<ZuluFieldValue | undefined>;
+  deleteZuluFieldValue(id: number): Promise<boolean>;
+  seedZuluFieldValues(entries: { fieldName: string; fieldValue: string; label: string; category?: string }[]): Promise<void>;
 
   // Admin layer groups methods
   getAdminLayerGroups(): Promise<AdminLayerGroup[]>;
@@ -1421,6 +1429,46 @@ export class DatabaseStorage implements IStorage {
     for (const entry of entries) {
       await db.insert(zuluFieldLabels)
         .values({ fieldName: entry.fieldName, label: entry.label, category: entry.category ?? null })
+        .onConflictDoNothing();
+    }
+  }
+
+  async getZuluFieldValues(): Promise<ZuluFieldValue[]> {
+    return await db.select().from(zuluFieldValues).orderBy(zuluFieldValues.fieldName, zuluFieldValues.fieldValue);
+  }
+
+  async getZuluFieldValue(id: number): Promise<ZuluFieldValue | undefined> {
+    const [row] = await db.select().from(zuluFieldValues).where(eq(zuluFieldValues.id, id));
+    return row;
+  }
+
+  async createZuluFieldValue(data: InsertZuluFieldValue): Promise<ZuluFieldValue> {
+    const [row] = await db.insert(zuluFieldValues).values(data).returning();
+    return row;
+  }
+
+  async updateZuluFieldValue(id: number, data: Partial<InsertZuluFieldValue>): Promise<ZuluFieldValue | undefined> {
+    const [row] = await db.update(zuluFieldValues)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(zuluFieldValues.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteZuluFieldValue(id: number): Promise<boolean> {
+    const result = await db.delete(zuluFieldValues).where(eq(zuluFieldValues.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async seedZuluFieldValues(entries: { fieldName: string; fieldValue: string; label: string; category?: string }[]): Promise<void> {
+    for (const entry of entries) {
+      await db.insert(zuluFieldValues)
+        .values({
+          fieldName: entry.fieldName,
+          fieldValue: entry.fieldValue,
+          label: entry.label,
+          category: entry.category ?? null,
+        })
         .onConflictDoNothing();
     }
   }

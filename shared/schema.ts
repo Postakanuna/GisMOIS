@@ -823,3 +823,18 @@ export const zuluFieldLabels = pgTable("zulu_field_labels", {
 export type ZuluFieldLabel = typeof zuluFieldLabels.$inferSelect;
 export type InsertZuluFieldLabel = typeof zuluFieldLabels.$inferInsert;
 export const insertZuluFieldLabelSchema = createInsertSchema(zuluFieldLabels).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Справочник значений полей Zulu (расшифровка кодов, например ZType=1 → "Теплосеть рабочая")
+export const zuluFieldValues = pgTable("zulu_field_values", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  fieldName: text("field_name").notNull(),
+  fieldValue: text("field_value").notNull(),
+  label: text("label").notNull(),
+  category: text("category"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type ZuluFieldValue = typeof zuluFieldValues.$inferSelect;
+export type InsertZuluFieldValue = typeof zuluFieldValues.$inferInsert;
+export const insertZuluFieldValueSchema = createInsertSchema(zuluFieldValues).omit({ id: true, createdAt: true, updatedAt: true });

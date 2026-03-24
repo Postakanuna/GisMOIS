@@ -1,6 +1,6 @@
 import { X, Copy, Check, MapPin, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { getFieldLabel } from "@shared/field-labels";
+import { getFieldLabel, getFieldValueLabel } from "@shared/field-labels";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -31,10 +31,10 @@ export function FeatureInfoPanel({
     }
   };
 
-  const formatValue = (value: unknown): string => {
+  const formatValue = (key: string, value: unknown): string => {
     if (value === null || value === undefined) return "—";
     if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
+    return getFieldValueLabel(key, value);
   };
 
   const isLoading = feature.properties._loading === true;
@@ -109,7 +109,7 @@ export function FeatureInfoPanel({
                     {getFieldLabel(key)}
                   </span>
                   <span className="text-xs text-right break-all font-mono">
-                    {formatValue(value)}
+                    {formatValue(key, value)}
                   </span>
                 </div>
               ))

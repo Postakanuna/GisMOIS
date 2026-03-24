@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DraggableModal } from "@/components/ui/draggable-modal";
 import type { SelectedFeatureData } from "@/components/map-viewer";
-import { getFieldLabel } from "@shared/field-labels";
+import { getFieldLabel, getFieldValueLabel } from "@shared/field-labels";
 import { SensorTelemetryBlock } from "@/components/sensor-telemetry-block";
 import { Activity } from "lucide-react";
 
@@ -100,7 +100,7 @@ export function FeatureInfoModal({ isOpen, onClose, feature }: FeatureInfoModalP
                       <td className="px-3 py-2 text-muted-foreground align-top break-words border-b border-border/50">
                         {value === null || value === undefined
                           ? <span className="italic text-muted-foreground/60">—</span>
-                          : String(value)}
+                          : getFieldValueLabel(key, value)}
                       </td>
                     </tr>
                   ))}

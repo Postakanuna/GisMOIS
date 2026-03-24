@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UnitRatesAdminTable } from "@/components/unit-rates-admin-table";
 import { FieldLabelsAdminTable } from "@/components/field-labels-admin-table";
+import { FieldValuesAdminTable } from "@/components/field-values-admin-table";
 
 export default function AdminReferencesPage() {
   return (
@@ -20,9 +21,10 @@ export default function AdminReferencesPage() {
       </header>
       <div className="container mx-auto p-6">
         <Tabs defaultValue="unit-rates" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2" data-testid="references-tabs">
+          <TabsList className="grid w-full grid-cols-3" data-testid="references-tabs">
             <TabsTrigger value="unit-rates" data-testid="tab-unit-rates">Удельные стоимости</TabsTrigger>
-            <TabsTrigger value="field-labels" data-testid="tab-field-labels">База данных полей</TabsTrigger>
+            <TabsTrigger value="field-labels" data-testid="tab-field-labels">Названия полей</TabsTrigger>
+            <TabsTrigger value="field-values" data-testid="tab-field-values">Значения полей</TabsTrigger>
           </TabsList>
 
           <TabsContent value="unit-rates">
@@ -42,7 +44,7 @@ export default function AdminReferencesPage() {
           <TabsContent value="field-labels">
             <Card>
               <CardHeader>
-                <CardTitle>База данных полей Zulu</CardTitle>
+                <CardTitle>Названия полей Zulu</CardTitle>
                 <CardDescription>
                   Расшифровка технических наименований атрибутов SHP-файлов, экспортированных из системы Zulu.
                   Изменения вступают в силу немедленно — обновлённые названия отображаются в таблицах атрибутов и передаются во внешние системы.
@@ -50,6 +52,22 @@ export default function AdminReferencesPage() {
               </CardHeader>
               <CardContent>
                 <FieldLabelsAdminTable />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="field-values">
+            <Card>
+              <CardHeader>
+                <CardTitle>Значения полей Zulu</CardTitle>
+                <CardDescription>
+                  Расшифровка кодовых значений атрибутов Zulu GIS. Например: ZType = 1 → «Теплосеть рабочая: подача и обратка».
+                  После добавления расшифровок пользователи будут видеть текстовые описания вместо числовых кодов
+                  в таблицах атрибутов и карточках объектов.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FieldValuesAdminTable />
               </CardContent>
             </Card>
           </TabsContent>

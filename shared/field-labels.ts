@@ -31,3 +31,34 @@ export function transformPropertyKeys(
   }
   return result;
 }
+
+// ─── Field Value Decoding ──────────────────────────────────────────────────────
+// Map: fieldNameLower → (valueString → label)
+let _dynamicFieldValues: Record<string, Record<string, string>> = {};
+
+export function setDynamicFieldValues(
+  entries: { fieldName: string; fieldValue: string; label: string }[]
+): void {
+  const map: Record<string, Record<string, string>> = {};
+  for (const entry of entries) {
+    const key = entry.fieldName.toLowerCase();
+    if (!map[key]) map[key] = {};
+    map[key][String(entry.fieldValue)] = entry.label;
+  }
+  _dynamicFieldValues = map;
+}
+
+export function getFieldValueLabel(fieldName: string, rawValue: unknown): string {
+  if (rawValue === null || rawValue === undefined) return "—";
+  const str = String(rawValue);
+  const valueMap = _dynamicFieldValues[fieldName.toLowerCase()];
+  if (valueMap) {
+    const decoded = valueMap[str];
+    if (decoded !== undefined) return decoded;
+  }
+  return str;
+}
+
+export function hasFieldValueDecoding(fieldName: string): boolean {
+  return !!_dynamicFieldValues[fieldName.toLowerCase()];
+}
