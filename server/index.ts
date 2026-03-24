@@ -6,6 +6,7 @@ import { createServer } from "http";
 import { startAuditCleanup } from "./audit";
 import { startSensorPolling } from "./sensor-sync";
 import { refreshFieldLabelsCache } from "./field-labels-cache";
+import { seedFieldLabelsIfEmpty } from "./seed-field-labels";
 
 const app = express();
 const httpServer = createServer(app);
@@ -56,6 +57,9 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Seed field labels dictionary if production DB is empty
+  await seedFieldLabelsIfEmpty();
 
   // Load field labels from DB into server cache
   try {
