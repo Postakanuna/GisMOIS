@@ -1,4 +1,5 @@
 import { useState, Fragment, type ReactNode } from "react";
+import { getFieldValueLabel } from "@shared/field-labels";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler, Settings2, Check } from "lucide-react";
 import { useDxfLayers, type DxfSurveyLayer } from "@/contexts/dxf-layers-context";
@@ -802,7 +803,13 @@ export function LayerPanel({
                                       />
                                     </span>
                                     <span className={`text-[11px] truncate flex-1 ${hidden ? "line-through text-muted-foreground" : ""}`}>
-                                      {cls.label || String(cls.value)}
+                                      {(() => {
+                                        const raw = String(cls.value);
+                                        const decoded = raw ? getFieldValueLabel(sc.field, raw, (layer as any).networkType ?? undefined) : "";
+                                        return decoded && decoded !== raw
+                                          ? <>{decoded} <span className="text-muted-foreground/60">({raw})</span></>
+                                          : (cls.label || raw);
+                                      })()}
                                     </span>
                                     <button
                                       className="opacity-0 group-hover/catrow:opacity-100 transition-opacity flex-shrink-0 text-muted-foreground hover:text-foreground"
