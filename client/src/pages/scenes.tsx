@@ -40,10 +40,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Calendar, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Home, Map, Crown, UserPen, Eye } from "lucide-react";
+import { FolderOpen, FolderPlus, Folder, FolderInput, Plus, Pencil, Trash2, Shield, ChevronRight, MoreVertical, ArrowLeft, Home, Map, BookOpen, UserPen, Eye, Search } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { SceneAccessDialog } from "@/components/scene-access-dialog";
 import { BugReportButton } from "@/components/bug-report-button";
 import { UserButton } from "@/components/user-button";
@@ -74,6 +72,7 @@ export default function ScenesPage() {
   const { setCurrentSceneId } = useScene();
 
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
@@ -127,13 +126,27 @@ export default function ScenesPage() {
 
   const currentFolders = useMemo(() => {
     if (!folders) return [];
-    return folders.filter(f => f.parentId === currentFolderId);
+    return folders
+      .filter(f => f.parentId === currentFolderId)
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
   }, [folders, currentFolderId]);
 
   const currentScenes = useMemo(() => {
     if (!scenes) return [];
-    return scenes.filter(s => s.folderId === currentFolderId);
+    return scenes
+      .filter(s => s.folderId === currentFolderId)
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
   }, [scenes, currentFolderId]);
+
+  const isSearchActive = searchQuery.trim().length >= 4;
+
+  const searchedScenes = useMemo(() => {
+    if (!isSearchActive || !scenes) return [];
+    const q = searchQuery.trim().toLowerCase();
+    return scenes
+      .filter(s => s.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  }, [scenes, searchQuery, isSearchActive]);
 
   const folderSceneCounts = useMemo(() => {
     if (!scenes || !folders) return {};
@@ -338,7 +351,7 @@ export default function ScenesPage() {
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Crown className="h-3.5 w-3.5 text-amber-500 shrink-0" data-testid="icon-role-owner" />
+              <BookOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" data-testid="icon-role-owner" />
             </TooltipTrigger>
             <TooltipContent>Владелец</TooltipContent>
           </Tooltip>
@@ -429,6 +442,17 @@ export default function ScenesPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Поиск сцен (мин. 4 символа)..."
+                className="pl-9 pr-3 py-1.5 h-9 w-60 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                data-testid="input-search-scenes"
+              />
+            </div>
             <Button
               variant="outline"
               onClick={() => {
@@ -507,6 +531,116 @@ export default function ScenesPage() {
               </Card>
             ))}
           </div>
+        ) : isSearchActive ? (
+          searchedScenes.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {searchedScenes.map((scene) => (
+                <Card
+                  key={`scene-${scene.id}`}
+                  className="cursor-pointer hover-elevate transition-all"
+                  onClick={() => handleSelectScene(scene.id)}
+                  data-testid={`card-scene-search-${scene.id}`}
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <FolderOpen className="h-5 w-5 text-primary shrink-0" />
+                        <CardTitle className="text-base truncate" title={scene.name}>{scene.name}</CardTitle>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-scene-menu-search-${scene.id}`}>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {user?.role === "admin" && (
+                              <DropdownMenuItem onClick={(e) => handleAccessClick(scene, e as unknown as React.MouseEvent)} data-testid={`button-access-scene-search-${scene.id}`}>
+                                <Shield className="h-4 w-4 mr-2" />
+                                Доступ
+                              </DropdownMenuItem>
+                            )}
+                            {(scene.role === "owner" || scene.role === "editor" || user?.role === "admin") && (
+                              <DropdownMenuItem onClick={(e) => handleEditScene(scene, e as unknown as React.MouseEvent)} data-testid={`button-edit-scene-search-${scene.id}`}>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Редактировать
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger data-testid={`button-move-scene-search-${scene.id}`}>
+                                <FolderInput className="h-4 w-4 mr-2" />
+                                Переместить
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                {scene.folderId !== null && (
+                                  <DropdownMenuItem
+                                    onClick={(e) => { e.stopPropagation(); handleMoveScene(scene, null); }}
+                                    data-testid={`button-move-scene-search-${scene.id}-root`}
+                                  >
+                                    <ArrowLeft className="h-4 w-4 mr-2" />
+                                    Корневая папка
+                                  </DropdownMenuItem>
+                                )}
+                                {availableFoldersForMove
+                                  .filter(f => f.id !== scene.folderId)
+                                  .map(folder => (
+                                    <DropdownMenuItem
+                                      key={folder.id}
+                                      onClick={(e) => { e.stopPropagation(); handleMoveScene(scene, folder.id); }}
+                                      data-testid={`button-move-scene-search-${scene.id}-to-${folder.id}`}
+                                    >
+                                      <Folder className="h-4 w-4 mr-2 text-amber-500" />
+                                      {folder.name}
+                                    </DropdownMenuItem>
+                                  ))}
+                                {availableFoldersForMove.filter(f => f.id !== scene.folderId).length === 0 && scene.folderId === null && (
+                                  <DropdownMenuItem disabled>
+                                    Нет папок
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            {(scene.role === "owner" || user?.role === "admin") && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={(e) => handleDeleteClick(scene, e as unknown as React.MouseEvent)}
+                                  data-testid={`button-delete-scene-search-${scene.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Удалить
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                    {scene.description && (
+                      <CardDescription className="line-clamp-2">
+                        {scene.description}
+                      </CardDescription>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {getRoleIcon(scene.role)}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="max-w-md mx-auto">
+              <CardContent className="pt-6 text-center">
+                <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="font-medium mb-2">Ничего не найдено</h3>
+                <p className="text-sm text-muted-foreground">Нет сцен, совпадающих с запросом «{searchQuery.trim()}»</p>
+              </CardContent>
+            </Card>
+          )
         ) : (currentFolders.length > 0 || currentScenes.length > 0) ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {currentFolders.map((folder) => (
@@ -652,13 +786,7 @@ export default function ScenesPage() {
                   )}
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      <span>
-                        {format(new Date(scene.updatedAt), "d MMM yyyy", { locale: ru })}
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     {getRoleIcon(scene.role)}
                   </div>
                 </CardContent>
