@@ -1020,9 +1020,28 @@ export function LayerPanel({
 
         <AccordionItem value="base" className="border-none min-w-0">
           <AccordionTrigger className="py-1 hover:no-underline min-w-0" data-testid="accordion-base-layers">
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1 pr-1">
               <Map className="h-3 w-3 text-muted-foreground shrink-0" />
               <span className="text-xs font-medium truncate">Базовые слои</span>
+              <div
+                className="flex items-center gap-1 ml-auto"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                data-testid="base-layer-opacity-row"
+              >
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={[baseLayerOpacity]}
+                  onValueChange={([v]) => setBaseLayerOpacity(v)}
+                  className="w-16 [&>span:first-child]:h-1 [&>span:first-child]:bg-muted-foreground/20 [&>span:first-child>span]:bg-muted-foreground/40 [&_[role=slider]]:h-3 [&_[role=slider]]:w-3 [&_[role=slider]]:border-muted-foreground/40 [&_[role=slider]]:shadow-none"
+                  data-testid="base-layer-opacity-slider"
+                />
+                <span className="text-[9px] text-muted-foreground/60 w-6 text-right tabular-nums">
+                  {Math.round(baseLayerOpacity * 100)}%
+                </span>
+              </div>
             </div>
           </AccordionTrigger>
           <AccordionContent className="space-y-1 pt-1 min-w-0">
@@ -1048,21 +1067,6 @@ export function LayerPanel({
                 )}
               </div>
             ))}
-            <div className="flex items-center gap-2 pt-1 px-1" data-testid="base-layer-opacity-row">
-              <span className="text-[10px] text-muted-foreground shrink-0 w-16">Прозрачность</span>
-              <Slider
-                min={0}
-                max={1}
-                step={0.01}
-                value={[baseLayerOpacity]}
-                onValueChange={([v]) => setBaseLayerOpacity(v)}
-                className="flex-1"
-                data-testid="base-layer-opacity-slider"
-              />
-              <span className="text-[10px] text-muted-foreground shrink-0 w-7 text-right">
-                {Math.round(baseLayerOpacity * 100)}%
-              </span>
-            </div>
           </AccordionContent>
         </AccordionItem>
       </Accordion>
