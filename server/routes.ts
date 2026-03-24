@@ -4244,7 +4244,7 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const { layerIds, minX, minY, maxX, maxY, zoom, limit } = req.query;
+      const { layerIds, minX, minY, maxX, maxY, zoom, limit, forceRefresh } = req.query;
       if (!layerIds || !minX || !minY || !maxX || !maxY) {
         return res.status(400).json({ message: "Missing required parameters: layerIds, minX, minY, maxX, maxY" });
       }
@@ -4256,6 +4256,7 @@ export async function registerRoutes(
 
       const featureLimit = limit ? parseInt(limit as string) : 10000;
       const zoomLevel = zoom ? parseInt(zoom as string) : 10;
+      const isForceRefresh = forceRefresh === "1";
 
       const roundedBbox = {
         minX: Math.floor(parseFloat(minX as string) * 100) / 100,
@@ -4267,15 +4268,17 @@ export async function registerRoutes(
       const simplifyGroup = zoomLevel >= 14 ? 14 : zoomLevel >= 12 ? 12 : zoomLevel >= 10 ? 10 : zoomLevel >= 9 ? 9 : zoomLevel >= 8 ? 8 : zoomLevel >= 7 ? 7 : zoomLevel >= 6 ? 6 : zoomLevel >= 5 ? 5 : zoomLevel >= 4 ? 4 : 0;
       const cacheKey = `${ids.sort().join(",")}_${roundedBbox.minX}_${roundedBbox.minY}_${roundedBbox.maxX}_${roundedBbox.maxY}_${simplifyGroup}_${featureLimit}`;
 
-      const cached = viewportCacheGet(cacheKey);
-      if (cached) {
-        const clientEtag = req.headers["if-none-match"];
-        if (clientEtag === `"${cached.etag}"`) {
-          return res.status(304).end();
+      if (!isForceRefresh) {
+        const cached = viewportCacheGet(cacheKey);
+        if (cached) {
+          const clientEtag = req.headers["if-none-match"];
+          if (clientEtag === `"${cached.etag}"`) {
+            return res.status(304).end();
+          }
+          res.set("ETag", `"${cached.etag}"`);
+          res.set("Cache-Control", "private, max-age=15");
+          return res.json(cached.data);
         }
-        res.set("ETag", `"${cached.etag}"`);
-        res.set("Cache-Control", "private, max-age=15");
-        return res.json(cached.data);
       }
 
       const tolerance = getSimplifyTolerance(zoomLevel);

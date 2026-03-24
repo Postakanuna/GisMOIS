@@ -1361,6 +1361,7 @@ export function MapViewer({
   const lastFetchKeyRef = useRef<string | null>(null);
   const fetchIdRef = useRef(0);
   const [featureVersion, setFeatureVersion] = useState(0);
+  const forceRefreshRef = useRef(false);
 
   const buildResultFromCache = useCallback((layerIds: number[]) => {
     const result: Record<number, DrawnFeature[]> = {};
@@ -1400,6 +1401,7 @@ export function MapViewer({
     const handler = () => {
       featureCacheRef.current.clear();
       lastFetchKeyRef.current = null;
+      lastFetchZoomRef.current = null;
       cancelPrefetch();
       editableLayerRef.current?.getSource()?.clear();
       setFeatureVersion(v => v + 1);
@@ -1499,6 +1501,11 @@ export function MapViewer({
 
     setIsFetchingFeatures(true);
 
+    const isForceRefresh = forceRefreshRef.current;
+    if (isForceRefresh) {
+      forceRefreshRef.current = false;
+    }
+
     const params = new URLSearchParams({
       layerIds: layerIds.join(","),
       minX: vp.minX.toString(),
@@ -1508,9 +1515,14 @@ export function MapViewer({
       zoom: currentZoom.toString(),
     });
 
+    if (isForceRefresh) {
+      params.set("forceRefresh", "1");
+    }
+
     fetch(`/api/editable-layers/viewport-batch?${params.toString()}`, {
       credentials: "include",
       signal: controller.signal,
+      cache: isForceRefresh ? "no-store" : "default",
     })
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3386,6 +3398,7 @@ export function MapViewer({
       await fetch("/api/editable-layers/clear-viewport-cache", { method: "POST" });
     } catch {
     }
+    forceRefreshRef.current = true;
     window.dispatchEvent(new CustomEvent("viewport-features-invalidate"));
     setTimeout(() => setIsReloading(false), 1500);
   }, []);
