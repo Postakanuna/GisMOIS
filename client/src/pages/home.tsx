@@ -613,6 +613,24 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <SidebarTrigger className="hidden md:flex" data-testid="button-sidebar-toggle" />
 
+              {currentScene && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLocation("/gis/scenes")}
+                      className="gap-1 hidden md:flex whitespace-nowrap"
+                      data-testid="button-current-scene"
+                    >
+                      <FolderOpen className="h-4 w-4 shrink-0" />
+                      <span>{currentScene.name}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Сменить сцену</TooltipContent>
+                </Tooltip>
+              )}
+
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                 <SheetTrigger asChild>
                   <Button
@@ -671,23 +689,6 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
-              {currentScene && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setLocation("/gis/scenes")}
-                      className="gap-1 max-w-[150px]"
-                      data-testid="button-current-scene"
-                    >
-                      <FolderOpen className="h-4 w-4 shrink-0" />
-                      <span className="truncate hidden sm:inline">{currentScene.name}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Сменить сцену</TooltipContent>
-                </Tooltip>
-              )}
               {drawing.editableLayers.length >= 2 && (
                 <Tooltip>
                   <TooltipTrigger asChild>
