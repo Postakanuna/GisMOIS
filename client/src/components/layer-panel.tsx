@@ -503,7 +503,7 @@ export function LayerPanel({
 
   const layerContent = (
     <Fragment>
-      <Accordion type="multiple" defaultValue={["base", "external", "uploaded", "editable", "survey"]} className="space-y-1 min-w-0">
+      <Accordion type="multiple" defaultValue={["uploaded", "editable", "survey"]} className="space-y-1 min-w-0">
         {/* Survey layers (DXF underlays) */}
         {surveyLayers.length > 0 && (
           <AccordionItem value="survey" className="border-none min-w-0">
