@@ -548,6 +548,7 @@ export default function ScenesPage() {
                         <CardTitle className="text-base truncate" title={scene.name}>{scene.name}</CardTitle>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
+                        {getRoleIcon(scene.role)}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                             <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-scene-menu-search-${scene.id}`}>
@@ -624,11 +625,6 @@ export default function ScenesPage() {
                       </CardDescription>
                     )}
                   </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      {getRoleIcon(scene.role)}
-                    </div>
-                  </CardContent>
                 </Card>
               ))}
             </div>
@@ -709,6 +705,7 @@ export default function ScenesPage() {
                       <CardTitle className="text-base truncate" title={scene.name}>{scene.name}</CardTitle>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      {getRoleIcon(scene.role)}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-scene-menu-${scene.id}`}>
@@ -785,11 +782,6 @@ export default function ScenesPage() {
                     </CardDescription>
                   )}
                 </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {getRoleIcon(scene.role)}
-                  </div>
-                </CardContent>
               </Card>
             ))}
           </div>
