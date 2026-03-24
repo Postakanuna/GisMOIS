@@ -516,17 +516,6 @@ export function ComplaintAnalysisDialog({
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             </Button>
           )}
-          {onOpenReconstructionProgram && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={onOpenReconstructionProgram}
-              title="Программа реконструкции"
-              data-testid="button-open-reconstruction-header"
-            >
-              <Wrench className="h-4 w-4" />
-            </Button>
-          )}
           <Button size="icon" variant="ghost" onClick={handleClose} data-testid="button-close-complaints">
             <X className="h-4 w-4" />
           </Button>
