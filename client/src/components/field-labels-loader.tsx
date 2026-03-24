@@ -15,7 +15,7 @@ export function FieldLabelsLoader() {
 
     fetch("/api/field-values")
       .then((r) => r.ok ? r.json() : null)
-      .then((data: { fieldName: string; fieldValue: string; label: string }[] | null) => {
+      .then((data: { fieldName: string; fieldValue: string; label: string; networkType?: string | null }[] | null) => {
         if (!data) return;
         setDynamicFieldValues(data);
       })

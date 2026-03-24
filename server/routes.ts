@@ -9450,7 +9450,7 @@ export async function registerRoutes(
 
   app.post("/api/field-values", isAuthenticated, isAdmin, async (req: AuthRequest, res: Response) => {
     try {
-      const { fieldName, fieldValue, label, category } = req.body;
+      const { fieldName, fieldValue, label, networkType, category } = req.body;
       if (!fieldName || fieldValue === undefined || fieldValue === null || !label) {
         return res.status(400).json({ message: "Поля fieldName, fieldValue и label обязательны" });
       }
@@ -9458,6 +9458,7 @@ export async function registerRoutes(
         fieldName,
         fieldValue: String(fieldValue),
         label,
+        networkType: networkType ?? null,
         category: category ?? null,
       });
       res.status(201).json(created);
@@ -9470,11 +9471,15 @@ export async function registerRoutes(
     try {
       const id = parseIntParam(req.params.id, res);
       if (id === null) return;
-      const { label, category } = req.body;
+      const { label, networkType, category } = req.body;
       if (!label) {
         return res.status(400).json({ message: "Поле label обязательно" });
       }
-      const updated = await storage.updateZuluFieldValue(id, { label, category: category ?? null });
+      const updated = await storage.updateZuluFieldValue(id, {
+        label,
+        networkType: networkType ?? null,
+        category: category ?? null,
+      });
       if (!updated) return res.status(404).json({ message: "Запись не найдена" });
       res.json(updated);
     } catch (err: any) {

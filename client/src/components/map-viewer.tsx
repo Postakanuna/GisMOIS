@@ -52,6 +52,7 @@ export interface SelectedFeatureData {
   layerName: string;
   featureIndex: number;
   properties: Record<string, unknown>;
+  networkType?: string | null;
 }
 
 // Candidate for feature selection when multiple features overlap
@@ -2105,6 +2106,7 @@ export function MapViewer({
               id: String(dbFeatureId),
               layerName: layerConfig?.name || foundLayerId || "Объект",
               properties: { _loading: true },
+              networkType: (layerConfig as any)?.networkType ?? null,
               geometry: undefined,
             });
             fetch(`/api/features/${dbFeatureId}${sourceParam}`)
@@ -2144,6 +2146,7 @@ export function MapViewer({
               id: String(featureId),
               layerName: layerConfig?.name || foundLayerId || "Объект",
               properties,
+              networkType: (layerConfig as any)?.networkType ?? null,
               geometry: undefined,
             });
           }
@@ -2694,6 +2697,7 @@ export function MapViewer({
         layerName: layer?.name || `Layer ${layerId}`,
         featureIndex,
         properties: feature.getProperties() || {},
+        networkType: layer?.networkType ?? null,
       };
     });
     

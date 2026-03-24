@@ -1460,13 +1460,14 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async seedZuluFieldValues(entries: { fieldName: string; fieldValue: string; label: string; category?: string }[]): Promise<void> {
+  async seedZuluFieldValues(entries: { fieldName: string; fieldValue: string; label: string; networkType?: string | null; category?: string }[]): Promise<void> {
     for (const entry of entries) {
       await db.insert(zuluFieldValues)
         .values({
           fieldName: entry.fieldName,
           fieldValue: entry.fieldValue,
           label: entry.label,
+          networkType: entry.networkType ?? null,
           category: entry.category ?? null,
         })
         .onConflictDoNothing();

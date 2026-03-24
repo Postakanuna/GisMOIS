@@ -24,6 +24,8 @@ export function FeatureInfoModal({ isOpen, onClose, feature }: FeatureInfoModalP
       )
     : [];
 
+  const networkType = (feature as any)?.networkType ?? undefined;
+
   const sensorId = feature?.properties?.sensor_id;
   const hasSensorId = sensorId != null && sensorId !== "";
 
@@ -100,7 +102,7 @@ export function FeatureInfoModal({ isOpen, onClose, feature }: FeatureInfoModalP
                       <td className="px-3 py-2 text-muted-foreground align-top break-words border-b border-border/50">
                         {value === null || value === undefined
                           ? <span className="italic text-muted-foreground/60">—</span>
-                          : getFieldValueLabel(key, value)}
+                          : getFieldValueLabel(key, value, networkType)}
                       </td>
                     </tr>
                   ))}

@@ -31,10 +31,12 @@ export function FeatureInfoPanel({
     }
   };
 
+  const networkType = feature.networkType ?? undefined;
+
   const formatValue = (key: string, value: unknown): string => {
     if (value === null || value === undefined) return "—";
     if (typeof value === "object") return JSON.stringify(value);
-    return getFieldValueLabel(key, value);
+    return getFieldValueLabel(key, value, networkType);
   };
 
   const isLoading = feature.properties._loading === true;

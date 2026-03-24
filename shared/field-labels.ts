@@ -33,32 +33,52 @@ export function transformPropertyKeys(
 }
 
 // ─── Field Value Decoding ──────────────────────────────────────────────────────
-// Map: fieldNameLower → (valueString → label)
-let _dynamicFieldValues: Record<string, Record<string, string>> = {};
+// Structure: fieldNameLower → valueString → networkType (or "__any__") → label
+type ValueMap = Record<string, Record<string, string>>;
+
+// _fieldValueMap[fieldName][fieldValue][networkType | "__any__"] = label
+let _fieldValueMap: Record<string, ValueMap> = {};
 
 export function setDynamicFieldValues(
-  entries: { fieldName: string; fieldValue: string; label: string }[]
+  entries: { fieldName: string; fieldValue: string; label: string; networkType?: string | null }[]
 ): void {
-  const map: Record<string, Record<string, string>> = {};
+  const map: Record<string, ValueMap> = {};
   for (const entry of entries) {
-    const key = entry.fieldName.toLowerCase();
-    if (!map[key]) map[key] = {};
-    map[key][String(entry.fieldValue)] = entry.label;
+    const field = entry.fieldName.toLowerCase();
+    const val = String(entry.fieldValue);
+    const nt = entry.networkType ?? "__any__";
+    if (!map[field]) map[field] = {};
+    if (!map[field][val]) map[field][val] = {};
+    map[field][val][nt] = entry.label;
   }
-  _dynamicFieldValues = map;
+  _fieldValueMap = map;
 }
 
-export function getFieldValueLabel(fieldName: string, rawValue: unknown): string {
+/**
+ * Returns human-readable label for a field value.
+ * Falls back: specific networkType → universal ("__any__") → raw string
+ */
+export function getFieldValueLabel(
+  fieldName: string,
+  rawValue: unknown,
+  networkType?: string | null
+): string {
   if (rawValue === null || rawValue === undefined) return "—";
   const str = String(rawValue);
-  const valueMap = _dynamicFieldValues[fieldName.toLowerCase()];
-  if (valueMap) {
-    const decoded = valueMap[str];
-    if (decoded !== undefined) return decoded;
+  const field = fieldName.toLowerCase();
+  const valueMap = _fieldValueMap[field];
+  if (valueMap && valueMap[str]) {
+    const byType = valueMap[str];
+    if (networkType && byType[networkType] !== undefined) {
+      return byType[networkType];
+    }
+    if (byType["__any__"] !== undefined) {
+      return byType["__any__"];
+    }
   }
   return str;
 }
 
 export function hasFieldValueDecoding(fieldName: string): boolean {
-  return !!_dynamicFieldValues[fieldName.toLowerCase()];
+  return !!_fieldValueMap[fieldName.toLowerCase()];
 }

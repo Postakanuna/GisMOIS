@@ -41,6 +41,7 @@ export const featureInfoSchema = z.object({
   id: z.string(),
   layerName: z.string(),
   properties: z.record(z.string(), z.unknown()),
+  networkType: z.string().nullable().optional(),
   geometry: z.object({
     type: z.string(),
     coordinates: z.unknown(),
@@ -830,6 +831,7 @@ export const zuluFieldValues = pgTable("zulu_field_values", {
   fieldName: text("field_name").notNull(),
   fieldValue: text("field_value").notNull(),
   label: text("label").notNull(),
+  networkType: text("network_type"),
   category: text("category"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
