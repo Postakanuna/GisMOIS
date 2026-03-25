@@ -28,7 +28,7 @@ export const layerConfigSchema = z.object({
   name: z.string(),
   visible: z.boolean().default(true),
   opacity: z.number().min(0).max(1).default(1),
-  type: z.enum(["wms", "wfs", "base"]),
+  type: z.enum(["wms", "wfs", "base", "zws"]),
   url: z.string().optional(),
   sublayers: z.array(sublayerFilterSchema).optional(),
   activeFilters: z.record(z.string(), z.array(z.string())).optional(),

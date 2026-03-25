@@ -132,7 +132,8 @@ export function useZuluConnection(): UseZuluConnectionReturn {
             name: layer.title || layer.name,
             visible: true,
             opacity: 1,
-            type: "wms" as const,
+            type: "zws" as const,
+            url: zwsConnection.baseUrl,
           })),
         ];
       });
@@ -186,7 +187,8 @@ export function useZuluConnection(): UseZuluConnectionReturn {
             name: layer.title || layer.name,
             visible: true,
             opacity: 1,
-            type: "wms" as const,
+            type: "zws" as const,
+            url: config.baseUrl,
           })),
         ];
       });
@@ -238,7 +240,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
   const getWmsUrl = useCallback(() => {
     if (!connection) return null;
     if (connection.useZws) {
-      return "https://is.arki.mosreg.ru/zws";
+      return connection.baseUrl || "https://is.arki.mosreg.ru/zws";
     }
     return `http://${connection.host}:${connection.port}/ZuluServer/wms`;
   }, [connection]);

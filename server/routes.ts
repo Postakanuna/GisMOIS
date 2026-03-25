@@ -260,7 +260,7 @@ const screenshotUpload = multer({
 
 const ZULU_USERNAME = process.env.ZULU_USERNAME || "";
 const ZULU_PASSWORD = process.env.ZULU_PASSWORD || "";
-const ZWS_BASE_URL = "https://is.arki.mosreg.ru/zws";
+const DEFAULT_ZWS_BASE_URL = "https://is.arki.mosreg.ru/zws";
 
 function getFeatureBounds(coordinates: any, geometryType: string): { minX: number; minY: number; maxX: number; maxY: number } | null {
   if (!coordinates) return null;
@@ -311,6 +311,94 @@ function getBasicAuthHeader(): string {
   const credentials = Buffer.from(`${ZULU_USERNAME}:${ZULU_PASSWORD}`).toString("base64");
   return `Basic ${credentials}`;
 }
+
+// ============================================================
+// ZWS Helper Functions
+// ============================================================
+
+function xmlEscape(str: string): string {
+  return String(str).replace(/[<>&"']/g, (c: string) =>
+    (({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" } as Record<string, string>)[c] || c)
+  );
+}
+
+function zwsXmlWrap(innerXml: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<zulu-server service="zws" version="1.0.0">\n  <Command>\n${innerXml}\n  </Command>\n</zulu-server>`;
+}
+
+async function zwsPost(
+  baseUrl: string,
+  command: string,
+  xmlBody: string,
+  timeoutMs = 30000
+): Promise<{ text: string; ok: boolean; status: number }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${baseUrl}/${command}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/xml",
+        Authorization: getBasicAuthHeader(),
+      },
+      body: xmlBody,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const text = await response.text();
+    return { text, ok: response.ok, status: response.status };
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") {
+      const e: any = new Error("ZWS request timeout");
+      e.isTimeout = true;
+      throw e;
+    }
+    throw err;
+  }
+}
+
+function parseZwsRetVal(xml: string): number {
+  const m = xml.match(/<RetVal>(-?\d+)<\/RetVal>/);
+  return m ? parseInt(m[1], 10) : -999;
+}
+
+function parseZwsLayerList(xml: string): Array<{ name: string; title: string }> {
+  const layers: Array<{ name: string; title: string }> = [];
+  // Try <Name>…</Name> … <Title>…</Title>
+  const re1 = /<Layer[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>[\s\S]*?<Title>([^<]*)<\/Title>[\s\S]*?<\/Layer>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re1.exec(xml)) !== null) {
+    layers.push({ name: m[1].trim(), title: (m[2] || m[1]).trim() });
+  }
+  if (layers.length === 0) {
+    // Try reversed order: <Title> before <Name>
+    const re2 = /<Layer[^>]*>[\s\S]*?<Title>([^<]*)<\/Title>[\s\S]*?<Name>([^<]+)<\/Name>[\s\S]*?<\/Layer>/gi;
+    while ((m = re2.exec(xml)) !== null) {
+      layers.push({ name: m[2].trim(), title: (m[1] || m[2]).trim() });
+    }
+  }
+  if (layers.length === 0) {
+    // Minimal: just Name
+    const re3 = /<Layer[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>[\s\S]*?<\/Layer>/gi;
+    while ((m = re3.exec(xml)) !== null) {
+      layers.push({ name: m[1].trim(), title: m[1].trim() });
+    }
+  }
+  return layers;
+}
+
+function parseZwsBaseInfo(xml: string): { fields: Array<{ name: string; userName: string; type: string }> } {
+  const fields: Array<{ name: string; userName: string; type: string }> = [];
+  const re = /<Field>[\s\S]*?<Name>([^<]+)<\/Name>[\s\S]*?<UserName>([^<]*)<\/UserName>[\s\S]*?<Type>([^<]+)<\/Type>[\s\S]*?<\/Field>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    fields.push({ name: m[1].trim(), userName: m[2].trim(), type: m[3].trim() });
+  }
+  return { fields };
+}
+
+// ============================================================
 
 async function migrateUploadsTable() {
   try {
@@ -381,19 +469,21 @@ export async function registerRoutes(
 
   app.post("/api/zulu/zws/layers", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
-      const layers = [
-        { name: "ZR_VS_MO", title: "Водоснабжение" },
-        { name: "ZR_VO_MO", title: "Водоотведение" },
-        { name: "ZR_TS_MO", title: "Теплоснабжение" },
-      ];
-
-      return res.json({
-        layers,
-        version: "1.0.0",
-        title: "ИС АРКИ Мособлгаз",
-        connected: true,
-      });
+      const xml = zwsXmlWrap("    <GetLayerList/>");
+      const { text, ok, status } = await zwsPost(DEFAULT_ZWS_BASE_URL, "GetLayerList", xml, 15000);
+      if (!ok) {
+        console.error("ZWS GetLayerList error:", text.slice(0, 300));
+        return res.status(status).json({ message: "ZWS GetLayerList failed", details: text.slice(0, 500) });
+      }
+      const retVal = parseZwsRetVal(text);
+      if (retVal < 0) {
+        console.error("ZWS GetLayerList retVal:", retVal, text.slice(0, 300));
+        return res.status(502).json({ message: `ZWS error: RetVal=${retVal}`, raw: text.slice(0, 500) });
+      }
+      const layers = parseZwsLayerList(text);
+      return res.json({ layers, version: "1.0.0", connected: true });
     } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "ZWS request timeout" });
       console.error("ZWS layers error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
@@ -401,109 +491,72 @@ export async function registerRoutes(
 
   app.post("/api/zulu/zws/custom/layers", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { baseUrl, layerNames } = req.body;
+      const { baseUrl } = req.body;
+      if (!baseUrl) return res.status(400).json({ message: "URL сервера обязателен" });
 
-      if (!baseUrl) {
-        return res.status(400).json({ message: "URL сервера обязателен" });
+      const xml = zwsXmlWrap("    <GetLayerList/>");
+      const { text, ok, status } = await zwsPost(baseUrl, "GetLayerList", xml, 15000);
+      if (!ok) {
+        console.error("Custom ZWS GetLayerList error:", text.slice(0, 300));
+        return res.status(status).json({ message: "ZWS GetLayerList failed", details: text.slice(0, 500) });
       }
-
-      if (!layerNames) {
-        return res.status(400).json({ message: "Укажите хотя бы один слой" });
+      const retVal = parseZwsRetVal(text);
+      if (retVal < 0) {
+        return res.status(502).json({ message: `ZWS error: RetVal=${retVal}`, raw: text.slice(0, 500) });
       }
-
-      const layerList = layerNames.split(",").map((name: string) => name.trim()).filter(Boolean);
-
-      if (layerList.length === 0) {
-        return res.status(400).json({ message: "Укажите хотя бы один слой" });
-      }
-
-      const layers = layerList.map((name: string) => ({
-        name,
-        title: name,
-      }));
-
-      return res.json({
-        layers,
-        version: "1.0.0",
-        title: "Пользовательский ZWS сервер",
-        baseUrl,
-        connected: true,
-      });
+      const layers = parseZwsLayerList(text);
+      return res.json({ layers, version: "1.0.0", baseUrl, connected: true });
     } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "ZWS request timeout" });
       console.error("Custom ZWS layers error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
 
-  const LAYER_QUERIES: Record<string, string> = {
-    "ZR_VS_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, Geometry.AsText()",
-    "ZR_VO_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, Geometry.AsText()",
-    "ZR_TS_MO": "SELECT name_ist, P_ust, P_podk, P_svob, name_rso, muniz_obr, modename, Адрес, Geometry.AsText()",
-  };
-
   app.post("/api/zulu/zws/query", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layer, query, crs } = req.body;
+      const { layer, query, crs, baseUrl, bbox } = req.body;
+      if (!layer) return res.status(400).json({ message: "Layer is required" });
 
-      if (!layer) {
-        return res.status(400).json({ message: "Layer is required" });
-      }
-
-      const sqlQuery = query || LAYER_QUERIES[layer] || "SELECT *, Geometry.AsText()";
+      const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
       const projection = crs || "EPSG:4326";
 
-      const xmlBody = `<?xml version="1.0" encoding="UTF-8"?>
-<zulu-server service="zws" version="1.0.0">
-  <Command>
-    <LayerExecSql>
-      <Layer>LAYERS:${layer.replace(/[<>&"']/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] || c))}</Layer>
-      <Query>${sqlQuery.replace(/[<>&"']/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] || c))}</Query>
-      <CRS>${projection.replace(/[<>&"']/g, (c: string) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] || c))}</CRS>
-    </LayerExecSql>
-  </Command>
-</zulu-server>`;
+      let command: string;
+      let innerXml: string;
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-      const response = await fetch(`${ZWS_BASE_URL}/LayerExecSQL`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/xml",
-          "Authorization": getBasicAuthHeader(),
-        },
-        body: xmlBody,
-        signal: controller.signal,
-        // @ts-ignore - undici dispatcher option for connection timeout
-        dispatcher: new (await import("undici")).Agent({
-          connectTimeout: 60000,
-          headersTimeout: 60000,
-          bodyTimeout: 60000,
-        }),
-      });
-
-      clearTimeout(timeoutId);
-
-      const responseText = await response.text();
-
-      if (!response.ok) {
-        console.error("ZWS query error:", responseText);
-        return res.status(response.status).json({
-          message: `ZWS query failed: ${response.statusText}`,
-          details: responseText,
-        });
+      if (bbox && bbox.minx !== undefined && bbox.miny !== undefined && bbox.maxx !== undefined && bbox.maxy !== undefined) {
+        // Spatial filtering via LayerIntersectByBox
+        command = "LayerIntersectByBox";
+        const bboxCrs = bbox.crs || projection;
+        innerXml = `    <LayerIntersectByBox>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <CRS>${xmlEscape(bboxCrs)}</CRS>
+      <BoundingBox CRS="${xmlEscape(bboxCrs)}" minx="${bbox.minx}" miny="${bbox.miny}" maxx="${bbox.maxx}" maxy="${bbox.maxy}"/>
+      <Geometry>Yes</Geometry>
+      <Attr>Yes</Attr>
+    </LayerIntersectByBox>`;
+      } else {
+        // Full attribute query via LayerExecSQL
+        command = "LayerExecSQL";
+        const sqlQuery = query || "SELECT *, Geometry.AsText()";
+        innerXml = `    <LayerExecSql>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <Query>${xmlEscape(sqlQuery)}</Query>
+      <CRS>${xmlEscape(projection)}</CRS>
+    </LayerExecSql>`;
       }
 
-      return res.json({ 
-        raw: responseText,
-        layer,
-        query: sqlQuery,
-        success: true,
-      });
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, command, xml, 60000);
+
+      if (!ok) {
+        console.error("ZWS query error:", text.slice(0, 300));
+        return res.status(status).json({ message: "ZWS query failed", details: text.slice(0, 500) });
+      }
+
+      return res.json({ raw: text, layer, command, success: true });
     } catch (error: any) {
-      if (error.name === "AbortError") {
-        return res.status(504).json({ message: "Query timeout" });
-      }
+      if (error.isTimeout) return res.status(504).json({ message: "Query timeout" });
       console.error("ZWS query error:", error);
       return res.status(502).json({ message: "Failed to execute ZWS query" });
     }
@@ -512,19 +565,10 @@ export async function registerRoutes(
   app.get("/api/zulu/zws/status", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
       const hasCredentials = ZULU_USERNAME && ZULU_PASSWORD;
-      
       if (!hasCredentials) {
-        return res.json({
-          configured: false,
-          message: "ZWS credentials not configured",
-        });
+        return res.json({ configured: false, message: "ZWS credentials not configured" });
       }
-
-      return res.json({
-        configured: true,
-        baseUrl: ZWS_BASE_URL,
-        username: ZULU_USERNAME,
-      });
+      return res.json({ configured: true, baseUrl: DEFAULT_ZWS_BASE_URL, username: ZULU_USERNAME });
     } catch (error) {
       console.error("ZWS status error:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -534,55 +578,38 @@ export async function registerRoutes(
   app.get("/api/zulu/zws/tile/:z/:x/:y", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { z, x, y } = req.params;
-      const { layer } = req.query;
+      const { layer, baseUrl } = req.query as { layer?: string; baseUrl?: string };
 
       if (!layer) {
         return res.status(400).json({ message: "Layer parameter is required" });
       }
 
-      const xmlBody = `<?xml version="1.0" encoding="UTF-8"?>
-<zulu-server service="zws" version="1.0.0">
-  <Command>
-    <GetLayerTile>
+      const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const innerXml = `    <GetLayerTile>
       <X>${x}</X>
       <Y>${y}</Y>
       <Z>${z}</Z>
-      <Layer>${layer}</Layer>
-    </GetLayerTile>
-  </Command>
-</zulu-server>`;
+      <Layer>${xmlEscape(layer)}</Layer>
+    </GetLayerTile>`;
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "GetLayerTile", xml, 30000);
 
-      const response = await fetch(`${ZWS_BASE_URL}/GetLayerTile`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/xml",
-          "Authorization": getBasicAuthHeader(),
-        },
-        body: xmlBody,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("ZWS tile error:", response.status, errorText.substring(0, 200));
-        return res.status(response.status).json({
-          message: `ZWS tile error: ${response.statusText}`,
-        });
+      if (!ok) {
+        console.error("ZWS tile error:", status, text.substring(0, 200));
+        return res.status(status).json({ message: `ZWS tile error: ${status}` });
       }
 
-      const contentType = response.headers.get("content-type") || "image/png";
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Cache-Control", "max-age=3600");
+      // If the response is XML (error), return JSON error
+      if (text.trimStart().startsWith("<?xml") || text.trimStart().startsWith("<")) {
+        return res.status(502).json({ message: "ZWS returned XML instead of image", raw: text.slice(0, 300) });
+      }
 
-      const buffer = await response.arrayBuffer();
-      return res.send(Buffer.from(buffer));
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "max-age=3600");
+      return res.send(Buffer.from(text, "binary"));
     } catch (error: any) {
-      if (error.name === "AbortError") {
+      if (error.isTimeout) {
         return res.status(504).json({ message: "ZWS tile request timeout" });
       }
       console.error("ZWS tile error:", error);
@@ -590,6 +617,263 @@ export async function registerRoutes(
     }
   });
   
+  // ---- ZWS: Layer schema (GetLayerBaseInfo) ----
+  app.get("/api/zulu/zws/layer-info", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layer, baseUrl } = req.query as { layer?: string; baseUrl?: string };
+      if (!layer) return res.status(400).json({ message: "Layer is required" });
+
+      const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const innerXml = `    <GetLayerBaseInfo>\n      <Layer>${xmlEscape(layer)}</Layer>\n    </GetLayerBaseInfo>`;
+      const xml = zwsXmlWrap(innerXml);
+
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "GetLayerBaseInfo", xml, 15000);
+      if (!ok) {
+        return res.status(status).json({ message: "ZWS GetLayerBaseInfo failed", raw: text.slice(0, 500) });
+      }
+      const info = parseZwsBaseInfo(text);
+      return res.json({ ...info, success: true });
+    } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "Request timeout" });
+      console.error("ZWS layer info error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ---- ZWS: Spatial features query (LayerIntersectByBox) ----
+  app.post("/api/zulu/zws/features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layer, bbox, crs, baseUrl } = req.body;
+      if (!layer) return res.status(400).json({ message: "Layer is required" });
+      if (!bbox || bbox.minx === undefined || bbox.miny === undefined || bbox.maxx === undefined || bbox.maxy === undefined) {
+        return res.status(400).json({ message: "bbox with minx/miny/maxx/maxy is required" });
+      }
+
+      const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const bboxCrs = bbox.crs || crs || "EPSG:4326";
+
+      const innerXml = `    <LayerIntersectByBox>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <CRS>${xmlEscape(bboxCrs)}</CRS>
+      <BoundingBox CRS="${xmlEscape(bboxCrs)}" minx="${bbox.minx}" miny="${bbox.miny}" maxx="${bbox.maxx}" maxy="${bbox.maxy}"/>
+      <Geometry>Yes</Geometry>
+      <Attr>Yes</Attr>
+    </LayerIntersectByBox>`;
+
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerIntersectByBox", xml, 60000);
+
+      if (!ok) {
+        console.error("ZWS features error:", text.slice(0, 300));
+        return res.status(status).json({ message: "ZWS LayerIntersectByBox failed", details: text.slice(0, 500) });
+      }
+
+      return res.json({ raw: text, layer, success: true });
+    } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "Query timeout" });
+      console.error("ZWS features error:", error);
+      return res.status(502).json({ message: "Failed to query ZWS features" });
+    }
+  });
+
+  // ---- ZWS: Create element (LayerAddPolyline / LayerAddSymbol / LayerAddPolygon) ----
+  app.post("/api/zulu/zws/element", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layer, geometryType, typeId, modeNum, coordinates, crs, baseUrl } = req.body;
+      if (!layer || typeId === undefined || modeNum === undefined || !coordinates || !geometryType) {
+        return res.status(400).json({ message: "layer, geometryType, typeId, modeNum, coordinates are required" });
+      }
+
+      const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const projection = crs || "EPSG:4326";
+
+      // Build coordinate string: [[lon,lat], ...] or [lon, lat]
+      const coordsStr = Array.isArray(coordinates[0])
+        ? (coordinates as number[][]).map((c) => `${c[0]},${c[1]}`).join("\n")
+        : `${coordinates[0]},${coordinates[1]}`;
+
+      let command: string;
+      let innerXml: string;
+
+      if (geometryType === "Point") {
+        command = "LayerAddSymbol";
+        const lx = Array.isArray(coordinates[0]) ? coordinates[0][0] : coordinates[0];
+        const ly = Array.isArray(coordinates[0]) ? coordinates[0][1] : coordinates[1];
+        innerXml = `    <LayerAddSymbol>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <TypeID>${typeId}</TypeID>
+      <ModeNum>${modeNum}</ModeNum>
+      <X>${lx}</X>
+      <Y>${ly}</Y>
+      <CRS>${xmlEscape(projection)}</CRS>
+    </LayerAddSymbol>`;
+      } else if (geometryType === "Polygon") {
+        command = "LayerAddPolygon";
+        innerXml = `    <LayerAddPolygon>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <TypeID>${typeId}</TypeID>
+      <ModeNum>${modeNum}</ModeNum>
+      <CRS>${xmlEscape(projection)}</CRS>
+      <coordinates>${coordsStr}</coordinates>
+    </LayerAddPolygon>`;
+      } else {
+        command = "LayerAddPolyline";
+        innerXml = `    <LayerAddPolyline>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <TypeID>${typeId}</TypeID>
+      <ModeNum>${modeNum}</ModeNum>
+      <CRS>${xmlEscape(projection)}</CRS>
+      <coordinates>${coordsStr}</coordinates>
+    </LayerAddPolyline>`;
+      }
+
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, command, xml, 30000);
+
+      if (!ok) {
+        console.error("ZWS create element error:", text.slice(0, 300));
+        return res.status(status).json({ message: "ZWS create element failed", details: text.slice(0, 500) });
+      }
+
+      const retVal = parseZwsRetVal(text);
+      if (retVal < 0) {
+        return res.status(502).json({ message: `ZWS error: RetVal=${retVal}`, raw: text.slice(0, 500) });
+      }
+
+      // On success, RetVal contains the new element ID
+      return res.json({ elemId: retVal, success: true });
+    } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "Request timeout" });
+      console.error("ZWS create element error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ---- ZWS: Update element attributes (UpdateElemAttributes) ----
+  app.put("/api/zulu/zws/element/attributes", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layer, elemId, fields, baseUrl } = req.body;
+      if (!layer || elemId === undefined || !fields || typeof fields !== "object") {
+        return res.status(400).json({ message: "layer, elemId, fields (object) are required" });
+      }
+
+      const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+
+      const fieldXml = Object.entries(fields)
+        .map(
+          ([name, value]) =>
+            `        <Field>\n          <Name>${xmlEscape(name)}</Name>\n          <Value>${xmlEscape(String(value ?? ""))}</Value>\n        </Field>`
+        )
+        .join("\n");
+
+      const innerXml = `    <UpdateElemAttributes>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <Element>
+        <Key>
+          <Name>Sys</Name>
+          <Value>${elemId}</Value>
+        </Key>
+${fieldXml}
+      </Element>
+    </UpdateElemAttributes>`;
+
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "UpdateElemAttributes", xml, 30000);
+
+      if (!ok) {
+        return res.status(status).json({ message: "ZWS UpdateElemAttributes failed", details: text.slice(0, 500) });
+      }
+
+      const retVal = parseZwsRetVal(text);
+      if (retVal !== 0) {
+        return res.status(502).json({ message: `ZWS error: RetVal=${retVal}`, raw: text.slice(0, 500) });
+      }
+
+      return res.json({ success: true, elemId });
+    } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "Request timeout" });
+      console.error("ZWS update attributes error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ---- ZWS: Update element geometry (LayerUpdateGeometry) ----
+  app.put("/api/zulu/zws/element/geometry", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layer, elemId, coordinates, crs, baseUrl } = req.body;
+      if (!layer || elemId === undefined || !coordinates) {
+        return res.status(400).json({ message: "layer, elemId, coordinates are required" });
+      }
+
+      const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const projection = crs || "EPSG:4326";
+
+      const coordsStr = Array.isArray(coordinates[0])
+        ? (coordinates as number[][]).map((c) => `${c[0]},${c[1]}`).join("\n")
+        : `${coordinates[0]},${coordinates[1]}`;
+
+      const innerXml = `    <LayerUpdateGeometry>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <ElemID>${elemId}</ElemID>
+      <CRS>${xmlEscape(projection)}</CRS>
+      <coordinates>${coordsStr}</coordinates>
+    </LayerUpdateGeometry>`;
+
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerUpdateGeometry", xml, 30000);
+
+      if (!ok) {
+        return res.status(status).json({ message: "ZWS LayerUpdateGeometry failed", details: text.slice(0, 500) });
+      }
+
+      const retVal = parseZwsRetVal(text);
+      if (retVal !== 0) {
+        return res.status(502).json({ message: `ZWS error: RetVal=${retVal}`, raw: text.slice(0, 500) });
+      }
+
+      return res.json({ success: true, elemId });
+    } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "Request timeout" });
+      console.error("ZWS update geometry error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ---- ZWS: Delete element (LayerDeleteElement) ----
+  app.delete("/api/zulu/zws/element", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layer, elemId, baseUrl } = req.body;
+      if (!layer || elemId === undefined) {
+        return res.status(400).json({ message: "layer and elemId are required" });
+      }
+
+      const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+
+      const innerXml = `    <LayerDeleteElement>
+      <Layer>${xmlEscape(layer)}</Layer>
+      <ElemID>${elemId}</ElemID>
+    </LayerDeleteElement>`;
+
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerDeleteElement", xml, 30000);
+
+      if (!ok) {
+        return res.status(status).json({ message: "ZWS LayerDeleteElement failed", details: text.slice(0, 500) });
+      }
+
+      const retVal = parseZwsRetVal(text);
+      if (retVal !== 0) {
+        return res.status(502).json({ message: `ZWS error: RetVal=${retVal}`, raw: text.slice(0, 500) });
+      }
+
+      return res.json({ success: true, elemId });
+    } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "Request timeout" });
+      console.error("ZWS delete element error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/zulu/capabilities", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const parseResult = zuluConnectionSchema.safeParse(req.body);

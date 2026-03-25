@@ -2172,7 +2172,7 @@ export function MapViewer({
       const viewResolution = map.getView().getResolution();
       if (!viewResolution) return;
 
-      const wmsLayers = currentLayers.filter((l) => l.type === "wms" && l.visible);
+      const wmsLayers = currentLayers.filter((l) => (l.type === "wms" || l.type === "zws") && l.visible);
       if (wmsLayers.length === 0) return;
 
       try {
@@ -3196,11 +3196,11 @@ export function MapViewer({
         return;
       }
 
-      if (layerConfig.type === "wms") {
+      if (layerConfig.type === "wms" || layerConfig.type === "zws") {
         if (!existingLayer) {
           let newLayer: LayerType;
 
-          if (connection.useZws) {
+          if (connection.useZws || layerConfig.type === "zws") {
             const vectorSource = new VectorSource();
             
             newLayer = new VectorLayer({
@@ -3215,10 +3215,11 @@ export function MapViewer({
             layersRef.current[layerConfig.id] = newLayer;
             
             if (layerConfig.visible) {
+              const zwsBaseUrl = layerConfig.url || (connection.useZws ? undefined : undefined);
               fetch("/api/zulu/zws/query", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ layer: layerConfig.id }),
+                body: JSON.stringify({ layer: layerConfig.id, ...(zwsBaseUrl ? { baseUrl: zwsBaseUrl } : {}) }),
               })
                 .then((res) => {
                   if (!res.ok) {
