@@ -18,7 +18,7 @@ interface GeocodingBatchResult {
 const YANDEX_GEOCODER_URL = "https://geocode-maps.yandex.ru/1.x/";
 const DADATA_GEOLOCATE_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/geolocate/address";
 const DADATA_SUGGEST_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address";
-const MAX_RPS = 40;
+const MAX_RPS = 8;
 const DELAY_MS = Math.ceil(1000 / MAX_RPS);
 const DADATA_MAX_RPS = 10;
 const DADATA_DELAY_MS = Math.ceil(1000 / DADATA_MAX_RPS);
@@ -354,6 +354,8 @@ export async function reverseGeocodeBatch(
   const delayMs = provider === "dadata" ? DADATA_DELAY_MS : DELAY_MS;
   let consecutiveTimeouts = 0;
   const maxConsecutiveTimeouts = 5;
+  let globalCooldownUntil = 0;
+  let consecutive429 = 0;
 
   if (process.env.NODE_ENV !== "production") console.log(`[Geocoder] Starting reverse geocode batch: ${totalCoords} coords, provider=${provider}`);
 
@@ -368,6 +370,10 @@ export async function reverseGeocodeBatch(
       if (abortSignal?.aborted) break;
 
       const { lon, lat } = item.coords[ci];
+      const nowBefore = Date.now();
+      if (nowBefore < globalCooldownUntil) {
+        await sleep(globalCooldownUntil - nowBefore);
+      }
       try {
         let result: ReverseGeocodingResult | null;
         if (provider === "dadata") {
@@ -379,13 +385,15 @@ export async function reverseGeocodeBatch(
         fiasIds.push(result?.fiasId || null);
         retryCount = 0;
         consecutiveTimeouts = 0;
+        consecutive429 = 0;
       } catch (error: any) {
         if (error instanceof GeocoderTimeoutError) {
           consecutiveTimeouts++;
           console.warn(`[Geocoder] Timeout ${consecutiveTimeouts}/${maxConsecutiveTimeouts} at coord ${processedCoords + 1}/${totalCoords}: ${error.message}`);
           if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
-            console.error(`[Geocoder] Too many consecutive timeouts (${maxConsecutiveTimeouts}), stopping batch`);
-            throw new Error(`Слишком много таймаутов подряд (${maxConsecutiveTimeouts}). API-провайдер не отвечает. Обработано ${processedCoords} из ${totalCoords}.`);
+            console.warn(`[Geocoder] Too many consecutive timeouts (${maxConsecutiveTimeouts}), pausing 30s`);
+            await sleep(30000);
+            consecutiveTimeouts = 0;
           }
           addresses.push(null);
           fiasIds.push(null);
@@ -399,7 +407,10 @@ export async function reverseGeocodeBatch(
             ci--;
             continue;
           }
-          console.error(`[Geocoder] Rate limit exhausted after ${maxRetries} retries`);
+          consecutive429++;
+          const cooldownMs = Math.min(30000, 5000 * consecutive429);
+          globalCooldownUntil = Date.now() + cooldownMs;
+          console.warn(`[Geocoder] Rate limit exhausted after ${maxRetries} retries, cooldown ${cooldownMs}ms`);
           addresses.push(null);
           fiasIds.push(null);
           itemError = error.message;
@@ -452,6 +463,8 @@ export async function geocodeBatch(
   const delayMs = provider === "dadata" ? DADATA_DELAY_MS : DELAY_MS;
   let consecutiveTimeouts = 0;
   const maxConsecutiveTimeouts = 5;
+  let globalCooldownUntil = 0;
+  let consecutive429 = 0;
 
   if (process.env.NODE_ENV !== "production") console.log(`[Geocoder] Starting forward geocode batch: ${addresses.length} addresses, provider=${provider}`);
 
@@ -470,6 +483,11 @@ export async function geocodeBatch(
 
     if (abortSignal?.aborted) break;
 
+    const nowBefore = Date.now();
+    if (nowBefore < globalCooldownUntil) {
+      await sleep(globalCooldownUntil - nowBefore);
+    }
+
     try {
       let result: GeocodingResult | null;
       if (provider === "dadata") {
@@ -485,13 +503,15 @@ export async function geocodeBatch(
       });
       retryCount = 0;
       consecutiveTimeouts = 0;
+      consecutive429 = 0;
     } catch (error: any) {
       if (error instanceof GeocoderTimeoutError) {
         consecutiveTimeouts++;
         console.warn(`[Geocoder] Timeout ${consecutiveTimeouts}/${maxConsecutiveTimeouts} at address ${i + 1}/${addresses.length}`);
         if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
-          console.error(`[Geocoder] Too many consecutive timeouts, stopping`);
-          throw new Error(`Слишком много таймаутов подряд. Обработано ${results.length} из ${addresses.length}.`);
+          console.warn(`[Geocoder] Too many consecutive timeouts (${maxConsecutiveTimeouts}), pausing 30s`);
+          await sleep(30000);
+          consecutiveTimeouts = 0;
         }
         results.push({ index, address, result: null, error: error.message });
         await sleep(3000);
@@ -502,6 +522,10 @@ export async function geocodeBatch(
           i--;
           continue;
         }
+        consecutive429++;
+        const cooldownMs = Math.min(30000, 5000 * consecutive429);
+        globalCooldownUntil = Date.now() + cooldownMs;
+        console.warn(`[Geocoder] Rate limit exhausted after ${maxRetries} retries, cooldown ${cooldownMs}ms`);
         results.push({ index, address, result: null, error: error.message });
       } else if (error instanceof GeocoderAuthError) {
         throw error;
