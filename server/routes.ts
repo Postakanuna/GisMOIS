@@ -373,39 +373,51 @@ function parseZwsRetVal(xml: string): number {
   return m ? parseInt(m[1], 10) : -999;
 }
 
-function parseZwsLayerList(xml: string): Array<{ name: string; title: string }> {
-  const layers: Array<{ name: string; title: string }> = [];
+function zwsGuessGeometryType(layerType?: string | number): "Point" | "LineString" | "Polygon" {
+  const t = String(layerType || "").toLowerCase();
+  if (t.includes("line") || t.includes("polyline") || t === "1") return "LineString";
+  if (t.includes("polygon") || t.includes("area") || t === "2") return "Polygon";
+  return "Point";
+}
+
+function parseZwsLayerList(xml: string): Array<{ name: string; title: string; layerType?: string }> {
+  const layers: Array<{ name: string; title: string; layerType?: string }> = [];
+  // Extract type helper
+  const extractType = (block: string): string | undefined => {
+    const m = block.match(/<Type>([^<]+)<\/Type>/i);
+    return m ? m[1].trim() : undefined;
+  };
   // Try <Name>…</Name> … <Title>…</Title>
-  const re1 = /<Layer[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>[\s\S]*?<Title>([^<]*)<\/Title>[\s\S]*?<\/Layer>/gi;
+  const re1 = /<Layer[^>]*>([\s\S]*?)<\/Layer>/gi;
   let m: RegExpExecArray | null;
   while ((m = re1.exec(xml)) !== null) {
-    layers.push({ name: m[1].trim(), title: (m[2] || m[1]).trim() });
-  }
-  if (layers.length === 0) {
-    // Try reversed order: <Title> before <Name>
-    const re2 = /<Layer[^>]*>[\s\S]*?<Title>([^<]*)<\/Title>[\s\S]*?<Name>([^<]+)<\/Name>[\s\S]*?<\/Layer>/gi;
-    while ((m = re2.exec(xml)) !== null) {
-      layers.push({ name: m[2].trim(), title: (m[1] || m[2]).trim() });
-    }
-  }
-  if (layers.length === 0) {
-    // Minimal: just Name
-    const re3 = /<Layer[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>[\s\S]*?<\/Layer>/gi;
-    while ((m = re3.exec(xml)) !== null) {
-      layers.push({ name: m[1].trim(), title: m[1].trim() });
+    const block = m[1];
+    const nameM = block.match(/<Name>([^<]+)<\/Name>/i);
+    const titleM = block.match(/<Title>([^<]*)<\/Title>/i);
+    if (nameM) {
+      layers.push({
+        name: nameM[1].trim(),
+        title: (titleM?.[1] || nameM[1]).trim(),
+        layerType: extractType(block),
+      });
     }
   }
   return layers;
 }
 
-function parseZwsBaseInfo(xml: string): { fields: Array<{ name: string; userName: string; type: string }> } {
+function parseZwsBaseInfo(xml: string): { fields: Array<{ name: string; userName: string; type: string }>; layerType?: string } {
   const fields: Array<{ name: string; userName: string; type: string }> = [];
   const re = /<Field>[\s\S]*?<Name>([^<]+)<\/Name>[\s\S]*?<UserName>([^<]*)<\/UserName>[\s\S]*?<Type>([^<]+)<\/Type>[\s\S]*?<\/Field>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml)) !== null) {
     fields.push({ name: m[1].trim(), userName: m[2].trim(), type: m[3].trim() });
   }
-  return { fields };
+  // Extract top-level layer type (e.g., <LayerType>1</LayerType> or <Type>Line</Type> outside Field blocks)
+  const layerTypeM = xml.match(/<LayerType>([^<]+)<\/LayerType>/i)
+    || xml.match(/<GeometryType>([^<]+)<\/GeometryType>/i)
+    || xml.match(/<ShapeType>([^<]+)<\/ShapeType>/i);
+  const layerType = layerTypeM ? layerTypeM[1].trim() : undefined;
+  return { fields, layerType };
 }
 
 // ============================================================
@@ -525,7 +537,12 @@ export async function registerRoutes(
       if (retVal < 0) {
         return res.status(502).json({ message: `ZWS error: RetVal=${retVal}`, raw: text.slice(0, 500) });
       }
-      const layers = parseZwsLayerList(text);
+      const rawLayers = parseZwsLayerList(text);
+      console.log(`[ZWS custom/layers] baseUrl=${baseUrl}, count=${rawLayers.length}, xml-sample=${text.slice(0, 600)}`);
+      const layers = rawLayers.map(l => ({
+        ...l,
+        geometryType: l.layerType ? zwsGuessGeometryType(l.layerType) : undefined,
+      }));
       return res.json({ layers, version: "1.0.0", baseUrl, connected: true });
     } catch (error: any) {
       if (error.isTimeout) return res.status(504).json({ message: "ZWS request timeout" });
@@ -676,18 +693,20 @@ export async function registerRoutes(
 
       if (!zwsBaseUrl) return res.status(400).json({ message: "baseUrl is required" });
 
-      const innerXml = `    <LayerExecSql>
+      const innerXml = `    <LayerIntersectByBox>
       <Layer>${xmlEscape(layerName)}</Layer>
-      <Query>${xmlEscape("SELECT *, Geometry.AsText()")}</Query>
       <CRS>EPSG:4326</CRS>
-    </LayerExecSql>`;
+      <BoundingBox CRS="EPSG:4326" minx="-180" miny="-90" maxx="180" maxy="90"/>
+      <Geometry>Yes</Geometry>
+      <Attr>Yes</Attr>
+    </LayerIntersectByBox>`;
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerExecSQL", xml, 120000, authHeader);
+      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerIntersectByBox", xml, 120000, authHeader);
 
       if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
 
       const parsedFeatures = parseZwsXmlToDbFeatures(text);
-      console.log(`[ZWS import-to-db] layerName=${layerName}, parsed=${parsedFeatures.length} features, xml sample=${text.slice(0, 500)}`);
+      console.log(`[ZWS import-to-db] layerName=${layerName}, parsed=${parsedFeatures.length} features, xml-sample=${text.slice(0, 600)}`);
 
       let finalGeomType: string = geometryType || "Point";
       if (!geometryType && parsedFeatures.length > 0) finalGeomType = parsedFeatures[0].geometryType;
@@ -750,13 +769,15 @@ export async function registerRoutes(
       if (!zwsLayerName) return res.status(400).json({ message: "Layer has no ZWS configuration" });
       if (!zwsBaseUrl) return res.status(400).json({ message: "No ZWS base URL in layer metadata" });
 
-      const innerXml = `    <LayerExecSql>
+      const innerXml = `    <LayerIntersectByBox>
       <Layer>${xmlEscape(zwsLayerName)}</Layer>
-      <Query>${xmlEscape("SELECT *, Geometry.AsText()")}</Query>
       <CRS>EPSG:4326</CRS>
-    </LayerExecSql>`;
+      <BoundingBox CRS="EPSG:4326" minx="-180" miny="-90" maxx="180" maxy="90"/>
+      <Geometry>Yes</Geometry>
+      <Attr>Yes</Attr>
+    </LayerIntersectByBox>`;
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerExecSQL", xml, 120000, authHeader);
+      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerIntersectByBox", xml, 120000, authHeader);
 
       if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
 
@@ -858,7 +879,9 @@ export async function registerRoutes(
         return res.status(status).json({ message: "ZWS GetLayerBaseInfo failed", raw: text.slice(0, 500) });
       }
       const info = parseZwsBaseInfo(text);
-      return res.json({ ...info, success: true });
+      const geometryType = zwsGuessGeometryType(info.layerType);
+      console.log(`[ZWS layer-info] layer=${layer}, rawLayerType=${info.layerType}, xml-sample=${text.slice(0, 600)}`);
+      return res.json({ ...info, success: true, layerType: info.layerType, geometryType });
     } catch (error: any) {
       if (error.isTimeout) return res.status(504).json({ message: "Request timeout" });
       console.error("ZWS layer info error:", error);
