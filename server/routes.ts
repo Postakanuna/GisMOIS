@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { syncSensors, testSensorConnection, restartSensorPolling, stopSensorPolling, setDebugMode } from "./sensor-sync";
-import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, networkTypeSchema, drawnFeatures, editableLayers, type AttributeField } from "@shared/schema";
+import { zuluConnectionSchema, insertTicketSchema, insertEditableLayerSchema, insertDrawnFeatureSchema, attributeFieldSchema, styleConfigSchema, networkTypeSchema, drawnFeatures, editableLayers, zwsConnections, type AttributeField } from "@shared/schema";
 import * as turf from "@turf/turf";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -581,6 +581,200 @@ export async function registerRoutes(
       if (error.isTimeout) return res.status(504).json({ message: "Query timeout" });
       console.error("ZWS query error:", error);
       return res.status(502).json({ message: "Failed to execute ZWS query" });
+    }
+  });
+
+  // WKT → GeoJSON coordinates (server-side, for DB import)
+  function parseWktToGeoJsonCoordinates(wkt: string): { coordinates: any; geometryType: "Point" | "LineString" | "Polygon" } | null {
+    const trimmed = wkt.trim();
+    if (/^POINT\s*Z?\s*\(/i.test(trimmed)) {
+      const match = trimmed.match(/POINT\s*Z?\s*\(\s*([\d.\-\s]+?)\s*\)/i);
+      if (!match) return null;
+      const parts = match[1].trim().split(/\s+/);
+      if (parts.length < 2) return null;
+      return { coordinates: [parseFloat(parts[0]), parseFloat(parts[1])], geometryType: "Point" };
+    }
+    if (/^LINESTRING\s*Z?\s*\(/i.test(trimmed)) {
+      const match = trimmed.match(/LINESTRING\s*Z?\s*\(\s*([^\)]+)\s*\)/i);
+      if (!match) return null;
+      const coords = match[1].split(",").map(pt => {
+        const p = pt.trim().split(/\s+/);
+        return [parseFloat(p[0]), parseFloat(p[1])];
+      }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+      return { coordinates: coords, geometryType: "LineString" };
+    }
+    if (/^POLYGON\s*Z?\s*\(/i.test(trimmed)) {
+      const rings: number[][][] = [];
+      const ringRegex = /\(\s*([\d.,\-\s]+?)\s*\)/g;
+      let m;
+      while ((m = ringRegex.exec(trimmed)) !== null) {
+        const ring = m[1].split(",").map(pt => {
+          const p = pt.trim().split(/\s+/);
+          return [parseFloat(p[0]), parseFloat(p[1])];
+        }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+        if (ring.length >= 3) rings.push(ring);
+      }
+      if (rings.length === 0) return null;
+      return { coordinates: rings, geometryType: "Polygon" };
+    }
+    return null;
+  }
+
+  function parseZwsXmlToDbFeatures(xml: string): Array<{ coordinates: any; geometryType: "Point" | "LineString" | "Polygon"; properties: Record<string, unknown> }> {
+    const features: Array<{ coordinates: any; geometryType: "Point" | "LineString" | "Polygon"; properties: Record<string, unknown> }> = [];
+    const recordRegex = /<Record>([\s\S]*?)<\/Record>/gi;
+    let recordMatch;
+    while ((recordMatch = recordRegex.exec(xml)) !== null) {
+      const recordContent = recordMatch[1];
+      const properties: Record<string, unknown> = {};
+      let wktGeometry: string | null = null;
+      const fieldRegex = /<Field>\s*<Name>([^<]+)<\/Name>\s*<Value>([^<]*)<\/Value>\s*<\/Field>/gi;
+      let fieldMatch;
+      while ((fieldMatch = fieldRegex.exec(recordContent)) !== null) {
+        const name = fieldMatch[1].trim();
+        const value = fieldMatch[2].trim();
+        if (name.toLowerCase() === "geometry") {
+          wktGeometry = value;
+        } else {
+          properties[name] = value || null;
+        }
+      }
+      if (wktGeometry && wktGeometry.length > 0) {
+        const parsed = parseWktToGeoJsonCoordinates(wktGeometry);
+        if (parsed) features.push({ ...parsed, properties });
+      }
+    }
+    return features;
+  }
+
+  app.post("/api/zulu/zws/import-to-db", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const { layerName, sceneId, displayName, geometryType, zwsConnectionId, baseUrl: bodyBaseUrl, username: bodyUsername, password: bodyPassword } = req.body;
+      if (!layerName) return res.status(400).json({ message: "layerName is required" });
+      if (!sceneId) return res.status(400).json({ message: "sceneId is required" });
+
+      let zwsBaseUrl: string;
+      let authHeader: string | null = null;
+      const connectionId: number | null = zwsConnectionId || null;
+
+      if (zwsConnectionId) {
+        const [conn] = await db.select().from(zwsConnections).where(eq(zwsConnections.id, zwsConnectionId));
+        if (!conn) return res.status(404).json({ message: "ZWS connection not found" });
+        zwsBaseUrl = conn.baseUrl;
+        authHeader = buildCustomAuthHeader(conn.username || undefined, conn.passwordEncrypted || undefined);
+      } else {
+        zwsBaseUrl = bodyBaseUrl;
+        authHeader = buildCustomAuthHeader(bodyUsername, bodyPassword);
+      }
+
+      if (!zwsBaseUrl) return res.status(400).json({ message: "baseUrl is required" });
+
+      const innerXml = `    <LayerExecSql>
+      <Layer>${xmlEscape(layerName)}</Layer>
+      <Query>${xmlEscape("SELECT *, Geometry.AsText()")}</Query>
+      <CRS>EPSG:4326</CRS>
+    </LayerExecSql>`;
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerExecSQL", xml, 120000, authHeader);
+
+      if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
+
+      const parsedFeatures = parseZwsXmlToDbFeatures(text);
+
+      let finalGeomType: string = geometryType || "Point";
+      if (!geometryType && parsedFeatures.length > 0) finalGeomType = parsedFeatures[0].geometryType;
+
+      const newLayer = await storage.createEditableLayer({
+        sceneId,
+        name: displayName || layerName,
+        geometryType: finalGeomType as any,
+        color: "#4CAF50",
+        source: "zws",
+        crs: "EPSG:4326",
+        metadata: { zwsConnectionId: connectionId, zwsLayerName: layerName, zwsBaseUrl } as any,
+      });
+
+      if (parsedFeatures.length > 0) {
+        const BATCH_SIZE = 500;
+        for (let i = 0; i < parsedFeatures.length; i += BATCH_SIZE) {
+          const batch = parsedFeatures.slice(i, i + BATCH_SIZE);
+          await storage.createDrawnFeaturesBatch(batch.map(f => ({
+            layerId: newLayer.id,
+            geometryType: f.geometryType,
+            coordinates: f.coordinates,
+            properties: f.properties,
+          })));
+        }
+        await db.update(editableLayers).set({ featureCount: parsedFeatures.length }).where(eq(editableLayers.id, newLayer.id));
+      }
+
+      return res.json({ editableLayerId: newLayer.id, featureCount: parsedFeatures.length, layerName });
+    } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "ZWS request timeout" });
+      console.error("ZWS import-to-db error:", error);
+      return res.status(500).json({ message: "Import failed", details: error.message });
+    }
+  });
+
+  app.post("/api/zulu/zws/refresh-layer/:editableLayerId", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const editableLayerId = parseInt(req.params.editableLayerId);
+      if (isNaN(editableLayerId)) return res.status(400).json({ message: "Invalid layer ID" });
+
+      const layer = await storage.getEditableLayer(editableLayerId);
+      if (!layer) return res.status(404).json({ message: "Layer not found" });
+      if (layer.source !== "zws") return res.status(400).json({ message: "Not a ZWS layer" });
+
+      const meta = (layer.metadata || {}) as any;
+      const zwsLayerName = meta.zwsLayerName;
+      const connectionId = meta.zwsConnectionId;
+      let zwsBaseUrl = meta.zwsBaseUrl;
+      let authHeader: string | null = null;
+
+      if (connectionId) {
+        const [conn] = await db.select().from(zwsConnections).where(eq(zwsConnections.id, connectionId));
+        if (conn) {
+          zwsBaseUrl = zwsBaseUrl || conn.baseUrl;
+          authHeader = buildCustomAuthHeader(conn.username || undefined, conn.passwordEncrypted || undefined);
+        }
+      }
+
+      if (!zwsLayerName) return res.status(400).json({ message: "Layer has no ZWS configuration" });
+      if (!zwsBaseUrl) return res.status(400).json({ message: "No ZWS base URL in layer metadata" });
+
+      const innerXml = `    <LayerExecSql>
+      <Layer>${xmlEscape(zwsLayerName)}</Layer>
+      <Query>${xmlEscape("SELECT *, Geometry.AsText()")}</Query>
+      <CRS>EPSG:4326</CRS>
+    </LayerExecSql>`;
+      const xml = zwsXmlWrap(innerXml);
+      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerExecSQL", xml, 120000, authHeader);
+
+      if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
+
+      const parsedFeatures = parseZwsXmlToDbFeatures(text);
+
+      await storage.deleteDrawnFeaturesByLayer(editableLayerId);
+
+      if (parsedFeatures.length > 0) {
+        const BATCH_SIZE = 500;
+        for (let i = 0; i < parsedFeatures.length; i += BATCH_SIZE) {
+          const batch = parsedFeatures.slice(i, i + BATCH_SIZE);
+          await storage.createDrawnFeaturesBatch(batch.map(f => ({
+            layerId: editableLayerId,
+            geometryType: f.geometryType,
+            coordinates: f.coordinates,
+            properties: f.properties,
+          })));
+        }
+      }
+      await db.update(editableLayers).set({ featureCount: parsedFeatures.length, updatedAt: new Date() }).where(eq(editableLayers.id, editableLayerId));
+
+      return res.json({ editableLayerId, featureCount: parsedFeatures.length });
+    } catch (error: any) {
+      if (error.isTimeout) return res.status(504).json({ message: "ZWS refresh timeout" });
+      console.error("ZWS refresh-layer error:", error);
+      return res.status(500).json({ message: "Refresh failed", details: error.message });
     }
   });
 

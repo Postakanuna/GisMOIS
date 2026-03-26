@@ -47,6 +47,7 @@ import {
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
 import { ConnectionForm } from "@/components/connection-form";
+import { ZwsDbImportModal } from "@/components/zws-db-import-modal";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { type ProjectionType } from "@/lib/projections";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -812,6 +813,8 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [legendLayerId, setLegendLayerId] = useState<number | null>(null);
   const [geocodeLayerId, setGeocodeLayerId] = useState<number | null>(null);
   const [joinLayerId, setJoinLayerId] = useState<number | null>(null);
+  const [showZwsDbImport, setShowZwsDbImport] = useState(false);
+  const [zwsDbImportConfig, setZwsDbImportConfig] = useState<{ baseUrl: string; username?: string; password?: string; zwsConnectionId: number | null } | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [editingFolderId, setEditingFolderId] = useState<number | null>(null);
@@ -1945,6 +1948,24 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                       onDisconnect={disconnect}
                       status={zuluStatus}
                       error={zuluError}
+                      onOpenZwsDbImport={async (config) => {
+                        try {
+                          const res = await apiRequest("POST", "/api/zws-connections", {
+                            displayName: `ZWS: ${new URL(config.baseUrl).hostname}`,
+                            baseUrl: config.baseUrl,
+                            username: config.username || null,
+                            passwordEncrypted: config.password || null,
+                            selectedLayers: [],
+                            sceneId: currentSceneId || null,
+                          });
+                          const savedConn = await res.json();
+                          setZwsDbImportConfig({ ...config, zwsConnectionId: savedConn.id });
+                          setShowZwsDbImport(true);
+                        } catch {
+                          setZwsDbImportConfig({ ...config, zwsConnectionId: null });
+                          setShowZwsDbImport(true);
+                        }
+                      }}
                     />
                   </div>
                 </div>
@@ -2153,6 +2174,22 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           open={true}
           onOpenChange={(v) => { if (!v) setEditDxfLayer(null); }}
           editLayer={editDxfLayer}
+        />
+      )}
+
+      {zwsDbImportConfig && (
+        <ZwsDbImportModal
+          open={showZwsDbImport}
+          onClose={() => { setShowZwsDbImport(false); setZwsDbImportConfig(null); }}
+          baseUrl={zwsDbImportConfig.baseUrl}
+          username={zwsDbImportConfig.username}
+          password={zwsDbImportConfig.password}
+          zwsConnectionId={zwsDbImportConfig.zwsConnectionId}
+          sceneId={currentSceneId}
+          onSuccess={() => {
+            setShowZwsDbImport(false);
+            setZwsDbImportConfig(null);
+          }}
         />
       )}
     </DraggableModal>

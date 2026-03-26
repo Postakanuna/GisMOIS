@@ -3609,6 +3609,13 @@ export function MapViewer({
       await fetch("/api/editable-layers/clear-viewport-cache", { method: "POST" });
     } catch {
     }
+    const zwsDbLayers = (allEditableLayersDataRef.current || []).filter(l => l.source === "zws");
+    for (const layer of zwsDbLayers) {
+      try {
+        await fetch(`/api/zulu/zws/refresh-layer/${layer.id}`, { method: "POST" });
+      } catch {
+      }
+    }
     forceRefreshRef.current = true;
     window.dispatchEvent(new CustomEvent("viewport-features-invalidate"));
     setTimeout(() => setIsReloading(false), 1500);

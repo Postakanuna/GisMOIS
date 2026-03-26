@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Plug, PlugZap, Server, Zap, Settings2 } from "lucide-react";
+import { Loader2, Plug, PlugZap, Server, Zap, Settings2, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -29,6 +29,7 @@ interface ConnectionFormProps {
   onDisconnect: () => void;
   status: ConnectionStatus;
   error: string | null;
+  onOpenZwsDbImport?: (config: { baseUrl: string; username?: string; password?: string }) => void;
 }
 
 const zwsConnectionSchema = z.object({
@@ -57,8 +58,10 @@ export function ConnectionForm({
   onDisconnect,
   status,
   error,
+  onOpenZwsDbImport,
 }: ConnectionFormProps) {
   const [showCustomZws, setShowCustomZws] = useState(false);
+  const [loadToDB, setLoadToDB] = useState(false);
 
   const form = useForm<ZuluConnection>({
     resolver: zodResolver(zuluConnectionSchema),
@@ -94,20 +97,30 @@ export function ConnectionForm({
 
   const onZwsSubmit = async (data: ZwsConnectionForm) => {
     try {
-      const url = new URL(data.baseUrl);
-      const config: ZuluConnection = {
-        host: url.host,
-        layerName: data.layerNames || "",
-        useWfs: false,
-        useZws: true,
+      new URL(data.baseUrl);
+    } catch {
+      zwsForm.setError("baseUrl", { message: "Неверный формат URL" });
+      return;
+    }
+    if (loadToDB && onOpenZwsDbImport) {
+      onOpenZwsDbImport({
         baseUrl: data.baseUrl,
         username: data.username || undefined,
         password: data.password || undefined,
-      };
-      await onConnectCustomZws(config);
-    } catch {
-      zwsForm.setError("baseUrl", { message: "Неверный формат URL" });
+      });
+      return;
     }
+    const url = new URL(data.baseUrl);
+    const config: ZuluConnection = {
+      host: url.host,
+      layerName: data.layerNames || "",
+      useWfs: false,
+      useZws: true,
+      baseUrl: data.baseUrl,
+      username: data.username || undefined,
+      password: data.password || undefined,
+    };
+    await onConnectCustomZws(config);
   };
 
   return (
@@ -189,27 +202,29 @@ export function ConnectionForm({
                 )}
               />
 
-              <FormField
-                control={zwsForm.control}
-                name="layerNames"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">Слои (необязательно)</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="LAYER1, LAYER2 — оставьте пустым для всех слоёв"
-                        {...field}
-                        disabled={isConnected || isConnecting}
-                        data-testid="input-zws-layers"
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      Названия слоёв через запятую. Если не указано — загрузятся все доступные слои.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {!loadToDB && (
+                <FormField
+                  control={zwsForm.control}
+                  name="layerNames"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Слои (необязательно)</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="LAYER1, LAYER2 — оставьте пустым для всех слоёв"
+                          {...field}
+                          disabled={isConnected || isConnecting}
+                          data-testid="input-zws-layers"
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Названия слоёв через запятую. Если не указано — загрузятся все доступные слои.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={zwsForm.control}
@@ -250,6 +265,24 @@ export function ConnectionForm({
                 )}
               />
 
+              <div className="flex flex-row items-center justify-between rounded-md border border-sidebar-border p-3">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium flex items-center gap-1.5">
+                    <Database className="h-3.5 w-3.5" />
+                    Загрузить в локальную БД
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Слои сохраняются в БД, полный функционал инструментов
+                  </p>
+                </div>
+                <Switch
+                  checked={loadToDB}
+                  onCheckedChange={setLoadToDB}
+                  disabled={isConnecting || isConnected}
+                  data-testid="switch-load-to-db"
+                />
+              </div>
+
               <Button
                 type="submit"
                 variant="outline"
@@ -261,6 +294,11 @@ export function ConnectionForm({
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Подключение...
+                  </>
+                ) : loadToDB ? (
+                  <>
+                    <Database className="mr-2 h-4 w-4" />
+                    Выбрать слои для загрузки в БД
                   </>
                 ) : (
                   <>
