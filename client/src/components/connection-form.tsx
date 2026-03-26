@@ -43,7 +43,7 @@ const zwsConnectionSchema = z.object({
     },
     { message: "Неверный формат URL (пример: https://server.example.com/zws)" }
   ),
-  layerNames: z.string().min(1, "Укажите хотя бы один слой"),
+  layerNames: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
 });
@@ -97,7 +97,7 @@ export function ConnectionForm({
       const url = new URL(data.baseUrl);
       const config: ZuluConnection = {
         host: url.host,
-        layerName: data.layerNames,
+        layerName: data.layerNames || "",
         useWfs: false,
         useZws: true,
         baseUrl: data.baseUrl,
@@ -192,17 +192,17 @@ export function ConnectionForm({
                 name="layerNames"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">Слои</FormLabel>
+                    <FormLabel className="text-sm font-medium">Слои (необязательно)</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="LAYER1, LAYER2, LAYER3"
+                        placeholder="LAYER1, LAYER2 — оставьте пустым для всех слоёв"
                         {...field}
                         disabled={isConnected || isConnecting}
                         data-testid="input-zws-layers"
                       />
                     </FormControl>
                     <FormDescription className="text-xs">
-                      Названия слоёв через запятую
+                      Названия слоёв через запятую. Если не указано — загрузятся все доступные слои.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

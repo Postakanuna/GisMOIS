@@ -1907,7 +1907,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
             </div>
           </TabsContent>
 
-          <TabsContent value="connections" className="flex-1 overflow-auto mt-0 px-3 pb-3 data-[state=inactive]:hidden">
+          <TabsContent value="connections" className="flex-1 overflow-y-auto min-h-0 mt-0 px-3 pb-3 data-[state=inactive]:hidden">
             <div className="py-3 space-y-4">
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -1928,7 +1928,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
             </div>
           </TabsContent>
 
-          <TabsContent value="settings" className="flex-1 overflow-auto mt-0 px-3 pb-3 data-[state=inactive]:hidden">
+          <TabsContent value="settings" className="flex-1 overflow-y-auto min-h-0 mt-0 px-3 pb-3 data-[state=inactive]:hidden">
             <div className="py-3 space-y-4">
               <div>
                 <div className="flex items-center gap-2 mb-2">
