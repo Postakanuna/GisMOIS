@@ -1586,8 +1586,8 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       resizable={true}
     >
 
-      <div className="flex-1 flex flex-col overflow-hidden" data-no-drag>
-        <Tabs defaultValue="layers" className="flex-1 flex flex-col overflow-hidden">
+      <div className="h-full flex flex-col overflow-hidden" data-no-drag>
+        <Tabs defaultValue="layers" className="h-full flex flex-col overflow-hidden">
           <TabsList className="mx-3 mt-3 shrink-0 grid w-auto grid-cols-4" data-testid="data-manager-tabs">
             <TabsTrigger value="layers" className="gap-1.5" data-testid="tab-layers">
               <Layers className="h-3.5 w-3.5" />
