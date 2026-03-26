@@ -168,6 +168,8 @@ export function useZuluConnection(): UseZuluConnectionReturn {
         body: JSON.stringify({
           baseUrl: config.baseUrl,
           layerNames: config.layerName,
+          username: config.username || undefined,
+          password: config.password || undefined,
         }),
       });
 
@@ -189,6 +191,8 @@ export function useZuluConnection(): UseZuluConnectionReturn {
             opacity: 1,
             type: "zws" as const,
             url: config.baseUrl,
+            zwsUsername: config.username || undefined,
+            zwsPassword: config.password || undefined,
           })),
         ];
       });

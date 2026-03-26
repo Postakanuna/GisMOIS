@@ -326,21 +326,31 @@ function zwsXmlWrap(innerXml: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<zulu-server service="zws" version="1.0.0">\n  <Command>\n${innerXml}\n  </Command>\n</zulu-server>`;
 }
 
+function buildCustomAuthHeader(username?: string, password?: string): string | null {
+  if (!username) return null;
+  const credentials = Buffer.from(`${username}:${password || ""}`).toString("base64");
+  return `Basic ${credentials}`;
+}
+
 async function zwsPost(
   baseUrl: string,
   command: string,
   xmlBody: string,
-  timeoutMs = 30000
+  timeoutMs = 30000,
+  authHeader?: string | null
 ): Promise<{ text: string; ok: boolean; status: number }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const headers: Record<string, string> = { "Content-Type": "application/xml" };
+  if (authHeader === undefined) {
+    headers.Authorization = getBasicAuthHeader();
+  } else if (authHeader !== null) {
+    headers.Authorization = authHeader;
+  }
   try {
     const response = await fetch(`${baseUrl}/${command}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/xml",
-        Authorization: getBasicAuthHeader(),
-      },
+      headers,
       body: xmlBody,
       signal: controller.signal,
     });
@@ -491,11 +501,12 @@ export async function registerRoutes(
 
   app.post("/api/zulu/zws/custom/layers", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { baseUrl } = req.body;
+      const { baseUrl, username, password } = req.body;
       if (!baseUrl) return res.status(400).json({ message: "URL сервера обязателен" });
 
       const xml = zwsXmlWrap("    <GetLayerList/>");
-      const { text, ok, status } = await zwsPost(baseUrl, "GetLayerList", xml, 15000);
+      const authHeader = buildCustomAuthHeader(username, password);
+      const { text, ok, status } = await zwsPost(baseUrl, "GetLayerList", xml, 15000, authHeader);
       if (!ok) {
         console.error("Custom ZWS GetLayerList error:", text.slice(0, 300));
         return res.status(status).json({ message: "ZWS GetLayerList failed", details: text.slice(0, 500) });
@@ -515,11 +526,12 @@ export async function registerRoutes(
 
   app.post("/api/zulu/zws/query", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layer, query, crs, baseUrl, bbox } = req.body;
+      const { layer, query, crs, baseUrl, bbox, zwsUsername, zwsPassword } = req.body;
       if (!layer) return res.status(400).json({ message: "Layer is required" });
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
       const projection = crs || "EPSG:4326";
+      const queryAuthHeader = baseUrl ? buildCustomAuthHeader(zwsUsername, zwsPassword) : undefined;
 
       let command: string;
       let innerXml: string;
@@ -547,7 +559,7 @@ export async function registerRoutes(
       }
 
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok, status } = await zwsPost(zwsBaseUrl, command, xml, 60000);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, command, xml, 60000, queryAuthHeader);
 
       if (!ok) {
         console.error("ZWS query error:", text.slice(0, 300));
@@ -578,13 +590,14 @@ export async function registerRoutes(
   app.get("/api/zulu/zws/tile/:z/:x/:y", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
       const { z, x, y } = req.params;
-      const { layer, baseUrl } = req.query as { layer?: string; baseUrl?: string };
+      const { layer, baseUrl, zwsUsername, zwsPassword } = req.query as { layer?: string; baseUrl?: string; zwsUsername?: string; zwsPassword?: string };
 
       if (!layer) {
         return res.status(400).json({ message: "Layer parameter is required" });
       }
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const tileAuthHeader = baseUrl ? buildCustomAuthHeader(zwsUsername, zwsPassword) : undefined;
       const innerXml = `    <GetLayerTile>
       <X>${x}</X>
       <Y>${y}</Y>
@@ -593,7 +606,7 @@ export async function registerRoutes(
     </GetLayerTile>`;
 
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok, status } = await zwsPost(zwsBaseUrl, "GetLayerTile", xml, 30000);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "GetLayerTile", xml, 30000, tileAuthHeader);
 
       if (!ok) {
         console.error("ZWS tile error:", status, text.substring(0, 200));
@@ -643,7 +656,7 @@ export async function registerRoutes(
   // ---- ZWS: Spatial features query (LayerIntersectByBox) ----
   app.post("/api/zulu/zws/features", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layer, bbox, crs, baseUrl } = req.body;
+      const { layer, bbox, crs, baseUrl, zwsUsername, zwsPassword } = req.body;
       if (!layer) return res.status(400).json({ message: "Layer is required" });
       if (!bbox || bbox.minx === undefined || bbox.miny === undefined || bbox.maxx === undefined || bbox.maxy === undefined) {
         return res.status(400).json({ message: "bbox with minx/miny/maxx/maxy is required" });
@@ -651,6 +664,7 @@ export async function registerRoutes(
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
       const bboxCrs = bbox.crs || crs || "EPSG:4326";
+      const featAuthHeader = baseUrl ? buildCustomAuthHeader(zwsUsername, zwsPassword) : undefined;
 
       const innerXml = `    <LayerIntersectByBox>
       <Layer>${xmlEscape(layer)}</Layer>
@@ -661,7 +675,7 @@ export async function registerRoutes(
     </LayerIntersectByBox>`;
 
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerIntersectByBox", xml, 60000);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerIntersectByBox", xml, 60000, featAuthHeader);
 
       if (!ok) {
         console.error("ZWS features error:", text.slice(0, 300));

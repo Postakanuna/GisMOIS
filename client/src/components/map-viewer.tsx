@@ -3219,7 +3219,11 @@ export function MapViewer({
               fetch("/api/zulu/zws/query", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ layer: layerConfig.id, ...(zwsBaseUrl ? { baseUrl: zwsBaseUrl } : {}) }),
+                body: JSON.stringify({
+                  layer: layerConfig.id,
+                  ...(zwsBaseUrl ? { baseUrl: zwsBaseUrl } : {}),
+                  ...(layerConfig.zwsUsername ? { zwsUsername: layerConfig.zwsUsername, zwsPassword: layerConfig.zwsPassword } : {}),
+                }),
               })
                 .then((res) => {
                   if (!res.ok) {

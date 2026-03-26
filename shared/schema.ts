@@ -8,6 +8,8 @@ export const zuluConnectionSchema = z.object({
   useWfs: z.boolean().default(false),
   useZws: z.boolean().default(false),
   baseUrl: z.string().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
 });
 
 export type ZuluConnection = z.infer<typeof zuluConnectionSchema>;
@@ -30,6 +32,8 @@ export const layerConfigSchema = z.object({
   opacity: z.number().min(0).max(1).default(1),
   type: z.enum(["wms", "wfs", "base", "zws"]),
   url: z.string().optional(),
+  zwsUsername: z.string().optional(),
+  zwsPassword: z.string().optional(),
   sublayers: z.array(sublayerFilterSchema).optional(),
   activeFilters: z.record(z.string(), z.array(z.string())).optional(),
 });

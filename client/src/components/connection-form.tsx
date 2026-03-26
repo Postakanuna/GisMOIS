@@ -101,6 +101,8 @@ export function ConnectionForm({
         useWfs: false,
         useZws: true,
         baseUrl: data.baseUrl,
+        username: data.username || undefined,
+        password: data.password || undefined,
       };
       await onConnectCustomZws(config);
     } catch {
