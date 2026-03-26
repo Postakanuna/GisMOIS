@@ -3443,7 +3443,7 @@ export function MapViewer({
 
     const currentLayerIds = new Set(layers.map((l) => l.id));
     Object.entries(layersRef.current).forEach(([id, layer]) => {
-      if (!currentLayerIds.has(id) && id !== "osm-base") {
+      if (!currentLayerIds.has(id) && id !== "osm-base" && id !== "yandex-map" && id !== "yandex-satellite") {
         map.removeLayer(layer);
         delete layersRef.current[id];
       }

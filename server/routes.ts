@@ -672,7 +672,7 @@ export async function registerRoutes(
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
       const bboxCrs = (bbox && bbox.crs) || crs || "EPSG:4326";
-      const featAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword) : undefined;
+      const featAuthHeader = baseUrl ? buildCustomAuthHeader(zwsUsername, zwsPassword) : undefined;
 
       // Use provided bbox or fall back to global extent for fetching all features
       const effectiveBbox = (bbox && bbox.minx !== undefined)
