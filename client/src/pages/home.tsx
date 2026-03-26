@@ -353,20 +353,24 @@ export default function Home() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data?.raw) { setZwsTableLoading(false); return; }
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(data.raw, "text/xml");
-        const elements = xmlDoc.querySelectorAll("Element");
+        const xml: string = data.raw;
         const rows: Array<Record<string, string>> = [];
-        elements.forEach(el => {
-          const idEl = el.querySelector("ID, Id");
+        const recordRegex = /<Record>([\s\S]*?)<\/Record>/gi;
+        let recordMatch;
+        while ((recordMatch = recordRegex.exec(xml)) !== null) {
+          const recordContent = recordMatch[1];
           const row: Record<string, string> = {};
-          if (idEl?.textContent) row["ID"] = idEl.textContent;
-          el.querySelectorAll("Attr, Attribute").forEach(attr => {
-            const name = attr.getAttribute("Name") || attr.getAttribute("name") || "";
-            if (name) row[name] = attr.textContent || "";
-          });
+          const fieldRegex = /<Field><Name>([^<]+)<\/Name><Value>([^<]*)<\/Value><\/Field>/gi;
+          let fieldMatch;
+          while ((fieldMatch = fieldRegex.exec(recordContent)) !== null) {
+            const fieldName = fieldMatch[1].trim();
+            const fieldValue = fieldMatch[2].trim();
+            if (fieldName && fieldName !== "Geometry") {
+              row[fieldName] = fieldValue;
+            }
+          }
           if (Object.keys(row).length > 0) rows.push(row);
-        });
+        }
         setZwsTableRows(rows);
         setZwsTableLoading(false);
       })
