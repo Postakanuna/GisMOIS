@@ -424,6 +424,15 @@ async function migrateUploadsTable() {
   }
 }
 
+async function migrateZwsConnectionsTable() {
+  try {
+    await db.execute(sql`ALTER TABLE zws_connections ADD COLUMN IF NOT EXISTS scene_id INTEGER`);
+    if (process.env.NODE_ENV !== "production") console.log("[Migration] zws_connections table columns OK");
+  } catch (error) {
+    console.error("[Migration] zws_connections table error:", error);
+  }
+}
+
 async function backfillBboxColumns() {
   try {
     const result = await db.execute(sql`SELECT COUNT(*) as cnt FROM drawn_features WHERE bbox_min_x IS NULL`);
@@ -475,6 +484,7 @@ export async function registerRoutes(
   });
 
   migrateUploadsTable();
+  migrateZwsConnectionsTable();
   backfillBboxColumns();
 
   app.post("/api/zulu/zws/layers", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
@@ -898,7 +908,8 @@ ${fieldXml}
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
-      const connections = await storage.getZwsConnections(userId);
+      const sceneId = req.query.sceneId ? parseInt(req.query.sceneId as string) : undefined;
+      const connections = await storage.getZwsConnections(userId, sceneId);
       return res.json(connections);
     } catch (error) {
       console.error("Get ZWS connections error:", error);
@@ -910,12 +921,13 @@ ${fieldXml}
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
-      const { displayName, baseUrl, username, passwordEncrypted, selectedLayers } = req.body;
+      const { displayName, baseUrl, username, passwordEncrypted, selectedLayers, sceneId } = req.body;
       if (!displayName || !baseUrl) {
         return res.status(400).json({ message: "displayName and baseUrl are required" });
       }
       const conn = await storage.createZwsConnection({
         userId,
+        sceneId: sceneId ? parseInt(sceneId) : null,
         displayName,
         baseUrl,
         username: username || null,

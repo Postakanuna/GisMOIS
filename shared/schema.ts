@@ -856,6 +856,7 @@ export const insertZuluFieldValueSchema = createInsertSchema(zuluFieldValues).om
 export const zwsConnections = pgTable("zws_connections", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: varchar("user_id").notNull(),
+  sceneId: integer("scene_id"),
   displayName: text("display_name").notNull(),
   baseUrl: text("base_url").notNull(),
   username: text("zws_username"),

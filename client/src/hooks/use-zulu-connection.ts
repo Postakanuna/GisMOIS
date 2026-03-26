@@ -107,7 +107,7 @@ function getNextZwsLayerId(): number {
   return nextZwsLayerId--;
 }
 
-export function useZuluConnection(): UseZuluConnectionReturn {
+export function useZuluConnection(sceneId?: number | null): UseZuluConnectionReturn {
   const [connection, setConnection] = useState<ZuluConnection | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [layers, setLayers] = useState<LayerConfig[]>([DEFAULT_OSM_LAYER]);
@@ -119,6 +119,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
   const [zwsSessions, setZwsSessions] = useState<ZwsSession[]>([]);
   const [savedZwsConnections, setSavedZwsConnections] = useState<ZwsConnectionConfig[]>([]);
   const initLoadedRef = useRef(false);
+  const prevSceneIdRef = useRef<number | null | undefined>(sceneId);
 
   const connect = useCallback(async (config: ZuluConnection) => {
     setStatus("connecting");
@@ -298,6 +299,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
           username: config.username || null,
           passwordEncrypted: config.password || null,
           selectedLayers: layerList.map(l => ({ layerName: l.name })),
+          sceneId: sceneId ?? null,
         });
         const savedConn = await saveRes.json();
 
@@ -437,7 +439,8 @@ export function useZuluConnection(): UseZuluConnectionReturn {
 
   const loadSavedZwsConnections = useCallback(async () => {
     try {
-      const res = await fetch("/api/zws-connections");
+      const url = sceneId != null ? `/api/zws-connections?sceneId=${sceneId}` : "/api/zws-connections";
+      const res = await fetch(url);
       if (!res.ok) return;
       const data = await res.json();
       setSavedZwsConnections(data);
@@ -499,7 +502,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
       }
     } catch {
     }
-  }, [buildZwsEditableLayer, connection]);
+  }, [buildZwsEditableLayer, connection, sceneId]);
 
   const connectSavedZws = useCallback(async (connId: number) => {
     const saved = savedZwsConnections.find(c => c.id === connId);
@@ -606,6 +609,21 @@ export function useZuluConnection(): UseZuluConnectionReturn {
   }, []);
 
   const zwsEditableLayers = useMemo(() => zwsSessions.flatMap(s => s.layers), [zwsSessions]);
+
+  // Reset ZWS state when the active scene changes
+  useEffect(() => {
+    const prevSceneId = prevSceneIdRef.current;
+    prevSceneIdRef.current = sceneId;
+    if (prevSceneId === sceneId) return;
+    // Scene changed: clear all active ZWS sessions and reload for the new scene
+    setZwsSessions([]);
+    setSavedZwsConnections([]);
+    setConnection(null);
+    setStatus("disconnected");
+    setError(null);
+    setLayers([DEFAULT_OSM_LAYER]);
+    initLoadedRef.current = false;
+  }, [sceneId]);
 
   useEffect(() => {
     if (!initLoadedRef.current) {

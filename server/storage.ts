@@ -219,7 +219,7 @@ export interface IStorage {
   renameLayerGlobal(oldName: string, geometryType: string, newName: string): Promise<void>;
   updateLayerMetadataGlobal(name: string, geometryType: string, metadata: Record<string, unknown>): Promise<void>;
 
-  getZwsConnections(userId: string): Promise<ZwsConnection[]>;
+  getZwsConnections(userId: string, sceneId?: number): Promise<ZwsConnection[]>;
   getZwsConnection(id: number): Promise<ZwsConnection | undefined>;
   createZwsConnection(data: InsertZwsConnection): Promise<ZwsConnection>;
   updateZwsConnection(id: number, updates: Partial<InsertZwsConnection>): Promise<ZwsConnection | undefined>;
@@ -1520,7 +1520,12 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(editableLayers.name, name), eq(editableLayers.geometryType, geometryType)));
   }
 
-  async getZwsConnections(userId: string): Promise<ZwsConnection[]> {
+  async getZwsConnections(userId: string, sceneId?: number): Promise<ZwsConnection[]> {
+    if (sceneId !== undefined) {
+      return db.select().from(zwsConnections).where(
+        and(eq(zwsConnections.userId, userId), eq(zwsConnections.sceneId, sceneId))
+      );
+    }
     return db.select().from(zwsConnections).where(eq(zwsConnections.userId, userId));
   }
 
