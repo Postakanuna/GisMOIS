@@ -1907,29 +1907,32 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
             </div>
           </TabsContent>
 
-          <TabsContent value="connections" className="flex-1 overflow-y-auto min-h-0 mt-0 px-3 pb-3 data-[state=inactive]:hidden">
-            <div className="py-3 space-y-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Plug className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Подключение к серверу ГИС Zulu</span>
-                </div>
-                <div className="rounded-md border bg-background p-3">
-                  <ConnectionForm
-                    onConnect={connect}
-                    onConnectZws={connectZws}
-                    onConnectCustomZws={connectCustomZws}
-                    onDisconnect={disconnect}
-                    status={zuluStatus}
-                    error={zuluError}
-                  />
+          <TabsContent value="connections" className="flex-1 flex flex-col min-h-0 mt-0 data-[state=inactive]:hidden">
+            <ScrollArea className="flex-1">
+              <div className="px-3 pb-3 py-3 space-y-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Plug className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Подключение к серверу ГИС Zulu</span>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <ConnectionForm
+                      onConnect={connect}
+                      onConnectZws={connectZws}
+                      onConnectCustomZws={connectCustomZws}
+                      onDisconnect={disconnect}
+                      status={zuluStatus}
+                      error={zuluError}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="settings" className="flex-1 overflow-y-auto min-h-0 mt-0 px-3 pb-3 data-[state=inactive]:hidden">
-            <div className="py-3 space-y-4">
+          <TabsContent value="settings" className="flex-1 flex flex-col min-h-0 mt-0 data-[state=inactive]:hidden">
+            <ScrollArea className="flex-1">
+            <div className="px-3 pb-3 py-3 space-y-4">
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <Map className="h-4 w-4 text-muted-foreground" />
@@ -1999,6 +2002,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                 </div>
               </div>
             </div>
+            </ScrollArea>
           </TabsContent>
         </Tabs>
       </div>
