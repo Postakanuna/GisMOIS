@@ -340,7 +340,7 @@ export default function Home() {
     }
     setZwsTableLoading(true);
     setZwsTableRows([]);
-    fetch("/api/zulu/zws/features", {
+    fetch("/api/zulu/zws/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

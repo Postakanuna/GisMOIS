@@ -647,7 +647,7 @@ export async function registerRoutes(
       if (!layer) return res.status(400).json({ message: "Layer is required" });
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
-      const infoAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword || "") : undefined;
+      const infoAuthHeader = baseUrl ? buildCustomAuthHeader(zwsUsername, zwsPassword || "") : undefined;
       const innerXml = `    <GetLayerBaseInfo>\n      <Layer>${xmlEscape(layer)}</Layer>\n    </GetLayerBaseInfo>`;
       const xml = zwsXmlWrap(innerXml);
 
