@@ -9,7 +9,7 @@ import XYZ from "ol/source/XYZ";
 import VectorSource from "ol/source/Vector";
 import ImageWMS from "ol/source/ImageWMS";
 // Cluster import removed - using server-side point sampling instead
-import { fromLonLat, toLonLat, transformExtent } from "ol/proj";
+import { fromLonLat, toLonLat, transformExtent, transform } from "ol/proj";
 import { defaults as defaultControls, ScaleLine } from "ol/control";
 import WKT from "ol/format/WKT";
 import Feature from "ol/Feature";
@@ -1001,6 +1001,7 @@ export function MapViewer({
   const allEditableLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const zwsOlLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
   const zwsFeaturesRef = useRef<Record<number, DrawnFeature[]>>({});
+  const zwsFetchAbortControllersRef = useRef<Map<number, AbortController>>(new Map());
   const traceRouteLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const reconstructionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const simulationHighlightLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -2443,6 +2444,8 @@ export function MapViewer({
     if (zwsEditableLayers.length === 0) {
       zwsOlLayersRef.current.forEach(layer => map.removeLayer(layer));
       zwsOlLayersRef.current.clear();
+      zwsFetchAbortControllersRef.current.forEach(ctrl => ctrl.abort());
+      zwsFetchAbortControllersRef.current.clear();
       return;
     }
 
@@ -2451,15 +2454,19 @@ export function MapViewer({
       if (!currentIds.has(id)) {
         map.removeLayer(layer);
         zwsOlLayersRef.current.delete(id);
+        const ctrl = zwsFetchAbortControllersRef.current.get(id);
+        if (ctrl) { ctrl.abort(); zwsFetchAbortControllersRef.current.delete(id); }
       }
     });
 
-    const geojsonFormat = new GeoJSON();
+    const viewProj = currentProjectionRef.current;
 
     zwsEditableLayers.forEach(zwsLayer => {
       if (!zwsLayer.visible) {
         const existing = zwsOlLayersRef.current.get(zwsLayer.id);
         if (existing) existing.setVisible(false);
+        const ctrl = zwsFetchAbortControllersRef.current.get(zwsLayer.id);
+        if (ctrl) { ctrl.abort(); zwsFetchAbortControllersRef.current.delete(zwsLayer.id); }
         return;
       }
 
@@ -2484,21 +2491,27 @@ export function MapViewer({
       }
       olLayer.setVisible(true);
 
-      const proj = currentProjectionRef.current;
-      const extent = map.getView().calculateExtent(map.getSize());
-      const [minx, miny, maxx, maxy] = extent;
-
       const layerName = zwsLayer.zwsLayerName;
       const baseUrl = zwsLayer.zwsBaseUrl;
       if (!layerName || !baseUrl) return;
 
+      const prevCtrl = zwsFetchAbortControllersRef.current.get(zwsLayer.id);
+      if (prevCtrl) prevCtrl.abort();
+      const abortCtrl = new AbortController();
+      zwsFetchAbortControllersRef.current.set(zwsLayer.id, abortCtrl);
+
+      const extent = map.getView().calculateExtent(map.getSize());
+      const extentWgs84 = transformExtent(extent, viewProj, "EPSG:4326");
+      const [minx, miny, maxx, maxy] = extentWgs84;
+
       fetch("/api/zulu/zws/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortCtrl.signal,
         body: JSON.stringify({
           layer: layerName,
-          bbox: { minx, miny, maxx, maxy, crs: proj },
-          crs: proj,
+          bbox: { minx, miny, maxx, maxy, crs: "EPSG:4326" },
+          crs: "EPSG:4326",
           baseUrl,
           zwsUsername: zwsLayer.zwsUsername,
           zwsPassword: zwsLayer.zwsPassword,
@@ -2518,7 +2531,6 @@ export function MapViewer({
             const features: Feature[] = [];
 
             elements.forEach(el => {
-              const coordsEl = el.querySelector("Coordinates, Coord, Geometry");
               const idEl = el.querySelector("ID, Id");
               const elemId = idEl?.textContent || "";
               
@@ -2536,8 +2548,8 @@ export function MapViewer({
                   const coordPairs = gmlText.match(/[\d.-]+,[\d.-]+/g);
                   if (coordPairs && coordPairs.length > 0) {
                     const coords = coordPairs.map(pair => {
-                      const [x, y] = pair.split(",").map(Number);
-                      return [x, y];
+                      const [lon, lat] = pair.split(",").map(Number);
+                      return transform([lon, lat], "EPSG:4326", viewProj);
                     });
                     let geom: Geometry;
                     if (coords.length === 1) {
@@ -2559,7 +2571,11 @@ export function MapViewer({
             console.error("Failed to parse ZWS features XML:", e);
           }
         })
-        .catch(err => console.error("ZWS features fetch error:", err));
+        .catch(err => {
+          if (err.name !== "AbortError") {
+            console.error("ZWS features fetch error:", err);
+          }
+        });
     });
   }, [zwsEditableLayers, fetchViewport]);
 
@@ -3396,11 +3412,6 @@ export function MapViewer({
                         return props;
                       });
                       onZwsLayerFeaturesLoaded(layerConfig.id, layerConfig.name, rows);
-                    }
-                    
-                    if (features.length > 0) {
-                      const extent = vectorSource.getExtent();
-                      map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14 });
                     }
                     
                     if (onLayerLoadSuccess) {

@@ -665,7 +665,7 @@ export async function registerRoutes(
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
       const bboxCrs = bbox.crs || crs || "EPSG:4326";
-      const featAuthHeader = baseUrl ? buildCustomAuthHeader(zwsUsername, zwsPassword) : undefined;
+      const featAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword) : undefined;
 
       const innerXml = `    <LayerIntersectByBox>
       <Layer>${xmlEscape(layer)}</Layer>
