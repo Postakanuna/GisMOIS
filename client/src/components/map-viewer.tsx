@@ -3420,10 +3420,7 @@ export function MapViewer({
                   }
                 })
                 .catch((err) => {
-                  console.error("Failed to load layer:", err);
-                  if (onLayerLoadError) {
-                    onLayerLoadError(err.message || "Не удалось загрузить данные слоя");
-                  }
+                  console.warn("ZWS query layer load failed (non-critical):", err?.message || err);
                 });
             }
           } else {

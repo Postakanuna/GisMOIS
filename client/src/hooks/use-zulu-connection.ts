@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { ZuluConnection, ConnectionStatus, LayerConfig, Ticket, InsertTicket, EditableLayer, AttributeField, ZwsConnectionConfig } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -562,8 +562,12 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     const session = zwsSessions.find(s => s.id === sessionId);
     setZwsSessions(prev => prev.filter(s => s.id !== sessionId));
     if (session) {
-      const layerIds = new Set(session.layers.map(l => `${sessionId}:${l.zwsLayerName}`));
-      setLayers(prev => prev.filter(l => !layerIds.has(l.id)));
+      const zwsLayerNames = new Set(session.layers.map(l => l.zwsLayerName).filter(Boolean));
+      setLayers(prev => prev.filter(l => {
+        if (l.type !== "zws") return true;
+        // Match both ID formats: "layerName" (fresh connect) and "connId:layerName" (saved connect)
+        return !zwsLayerNames.has(l.id) && !zwsLayerNames.has(l.id.replace(/^\d+:/, ""));
+      }));
     }
     if (zwsSessions.length <= 1) {
       setConnection(null);
@@ -601,7 +605,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     })));
   }, []);
 
-  const zwsEditableLayers = zwsSessions.flatMap(s => s.layers);
+  const zwsEditableLayers = useMemo(() => zwsSessions.flatMap(s => s.layers), [zwsSessions]);
 
   useEffect(() => {
     if (!initLoadedRef.current) {
