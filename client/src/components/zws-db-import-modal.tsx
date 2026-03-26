@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Loader2, Database, CheckSquare, Square, CheckCheck, X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -143,24 +143,32 @@ export function ZwsDbImportModal({
     onSuccess?.();
   };
 
+  const handleBeforeClose = () => {
+    if (importing && !allDone) return true;
+  };
+
   const doneCount = progress.filter(p => p.status === "done").length;
   const totalCount = progress.length;
   const progressPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
   const allDone = progress.length > 0 && progress.every(p => p.status === "done" || p.status === "error");
 
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v && !importing) onClose(); }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-primary" />
-            Загрузка ZWS-слоёв в базу данных
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
+    <DraggableModal
+      isOpen={open}
+      onClose={onClose}
+      onBeforeClose={handleBeforeClose}
+      title="Загрузка ZWS-слоёв в базу данных"
+      headerIcon={<Database className="h-4 w-4 text-primary" />}
+      defaultWidth={480}
+      defaultHeight={480}
+      minWidth={400}
+      minHeight={300}
+      resizable
+    >
+      <div className="flex flex-col h-full">
+        <div className="flex-1 overflow-auto p-4 space-y-4 min-h-0">
           {fetchingLayers && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
               <Loader2 className="h-4 w-4 animate-spin" />
               Получение списка слоёв...
             </div>
@@ -179,7 +187,7 @@ export function ZwsDbImportModal({
                 <span className="text-sm text-muted-foreground">
                   Выбрано: {selectedLayers.size} из {layers.length}
                 </span>
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={selectAll} data-testid="button-select-all-zws">
                     <CheckCheck className="h-3 w-3 mr-1" />
                     Все
@@ -191,8 +199,8 @@ export function ZwsDbImportModal({
                 </div>
               </div>
 
-              <ScrollArea className="h-64 rounded-md border">
-                <div className="p-2 space-y-1">
+              <ScrollArea className="flex-1 rounded-md border" style={{ maxHeight: "calc(100% - 110px)" }}>
+                <div className="p-2 space-y-0.5">
                   {layers.map(layer => (
                     <div
                       key={layer.name}
@@ -230,8 +238,8 @@ export function ZwsDbImportModal({
                 <span className="font-medium">{doneCount} / {totalCount}</span>
               </div>
               <Progress value={progressPercent} className="h-2" />
-              <ScrollArea className="h-48 rounded-md border">
-                <div className="p-2 space-y-1">
+              <ScrollArea className="rounded-md border" style={{ maxHeight: "calc(100% - 120px)" }}>
+                <div className="p-2 space-y-0.5">
                   {progress.map((p, i) => (
                     <div key={i} className="flex items-center gap-2 px-2 py-1.5 text-sm rounded">
                       {p.status === "pending" && <Square className="h-4 w-4 text-muted-foreground shrink-0" />}
@@ -255,9 +263,10 @@ export function ZwsDbImportModal({
           )}
         </div>
 
-        <DialogFooter className="gap-2">
+        <div className="flex items-center justify-end gap-2 p-3 border-t shrink-0">
           <Button
             variant="outline"
+            size="sm"
             onClick={onClose}
             disabled={importing && !allDone}
             data-testid="button-cancel-zws-import"
@@ -266,6 +275,7 @@ export function ZwsDbImportModal({
           </Button>
           {!allDone && (
             <Button
+              size="sm"
               onClick={handleImport}
               disabled={importing || selectedLayers.size === 0 || !sceneId || fetchingLayers}
               data-testid="button-start-zws-import"
@@ -283,8 +293,8 @@ export function ZwsDbImportModal({
               )}
             </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </DraggableModal>
   );
 }
