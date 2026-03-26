@@ -110,7 +110,7 @@ function getNextZwsLayerId(): number {
 export function useZuluConnection(sceneId?: number | null): UseZuluConnectionReturn {
   const [connection, setConnection] = useState<ZuluConnection | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
-  const [layers, setLayers] = useState<LayerConfig[]>([DEFAULT_OSM_LAYER]);
+  const [layers, setLayers] = useState<LayerConfig[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [layerFilters, setLayerFiltersState] = useState<Record<string, LayerFilters>>({});
   const [activeFilters, setActiveFilters] = useState<Record<string, ActiveFilters>>({});
@@ -139,21 +139,16 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
 
       const data = await response.json();
 
-      setLayers((prev) => {
-        // Preserve current OSM layer state
-        const currentOsm = prev.find(l => l.id === "osm-base");
-        return [
-          currentOsm || DEFAULT_OSM_LAYER,
-          ...data.layers.map((layer: { name: string; title: string }) => ({
-            id: layer.name,
-            name: layer.title || layer.name,
-            visible: true,
-            opacity: 1,
-            type: config.useWfs ? "wfs" : "wms" as const,
-            url: `http://${config.host}:${config.port}/ZuluServer/wms`,
-          })),
-        ];
-      });
+      setLayers(
+        data.layers.map((layer: { name: string; title: string }) => ({
+          id: layer.name,
+          name: layer.title || layer.name,
+          visible: true,
+          opacity: 1,
+          type: config.useWfs ? "wfs" : "wms" as const,
+          url: `http://${config.host}:${config.port}/ZuluServer/wms`,
+        }))
+      );
       setConnection(config);
       setStatus("connected");
     } catch (err) {
@@ -187,21 +182,16 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
         baseUrl: "https://is.arki.mosreg.ru/zws",
       };
 
-      setLayers((prev) => {
-        // Preserve current OSM layer state
-        const currentOsm = prev.find(l => l.id === "osm-base");
-        return [
-          currentOsm || DEFAULT_OSM_LAYER,
-          ...data.layers.map((layer: { name: string; title: string }) => ({
-            id: layer.name,
-            name: layer.title || layer.name,
-            visible: true,
-            opacity: 1,
-            type: "zws" as const,
-            url: zwsConnection.baseUrl,
-          })),
-        ];
-      });
+      setLayers(
+        data.layers.map((layer: { name: string; title: string }) => ({
+          id: layer.name,
+          name: layer.title || layer.name,
+          visible: true,
+          opacity: 1,
+          type: "zws" as const,
+          url: zwsConnection.baseUrl,
+        }))
+      );
       setConnection(zwsConnection);
       // Stay in "connecting" until layers actually load
       setStatus("connecting");
@@ -272,22 +262,18 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
       const data = await response.json();
       const layerList: { name: string; title: string }[] = data.layers || [];
 
-      setLayers((prev) => {
-        const currentOsm = prev.find(l => l.id === "osm-base");
-        return [
-          currentOsm || DEFAULT_OSM_LAYER,
-          ...layerList.map((layer) => ({
-            id: layer.name,
-            name: layer.title || layer.name,
-            visible: true,
-            opacity: 1,
-            type: "zws" as const,
-            url: config.baseUrl,
-            zwsUsername: config.username || undefined,
-            zwsPassword: config.password || undefined,
-          })),
-        ];
-      });
+      setLayers(
+        layerList.map((layer) => ({
+          id: layer.name,
+          name: layer.title || layer.name,
+          visible: true,
+          opacity: 1,
+          type: "zws" as const,
+          url: config.baseUrl,
+          zwsUsername: config.username || undefined,
+          zwsPassword: config.password || undefined,
+        }))
+      );
       setConnection(config);
       setStatus("connecting");
 
@@ -341,11 +327,7 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
 
   const disconnect = useCallback(() => {
     setConnection(null);
-    // Keep only the OSM base layer with its current visibility/opacity
-    setLayers((prev) => {
-      const osmLayer = prev.find(l => l.id === "osm-base");
-      return osmLayer ? [osmLayer] : [DEFAULT_OSM_LAYER];
-    });
+    setLayers([]);
     setStatus("disconnected");
     setError(null);
   }, []);
@@ -530,8 +512,6 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
     setZwsSessions(prev => [...prev, session]);
 
     setLayers(prev => {
-      const currentOsm = prev.find(l => l.id === "osm-base");
-      const nonZwsForThisConn = prev.filter(l => l.id !== "osm-base");
       const newLayers = sessionLayers.map(sl => ({
         id: `${connId}:${sl.zwsLayerName}`,
         name: sl.name,
@@ -542,7 +522,7 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
         zwsUsername: saved.username || undefined,
         zwsPassword: saved.passwordEncrypted || undefined,
       }));
-      return [currentOsm || DEFAULT_OSM_LAYER, ...nonZwsForThisConn, ...newLayers];
+      return [...prev, ...newLayers];
     });
 
     if (!connection) {
@@ -621,7 +601,7 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
     setConnection(null);
     setStatus("disconnected");
     setError(null);
-    setLayers([DEFAULT_OSM_LAYER]);
+    setLayers([]);
     initLoadedRef.current = false;
   }, [sceneId]);
 

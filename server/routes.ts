@@ -669,18 +669,20 @@ export async function registerRoutes(
     try {
       const { layer, bbox, crs, baseUrl, zwsUsername, zwsPassword } = req.body;
       if (!layer) return res.status(400).json({ message: "Layer is required" });
-      if (!bbox || bbox.minx === undefined || bbox.miny === undefined || bbox.maxx === undefined || bbox.maxy === undefined) {
-        return res.status(400).json({ message: "bbox with minx/miny/maxx/maxy is required" });
-      }
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
-      const bboxCrs = bbox.crs || crs || "EPSG:4326";
+      const bboxCrs = (bbox && bbox.crs) || crs || "EPSG:4326";
       const featAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword) : undefined;
+
+      // Use provided bbox or fall back to global extent for fetching all features
+      const effectiveBbox = (bbox && bbox.minx !== undefined)
+        ? bbox
+        : { minx: -180, miny: -90, maxx: 180, maxy: 90 };
 
       const innerXml = `    <LayerIntersectByBox>
       <Layer>${xmlEscape(layer)}</Layer>
       <CRS>${xmlEscape(bboxCrs)}</CRS>
-      <BoundingBox CRS="${xmlEscape(bboxCrs)}" minx="${bbox.minx}" miny="${bbox.miny}" maxx="${bbox.maxx}" maxy="${bbox.maxy}"/>
+      <BoundingBox CRS="${xmlEscape(bboxCrs)}" minx="${effectiveBbox.minx}" miny="${effectiveBbox.miny}" maxx="${effectiveBbox.maxx}" maxy="${effectiveBbox.maxy}"/>
       <Geometry>Yes</Geometry>
       <Attr>Yes</Attr>
     </LayerIntersectByBox>`;

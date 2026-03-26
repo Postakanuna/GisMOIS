@@ -288,6 +288,8 @@ export default function Home() {
   const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
   const [zwsStyleConfigId, setZwsStyleConfigId] = useState<number | null>(null);
   const [zwsAttributeTableLayer, setZwsAttributeTableLayer] = useState<{ layerId: number; layerName: string } | null>(null);
+  const [zwsTableRows, setZwsTableRows] = useState<Array<Record<string, string>>>([]);
+  const [zwsTableLoading, setZwsTableLoading] = useState(false);
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
 
   const [showConsumerConnectDialog, setShowConsumerConnectDialog] = useState(false);
@@ -325,6 +327,51 @@ export default function Home() {
       })
       .catch(() => setAiProvidersLoaded(true));
   }, []);
+
+  useEffect(() => {
+    if (!zwsAttributeTableLayer) {
+      setZwsTableRows([]);
+      return;
+    }
+    const zwsLayer = zuluConnection.zwsEditableLayers.find(l => l.id === zwsAttributeTableLayer.layerId);
+    if (!zwsLayer?.zwsLayerName || !zwsLayer?.zwsBaseUrl) {
+      setZwsTableRows([]);
+      return;
+    }
+    setZwsTableLoading(true);
+    setZwsTableRows([]);
+    fetch("/api/zulu/zws/features", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        layer: zwsLayer.zwsLayerName,
+        baseUrl: zwsLayer.zwsBaseUrl,
+        zwsUsername: zwsLayer.zwsUsername,
+        zwsPassword: zwsLayer.zwsPassword,
+      }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.raw) { setZwsTableLoading(false); return; }
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(data.raw, "text/xml");
+        const elements = xmlDoc.querySelectorAll("Element");
+        const rows: Array<Record<string, string>> = [];
+        elements.forEach(el => {
+          const idEl = el.querySelector("ID, Id");
+          const row: Record<string, string> = {};
+          if (idEl?.textContent) row["ID"] = idEl.textContent;
+          el.querySelectorAll("Attr, Attribute").forEach(attr => {
+            const name = attr.getAttribute("Name") || attr.getAttribute("name") || "";
+            if (name) row[name] = attr.textContent || "";
+          });
+          if (Object.keys(row).length > 0) rows.push(row);
+        });
+        setZwsTableRows(rows);
+        setZwsTableLoading(false);
+      })
+      .catch(() => setZwsTableLoading(false));
+  }, [zwsAttributeTableLayer, zuluConnection.zwsEditableLayers]);
 
   const handleSelectedFeaturesChange = useCallback((features: SelectedFeatureData[]) => {
     setSelectedFeatures(features);
@@ -1164,8 +1211,7 @@ export default function Home() {
             {/* ZWS Editable Attribute Table */}
             {zwsAttributeTableLayer && (() => {
               const zwsLayer = zuluConnection.zwsEditableLayers.find(l => l.id === zwsAttributeTableLayer.layerId);
-              const layerData = Object.entries(zwsLayerFeatures).find(([key]) => key.includes(zwsLayer?.zwsLayerName || ""));
-              const rows = layerData?.[1]?.rows || [];
+              const rows = zwsTableRows;
               const columns = rows.length > 0 ? Object.keys(rows[0]).filter(k => k !== "geometry" && !k.startsWith("_")) : [];
               return (
                 <DraggableModal
@@ -1178,8 +1224,10 @@ export default function Home() {
                   minHeight={200}
                 >
                   <div className="h-full overflow-auto">
-                    {rows.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-8">Данные не загружены. Слой должен быть виден на карте.</p>
+                    {zwsTableLoading ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">Загрузка данных...</p>
+                    ) : rows.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">Объекты не найдены.</p>
                     ) : (
                       <table className="w-full text-xs border-collapse">
                         <thead className="sticky top-0 bg-background z-10">

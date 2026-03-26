@@ -3041,18 +3041,7 @@ export function MapViewer({
     };
   }, [mapActionsRef]);
 
-  // Handle OSM base layer visibility and opacity (works without connection)
-  useEffect(() => {
-    if (!mapRef.current) return;
-    
-    const osmLayerConfig = layers.find(l => l.id === "osm-base" && l.type === "base");
-    const osmLayer = layersRef.current["osm-base"];
-    
-    if (osmLayerConfig && osmLayer) {
-      osmLayer.setVisible(osmLayerConfig.visible);
-      osmLayer.setOpacity(osmLayerConfig.opacity);
-    }
-  }, [layers]);
+  // Base layer visibility is controlled exclusively by BaseLayersContext (see effect above)
 
   // Manage drawing interactions
   useEffect(() => {
