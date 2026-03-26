@@ -52,7 +52,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import type { LayerConfig, EditableLayer, GeometryType, ConnectionStatus } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { LayerLegendIcon } from "@/components/layer-legend-icon";
@@ -139,6 +139,10 @@ interface LayerPanelProps {
   connectionStatus?: ConnectionStatus;
   onDisconnectZws?: () => void;
   onOpenZwsAttributeTable?: (layerId: string, layerName: string) => void;
+  zwsEditableLayers?: EditableLayer[];
+  onToggleZwsLayerVisibility?: (layerId: number) => void;
+  onOpenZwsStyleConfig?: (layerId: number) => void;
+  onOpenZwsEditableAttributeTable?: (layerId: number, layerName: string) => void;
 }
 
 export function LayerPanel({
@@ -168,6 +172,10 @@ export function LayerPanel({
   connectionStatus,
   onDisconnectZws,
   onOpenZwsAttributeTable,
+  zwsEditableLayers = [],
+  onToggleZwsLayerVisibility,
+  onOpenZwsStyleConfig,
+  onOpenZwsEditableAttributeTable,
 }: LayerPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -578,7 +586,7 @@ export function LayerPanel({
               <Pencil className="h-3 w-3 text-muted-foreground shrink-0" />
               <span className="text-xs font-medium truncate">Редактируемые слои</span>
               <span className="text-[10px] text-muted-foreground shrink-0">
-                ({editableLayers.length})
+                ({editableLayers.length + zwsEditableLayers.length})
               </span>
             </div>
           </AccordionTrigger>
@@ -963,7 +971,165 @@ export function LayerPanel({
                   </>
                 );
               })()}
-              {editableLayers.length === 0 && (
+              {zwsEditableLayers.length > 0 && (
+                <div className="space-y-1 mt-1">
+                  <div className="flex items-center gap-1 px-1">
+                    <Globe className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                    <span className="text-[10px] text-muted-foreground font-medium">ZWS ({zwsEditableLayers.length})</span>
+                  </div>
+                  {zwsEditableLayers.map((layer) => {
+                    const sc = layer.styleConfig as any;
+                    const hasLegend = sc && sc.renderer !== "single";
+                    return (
+                      <div key={layer.id} className={`rounded-md border transition-colors overflow-hidden ${
+                        activeEditableLayer?.id === layer.id
+                          ? "border-primary bg-primary/10"
+                          : "border-sidebar-border hover:bg-accent/50"
+                      }`}>
+                        <div
+                          className="flex items-center gap-1 px-2 py-1 cursor-pointer"
+                          onClick={() => {
+                            if (hasLegend) {
+                              setLegendLayerId(legendLayerId === layer.id ? null : layer.id);
+                            }
+                            onSelectEditableLayer?.(layer);
+                          }}
+                          data-testid={`editable-layer-item-zws-${layer.id}`}
+                        >
+                          <div className="flex items-center gap-1 shrink-0">
+                            <LayerLegendIcon
+                              geometryType={layer.geometryType}
+                              color={layer.color}
+                              pointStyle={layer.pointStyle}
+                              lineStyle={layer.lineStyle}
+                              styleConfig={layer.styleConfig}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0 flex items-center gap-1">
+                            <span className="text-xs font-medium" title={layer.name}>
+                              {truncateName(layer.name)}
+                            </span>
+                            <Globe className="h-2.5 w-2.5 text-blue-500 shrink-0" />
+                            {!layer.visible && (
+                              <EyeOff className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                            )}
+                            {hasLegend && (
+                              <ChevronRight className={`h-2.5 w-2.5 text-muted-foreground shrink-0 transition-transform ${legendLayerId === layer.id ? "rotate-90" : ""}`} />
+                            )}
+                          </div>
+                          <Popover open={popoverLayerId === layer.id} onOpenChange={(open) => setPopoverLayerId(open ? layer.id : null)}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-5 w-5 shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                                data-testid={`button-layer-tools-zws-${layer.id}`}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent side="right" align="start" className="w-auto p-1.5" data-testid={`popover-layer-toolbar-zws-${layer.id}`}>
+                              <div className="flex items-center gap-0.5">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setPopoverLayerId(null);
+                                        onOpenZwsStyleConfig?.(layer.id);
+                                      }}
+                                      data-testid={`button-style-config-zws-${layer.id}`}
+                                    >
+                                      <Palette className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent><p>Стиль</p></TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setPopoverLayerId(null);
+                                        onOpenZwsEditableAttributeTable?.(layer.id, layer.name);
+                                      }}
+                                      data-testid={`button-attribute-table-zws-${layer.id}`}
+                                    >
+                                      <Table2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent><p>Таблица атрибутов</p></TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setPopoverLayerId(null);
+                                        onToggleZwsLayerVisibility?.(layer.id);
+                                      }}
+                                      data-testid={`button-toggle-visibility-zws-${layer.id}`}
+                                    >
+                                      {layer.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent><p>{layer.visible ? "Скрыть" : "Показать"}</p></TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        {legendLayerId === layer.id && hasLegend && (
+                          <div className="px-3 py-2 border-t bg-muted/20 space-y-1" data-testid={`legend-layer-zws-${layer.id}`}>
+                            <p className="text-[10px] text-muted-foreground font-medium mb-1">
+                              {sc.renderer === "categorized" ? "Категории" : "Градация"}: {sc.field}
+                            </p>
+                            {sc.renderer === "categorized" && sc.categorizedClasses && (
+                              <div className="space-y-0.5">
+                                {sc.categorizedClasses.map((cls: any, i: number) => (
+                                  <div key={i} className="flex items-center gap-1.5">
+                                    <span className="flex-shrink-0">
+                                      <LayerLegendIcon
+                                        geometryType={layer.geometryType}
+                                        color={cls.style?.color || layer.color}
+                                        pointStyle={cls.style?.pointStyle || layer.pointStyle}
+                                        lineStyle={layer.lineStyle}
+                                      />
+                                    </span>
+                                    <span className="text-[11px] truncate flex-1">{cls.label || String(cls.value)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {sc.renderer === "graduated" && sc.graduatedClasses && (
+                              <div className="space-y-0.5">
+                                {sc.graduatedClasses.map((cls: any, i: number) => (
+                                  <div key={i} className="flex items-center gap-1.5">
+                                    <span className="flex-shrink-0">
+                                      <LayerLegendIcon
+                                        geometryType={layer.geometryType}
+                                        color={cls.style?.color || layer.color}
+                                        pointStyle={layer.pointStyle}
+                                        lineStyle={layer.lineStyle}
+                                      />
+                                    </span>
+                                    <span className="text-[11px] truncate">{cls.label}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {editableLayers.length === 0 && zwsEditableLayers.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-2">
                   Нажмите "+" для создания слоя
                 </p>

@@ -1718,6 +1718,13 @@ export function MapViewer({
       reprojectedSources.add(source);
       reprojectFeatures(source.getFeatures());
     });
+
+    zwsOlLayersRef.current.forEach((layer) => {
+      const source = layer.getSource();
+      if (!source || reprojectedSources.has(source)) return;
+      reprojectedSources.add(source);
+      reprojectFeatures(source.getFeatures());
+    });
     
     sceneDatasetLayersRef.current.forEach((layer) => {
       const source = layer.getSource();
@@ -1889,7 +1896,7 @@ export function MapViewer({
       // A2: Only search in the active editable layer
       const activeLayerIdForBox = activeEditableLayerRef.current?.id;
       if (activeLayerIdForBox !== undefined) {
-        const activeOLLayer = allEditableLayersRef.current.get(activeLayerIdForBox);
+        const activeOLLayer = allEditableLayersRef.current.get(activeLayerIdForBox) || zwsOlLayersRef.current.get(activeLayerIdForBox);
         if (activeOLLayer && activeOLLayer.getVisible()) {
           const source = activeOLLayer.getSource();
           if (source) {
@@ -1941,6 +1948,15 @@ export function MapViewer({
             const iconIds = collectCustomIconIds(layerData.styleConfig as StyleConfig | undefined);
             const cachedMap = iconIds.length > 0 ? buildIconMapFromCache(iconIds) : undefined;
             layer.setStyle(createEditableLayerStyleFunction(layerData, roundedZoom, cachedMap, hiddenCategoriesRef.current[editableLayerId]) as any);
+            layer.set("lastZoom", roundedZoom);
+          }
+        });
+
+        zwsOlLayersRef.current.forEach((layer) => {
+          const editableLayerId = layer.get("editableLayerId");
+          const layerData = allEditableLayersDataRef.current?.find(l => l.id === editableLayerId);
+          if (layerData) {
+            layer.setStyle(createEditableLayerStyleFunction(layerData, roundedZoom) as any);
             layer.set("lastZoom", roundedZoom);
           }
         });
@@ -2037,7 +2053,7 @@ export function MapViewer({
         map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
           const editableLayerId = layer?.get("editableLayerId");
           if (editableLayerId !== undefined) {
-            const vectorLayer = allEditableLayersRef.current.get(editableLayerId);
+            const vectorLayer = allEditableLayersRef.current.get(editableLayerId) || zwsOlLayersRef.current.get(editableLayerId);
             if (vectorLayer) {
               const source = vectorLayer.getSource();
               if (source) {
@@ -2461,6 +2477,10 @@ export function MapViewer({
         olLayer.setZIndex(50);
         map.addLayer(olLayer);
         zwsOlLayersRef.current.set(zwsLayer.id, olLayer);
+      } else {
+        const currentZoom = fetchViewport?.zoom || 10;
+        olLayer.setStyle(createEditableLayerStyleFunction(zwsLayer, currentZoom) as any);
+        olLayer.setOpacity(zwsLayer.opacity ?? 1);
       }
       olLayer.setVisible(true);
 
@@ -3098,9 +3118,19 @@ export function MapViewer({
       allEditableLayersRef.current.forEach((layerRef, layerId) => {
         const layer = layerRef as VectorLayer<VectorSource>;
         const source = layer.getSource();
-        const featureCount = source?.getFeatures().length || 0;
         const isVisible = layer.getVisible();
         
+        if (source && isVisible) {
+          if (useAllLayers || snapSettings.snapLayerIds.includes(layerId)) {
+            snapSources.push(source);
+          }
+        }
+      });
+
+      zwsOlLayersRef.current.forEach((layerRef, layerId) => {
+        const layer = layerRef as VectorLayer<VectorSource>;
+        const source = layer.getSource();
+        const isVisible = layer.getVisible();
         if (source && isVisible) {
           if (useAllLayers || snapSettings.snapLayerIds.includes(layerId)) {
             snapSources.push(source);
@@ -3236,7 +3266,7 @@ export function MapViewer({
 
     // Only add modify interaction when in edit mode with "modify" drawing mode and an active layer
     if (activeEditableLayer && editMode && drawingMode === "modify") {
-      const layer = allEditableLayersRef.current.get(activeEditableLayer.id);
+      const layer = allEditableLayersRef.current.get(activeEditableLayer.id) || zwsOlLayersRef.current.get(activeEditableLayer.id);
       if (layer) {
         const source = layer.getSource();
         

@@ -48,7 +48,7 @@ import { BugReportButton } from "@/components/bug-report-button";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
-import type { ConnectionStatus, EditableLayer, GeometryType, DrawnFeature, FeatureInfo } from "@shared/schema";
+import type { ConnectionStatus, EditableLayer, GeometryType, DrawnFeature, FeatureInfo, InsertDrawnFeature } from "@shared/schema";
 
 interface SceneDataset {
   id: number;
@@ -94,6 +94,10 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   connectionStatus: ConnectionStatus;
   onDisconnectZws?: () => void;
   onOpenZwsAttributeTable?: (layerId: string, layerName: string) => void;
+  zwsEditableLayers?: EditableLayer[];
+  onToggleZwsLayerVisibility?: (layerId: number) => void;
+  onOpenZwsStyleConfig?: (layerId: number) => void;
+  onOpenZwsEditableAttributeTable?: (layerId: number, layerName: string) => void;
 }
 
 function SidebarContentPanel({
@@ -123,6 +127,10 @@ function SidebarContentPanel({
   connectionStatus,
   onDisconnectZws,
   onOpenZwsAttributeTable,
+  zwsEditableLayers,
+  onToggleZwsLayerVisibility,
+  onOpenZwsStyleConfig,
+  onOpenZwsEditableAttributeTable,
 }: SidebarContentPanelProps) {
   return (
     <div className="h-full w-full min-w-0 overflow-hidden flex flex-col">
@@ -154,6 +162,10 @@ function SidebarContentPanel({
           connectionStatus={connectionStatus}
           onDisconnectZws={onDisconnectZws}
           onOpenZwsAttributeTable={onOpenZwsAttributeTable}
+          zwsEditableLayers={zwsEditableLayers}
+          onToggleZwsLayerVisibility={onToggleZwsLayerVisibility}
+          onOpenZwsStyleConfig={onOpenZwsStyleConfig}
+          onOpenZwsEditableAttributeTable={onOpenZwsEditableAttributeTable}
         />
       </div>
     </div>
@@ -274,6 +286,8 @@ export default function Home() {
   const [reconstructionImportSegments, setReconstructionImportSegments] = useState<SegmentImportData[]>([]);
   const [aiReconstructionProgramId, setAiReconstructionProgramId] = useState<number | null>(null);
   const [layerPanelStyleConfigId, setLayerPanelStyleConfigId] = useState<number | null>(null);
+  const [zwsStyleConfigId, setZwsStyleConfigId] = useState<number | null>(null);
+  const [zwsAttributeTableLayer, setZwsAttributeTableLayer] = useState<{ layerId: number; layerName: string } | null>(null);
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
 
   const [showConsumerConnectDialog, setShowConsumerConnectDialog] = useState(false);
@@ -354,6 +368,72 @@ export default function Home() {
       crs: "EPSG:4326",
     });
   }, [drawing]);
+
+  const activeZwsLayer = zuluConnection.zwsEditableLayers.find(l => l.id === drawing.activeLayerId) || null;
+
+  const handleZwsFeatureCreated = useCallback(async (
+    geometryType: GeometryType,
+    coordinates: unknown,
+  ) => {
+    if (!activeZwsLayer) return;
+    try {
+      const res = await apiRequest("POST", "/api/zulu/zws/element", {
+        layer: activeZwsLayer.zwsLayerName,
+        geometryType,
+        typeId: 0,
+        modeNum: 0,
+        coordinates,
+        crs: "EPSG:4326",
+        baseUrl: activeZwsLayer.zwsBaseUrl,
+        zwsUsername: activeZwsLayer.zwsUsername,
+        zwsPassword: activeZwsLayer.zwsPassword,
+      });
+      const data = await res.json();
+      if (data.success) {
+        window.dispatchEvent(new Event("viewport-features-invalidate"));
+      }
+    } catch (err) {
+      console.error("ZWS create element error:", err);
+    }
+  }, [activeZwsLayer]);
+
+  const handleZwsFeatureUpdated = useCallback(async (featureId: number, updates: { coordinates?: unknown }) => {
+    if (!activeZwsLayer || !updates.coordinates) return;
+    try {
+      await apiRequest("PUT", "/api/zulu/zws/element/geometry", {
+        layer: activeZwsLayer.zwsLayerName,
+        elemId: featureId,
+        coordinates: updates.coordinates,
+        crs: "EPSG:4326",
+        baseUrl: activeZwsLayer.zwsBaseUrl,
+        zwsUsername: activeZwsLayer.zwsUsername,
+        zwsPassword: activeZwsLayer.zwsPassword,
+      });
+      window.dispatchEvent(new Event("viewport-features-invalidate"));
+    } catch (err) {
+      console.error("ZWS update geometry error:", err);
+    }
+  }, [activeZwsLayer]);
+
+  const handleFeatureCreated = useCallback((
+    geometryType: GeometryType,
+    coordinates: unknown,
+    properties: Record<string, unknown> = {}
+  ) => {
+    if (activeZwsLayer) {
+      handleZwsFeatureCreated(geometryType, coordinates);
+    } else {
+      drawing.createFeature(geometryType, coordinates, properties);
+    }
+  }, [activeZwsLayer, handleZwsFeatureCreated, drawing]);
+
+  const handleFeatureUpdated = useCallback((featureId: number, updates: Partial<InsertDrawnFeature>) => {
+    if (activeZwsLayer) {
+      handleZwsFeatureUpdated(featureId, updates);
+    } else {
+      drawing.updateFeature(featureId, updates);
+    }
+  }, [activeZwsLayer, handleZwsFeatureUpdated, drawing]);
 
   const handleSelectSceneDataset = useCallback((sd: SceneDataset | null) => {
     setActiveSceneDataset(sd);
@@ -612,6 +692,10 @@ export default function Home() {
                     connectionStatus={zuluConnection.status}
                     onDisconnectZws={() => { zuluConnection.disconnect(); setZwsLayerFeatures({}); setZwsSelectedFeature(null); }}
                     onOpenZwsAttributeTable={(layerId, layerName) => setShowZwsAttributeTable({ layerId, layerName })}
+                    zwsEditableLayers={zuluConnection.zwsEditableLayers}
+                    onToggleZwsLayerVisibility={zuluConnection.toggleZwsLayerVisibility}
+                    onOpenZwsStyleConfig={(layerId) => setZwsStyleConfigId(layerId)}
+                    onOpenZwsEditableAttributeTable={(layerId, layerName) => setZwsAttributeTableLayer({ layerId, layerName })}
                   />
                 )}
               </SidebarGroupContent>
@@ -690,6 +774,10 @@ export default function Home() {
                     connectionStatus={zuluConnection.status}
                     onDisconnectZws={() => { zuluConnection.disconnect(); setZwsLayerFeatures({}); setZwsSelectedFeature(null); }}
                     onOpenZwsAttributeTable={(layerId, layerName) => setShowZwsAttributeTable({ layerId, layerName })}
+                    zwsEditableLayers={zuluConnection.zwsEditableLayers}
+                    onToggleZwsLayerVisibility={zuluConnection.toggleZwsLayerVisibility}
+                    onOpenZwsStyleConfig={(layerId) => setZwsStyleConfigId(layerId)}
+                    onOpenZwsEditableAttributeTable={(layerId, layerName) => setZwsAttributeTableLayer({ layerId, layerName })}
                   />
                 </SheetContent>
               </Sheet>
@@ -785,11 +873,11 @@ export default function Home() {
           </header>
 
           <main className="relative flex-1 overflow-hidden">
-            {drawing.editableLayers.length > 0 && (
+            {(drawing.editableLayers.length > 0 || zuluConnection.zwsEditableLayers.length > 0) && (
               <DrawingToolbar
                 mode={drawing.drawingMode}
                 onModeChange={drawing.setDrawingMode}
-                activeLayer={drawing.activeLayer}
+                activeLayer={drawing.activeLayer || zuluConnection.zwsEditableLayers.find(l => l.id === drawing.activeLayerId) || null}
                 editMode={editMode}
                 onDeleteSelected={() => {
                   const ids = drawing.selectedFeatureIds;
@@ -808,7 +896,10 @@ export default function Home() {
                 onClearSelection={() => selectionActionsRef.current?.clearSelection()}
                 showAttributeTable={showAttributeTable}
                 onToggleAttributeTable={() => setShowAttributeTable(prev => !prev)}
-                featureCount={drawing.features.length}
+                featureCount={activeZwsLayer ? (() => {
+                  const layerData = Object.entries(zwsLayerFeatures).find(([key]) => key.includes(activeZwsLayer.zwsLayerName || ""));
+                  return layerData?.[1]?.rows?.length || 0;
+                })() : drawing.features.length}
                 showFeatureInfo={showFeatureInfo}
                 onToggleFeatureInfo={() => setShowFeatureInfo(prev => !prev)}
                 hasSelectedFeature={selectedFeatures.length > 0}
@@ -851,14 +942,14 @@ export default function Home() {
               ticketMode={zuluConnection.ticketMode}
               onToggleTicketMode={() => zuluConnection.setTicketMode(!zuluConnection.ticketMode)}
               onCreateTicket={zuluConnection.createTicket}
-              allEditableLayers={drawing.editableLayers}
+              allEditableLayers={[...drawing.editableLayers, ...zuluConnection.zwsEditableLayers]}
               onSelectedFeaturesChange={handleSelectedFeaturesChange}
               onShowFeatureInfo={handleShowFeatureInfo}
               editMode={editMode}
               drawingMode={drawing.drawingMode}
-              activeEditableLayer={drawing.activeLayer}
-              onFeatureCreated={drawing.createFeature}
-              onFeatureUpdated={drawing.updateFeature}
+              activeEditableLayer={drawing.activeLayer || activeZwsLayer}
+              onFeatureCreated={handleFeatureCreated}
+              onFeatureUpdated={handleFeatureUpdated}
               selectedEditableFeatureIds={drawing.selectedFeatureIds}
               onEditableFeatureSelect={drawing.selectFeature}
               onMultiSelectFeatures={drawing.selectAllFeatures}
@@ -1042,6 +1133,106 @@ export default function Home() {
                     setLayerPanelStyleConfigId(null);
                   }}
                 />
+              );
+            })()}
+
+            {/* ZWS Layer Style Config */}
+            {zwsStyleConfigId !== null && (() => {
+              const layer = zuluConnection.zwsEditableLayers.find(l => l.id === zwsStyleConfigId);
+              if (!layer) return null;
+              return (
+                <LayerStylePanel
+                  open={true}
+                  onOpenChange={(open) => { if (!open) setZwsStyleConfigId(null); }}
+                  layer={{
+                    id: layer.id,
+                    color: layer.color,
+                    pointStyle: layer.pointStyle,
+                    lineStyle: layer.lineStyle,
+                    opacity: layer.opacity,
+                    geometryType: layer.geometryType,
+                    styleConfig: layer.styleConfig,
+                  }}
+                  onSave={async (updates) => {
+                    zuluConnection.updateZwsLayerStyle(layer.id, updates);
+                    setZwsStyleConfigId(null);
+                  }}
+                />
+              );
+            })()}
+
+            {/* ZWS Editable Attribute Table */}
+            {zwsAttributeTableLayer && (() => {
+              const zwsLayer = zuluConnection.zwsEditableLayers.find(l => l.id === zwsAttributeTableLayer.layerId);
+              const layerData = Object.entries(zwsLayerFeatures).find(([key]) => key.includes(zwsLayer?.zwsLayerName || ""));
+              const rows = layerData?.[1]?.rows || [];
+              const columns = rows.length > 0 ? Object.keys(rows[0]).filter(k => k !== "geometry" && !k.startsWith("_")) : [];
+              return (
+                <DraggableModal
+                  isOpen={true}
+                  onClose={() => setZwsAttributeTableLayer(null)}
+                  title={`Таблица атрибутов (ZWS): ${zwsAttributeTableLayer.layerName}`}
+                  defaultWidth={900}
+                  defaultHeight={400}
+                  minWidth={400}
+                  minHeight={200}
+                >
+                  <div className="h-full overflow-auto">
+                    {rows.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">Данные не загружены. Слой должен быть виден на карте.</p>
+                    ) : (
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="sticky top-0 bg-background z-10">
+                          <tr>
+                            {columns.map(col => (
+                              <th key={col} className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap">{col}</th>
+                            ))}
+                            {editMode && <th className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap w-20">Действия</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-accent/50 border-b border-border/50">
+                              {columns.map(col => (
+                                <td key={col} className="px-2 py-1 whitespace-nowrap max-w-[200px] truncate" title={String(row[col] ?? "")}>
+                                  {row[col] === null || row[col] === undefined ? "—" : String(row[col])}
+                                </td>
+                              ))}
+                              {editMode && (
+                                <td className="px-2 py-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 text-[10px] px-1"
+                                    onClick={async () => {
+                                      const elemId = row["Sys"] ?? row["sys"] ?? row["ID"] ?? row["id"];
+                                      if (elemId == null || !zwsLayer) return;
+                                      try {
+                                        await apiRequest("DELETE", "/api/zulu/zws/element", {
+                                          layer: zwsLayer.zwsLayerName,
+                                          elemId: Number(elemId),
+                                          baseUrl: zwsLayer.zwsBaseUrl,
+                                          zwsUsername: zwsLayer.zwsUsername,
+                                          zwsPassword: zwsLayer.zwsPassword,
+                                        });
+                                        window.dispatchEvent(new Event("viewport-features-invalidate"));
+                                      } catch (err) {
+                                        console.error("ZWS delete error:", err);
+                                      }
+                                    }}
+                                    data-testid={`button-zws-delete-row-${idx}`}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </DraggableModal>
               );
             })()}
 

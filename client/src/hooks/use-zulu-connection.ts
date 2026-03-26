@@ -53,6 +53,8 @@ interface UseZuluConnectionReturn {
   refreshZwsSession: (sessionId: number) => Promise<void>;
   deleteZwsConnection: (connId: number) => Promise<void>;
   zwsEditableLayers: EditableLayer[];
+  updateZwsLayerStyle: (layerId: number, updates: Partial<EditableLayer>) => void;
+  toggleZwsLayerVisibility: (layerId: number) => void;
 }
 
 // Default OSM base layer that is always available
@@ -526,6 +528,21 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     }
   }, [disconnectZwsSession]);
 
+  const updateZwsLayerStyle = useCallback((layerId: number, updates: Partial<EditableLayer>) => {
+    setZwsSessions(prev => prev.map(session => ({
+      ...session,
+      layers: session.layers.map(l => l.id === layerId ? { ...l, ...updates } : l),
+    })));
+    window.dispatchEvent(new Event("viewport-features-invalidate"));
+  }, []);
+
+  const toggleZwsLayerVisibility = useCallback((layerId: number) => {
+    setZwsSessions(prev => prev.map(session => ({
+      ...session,
+      layers: session.layers.map(l => l.id === layerId ? { ...l, visible: !l.visible } : l),
+    })));
+  }, []);
+
   const zwsEditableLayers = zwsSessions.flatMap(s => s.layers);
 
   useEffect(() => {
@@ -566,5 +583,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     refreshZwsSession,
     deleteZwsConnection: deleteZwsConnectionCb,
     zwsEditableLayers,
+    updateZwsLayerStyle,
+    toggleZwsLayerVisibility,
   };
 }
