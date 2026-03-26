@@ -633,8 +633,15 @@ export async function registerRoutes(
       while ((fieldMatch = fieldRegex.exec(recordContent)) !== null) {
         const name = fieldMatch[1].trim();
         const value = fieldMatch[2].trim();
-        if (name.toLowerCase() === "geometry") {
-          wktGeometry = value;
+        const nameLower = name.toLowerCase();
+        const isGeomField = nameLower === "geometry"
+          || nameLower === "shape"
+          || nameLower.startsWith("geometry.")
+          || nameLower.startsWith("shape.")
+          || nameLower.includes(".astext")
+          || nameLower.includes("astext()");
+        if (isGeomField) {
+          if (!wktGeometry && value.length > 0) wktGeometry = value;
         } else {
           properties[name] = value || null;
         }
@@ -680,6 +687,7 @@ export async function registerRoutes(
       if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
 
       const parsedFeatures = parseZwsXmlToDbFeatures(text);
+      console.log(`[ZWS import-to-db] layerName=${layerName}, parsed=${parsedFeatures.length} features, xml sample=${text.slice(0, 500)}`);
 
       let finalGeomType: string = geometryType || "Point";
       if (!geometryType && parsedFeatures.length > 0) finalGeomType = parsedFeatures[0].geometryType;

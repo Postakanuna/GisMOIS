@@ -5,7 +5,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DraggableModal } from "@/components/ui/draggable-modal";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { queryClient } from "@/lib/queryClient";
 
 interface ZwsLayerInfo {
@@ -160,13 +159,15 @@ export function ZwsDbImportModal({
       title="Загрузка ZWS-слоёв в базу данных"
       headerIcon={<Database className="h-4 w-4 text-primary" />}
       defaultWidth={480}
-      defaultHeight={480}
+      defaultHeight={500}
       minWidth={400}
-      minHeight={300}
+      minHeight={320}
       resizable
     >
       <div className="flex flex-col h-full">
-        <div className="flex-1 overflow-auto p-4 space-y-4 min-h-0">
+        {/* Main scrollable content */}
+        <div className="flex-1 min-h-0 flex flex-col p-3 gap-3">
+
           {fetchingLayers && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -181,9 +182,10 @@ export function ZwsDbImportModal({
             </div>
           )}
 
+          {/* Layer selection */}
           {!fetchingLayers && !fetchError && layers.length > 0 && !importing && (
             <>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between shrink-0">
                 <span className="text-sm text-muted-foreground">
                   Выбрано: {selectedLayers.size} из {layers.length}
                 </span>
@@ -199,8 +201,9 @@ export function ZwsDbImportModal({
                 </div>
               </div>
 
-              <ScrollArea className="flex-1 rounded-md border" style={{ maxHeight: "calc(100% - 110px)" }}>
-                <div className="p-2 space-y-0.5">
+              {/* Layer list - fills remaining height, scrolls itself */}
+              <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
+                <div className="p-1.5 space-y-0.5">
                   {layers.map(layer => (
                     <div
                       key={layer.name}
@@ -227,19 +230,20 @@ export function ZwsDbImportModal({
                     </div>
                   ))}
                 </div>
-              </ScrollArea>
+              </div>
             </>
           )}
 
+          {/* Import progress */}
           {importing && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
+            <div className="flex-1 min-h-0 flex flex-col gap-3">
+              <div className="flex items-center justify-between text-sm shrink-0">
                 <span className="text-muted-foreground">Загрузка слоёв в БД...</span>
                 <span className="font-medium">{doneCount} / {totalCount}</span>
               </div>
-              <Progress value={progressPercent} className="h-2" />
-              <ScrollArea className="rounded-md border" style={{ maxHeight: "calc(100% - 120px)" }}>
-                <div className="p-2 space-y-0.5">
+              <Progress value={progressPercent} className="h-2 shrink-0" />
+              <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
+                <div className="p-1.5 space-y-0.5">
                   {progress.map((p, i) => (
                     <div key={i} className="flex items-center gap-2 px-2 py-1.5 text-sm rounded">
                       {p.status === "pending" && <Square className="h-4 w-4 text-muted-foreground shrink-0" />}
@@ -258,11 +262,12 @@ export function ZwsDbImportModal({
                     </div>
                   ))}
                 </div>
-              </ScrollArea>
+              </div>
             </div>
           )}
         </div>
 
+        {/* Footer buttons */}
         <div className="flex items-center justify-end gap-2 p-3 border-t shrink-0">
           <Button
             variant="outline"
