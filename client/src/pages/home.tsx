@@ -2,12 +2,14 @@ import { useState, useCallback, useRef, useEffect, type ReactNode } from "react"
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap, Wrench, Trash2 } from "lucide-react";
+import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap, Wrench, Trash2, Search, Crosshair } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -249,7 +251,7 @@ export default function Home() {
     deleteFeatures: (ids: number[]) => void;
   } | null>(null);
   const drawActionsRef = useRef<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>(null);
-  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void } | null>(null);
+  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void; zoomToZwsOlFeature: (layerId: number, featureId: string) => void } | null>(null);
   const drawing = useDrawing({ drawActionsRef });
   const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
@@ -290,6 +292,10 @@ export default function Home() {
   const [zwsAttributeTableLayer, setZwsAttributeTableLayer] = useState<{ layerId: number; layerName: string } | null>(null);
   const [zwsTableRows, setZwsTableRows] = useState<Array<Record<string, string>>>([]);
   const [zwsTableLoading, setZwsTableLoading] = useState(false);
+  const [zwsEditTableSearch, setZwsEditTableSearch] = useState("");
+  const [zwsEditTableSelected, setZwsEditTableSelected] = useState<Set<number>>(new Set());
+  const [zwsReadTableSearch, setZwsReadTableSearch] = useState("");
+  const [zwsReadTableSelected, setZwsReadTableSelected] = useState<Set<number>>(new Set());
   const [layerPanelGeocodeId, setLayerPanelGeocodeId] = useState<number | null>(null);
 
   const [showConsumerConnectDialog, setShowConsumerConnectDialog] = useState(false);
@@ -1095,43 +1101,98 @@ export default function Home() {
             {/* ZWS Attribute Table Modal */}
             {showZwsAttributeTable && (() => {
               const layerData = zwsLayerFeatures[showZwsAttributeTable.layerId];
-              const rows = layerData?.rows || [];
-              const columns = rows.length > 0 ? Object.keys(rows[0]).filter(k => k !== "geometry") : [];
+              const allRows = (layerData?.rows || []) as Array<Record<string, unknown>>;
+              const columns = allRows.length > 0 ? Object.keys(allRows[0]).filter(k => k !== "geometry" && !k.startsWith("_")) : [];
+              const filteredRows = zwsReadTableSearch.trim()
+                ? allRows.filter(row => columns.some(col => String(row[col] ?? "").toLowerCase().includes(zwsReadTableSearch.toLowerCase())))
+                : allRows;
+              const allSelected = filteredRows.length > 0 && filteredRows.every((_, i) => zwsReadTableSelected.has(i));
               return (
                 <DraggableModal
                   isOpen={true}
-                  onClose={() => setShowZwsAttributeTable(null)}
-                  title={`Таблица атрибутов: ${showZwsAttributeTable.layerName}`}
-                  defaultWidth={900}
-                  defaultHeight={400}
+                  onClose={() => { setShowZwsAttributeTable(null); setZwsReadTableSearch(""); setZwsReadTableSelected(new Set()); }}
+                  title={`Таблица атрибутов: ${showZwsAttributeTable.layerName} (${filteredRows.length} из ${allRows.length})`}
+                  defaultWidth={960}
+                  defaultHeight={440}
                   minWidth={400}
-                  minHeight={200}
+                  minHeight={220}
                 >
-                  <div className="h-full overflow-auto">
-                    {rows.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-8">Данные не загружены. Откройте слой на карте.</p>
-                    ) : (
-                      <table className="w-full text-xs border-collapse">
-                        <thead className="sticky top-0 bg-background z-10">
-                          <tr>
-                            {columns.map(col => (
-                              <th key={col} className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap">{col}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((row, idx) => (
-                            <tr key={idx} className="hover:bg-accent/50 border-b border-border/50">
+                  <div className="flex flex-col h-full">
+                    <div className="flex items-center gap-2 px-2 py-1.5 border-b border-border shrink-0">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          value={zwsReadTableSearch}
+                          onChange={e => setZwsReadTableSearch(e.target.value)}
+                          placeholder="Поиск..."
+                          className="pl-7 h-7 text-xs"
+                          data-testid="input-zws-read-search"
+                        />
+                      </div>
+                      {zwsReadTableSelected.size > 0 && (
+                        <span className="text-xs text-muted-foreground shrink-0">Выбрано: {zwsReadTableSelected.size}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-auto">
+                      {allRows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">Данные не загружены. Откройте слой на карте.</p>
+                      ) : filteredRows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">Ничего не найдено.</p>
+                      ) : (
+                        <table className="w-full text-xs border-collapse">
+                          <thead className="sticky top-0 bg-background z-10">
+                            <tr>
+                              <th className="px-2 py-1 border-b border-border w-8">
+                                <Checkbox
+                                  checked={allSelected}
+                                  onCheckedChange={checked => {
+                                    if (checked) {
+                                      setZwsReadTableSelected(new Set(filteredRows.map((_, i) => i)));
+                                    } else {
+                                      setZwsReadTableSelected(new Set());
+                                    }
+                                  }}
+                                  data-testid="checkbox-zws-read-select-all"
+                                />
+                              </th>
                               {columns.map(col => (
-                                <td key={col} className="px-2 py-1 whitespace-nowrap max-w-[200px] truncate" title={String(row[col] ?? "")}>
-                                  {row[col] === null || row[col] === undefined ? "—" : String(row[col])}
-                                </td>
+                                <th key={col} className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap">{col}</th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                          </thead>
+                          <tbody>
+                            {filteredRows.map((row, idx) => (
+                              <tr
+                                key={idx}
+                                className={`border-b border-border/50 cursor-pointer ${zwsReadTableSelected.has(idx) ? "bg-primary/10" : "hover:bg-accent/50"}`}
+                                onClick={() => setZwsReadTableSelected(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(idx)) next.delete(idx); else next.add(idx);
+                                  return next;
+                                })}
+                                data-testid={`row-zws-read-${idx}`}
+                              >
+                                <td className="px-2 py-1" onClick={e => e.stopPropagation()}>
+                                  <Checkbox
+                                    checked={zwsReadTableSelected.has(idx)}
+                                    onCheckedChange={checked => setZwsReadTableSelected(prev => {
+                                      const next = new Set(prev);
+                                      if (checked) next.add(idx); else next.delete(idx);
+                                      return next;
+                                    })}
+                                  />
+                                </td>
+                                {columns.map(col => (
+                                  <td key={col} className="px-2 py-1 whitespace-nowrap max-w-[200px] truncate" title={String(row[col] ?? "")}>
+                                    {row[col] === null || row[col] === undefined ? "—" : String(row[col])}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
                   </div>
                 </DraggableModal>
               );
@@ -1215,74 +1276,148 @@ export default function Home() {
             {/* ZWS Editable Attribute Table */}
             {zwsAttributeTableLayer && (() => {
               const zwsLayer = zuluConnection.zwsEditableLayers.find(l => l.id === zwsAttributeTableLayer.layerId);
-              const rows = zwsTableRows;
-              const columns = rows.length > 0 ? Object.keys(rows[0]).filter(k => k !== "geometry" && !k.startsWith("_")) : [];
+              const allRows = zwsTableRows;
+              const columns = allRows.length > 0 ? Object.keys(allRows[0]).filter(k => k !== "geometry" && !k.startsWith("_")) : [];
+              const filteredRows = zwsEditTableSearch.trim()
+                ? allRows.filter(row => columns.some(col => String(row[col] ?? "").toLowerCase().includes(zwsEditTableSearch.toLowerCase())))
+                : allRows;
+              const allSelected = filteredRows.length > 0 && filteredRows.every((_, i) => zwsEditTableSelected.has(i));
               return (
                 <DraggableModal
                   isOpen={true}
-                  onClose={() => setZwsAttributeTableLayer(null)}
-                  title={`Таблица атрибутов (ZWS): ${zwsAttributeTableLayer.layerName}`}
-                  defaultWidth={900}
-                  defaultHeight={400}
+                  onClose={() => { setZwsAttributeTableLayer(null); setZwsEditTableSearch(""); setZwsEditTableSelected(new Set()); }}
+                  title={`Таблица атрибутов (ZWS): ${zwsAttributeTableLayer.layerName} (${filteredRows.length} из ${allRows.length})`}
+                  defaultWidth={960}
+                  defaultHeight={440}
                   minWidth={400}
-                  minHeight={200}
+                  minHeight={220}
                 >
-                  <div className="h-full overflow-auto">
-                    {zwsTableLoading ? (
-                      <p className="text-sm text-muted-foreground text-center py-8">Загрузка данных...</p>
-                    ) : rows.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-8">Объекты не найдены.</p>
-                    ) : (
-                      <table className="w-full text-xs border-collapse">
-                        <thead className="sticky top-0 bg-background z-10">
-                          <tr>
-                            {columns.map(col => (
-                              <th key={col} className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap">{col}</th>
-                            ))}
-                            {editMode && <th className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap w-20">Действия</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((row, idx) => (
-                            <tr key={idx} className="hover:bg-accent/50 border-b border-border/50">
+                  <div className="flex flex-col h-full">
+                    <div className="flex items-center gap-2 px-2 py-1.5 border-b border-border shrink-0">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          value={zwsEditTableSearch}
+                          onChange={e => setZwsEditTableSearch(e.target.value)}
+                          placeholder="Поиск..."
+                          className="pl-7 h-7 text-xs"
+                          data-testid="input-zws-edit-search"
+                        />
+                      </div>
+                      {zwsEditTableSelected.size > 0 && (
+                        <span className="text-xs text-muted-foreground shrink-0">Выбрано: {zwsEditTableSelected.size}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-auto">
+                      {zwsTableLoading ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">Загрузка данных...</p>
+                      ) : allRows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">Объекты не найдены.</p>
+                      ) : filteredRows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">Ничего не найдено.</p>
+                      ) : (
+                        <table className="w-full text-xs border-collapse">
+                          <thead className="sticky top-0 bg-background z-10">
+                            <tr>
+                              <th className="px-2 py-1 border-b border-border w-8">
+                                <Checkbox
+                                  checked={allSelected}
+                                  onCheckedChange={checked => {
+                                    if (checked) {
+                                      setZwsEditTableSelected(new Set(filteredRows.map((_, i) => i)));
+                                    } else {
+                                      setZwsEditTableSelected(new Set());
+                                    }
+                                  }}
+                                  data-testid="checkbox-zws-edit-select-all"
+                                />
+                              </th>
+                              <th className="px-1 py-1 border-b border-border w-7" />
                               {columns.map(col => (
-                                <td key={col} className="px-2 py-1 whitespace-nowrap max-w-[200px] truncate" title={String(row[col] ?? "")}>
-                                  {row[col] === null || row[col] === undefined ? "—" : String(row[col])}
-                                </td>
+                                <th key={col} className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap">{col}</th>
                               ))}
-                              {editMode && (
-                                <td className="px-2 py-1">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-5 text-[10px] px-1"
-                                    onClick={async () => {
-                                      const elemId = row["Sys"] ?? row["sys"] ?? row["ID"] ?? row["id"];
-                                      if (elemId == null || !zwsLayer) return;
-                                      try {
-                                        await apiRequest("DELETE", "/api/zulu/zws/element", {
-                                          layer: zwsLayer.zwsLayerName,
-                                          elemId: Number(elemId),
-                                          baseUrl: zwsLayer.zwsBaseUrl,
-                                          zwsUsername: zwsLayer.zwsUsername,
-                                          zwsPassword: zwsLayer.zwsPassword,
-                                        });
-                                        window.dispatchEvent(new Event("viewport-features-invalidate"));
-                                      } catch (err) {
-                                        console.error("ZWS delete error:", err);
-                                      }
-                                    }}
-                                    data-testid={`button-zws-delete-row-${idx}`}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </td>
-                              )}
+                              {editMode && <th className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap w-16">Действия</th>}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                          </thead>
+                          <tbody>
+                            {filteredRows.map((row, idx) => {
+                              const featureId = String(row["Sys"] ?? row["sys"] ?? row["ID"] ?? row["id"] ?? "");
+                              return (
+                                <tr
+                                  key={idx}
+                                  className={`border-b border-border/50 cursor-pointer ${zwsEditTableSelected.has(idx) ? "bg-primary/10" : "hover:bg-accent/50"}`}
+                                  onClick={() => setZwsEditTableSelected(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(idx)) next.delete(idx); else next.add(idx);
+                                    return next;
+                                  })}
+                                  data-testid={`row-zws-edit-${idx}`}
+                                >
+                                  <td className="px-2 py-1" onClick={e => e.stopPropagation()}>
+                                    <Checkbox
+                                      checked={zwsEditTableSelected.has(idx)}
+                                      onCheckedChange={checked => setZwsEditTableSelected(prev => {
+                                        const next = new Set(prev);
+                                        if (checked) next.add(idx); else next.delete(idx);
+                                        return next;
+                                      })}
+                                    />
+                                  </td>
+                                  <td className="px-1 py-1" onClick={e => e.stopPropagation()}>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-5 w-5"
+                                      title="Приблизить к объекту"
+                                      onClick={() => {
+                                        if (featureId && zwsAttributeTableLayer) {
+                                          mapActionsRef.current?.zoomToZwsOlFeature(zwsAttributeTableLayer.layerId, featureId);
+                                        }
+                                      }}
+                                      data-testid={`button-zws-zoom-${idx}`}
+                                    >
+                                      <Crosshair className="h-3 w-3" />
+                                    </Button>
+                                  </td>
+                                  {columns.map(col => (
+                                    <td key={col} className="px-2 py-1 whitespace-nowrap max-w-[200px] truncate" title={String(row[col] ?? "")}>
+                                      {row[col] === null || row[col] === undefined ? "—" : String(row[col])}
+                                    </td>
+                                  ))}
+                                  {editMode && (
+                                    <td className="px-2 py-1" onClick={e => e.stopPropagation()}>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-5 text-[10px] px-1"
+                                        onClick={async () => {
+                                          if (!featureId || !zwsLayer) return;
+                                          try {
+                                            await apiRequest("DELETE", "/api/zulu/zws/element", {
+                                              layer: zwsLayer.zwsLayerName,
+                                              elemId: Number(featureId),
+                                              baseUrl: zwsLayer.zwsBaseUrl,
+                                              zwsUsername: zwsLayer.zwsUsername,
+                                              zwsPassword: zwsLayer.zwsPassword,
+                                            });
+                                            window.dispatchEvent(new Event("viewport-features-invalidate"));
+                                          } catch (err) {
+                                            console.error("ZWS delete error:", err);
+                                          }
+                                        }}
+                                        data-testid={`button-zws-delete-row-${idx}`}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
                   </div>
                 </DraggableModal>
               );

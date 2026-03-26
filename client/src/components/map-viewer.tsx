@@ -152,7 +152,7 @@ interface MapViewerProps {
     snapRadius: number;
     snapLayerIds: number[];
   };
-  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void } | null>;
+  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void; zoomToZwsOlFeature: (layerId: number, featureId: string) => void } | null>;
   zwsEditableLayers?: EditableLayer[];
 }
 
@@ -2126,13 +2126,57 @@ export function MapViewer({
       if (!currentConnection) return;
 
       if (currentConnection.useZws) {
+        // Priority 1: ZWS editable layer features (zwsOlLayersRef) → use selection mechanism (pulsing + "i" button)
+        const zwsEditableCandidates: SelectionCandidate[] = [];
+        map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
+          const zwsLayerId = layer?.get("zwsLayerId");
+          if (zwsLayerId !== undefined) {
+            const vectorLayer = zwsOlLayersRef.current.get(zwsLayerId);
+            if (vectorLayer) {
+              const source = vectorLayer.getSource();
+              if (source) {
+                const features = source.getFeatures();
+                const idx = features.indexOf(feature as Feature<Geometry>);
+                if (idx !== -1) {
+                  const layerData = allEditableLayersDataRef.current?.find(l => l.id === zwsLayerId);
+                  const geom = (feature as Feature<Geometry>).getGeometry();
+                  zwsEditableCandidates.push({
+                    layerId: zwsLayerId,
+                    layerName: layerData?.name || `ZWS ${zwsLayerId}`,
+                    featureIndex: idx,
+                    feature: feature as Feature<Geometry>,
+                    geometryType: geom?.getType() || 'unknown',
+                  });
+                }
+              }
+            }
+          }
+          return false;
+        }, { hitTolerance: 10 });
+
+        if (zwsEditableCandidates.length > 0) {
+          const geometryPriority: Record<string, number> = {
+            'Point': 1, 'MultiPoint': 2, 'LineString': 3,
+            'MultiLineString': 4, 'Polygon': 5, 'MultiPolygon': 6,
+          };
+          zwsEditableCandidates.sort((a, b) =>
+            (geometryPriority[a.geometryType] || 99) - (geometryPriority[b.geometryType] || 99)
+          );
+          confirmFeatureSelectionRef.current(zwsEditableCandidates[0], evt.originalEvent.shiftKey);
+          return;
+        }
+
+        // Priority 2: Old-path ZWS layers (layer.get("id")) → immediate info
         let foundFeature: Feature | null = null;
         let foundLayerId: string | null = null;
 
         map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
           if (!foundFeature && layer && layer !== ticketsLayerRef.current) {
-            foundFeature = feature as Feature;
-            foundLayerId = layer.get("id") as string;
+            const lid = layer.get("id");
+            if (lid) {
+              foundFeature = feature as Feature;
+              foundLayerId = lid as string;
+            }
           }
           return true;
         });
@@ -3030,6 +3074,32 @@ export function MapViewer({
             }
           } catch (e) {
             console.error("[PAN TO FEATURE] Error:", e);
+          }
+        },
+        zoomToZwsOlFeature: (layerId: number, featureId: string) => {
+          const map = mapRef.current;
+          if (!map) return;
+          const olLayer = zwsOlLayersRef.current.get(layerId);
+          if (!olLayer) return;
+          const source = olLayer.getSource();
+          if (!source) return;
+          const features = source.getFeatures();
+          const target = features.find(f =>
+            String(f.get("featureId")) === featureId || String(f.getId?.()) === featureId
+          );
+          if (!target) return;
+          const geom = target.getGeometry();
+          if (!geom) return;
+          const extent = geom.getExtent();
+          const type = geom.getType();
+          if (type === 'Point') {
+            map.getView().animate({
+              center: [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2],
+              zoom: 18,
+              duration: 500,
+            });
+          } else {
+            map.getView().fit(extent, { padding: [80, 80, 80, 80], maxZoom: 19, duration: 500 });
           }
         },
       };
