@@ -101,6 +101,8 @@ interface MapViewerProps {
   onFiltersDiscovered?: (layerId: string, filters: LayerFilters) => void;
   onLayerLoadError?: (error: string) => void;
   onLayerLoadSuccess?: () => void;
+  onZwsFeatureClick?: (feature: FeatureInfo | null) => void;
+  onZwsLayerFeaturesLoaded?: (layerId: string, layerName: string, rows: Array<Record<string, unknown>>) => void;
   tickets: Ticket[];
   ticketMode: boolean;
   onToggleTicketMode: () => void;
@@ -958,7 +960,9 @@ export function MapViewer({
   activeFilters, 
   onFiltersDiscovered, 
   onLayerLoadError, 
-  onLayerLoadSuccess, 
+  onLayerLoadSuccess,
+  onZwsFeatureClick,
+  onZwsLayerFeaturesLoaded,
   tickets = [], 
   ticketMode, 
   onToggleTicketMode, 
@@ -1057,6 +1061,7 @@ export function MapViewer({
   const additionalSnapsRef = useRef<Snap[]>([]);
   const drawingModeRef = useRef<DrawingMode>(drawingMode || null);
   const editModeRef = useRef(editMode);
+  const onZwsFeatureClickRef = useRef(onZwsFeatureClick);
   const onFeatureCreatedRef = useRef(onFeatureCreated);
   const onFeatureUpdatedRef = useRef(onFeatureUpdated);
   const activeEditableLayerRef = useRef(activeEditableLayer);
@@ -1108,6 +1113,10 @@ export function MapViewer({
       }
     }
   }, [editMode, onClearEditableSelection]);
+
+  useEffect(() => {
+    onZwsFeatureClickRef.current = onZwsFeatureClick;
+  }, [onZwsFeatureClick]);
 
   useEffect(() => {
     onFeatureCreatedRef.current = onFeatureCreated;
@@ -2109,61 +2118,26 @@ export function MapViewer({
 
         if (foundFeature && foundLayerId) {
           const layerConfig = currentLayers.find((l) => l.id === foundLayerId);
-          const dbFeatureId = (foundFeature as Feature).get("featureId");
-          
-          if (dbFeatureId) {
-            const isDataset = !!(foundFeature as Feature).get("datasetId");
-            const sourceParam = isDataset ? "?source=dataset" : "";
-            setSelectedFeature({
-              id: String(dbFeatureId),
-              layerName: layerConfig?.name || foundLayerId || "Объект",
-              properties: { _loading: true },
-              networkType: (layerConfig as any)?.networkType ?? null,
-              geometry: undefined,
-            });
-            fetch(`/api/features/${dbFeatureId}${sourceParam}`)
-              .then(r => r.ok ? r.json() : null)
-              .then(data => {
-                if (data && data.properties) {
-                  setSelectedFeature(prev => prev && prev.id === String(dbFeatureId) ? {
-                    ...prev,
-                    properties: data.properties,
-                  } : prev);
-                } else {
-                  setSelectedFeature(prev => prev && prev.id === String(dbFeatureId) ? {
-                    ...prev,
-                    properties: {},
-                  } : prev);
-                }
-              })
-              .catch(err => {
-                console.error("Failed to load feature properties:", err);
-                setSelectedFeature(prev => prev && prev.id === String(dbFeatureId) ? {
-                  ...prev,
-                  properties: {},
-                } : prev);
-              });
-          } else {
-            const properties: Record<string, unknown> = {};
-            const keys = (foundFeature as Feature).getKeys();
-            keys.forEach((key) => {
-              if (key !== "geometry") {
-                properties[key] = (foundFeature as Feature).get(key);
-              }
-            });
-            const featureId = (foundFeature as Feature).getId?.() || 
-              (foundFeature as Feature).get("id") || 
-              `feature-${Date.now()}`;
-            setSelectedFeature({
-              id: String(featureId),
-              layerName: layerConfig?.name || foundLayerId || "Объект",
-              properties,
-              networkType: (layerConfig as any)?.networkType ?? null,
-              geometry: undefined,
-            });
-          }
+          const properties: Record<string, unknown> = {};
+          const keys = (foundFeature as Feature).getKeys();
+          keys.forEach((key) => {
+            if (key !== "geometry") {
+              properties[key] = (foundFeature as Feature).get(key);
+            }
+          });
+          const featureId = (foundFeature as Feature).getId?.() ||
+            (foundFeature as Feature).get("id") ||
+            `feature-${Date.now()}`;
+          const featureInfo: FeatureInfo = {
+            id: String(featureId),
+            layerName: layerConfig?.name || foundLayerId || "Объект",
+            properties,
+            networkType: (layerConfig as any)?.networkType ?? null,
+            geometry: undefined,
+          };
+          onZwsFeatureClickRef.current?.(featureInfo);
         } else {
-          setSelectedFeature(null);
+          onZwsFeatureClickRef.current?.(null);
           setFeatureCoordinates(undefined);
         }
         return;
@@ -3258,6 +3232,15 @@ export function MapViewer({
                     }
                     
                     vectorSource.addFeatures(features);
+
+                    if (onZwsLayerFeaturesLoaded) {
+                      const rows = features.map(f => {
+                        const props: Record<string, unknown> = {};
+                        f.getKeys().forEach(k => { if (k !== "geometry") props[k] = f.get(k); });
+                        return props;
+                      });
+                      onZwsLayerFeaturesLoaded(layerConfig.id, layerConfig.name, rows);
+                    }
                     
                     if (features.length > 0) {
                       const extent = vectorSource.getExtent();
@@ -3312,7 +3295,7 @@ export function MapViewer({
         delete layersRef.current[id];
       }
     });
-  }, [layers, connection, onFiltersDiscovered]);
+  }, [layers, connection, onFiltersDiscovered, onZwsLayerFeaturesLoaded]);
 
   useEffect(() => {
     if (!ticketsLayerRef.current || !tickets) return;

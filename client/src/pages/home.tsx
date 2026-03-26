@@ -48,7 +48,7 @@ import { BugReportButton } from "@/components/bug-report-button";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { useScene } from "@/contexts/scene-context";
 import { useDrawing } from "@/hooks/use-drawing";
-import type { ConnectionStatus, EditableLayer, GeometryType, DrawnFeature } from "@shared/schema";
+import type { ConnectionStatus, EditableLayer, GeometryType, DrawnFeature, FeatureInfo } from "@shared/schema";
 
 interface SceneDataset {
   id: number;
@@ -92,6 +92,8 @@ interface SidebarContentPanelProps extends Pick<ReturnType<typeof useZuluConnect
   aiHeaderActions?: ReactNode;
   onOpenDataManager?: () => void;
   connectionStatus: ConnectionStatus;
+  onDisconnectZws?: () => void;
+  onOpenZwsAttributeTable?: (layerId: string, layerName: string) => void;
 }
 
 function SidebarContentPanel({
@@ -119,6 +121,8 @@ function SidebarContentPanel({
   aiHeaderActions,
   onOpenDataManager,
   connectionStatus,
+  onDisconnectZws,
+  onOpenZwsAttributeTable,
 }: SidebarContentPanelProps) {
   return (
     <div className="h-full w-full min-w-0 overflow-hidden flex flex-col">
@@ -148,6 +152,8 @@ function SidebarContentPanel({
           aiHeaderActions={aiHeaderActions}
           onOpenDataManager={onOpenDataManager}
           connectionStatus={connectionStatus}
+          onDisconnectZws={onDisconnectZws}
+          onOpenZwsAttributeTable={onOpenZwsAttributeTable}
         />
       </div>
     </div>
@@ -220,6 +226,9 @@ export default function Home() {
   const [editMode, setEditMode] = useState(false);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
   const [showFeatureInfo, setShowFeatureInfo] = useState(false);
+  const [zwsSelectedFeature, setZwsSelectedFeature] = useState<FeatureInfo | null>(null);
+  const [zwsLayerFeatures, setZwsLayerFeatures] = useState<Record<string, { layerName: string; rows: Array<Record<string, unknown>> }>>({});
+  const [showZwsAttributeTable, setShowZwsAttributeTable] = useState<{ layerId: string; layerName: string } | null>(null);
   const [showDataManager, setShowDataManager] = useState(false);
   const [showGeoAnalysis, setShowGeoAnalysis] = useState(false);
   const selectionActionsRef = useRef<{
@@ -601,6 +610,8 @@ export default function Home() {
                     aiHeaderActions={aiHeaderActions}
                     onOpenDataManager={() => setShowDataManager(true)}
                     connectionStatus={zuluConnection.status}
+                    onDisconnectZws={() => { zuluConnection.disconnect(); setZwsLayerFeatures({}); setZwsSelectedFeature(null); }}
+                    onOpenZwsAttributeTable={(layerId, layerName) => setShowZwsAttributeTable({ layerId, layerName })}
                   />
                 )}
               </SidebarGroupContent>
@@ -677,6 +688,8 @@ export default function Home() {
                     aiHeaderActions={aiHeaderActions}
                     onOpenDataManager={() => setShowDataManager(true)}
                     connectionStatus={zuluConnection.status}
+                    onDisconnectZws={() => { zuluConnection.disconnect(); setZwsLayerFeatures({}); setZwsSelectedFeature(null); }}
+                    onOpenZwsAttributeTable={(layerId, layerName) => setShowZwsAttributeTable({ layerId, layerName })}
                   />
                 </SheetContent>
               </Sheet>
@@ -828,6 +841,12 @@ export default function Home() {
               onFiltersDiscovered={zuluConnection.setLayerFilters}
               onLayerLoadError={zuluConnection.handleLayerLoadError}
               onLayerLoadSuccess={zuluConnection.handleLayerLoadSuccess}
+              onZwsFeatureClick={(feature) => {
+                setZwsSelectedFeature(feature);
+              }}
+              onZwsLayerFeaturesLoaded={(layerId, layerName, rows) => {
+                setZwsLayerFeatures(prev => ({ ...prev, [layerId]: { layerName, rows } }));
+              }}
               tickets={zuluConnection.tickets}
               ticketMode={zuluConnection.ticketMode}
               onToggleTicketMode={() => zuluConnection.setTicketMode(!zuluConnection.ticketMode)}
@@ -905,6 +924,75 @@ export default function Home() {
               onClose={() => setShowFeatureInfo(false)}
               feature={selectedFeatures[0] ?? null}
             />
+
+            {/* ZWS Feature Info Modal */}
+            {zwsSelectedFeature && (
+              <DraggableModal
+                isOpen={true}
+                onClose={() => setZwsSelectedFeature(null)}
+                title={`Объект: ${zwsSelectedFeature.layerName}`}
+                defaultWidth={500}
+                defaultHeight={420}
+                minWidth={300}
+                minHeight={220}
+              >
+                <div className="flex flex-col h-full overflow-auto p-1">
+                  {Object.entries(zwsSelectedFeature.properties)
+                    .filter(([key]) => !key.startsWith("_") && key !== "geometry")
+                    .map(([key, value]) => (
+                      <div key={key} className="flex items-start gap-2 py-1 border-b border-border last:border-0 text-sm">
+                        <span className="text-muted-foreground shrink-0 w-36 truncate" title={key}>{key}</span>
+                        <span className="flex-1 break-words">{value === null || value === undefined ? "—" : String(value)}</span>
+                      </div>
+                    ))}
+                </div>
+              </DraggableModal>
+            )}
+
+            {/* ZWS Attribute Table Modal */}
+            {showZwsAttributeTable && (() => {
+              const layerData = zwsLayerFeatures[showZwsAttributeTable.layerId];
+              const rows = layerData?.rows || [];
+              const columns = rows.length > 0 ? Object.keys(rows[0]).filter(k => k !== "geometry") : [];
+              return (
+                <DraggableModal
+                  isOpen={true}
+                  onClose={() => setShowZwsAttributeTable(null)}
+                  title={`Таблица атрибутов: ${showZwsAttributeTable.layerName}`}
+                  defaultWidth={900}
+                  defaultHeight={400}
+                  minWidth={400}
+                  minHeight={200}
+                >
+                  <div className="h-full overflow-auto">
+                    {rows.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">Данные не загружены. Откройте слой на карте.</p>
+                    ) : (
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="sticky top-0 bg-background z-10">
+                          <tr>
+                            {columns.map(col => (
+                              <th key={col} className="text-left px-2 py-1 border-b border-border font-medium text-muted-foreground whitespace-nowrap">{col}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-accent/50 border-b border-border/50">
+                              {columns.map(col => (
+                                <td key={col} className="px-2 py-1 whitespace-nowrap max-w-[200px] truncate" title={String(row[col] ?? "")}>
+                                  {row[col] === null || row[col] === undefined ? "—" : String(row[col])}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </DraggableModal>
+              );
+            })()}
 
             {/* Data Manager */}
             {showDataManager && (

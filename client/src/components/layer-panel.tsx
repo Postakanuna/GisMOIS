@@ -1,7 +1,7 @@
 import { useState, Fragment, type ReactNode } from "react";
 import { getFieldValueLabel } from "@shared/field-labels";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler, Settings2, Check } from "lucide-react";
+import { Layers, Map, Database, Building2, Users, ChevronRight, Eye, EyeOff, Trash2, FileArchive, Download, Loader2, FolderOpen, FolderClosed, Palette, Table2, MapPin, Bot, Globe, Ruler, Settings2, Check, X } from "lucide-react";
 import { useDxfLayers, type DxfSurveyLayer } from "@/contexts/dxf-layers-context";
 import { useHiddenCategories } from "@/contexts/hidden-categories-context";
 import { DxfImportDialog } from "@/components/dxf-import-dialog";
@@ -137,6 +137,8 @@ interface LayerPanelProps {
   aiHeaderActions?: ReactNode;
   onOpenDataManager?: () => void;
   connectionStatus?: ConnectionStatus;
+  onDisconnectZws?: () => void;
+  onOpenZwsAttributeTable?: (layerId: string, layerName: string) => void;
 }
 
 export function LayerPanel({
@@ -164,6 +166,8 @@ export function LayerPanel({
   aiHeaderActions,
   onOpenDataManager,
   connectionStatus,
+  onDisconnectZws,
+  onOpenZwsAttributeTable,
 }: LayerPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -274,6 +278,7 @@ export function LayerPanel({
 
   const wmsLayers = layers.filter((l) => l.type === "wms");
   const wfsLayers = layers.filter((l) => l.type === "wfs");
+  const zwsLayers = layers.filter((l) => l.type === "zws");
 
   const renderSublayerFilters = (layer: LayerConfig) => {
     const filters = layerFilters?.[layer.id];
@@ -988,9 +993,9 @@ export function LayerPanel({
                   </span>
                 </div>
               )}
-              {(wmsLayers.length + wfsLayers.length) > 0 && (
+              {(wmsLayers.length + wfsLayers.length + zwsLayers.length) > 0 && (
                 <span className="text-[10px] text-muted-foreground shrink-0">
-                  ({wmsLayers.length + wfsLayers.length})
+                  ({wmsLayers.length + wfsLayers.length + zwsLayers.length})
                 </span>
               )}
             </div>
@@ -1014,7 +1019,70 @@ export function LayerPanel({
                 {wfsLayers.map(renderLayerItem)}
               </div>
             )}
-            {wmsLayers.length === 0 && wfsLayers.length === 0 && (
+            {zwsLayers.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-1 px-1">
+                  <div className="flex items-center gap-1">
+                    <Database className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+                    <span className="text-[10px] text-muted-foreground font-medium">ZWS ({zwsLayers.length})</span>
+                  </div>
+                  {onDisconnectZws && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-4 w-4"
+                          onClick={onDisconnectZws}
+                          data-testid="button-disconnect-zws"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent><p>Отключить ZWS</p></TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+                {zwsLayers.map((layer) => (
+                  <div
+                    key={layer.id}
+                    className="flex items-center gap-1 rounded-md border border-sidebar-border px-2 py-1 min-w-0 overflow-hidden group"
+                    data-testid={`layer-item-zws-${layer.id}`}
+                  >
+                    <Database className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onToggleVisibility(layer.id)}>
+                      <span className="block text-xs font-medium" title={layer.name}>
+                        {layer.name.length > 20 ? layer.name.slice(0, 20) + "…" : layer.name}
+                      </span>
+                    </div>
+                    {onOpenZwsAttributeTable && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => onOpenZwsAttributeTable(layer.id, layer.name)}
+                            data-testid={`button-zws-attr-table-${layer.id}`}
+                          >
+                            <Table2 className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Таблица атрибутов</p></TooltipContent>
+                      </Tooltip>
+                    )}
+                    <div className="cursor-pointer shrink-0" onClick={() => onToggleVisibility(layer.id)}>
+                      {layer.visible ? (
+                        <Eye className="h-3 w-3 text-primary" data-testid={`button-toggle-zws-${layer.id}`} />
+                      ) : (
+                        <EyeOff className="h-3 w-3 text-muted-foreground" data-testid={`button-toggle-zws-${layer.id}`} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {wmsLayers.length === 0 && wfsLayers.length === 0 && zwsLayers.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-2">
                 {connectionStatus === "error" ? "Ошибка подключения к серверу" :
                  connectionStatus === "connecting" ? "Загрузка слоёв..." :
