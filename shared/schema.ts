@@ -166,7 +166,7 @@ export const lineLayerSchema = z.object({
 export type LineLayer = z.infer<typeof lineLayerSchema>;
 
 // Layer source type
-export const layerSourceSchema = z.enum(["user", "import"]);
+export const layerSourceSchema = z.enum(["user", "import", "zws"]);
 export type LayerSource = z.infer<typeof layerSourceSchema>;
 
 // Style renderer types (inspired by QGIS/ArcGIS)
@@ -298,6 +298,14 @@ export const editableLayerSchema = z.object({
   styleConfig: styleConfigSchema.optional(),
   metadata: z.record(z.unknown()).nullable().optional(),
   networkType: networkTypeSchema.nullable().optional(),
+  zwsLayerName: z.string().optional(),
+  zwsBaseUrl: z.string().optional(),
+  zwsUsername: z.string().optional(),
+  zwsPassword: z.string().optional(),
+  zwsTypeId: z.number().optional(),
+  zwsModeNum: z.number().optional(),
+  zwsConnectionId: z.number().optional(),
+  attributeFields: z.array(attributeFieldSchema).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -844,3 +852,41 @@ export const zuluFieldValues = pgTable("zulu_field_values", {
 export type ZuluFieldValue = typeof zuluFieldValues.$inferSelect;
 export type InsertZuluFieldValue = typeof zuluFieldValues.$inferInsert;
 export const insertZuluFieldValueSchema = createInsertSchema(zuluFieldValues).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const zwsConnections = pgTable("zws_connections", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull(),
+  displayName: text("display_name").notNull(),
+  baseUrl: text("base_url").notNull(),
+  username: text("zws_username"),
+  passwordEncrypted: text("password_encrypted"),
+  selectedLayers: jsonb("selected_layers").notNull().default([]),
+  layerStyles: jsonb("layer_styles").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type ZwsConnection = typeof zwsConnections.$inferSelect;
+export type InsertZwsConnection = typeof zwsConnections.$inferInsert;
+export const insertZwsConnectionSchema = createInsertSchema(zwsConnections).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const zwsConnectionConfigSchema = z.object({
+  id: z.number(),
+  userId: z.string(),
+  displayName: z.string(),
+  baseUrl: z.string(),
+  username: z.string().nullable().optional(),
+  passwordEncrypted: z.string().nullable().optional(),
+  selectedLayers: z.array(z.object({
+    layerName: z.string(),
+    alias: z.string().optional(),
+    folderId: z.number().nullable().optional(),
+    geometryType: geometryTypeSchema.optional(),
+    typeId: z.number().optional(),
+    modeNum: z.number().optional(),
+  })),
+  layerStyles: z.record(z.string(), styleConfigSchema).optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ZwsConnectionConfig = z.infer<typeof zwsConnectionConfigSchema>;

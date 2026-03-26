@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import type { ZuluConnection, ConnectionStatus, LayerConfig, Ticket, InsertTicket } from "@shared/schema";
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { ZuluConnection, ConnectionStatus, LayerConfig, Ticket, InsertTicket, EditableLayer, AttributeField, ZwsConnectionConfig } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export interface LayerFilters {
@@ -10,6 +10,16 @@ export interface LayerFilters {
 export interface ActiveFilters {
   name_rso: string[];
   muniz_obr: string[];
+}
+
+export interface ZwsSession {
+  id: number;
+  displayName: string;
+  baseUrl: string;
+  username?: string;
+  password?: string;
+  layers: EditableLayer[];
+  status: ConnectionStatus;
 }
 
 interface UseZuluConnectionReturn {
@@ -35,6 +45,14 @@ interface UseZuluConnectionReturn {
   loadTickets: () => Promise<void>;
   handleLayerLoadError: (error: string) => void;
   handleLayerLoadSuccess: () => void;
+  zwsSessions: ZwsSession[];
+  savedZwsConnections: ZwsConnectionConfig[];
+  loadSavedZwsConnections: () => Promise<void>;
+  connectSavedZws: (connId: number) => Promise<void>;
+  disconnectZwsSession: (sessionId: number) => void;
+  refreshZwsSession: (sessionId: number) => Promise<void>;
+  deleteZwsConnection: (connId: number) => Promise<void>;
+  zwsEditableLayers: EditableLayer[];
 }
 
 // Default OSM base layer that is always available
@@ -46,6 +64,47 @@ const DEFAULT_OSM_LAYER: LayerConfig = {
   type: "base",
 };
 
+async function fetchZwsLayerSchema(baseUrl: string, layerName: string, username?: string, password?: string): Promise<{ fields: AttributeField[]; geometryType: string }> {
+  try {
+    const res = await fetch("/api/zulu/zws/layer-info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layer: layerName, baseUrl, zwsUsername: username, zwsPassword: password }),
+    });
+    if (!res.ok) return { fields: [], geometryType: "Point" };
+    const data = await res.json();
+    const fields: AttributeField[] = (data.fields || []).map((f: any) => ({
+      name: f.name || f.Name,
+      type: mapZwsFieldType(f.type || f.Type || "string"),
+      required: false,
+    }));
+    const gt = guessGeometryType(data.layerType);
+    return { fields, geometryType: gt };
+  } catch {
+    return { fields: [], geometryType: "Point" };
+  }
+}
+
+function mapZwsFieldType(t: string): "text" | "number" | "date" | "boolean" {
+  const tl = (t || "").toLowerCase();
+  if (tl.includes("int") || tl.includes("float") || tl.includes("double") || tl.includes("numeric") || tl.includes("real")) return "number";
+  if (tl.includes("date") || tl.includes("time")) return "date";
+  if (tl.includes("bool")) return "boolean";
+  return "text";
+}
+
+function guessGeometryType(layerType?: string | number): "Point" | "LineString" | "Polygon" {
+  const t = String(layerType || "").toLowerCase();
+  if (t.includes("line") || t.includes("polyline") || t === "1") return "LineString";
+  if (t.includes("polygon") || t.includes("area") || t === "2") return "Polygon";
+  return "Point";
+}
+
+let nextZwsLayerId = -1000;
+function getNextZwsLayerId(): number {
+  return nextZwsLayerId--;
+}
+
 export function useZuluConnection(): UseZuluConnectionReturn {
   const [connection, setConnection] = useState<ZuluConnection | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
@@ -55,6 +114,9 @@ export function useZuluConnection(): UseZuluConnectionReturn {
   const [activeFilters, setActiveFilters] = useState<Record<string, ActiveFilters>>({});
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [ticketMode, setTicketMode] = useState(false);
+  const [zwsSessions, setZwsSessions] = useState<ZwsSession[]>([]);
+  const [savedZwsConnections, setSavedZwsConnections] = useState<ZwsConnectionConfig[]>([]);
+  const initLoadedRef = useRef(false);
 
   const connect = useCallback(async (config: ZuluConnection) => {
     setStatus("connecting");
@@ -157,6 +219,32 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     }
   }, []);
 
+  const buildZwsEditableLayer = useCallback((connId: number, layerName: string, baseUrl: string, username?: string, password?: string, schema?: { fields: AttributeField[]; geometryType: string }): EditableLayer => {
+    const now = new Date().toISOString();
+    return {
+      id: getNextZwsLayerId(),
+      name: layerName,
+      geometryType: (schema?.geometryType || "Point") as any,
+      color: "#4CAF50",
+      pointStyle: "circle",
+      lineStyle: "solid",
+      visible: true,
+      opacity: 1,
+      featureCount: 0,
+      displayOrder: 0,
+      source: "zws",
+      crs: "EPSG:4326",
+      zwsLayerName: layerName,
+      zwsBaseUrl: baseUrl,
+      zwsUsername: username,
+      zwsPassword: password,
+      zwsConnectionId: connId,
+      attributeFields: schema?.fields || [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }, []);
+
   const connectCustomZws = useCallback(async (config: ZuluConnection) => {
     setStatus("connecting");
     setError(null);
@@ -179,12 +267,13 @@ export function useZuluConnection(): UseZuluConnectionReturn {
       }
 
       const data = await response.json();
+      const layerList: { name: string; title: string }[] = data.layers || [];
 
       setLayers((prev) => {
         const currentOsm = prev.find(l => l.id === "osm-base");
         return [
           currentOsm || DEFAULT_OSM_LAYER,
-          ...data.layers.map((layer: { name: string; title: string }) => ({
+          ...layerList.map((layer) => ({
             id: layer.name,
             name: layer.title || layer.name,
             visible: true,
@@ -198,6 +287,38 @@ export function useZuluConnection(): UseZuluConnectionReturn {
       });
       setConnection(config);
       setStatus("connecting");
+
+      try {
+        const hostname = config.baseUrl ? new URL(config.baseUrl).hostname : "ZWS";
+        const saveRes = await apiRequest("POST", "/api/zws-connections", {
+          displayName: `ZWS: ${hostname}`,
+          baseUrl: config.baseUrl || "",
+          username: config.username || null,
+          passwordEncrypted: config.password || null,
+          selectedLayers: layerList.map(l => ({ layerName: l.name })),
+        });
+        const savedConn = await saveRes.json();
+
+        const sessionLayers: EditableLayer[] = [];
+        for (const l of layerList) {
+          const schema = await fetchZwsLayerSchema(config.baseUrl || "", l.name, config.username, config.password);
+          sessionLayers.push(buildZwsEditableLayer(savedConn.id, l.title || l.name, config.baseUrl || "", config.username, config.password, schema));
+        }
+
+        const session: ZwsSession = {
+          id: savedConn.id,
+          displayName: savedConn.displayName,
+          baseUrl: config.baseUrl || "",
+          username: config.username,
+          password: config.password,
+          layers: sessionLayers,
+          status: "connected",
+        };
+        setZwsSessions(prev => [...prev, session]);
+        setSavedZwsConnections(prev => [...prev, savedConn]);
+      } catch (saveErr) {
+        console.warn("Failed to save ZWS connection:", saveErr);
+      }
       
       try {
         const ticketsResponse = await fetch("/api/tickets");
@@ -212,7 +333,7 @@ export function useZuluConnection(): UseZuluConnectionReturn {
       setError(err instanceof Error ? err.message : "Ошибка подключения к ZWS");
       setStatus("error");
     }
-  }, []);
+  }, [buildZwsEditableLayer]);
 
   const disconnect = useCallback(() => {
     setConnection(null);
@@ -308,10 +429,111 @@ export function useZuluConnection(): UseZuluConnectionReturn {
   }, []);
 
   const handleLayerLoadSuccess = useCallback(() => {
-    // Only set connected if we're still in connecting state
     setStatus((prev) => prev === "connecting" ? "connected" : prev);
     setError(null);
   }, []);
+
+  const loadSavedZwsConnections = useCallback(async () => {
+    try {
+      const res = await fetch("/api/zws-connections");
+      if (!res.ok) return;
+      const data = await res.json();
+      setSavedZwsConnections(data);
+    } catch {
+    }
+  }, []);
+
+  const connectSavedZws = useCallback(async (connId: number) => {
+    const saved = savedZwsConnections.find(c => c.id === connId);
+    if (!saved) return;
+
+    const existingSession = zwsSessions.find(s => s.id === connId);
+    if (existingSession) return;
+
+    const sessionLayers: EditableLayer[] = [];
+    for (const sl of (saved.selectedLayers || [])) {
+      const schema = await fetchZwsLayerSchema(saved.baseUrl, sl.layerName, saved.username || undefined, saved.passwordEncrypted || undefined);
+      sessionLayers.push(buildZwsEditableLayer(connId, sl.alias || sl.layerName, saved.baseUrl, saved.username || undefined, saved.passwordEncrypted || undefined, schema));
+    }
+
+    const session: ZwsSession = {
+      id: connId,
+      displayName: saved.displayName,
+      baseUrl: saved.baseUrl,
+      username: saved.username || undefined,
+      password: saved.passwordEncrypted || undefined,
+      layers: sessionLayers,
+      status: "connected",
+    };
+
+    setZwsSessions(prev => [...prev, session]);
+
+    setLayers(prev => {
+      const currentOsm = prev.find(l => l.id === "osm-base");
+      const nonZwsForThisConn = prev.filter(l => l.id !== "osm-base");
+      const newLayers = sessionLayers.map(sl => ({
+        id: `${connId}:${sl.zwsLayerName}`,
+        name: sl.name,
+        visible: true,
+        opacity: 1,
+        type: "zws" as const,
+        url: saved.baseUrl,
+        zwsUsername: saved.username || undefined,
+        zwsPassword: saved.passwordEncrypted || undefined,
+      }));
+      return [currentOsm || DEFAULT_OSM_LAYER, ...nonZwsForThisConn, ...newLayers];
+    });
+
+    if (!connection) {
+      setConnection({
+        host: new URL(saved.baseUrl).hostname,
+        layerName: "",
+        useWfs: false,
+        useZws: true,
+        baseUrl: saved.baseUrl,
+        username: saved.username || undefined,
+        password: saved.passwordEncrypted || undefined,
+      });
+      setStatus("connecting");
+    }
+  }, [savedZwsConnections, zwsSessions, connection, buildZwsEditableLayer]);
+
+  const disconnectZwsSession = useCallback((sessionId: number) => {
+    const session = zwsSessions.find(s => s.id === sessionId);
+    setZwsSessions(prev => prev.filter(s => s.id !== sessionId));
+    if (session) {
+      const layerIds = new Set(session.layers.map(l => `${sessionId}:${l.zwsLayerName}`));
+      setLayers(prev => prev.filter(l => !layerIds.has(l.id)));
+    }
+    if (zwsSessions.length <= 1) {
+      setConnection(null);
+      setStatus("disconnected");
+    }
+  }, [zwsSessions]);
+
+  const refreshZwsSession = useCallback(async (sessionId: number) => {
+    const session = zwsSessions.find(s => s.id === sessionId);
+    if (!session) return;
+    window.dispatchEvent(new CustomEvent("zws-refresh", { detail: { sessionId } }));
+  }, [zwsSessions]);
+
+  const deleteZwsConnectionCb = useCallback(async (connId: number) => {
+    try {
+      await apiRequest("DELETE", `/api/zws-connections/${connId}`);
+      setSavedZwsConnections(prev => prev.filter(c => c.id !== connId));
+      disconnectZwsSession(connId);
+    } catch {
+    }
+  }, [disconnectZwsSession]);
+
+  const zwsEditableLayers = zwsSessions.flatMap(s => s.layers);
+
+  useEffect(() => {
+    if (!initLoadedRef.current) {
+      initLoadedRef.current = true;
+      loadSavedZwsConnections();
+    }
+  }, [loadSavedZwsConnections]);
 
   return {
     connection,
@@ -336,5 +558,13 @@ export function useZuluConnection(): UseZuluConnectionReturn {
     loadTickets,
     handleLayerLoadError,
     handleLayerLoadSuccess,
+    zwsSessions,
+    savedZwsConnections,
+    loadSavedZwsConnections,
+    connectSavedZws,
+    disconnectZwsSession,
+    refreshZwsSession,
+    deleteZwsConnection: deleteZwsConnectionCb,
+    zwsEditableLayers,
   };
 }

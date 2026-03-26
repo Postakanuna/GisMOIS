@@ -153,6 +153,7 @@ interface MapViewerProps {
     snapLayerIds: number[];
   };
   mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void } | null>;
+  zwsEditableLayers?: EditableLayer[];
 }
 
 const DEFAULT_CENTER: [number, number] = [37.6173, 55.7558];
@@ -990,6 +991,7 @@ export function MapViewer({
   simulationHighlightData,
   snapSettings,
   mapActionsRef,
+  zwsEditableLayers = [],
 }: MapViewerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
@@ -997,6 +999,8 @@ export function MapViewer({
   const allFeaturesRef = useRef<Record<string, Feature[]>>({});
   const ticketsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const allEditableLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
+  const zwsOlLayersRef = useRef<Map<number, VectorLayer<VectorSource>>>(new Map());
+  const zwsFeaturesRef = useRef<Record<number, DrawnFeature[]>>({});
   const traceRouteLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const reconstructionLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const simulationHighlightLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -2416,6 +2420,128 @@ export function MapViewer({
       }
     });
   }, [allEditableLayers, allLayerFeatures, isFetchingFeatures, fetchViewport]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !fetchViewport) return;
+    if (zwsEditableLayers.length === 0) {
+      zwsOlLayersRef.current.forEach(layer => map.removeLayer(layer));
+      zwsOlLayersRef.current.clear();
+      return;
+    }
+
+    const currentIds = new Set(zwsEditableLayers.map(l => l.id));
+    zwsOlLayersRef.current.forEach((layer, id) => {
+      if (!currentIds.has(id)) {
+        map.removeLayer(layer);
+        zwsOlLayersRef.current.delete(id);
+      }
+    });
+
+    const geojsonFormat = new GeoJSON();
+
+    zwsEditableLayers.forEach(zwsLayer => {
+      if (!zwsLayer.visible) {
+        const existing = zwsOlLayersRef.current.get(zwsLayer.id);
+        if (existing) existing.setVisible(false);
+        return;
+      }
+
+      let olLayer = zwsOlLayersRef.current.get(zwsLayer.id);
+      if (!olLayer) {
+        const vectorSource = new VectorSource();
+        const currentZoom = fetchViewport?.zoom || 10;
+        olLayer = new VectorLayer({
+          source: vectorSource,
+          style: createEditableLayerStyleFunction(zwsLayer, currentZoom) as any,
+          updateWhileAnimating: true,
+          updateWhileInteracting: true,
+          properties: { zwsLayerId: zwsLayer.id, editableLayerId: zwsLayer.id },
+        });
+        olLayer.setZIndex(50);
+        map.addLayer(olLayer);
+        zwsOlLayersRef.current.set(zwsLayer.id, olLayer);
+      }
+      olLayer.setVisible(true);
+
+      const proj = currentProjectionRef.current;
+      const extent = map.getView().calculateExtent(map.getSize());
+      const [minx, miny, maxx, maxy] = extent;
+
+      const layerName = zwsLayer.zwsLayerName;
+      const baseUrl = zwsLayer.zwsBaseUrl;
+      if (!layerName || !baseUrl) return;
+
+      fetch("/api/zulu/zws/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          layer: layerName,
+          bbox: { minx, miny, maxx, maxy, crs: proj },
+          crs: proj,
+          baseUrl,
+          zwsUsername: zwsLayer.zwsUsername,
+          zwsPassword: zwsLayer.zwsPassword,
+        }),
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data?.raw) return;
+          const source = olLayer!.getSource();
+          if (!source) return;
+          source.clear();
+
+          try {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(data.raw, "text/xml");
+            const elements = xmlDoc.querySelectorAll("Element");
+            const features: Feature[] = [];
+
+            elements.forEach(el => {
+              const coordsEl = el.querySelector("Coordinates, Coord, Geometry");
+              const idEl = el.querySelector("ID, Id");
+              const elemId = idEl?.textContent || "";
+              
+              const allAttrs: Record<string, string> = {};
+              el.querySelectorAll("Attr, Attribute").forEach(attr => {
+                const name = attr.getAttribute("Name") || attr.getAttribute("name") || "";
+                const val = attr.textContent || "";
+                if (name) allAttrs[name] = val;
+              });
+
+              const geometryNode = el.querySelector("Geometry");
+              if (geometryNode) {
+                const gmlText = geometryNode.innerHTML || geometryNode.textContent || "";
+                try {
+                  const coordPairs = gmlText.match(/[\d.-]+,[\d.-]+/g);
+                  if (coordPairs && coordPairs.length > 0) {
+                    const coords = coordPairs.map(pair => {
+                      const [x, y] = pair.split(",").map(Number);
+                      return [x, y];
+                    });
+                    let geom: Geometry;
+                    if (coords.length === 1) {
+                      geom = new OlPoint(coords[0]);
+                    } else {
+                      geom = new LineString(coords);
+                    }
+                    const feature = new Feature({ geometry: geom, ...allAttrs, featureId: elemId, zwsLayerId: zwsLayer.id });
+                    features.push(feature);
+                  }
+                } catch {}
+              }
+            });
+
+            if (features.length > 0) {
+              source.addFeatures(features);
+            }
+          } catch (e) {
+            console.error("Failed to parse ZWS features XML:", e);
+          }
+        })
+        .catch(err => console.error("ZWS features fetch error:", err));
+    });
+  }, [zwsEditableLayers, fetchViewport]);
 
   // Render scene datasets with viewport-based loading
   useEffect(() => {

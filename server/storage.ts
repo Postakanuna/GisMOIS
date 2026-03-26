@@ -25,11 +25,12 @@ import {
   type ZuluFieldLabel, type InsertZuluFieldLabel,
   type ZuluFieldValue, type InsertZuluFieldValue,
   type AdminLayerGroup,
+  type ZwsConnection, type InsertZwsConnection,
   editableLayers, drawnFeatures, layerSchemas,
   scenes, sceneMembers, sceneFolders, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
   appSettings, bugReports,
   sensorIntegrationConfig, sensorObjectBindings, sensorReadingsCache,
-  costUnitRates, reconstructionPrograms, programObjects, zuluFieldLabels, zuluFieldValues, adminLayerGroups
+  costUnitRates, reconstructionPrograms, programObjects, zuluFieldLabels, zuluFieldValues, adminLayerGroups, zwsConnections
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { aiProviders, type AiProvider, type InsertAiProvider, type UpdateAiProvider } from "@shared/models/chat";
@@ -217,6 +218,12 @@ export interface IStorage {
   setLayerAdminGroup(layerName: string, geometryType: string, adminGroupId: number | null): Promise<void>;
   renameLayerGlobal(oldName: string, geometryType: string, newName: string): Promise<void>;
   updateLayerMetadataGlobal(name: string, geometryType: string, metadata: Record<string, unknown>): Promise<void>;
+
+  getZwsConnections(userId: string): Promise<ZwsConnection[]>;
+  getZwsConnection(id: number): Promise<ZwsConnection | undefined>;
+  createZwsConnection(data: InsertZwsConnection): Promise<ZwsConnection>;
+  updateZwsConnection(id: number, updates: Partial<InsertZwsConnection>): Promise<ZwsConnection | undefined>;
+  deleteZwsConnection(id: number): Promise<boolean>;
 }
 
 function toEditableLayer(row: typeof editableLayers.$inferSelect): EditableLayer {
@@ -1511,6 +1518,33 @@ export class DatabaseStorage implements IStorage {
     await db.update(editableLayers)
       .set({ metadata: metadata as any })
       .where(and(eq(editableLayers.name, name), eq(editableLayers.geometryType, geometryType)));
+  }
+
+  async getZwsConnections(userId: string): Promise<ZwsConnection[]> {
+    return db.select().from(zwsConnections).where(eq(zwsConnections.userId, userId));
+  }
+
+  async getZwsConnection(id: number): Promise<ZwsConnection | undefined> {
+    const rows = await db.select().from(zwsConnections).where(eq(zwsConnections.id, id));
+    return rows[0];
+  }
+
+  async createZwsConnection(data: InsertZwsConnection): Promise<ZwsConnection> {
+    const rows = await db.insert(zwsConnections).values(data).returning();
+    return rows[0];
+  }
+
+  async updateZwsConnection(id: number, updates: Partial<InsertZwsConnection>): Promise<ZwsConnection | undefined> {
+    const rows = await db.update(zwsConnections)
+      .set({ ...updates, updatedAt: new Date() } as any)
+      .where(eq(zwsConnections.id, id))
+      .returning();
+    return rows[0];
+  }
+
+  async deleteZwsConnection(id: number): Promise<boolean> {
+    const result = await db.delete(zwsConnections).where(eq(zwsConnections.id, id)).returning();
+    return result.length > 0;
   }
 }
 

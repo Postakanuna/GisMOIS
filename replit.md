@@ -59,6 +59,17 @@ The system supports multi-provider geocoding (Yandex Geocoder and DaData) for co
 
 **Chunked processing**: Batch geocoding processes objects in chunks of 50, saving results to DB after each chunk. This prevents data loss on interruption and allows resuming from where it stopped. Layer schema (attribute columns) is updated before processing starts so columns appear immediately. SSE progress events are throttled (max every 2 seconds or per chunk) to prevent frontend UI freezes. Frontend uses `requestAnimationFrame` to batch React state updates. Duplicate geocoding requests for the same layer are rejected (in-memory `activeGeocodeLayers` set).
 
+### ZWS (ZuluGIS Web Service) Integration
+
+ZWS layers are unified with editable layers. Architecture:
+- **Data model**: `EditableLayer` with `source: "zws"` and fields `zwsLayerName`, `zwsBaseUrl`, `zwsUsername`, `zwsPassword`, `zwsConnectionId`, `attributeFields`
+- **Persistence**: `zws_connections` table stores saved connections with encrypted passwords, `selectedLayers` JSONB
+- **API**: `GET/POST/PUT/DELETE /api/zws-connections`; ZWS write endpoints (`/api/zulu/zws/element`, `/api/zulu/zws/attributes`, `/api/zulu/zws/geometry`, `/api/zulu/zws/element/:id`) require `zwsUsername/zwsPassword`
+- **Hook**: `useZuluConnection` manages `ZwsSession[]` state, builds `EditableLayer`-compatible objects with negative IDs, auto-loads saved connections on init, schema loading via `fetchZwsLayerSchema` (GetLayerBaseInfo)
+- **Data Manager**: Connections tab shows active sessions (Refresh/Disconnect) and saved connections (Connect/Delete). Layers tab has filter toggle (Все/Редактируемые/ZWS)
+- **Map rendering**: ZWS layers rendered as OpenLayers VectorLayer + VectorSource, viewport-based loading via `/api/zulu/zws/features` (LayerIntersectByBox), styled with `createEditableLayerStyleFunction`
+- **Key files**: `shared/schema.ts`, `server/storage.ts`, `server/routes.ts`, `client/src/hooks/use-zulu-connection.ts`, `client/src/components/data-manager.tsx`, `client/src/components/map-viewer.tsx`
+
 ### Advanced Styling
 
 Extensive styling options are available for points (basic shapes, GOST-compliant thermal network icons, custom SVGs) and lines (basic patterns, GOST-compliant thermal network styles). Per-class styling with categorized and graduated renderers allows assigning specific styles, facilitated by `IconPicker` and `LinePicker` components.

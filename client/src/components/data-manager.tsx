@@ -793,7 +793,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const { currentSceneId, canEdit } = useScene();
   const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const { currentProjection, setProjection, projectionInfo } = useProjection();
-  const { connect, connectZws, connectCustomZws, disconnect, status: zuluStatus, error: zuluError } = useZuluConnectionContext();
+  const { connect, connectZws, connectCustomZws, disconnect, status: zuluStatus, error: zuluError, zwsSessions, savedZwsConnections, loadSavedZwsConnections, connectSavedZws, disconnectZwsSession, refreshZwsSession, deleteZwsConnection, zwsEditableLayers } = useZuluConnectionContext();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
@@ -836,7 +836,16 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     enabled: !!currentSceneId,
   });
 
-  const sceneLayers = [...sceneLayersRaw].sort((a, b) => a.displayOrder - b.displayOrder);
+  const [layerFilter, setLayerFilter] = useState<"all" | "editable" | "zws">("all");
+  const sceneLayersSorted = [...sceneLayersRaw].sort((a, b) => a.displayOrder - b.displayOrder);
+  const allLayers = useMemo(() => {
+    return [...sceneLayersSorted, ...zwsEditableLayers];
+  }, [sceneLayersSorted, zwsEditableLayers]);
+  const sceneLayers = useMemo(() => {
+    if (layerFilter === "editable") return sceneLayersSorted;
+    if (layerFilter === "zws") return zwsEditableLayers;
+    return allLayers;
+  }, [layerFilter, sceneLayersSorted, zwsEditableLayers, allLayers]);
 
   const editableLayersQueryKey = ["/api/scenes", currentSceneId, "editable-layers"];
 
@@ -1608,6 +1617,19 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
           </TabsList>
 
           <TabsContent value="layers" className="flex-1 flex flex-col overflow-hidden mt-0 px-3 pb-3 data-[state=inactive]:hidden">
+            {zwsEditableLayers.length > 0 && (
+              <div className="flex gap-1 pt-3 pb-1">
+                <Button size="sm" variant={layerFilter === "all" ? "default" : "outline"} className="h-6 text-xs px-2" onClick={() => setLayerFilter("all")} data-testid="filter-all">
+                  Все ({allLayers.length})
+                </Button>
+                <Button size="sm" variant={layerFilter === "editable" ? "default" : "outline"} className="h-6 text-xs px-2" onClick={() => setLayerFilter("editable")} data-testid="filter-editable">
+                  Редактируемые ({sceneLayersSorted.length})
+                </Button>
+                <Button size="sm" variant={layerFilter === "zws" ? "default" : "outline"} className="h-6 text-xs px-2" onClick={() => setLayerFilter("zws")} data-testid="filter-zws">
+                  ZWS ({zwsEditableLayers.length})
+                </Button>
+              </div>
+            )}
             <div className="flex items-center justify-between py-3">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Слои сцены ({sceneLayers.length})</span>
@@ -1926,6 +1948,67 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                     />
                   </div>
                 </div>
+
+                {zwsSessions.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Globe className="h-4 w-4 text-green-500" />
+                      <span className="text-sm font-medium">Активные ZWS-сессии</span>
+                    </div>
+                    <div className="space-y-2">
+                      {zwsSessions.map(session => (
+                        <div key={session.id} className="rounded-md border bg-background p-3" data-testid={`zws-session-${session.id}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium truncate">{session.displayName}</span>
+                            <Badge variant="outline" className="text-green-600 border-green-300 text-xs">
+                              Подключено
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate mb-2">{session.baseUrl}</p>
+                          <p className="text-xs text-muted-foreground mb-2">Слоёв: {session.layers.length}</p>
+                          <div className="flex gap-1.5">
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refreshZwsSession(session.id)} data-testid={`refresh-session-${session.id}`}>
+                              Обновить
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs text-destructive" onClick={() => disconnectZwsSession(session.id)} data-testid={`disconnect-session-${session.id}`}>
+                              Отключить
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {savedZwsConnections.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Database className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Сохранённые подключения</span>
+                    </div>
+                    <div className="space-y-2">
+                      {savedZwsConnections.filter(c => !zwsSessions.some(s => s.id === c.id)).map(conn => (
+                        <div key={conn.id} className="rounded-md border bg-background p-3" data-testid={`saved-conn-${conn.id}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium truncate">{conn.displayName}</span>
+                            <Badge variant="outline" className="text-muted-foreground text-xs">
+                              Отключено
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate mb-2">{conn.baseUrl}</p>
+                          <div className="flex gap-1.5">
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => connectSavedZws(conn.id)} data-testid={`connect-saved-${conn.id}`}>
+                              Подключить
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs text-destructive" onClick={() => deleteZwsConnection(conn.id)} data-testid={`delete-conn-${conn.id}`}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </ScrollArea>
           </TabsContent>

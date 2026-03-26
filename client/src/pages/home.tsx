@@ -873,6 +873,7 @@ export default function Home() {
               simulationHighlightData={simulationHighlightData}
               snapSettings={drawing.snapSettings}
               mapActionsRef={mapActionsRef}
+              zwsEditableLayers={zuluConnection.zwsEditableLayers}
             />
 
             {/* Attribute Table Modal */}

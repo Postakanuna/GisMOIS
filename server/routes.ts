@@ -631,16 +631,17 @@ export async function registerRoutes(
   });
   
   // ---- ZWS: Layer schema (GetLayerBaseInfo) ----
-  app.get("/api/zulu/zws/layer-info", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+  app.post("/api/zulu/zws/layer-info", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layer, baseUrl } = req.query as { layer?: string; baseUrl?: string };
+      const { layer, baseUrl, zwsUsername, zwsPassword } = req.body as { layer?: string; baseUrl?: string; zwsUsername?: string; zwsPassword?: string };
       if (!layer) return res.status(400).json({ message: "Layer is required" });
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const infoAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword || "") : undefined;
       const innerXml = `    <GetLayerBaseInfo>\n      <Layer>${xmlEscape(layer)}</Layer>\n    </GetLayerBaseInfo>`;
       const xml = zwsXmlWrap(innerXml);
 
-      const { text, ok, status } = await zwsPost(zwsBaseUrl, "GetLayerBaseInfo", xml, 15000);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "GetLayerBaseInfo", xml, 15000, infoAuthHeader);
       if (!ok) {
         return res.status(status).json({ message: "ZWS GetLayerBaseInfo failed", raw: text.slice(0, 500) });
       }
@@ -693,12 +694,13 @@ export async function registerRoutes(
   // ---- ZWS: Create element (LayerAddPolyline / LayerAddSymbol / LayerAddPolygon) ----
   app.post("/api/zulu/zws/element", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layer, geometryType, typeId, modeNum, coordinates, crs, baseUrl } = req.body;
+      const { layer, geometryType, typeId, modeNum, coordinates, crs, baseUrl, zwsUsername, zwsPassword } = req.body;
       if (!layer || typeId === undefined || modeNum === undefined || !coordinates || !geometryType) {
         return res.status(400).json({ message: "layer, geometryType, typeId, modeNum, coordinates are required" });
       }
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const elemAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword || "") : undefined;
       const projection = crs || "EPSG:4326";
 
       // Build coordinate string: [[lon,lat], ...] or [lon, lat]
@@ -742,7 +744,7 @@ export async function registerRoutes(
       }
 
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok, status } = await zwsPost(zwsBaseUrl, command, xml, 30000);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, command, xml, 30000, elemAuthHeader);
 
       if (!ok) {
         console.error("ZWS create element error:", text.slice(0, 300));
@@ -766,12 +768,13 @@ export async function registerRoutes(
   // ---- ZWS: Update element attributes (UpdateElemAttributes) ----
   app.put("/api/zulu/zws/element/attributes", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layer, elemId, fields, baseUrl } = req.body;
+      const { layer, elemId, fields, baseUrl, zwsUsername, zwsPassword } = req.body;
       if (!layer || elemId === undefined || !fields || typeof fields !== "object") {
         return res.status(400).json({ message: "layer, elemId, fields (object) are required" });
       }
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const attrAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword || "") : undefined;
 
       const fieldXml = Object.entries(fields)
         .map(
@@ -792,7 +795,7 @@ ${fieldXml}
     </UpdateElemAttributes>`;
 
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok, status } = await zwsPost(zwsBaseUrl, "UpdateElemAttributes", xml, 30000);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "UpdateElemAttributes", xml, 30000, attrAuthHeader);
 
       if (!ok) {
         return res.status(status).json({ message: "ZWS UpdateElemAttributes failed", details: text.slice(0, 500) });
@@ -814,12 +817,13 @@ ${fieldXml}
   // ---- ZWS: Update element geometry (LayerUpdateGeometry) ----
   app.put("/api/zulu/zws/element/geometry", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layer, elemId, coordinates, crs, baseUrl } = req.body;
+      const { layer, elemId, coordinates, crs, baseUrl, zwsUsername, zwsPassword } = req.body;
       if (!layer || elemId === undefined || !coordinates) {
         return res.status(400).json({ message: "layer, elemId, coordinates are required" });
       }
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const geoAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword || "") : undefined;
       const projection = crs || "EPSG:4326";
 
       const coordsStr = Array.isArray(coordinates[0])
@@ -834,7 +838,7 @@ ${fieldXml}
     </LayerUpdateGeometry>`;
 
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerUpdateGeometry", xml, 30000);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerUpdateGeometry", xml, 30000, geoAuthHeader);
 
       if (!ok) {
         return res.status(status).json({ message: "ZWS LayerUpdateGeometry failed", details: text.slice(0, 500) });
@@ -856,12 +860,13 @@ ${fieldXml}
   // ---- ZWS: Delete element (LayerDeleteElement) ----
   app.delete("/api/zulu/zws/element", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { layer, elemId, baseUrl } = req.body;
+      const { layer, elemId, baseUrl, zwsUsername, zwsPassword } = req.body;
       if (!layer || elemId === undefined) {
         return res.status(400).json({ message: "layer and elemId are required" });
       }
 
       const zwsBaseUrl = baseUrl || DEFAULT_ZWS_BASE_URL;
+      const delAuthHeader = zwsUsername ? buildCustomAuthHeader(zwsUsername, zwsPassword || "") : undefined;
 
       const innerXml = `    <LayerDeleteElement>
       <Layer>${xmlEscape(layer)}</Layer>
@@ -869,7 +874,7 @@ ${fieldXml}
     </LayerDeleteElement>`;
 
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerDeleteElement", xml, 30000);
+      const { text, ok, status } = await zwsPost(zwsBaseUrl, "LayerDeleteElement", xml, 30000, delAuthHeader);
 
       if (!ok) {
         return res.status(status).json({ message: "ZWS LayerDeleteElement failed", details: text.slice(0, 500) });
@@ -884,6 +889,76 @@ ${fieldXml}
     } catch (error: any) {
       if (error.isTimeout) return res.status(504).json({ message: "Request timeout" });
       console.error("ZWS delete element error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ---- ZWS Connections CRUD ----
+  app.get("/api/zws-connections", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const connections = await storage.getZwsConnections(userId);
+      return res.json(connections);
+    } catch (error) {
+      console.error("Get ZWS connections error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/zws-connections", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const { displayName, baseUrl, username, passwordEncrypted, selectedLayers } = req.body;
+      if (!displayName || !baseUrl) {
+        return res.status(400).json({ message: "displayName and baseUrl are required" });
+      }
+      const conn = await storage.createZwsConnection({
+        userId,
+        displayName,
+        baseUrl,
+        username: username || null,
+        passwordEncrypted: passwordEncrypted || null,
+        selectedLayers: selectedLayers || [],
+      });
+      return res.status(201).json(conn);
+    } catch (error) {
+      console.error("Create ZWS connection error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/zws-connections/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const existing = (await storage.getZwsConnections(userId)).find(c => c.id === id);
+      if (!existing) return res.status(404).json({ message: "Connection not found" });
+      const conn = await storage.updateZwsConnection(id, req.body);
+      if (!conn) return res.status(404).json({ message: "Connection not found" });
+      return res.json(conn);
+    } catch (error) {
+      console.error("Update ZWS connection error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/zws-connections/:id", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const existing = (await storage.getZwsConnections(userId)).find(c => c.id === id);
+      if (!existing) return res.status(404).json({ message: "Connection not found" });
+      const deleted = await storage.deleteZwsConnection(id);
+      if (!deleted) return res.status(404).json({ message: "Connection not found" });
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Delete ZWS connection error:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
