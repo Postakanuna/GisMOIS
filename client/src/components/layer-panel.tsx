@@ -52,7 +52,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import type { LayerConfig, EditableLayer, GeometryType, ConnectionStatus } from "@shared/schema";
 import type { LayerFilters, ActiveFilters } from "@/hooks/use-zulu-connection";
-import { Plus, Pencil, Globe } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { LayerLegendIcon } from "@/components/layer-legend-icon";
