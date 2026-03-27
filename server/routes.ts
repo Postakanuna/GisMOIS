@@ -755,6 +755,14 @@ export async function registerRoutes(
 
       const parsedFeatures = parseZwsXmlToDbFeatures(text);
       console.log(`[ZWS import-to-db] layerName=${layerName}, parsed=${parsedFeatures.length} features, xml-sample=${text.slice(0, 600)}`);
+      if (parsedFeatures.length > 0) {
+        const f0 = parsedFeatures[0];
+        const c = f0.coordinates;
+        const flat: number[] = [];
+        const flatten = (x: any) => { if (Array.isArray(x)) { if (typeof x[0] === "number") { flat.push(x[0], x[1]); } else { x.forEach(flatten); } } };
+        flatten(c);
+        console.log(`[ZWS coord-check] geomType=${f0.geometryType}, first 4 values=[${flat.slice(0, 4).join(", ")}] — если >50 и похоже на широту (lat), координаты ПЕРЕВЁРНУТЫ`);
+      }
 
       let finalGeomType: string = geometryType || "Point";
       if (!geometryType && parsedFeatures.length > 0) finalGeomType = parsedFeatures[0].geometryType;
