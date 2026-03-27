@@ -424,60 +424,9 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
       if (!res.ok) return;
       const data = await res.json();
       setSavedZwsConnections(data);
-
-      for (const saved of data) {
-        const sessionLayers: EditableLayer[] = [];
-        for (const sl of (saved.selectedLayers || [])) {
-          sessionLayers.push(buildZwsEditableLayer(saved.id, sl.alias || sl.layerName, saved.baseUrl, saved.username || undefined, saved.passwordEncrypted || undefined));
-        }
-        if (sessionLayers.length === 0) continue;
-
-        const session: ZwsSession = {
-          id: saved.id,
-          displayName: saved.displayName,
-          baseUrl: saved.baseUrl,
-          username: saved.username || undefined,
-          password: saved.passwordEncrypted || undefined,
-          layers: sessionLayers,
-          status: "connected",
-        };
-        setZwsSessions(prev => {
-          if (prev.find(s => s.id === saved.id)) return prev;
-          return [...prev, session];
-        });
-
-        setLayers(prev => {
-          const newLayers = sessionLayers.map(sl => ({
-            id: `${saved.id}:${sl.zwsLayerName}`,
-            name: sl.name,
-            visible: true,
-            opacity: 1,
-            type: "zws" as const,
-            url: saved.baseUrl,
-            zwsUsername: saved.username || undefined,
-            zwsPassword: saved.passwordEncrypted || undefined,
-          }));
-          const existingIds = new Set(prev.map(l => l.id));
-          const toAdd = newLayers.filter(l => !existingIds.has(l.id));
-          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
-        });
-
-        if (!connection) {
-          setConnection({
-            host: new URL(saved.baseUrl).hostname,
-            layerName: "",
-            useWfs: false,
-            useZws: true,
-            baseUrl: saved.baseUrl,
-            username: saved.username || undefined,
-            password: saved.passwordEncrypted || undefined,
-          });
-          setStatus("connected");
-        }
-      }
     } catch {
     }
-  }, [buildZwsEditableLayer, connection, sceneId]);
+  }, [sceneId]);
 
   const connectSavedZws = useCallback(async (connId: number) => {
     const saved = savedZwsConnections.find(c => c.id === connId);

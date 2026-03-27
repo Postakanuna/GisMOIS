@@ -5099,7 +5099,7 @@ ${fieldXml}
         const features = featuresByLayer[id] || [];
         const { sampled, totalPoints, samplingRate } = samplePointFeatures(features, zoomLevel);
         const simplified = sampled.map(feature => {
-          const coords = (tolerance > 0 && feature.geometryType !== "Point")
+          const coords = (tolerance > 0 && feature.geometryType !== "Point" && feature.geometryType !== "MultiPoint")
             ? simplifyFeatureGeometry(feature.coordinates, feature.geometryType, tolerance)
             : feature.coordinates;
           return {

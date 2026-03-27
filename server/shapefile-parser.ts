@@ -323,10 +323,38 @@ export function simplifyFeatureGeometry(
   geometryType: string,
   tolerance: number
 ): any {
-  if (geometryType === "Point" || tolerance <= 0) {
+  if (geometryType === "Point" || geometryType === "MultiPoint" || tolerance <= 0) {
     return coordinates;
   }
-  return simplifyCoordinates(coordinates, tolerance);
+
+  if (!coordinates || !Array.isArray(coordinates)) return coordinates;
+
+  const isRingType = geometryType === "Polygon" || geometryType === "MultiPolygon";
+
+  switch (geometryType) {
+    case "LineString":
+      return simplifyCoordinates(coordinates, tolerance, false);
+    case "MultiLineString":
+      return coordinates.map((line: any) => simplifyCoordinates(line, tolerance, false));
+    case "Polygon": {
+      const rings = coordinates.map((ring: any) => simplifyCoordinates(ring, tolerance, true));
+      const validRings = rings.filter((r: any) => Array.isArray(r) && r.length >= 4);
+      return validRings.length > 0 ? validRings : rings;
+    }
+    case "MultiPolygon": {
+      const polys = coordinates.map((polygon: any) => {
+        if (!Array.isArray(polygon)) return polygon;
+        const rings = polygon.map((ring: any) => simplifyCoordinates(ring, tolerance, true));
+        const validRings = rings.filter((r: any) => Array.isArray(r) && r.length >= 4);
+        return validRings.length > 0 ? validRings : rings;
+      });
+      return polys.filter((p: any) => Array.isArray(p) && p.length > 0);
+    }
+    case "GeometryCollection":
+      return coordinates;
+    default:
+      return simplifyCoordinates(coordinates, tolerance, isRingType);
+  }
 }
 
 export function getSimplifyTolerance(zoom: number): number {
