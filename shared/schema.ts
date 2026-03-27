@@ -209,8 +209,16 @@ export const styleConfigSchema = z.object({
 });
 export type StyleConfig = z.infer<typeof styleConfigSchema>;
 
-// Geometry types for drawn features
-export const geometryTypeSchema = z.enum(["Point", "LineString", "Polygon"]);
+// Geometry types for drawn features (OGC WKT compatible)
+export const geometryTypeSchema = z.enum([
+  "Point",
+  "LineString",
+  "Polygon",
+  "MultiPoint",
+  "MultiLineString",
+  "MultiPolygon",
+  "GeometryCollection",
+]);
 export type GeometryType = z.infer<typeof geometryTypeSchema>;
 
 // Attribute field types

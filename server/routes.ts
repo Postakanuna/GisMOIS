@@ -602,30 +602,98 @@ export async function registerRoutes(
   });
 
   // WKT → GeoJSON coordinates (server-side, for DB import)
+  // Supports all OGC WKT types including Z-coordinates
+  type GeoJsonGeometryType = "Point" | "LineString" | "Polygon" | "MultiPoint" | "MultiLineString" | "MultiPolygon" | "GeometryCollection";
+
   function parseWktCoordPairs(coordStr: string): number[][] {
     return coordStr.split(",").map(pt => {
       const p = pt.trim().split(/\s+/);
+      if (p.length >= 3) return [parseFloat(p[0]), parseFloat(p[1]), parseFloat(p[2])];
       return [parseFloat(p[0]), parseFloat(p[1])];
     }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
   }
 
-  function parseWktToGeoJsonCoordinates(wkt: string): { coordinates: any; geometryType: "Point" | "LineString" | "Polygon" } | null {
+  function extractInnermostRings(wkt: string): number[][][] {
+    const rings: number[][][] = [];
+    const ringRegex = /\(\s*([\d.,\-\seE+]+?)\s*\)/g;
+    let m;
+    while ((m = ringRegex.exec(wkt)) !== null) {
+      const ring = parseWktCoordPairs(m[1]);
+      if (ring.length >= 1) rings.push(ring);
+    }
+    return rings;
+  }
+
+  function parseMultiPolygonBrackets(body: string): number[][][][] {
+    const polygons: number[][][][] = [];
+    let depth = 0;
+    let polyStart = -1;
+    for (let i = 0; i < body.length; i++) {
+      if (body[i] === '(') {
+        depth++;
+        if (depth === 2) polyStart = i;
+      } else if (body[i] === ')') {
+        if (depth === 2 && polyStart >= 0) {
+          const polyContent = body.slice(polyStart, i + 1);
+          const rings = extractInnermostRings(polyContent);
+          if (rings.length > 0 && rings[0].length >= 3) {
+            polygons.push(rings);
+          }
+        }
+        depth--;
+      }
+    }
+    return polygons;
+  }
+
+  function parseWktToGeoJsonCoordinates(wkt: string): { coordinates: any; geometryType: GeoJsonGeometryType } | null {
     const trimmed = wkt.trim();
 
-    if (/^MULTIPOINT\s*Z?\s*\(/i.test(trimmed)) {
-      const inner = trimmed.replace(/^MULTIPOINT\s*Z?\s*\(/i, "").replace(/\)\s*$/, "");
-      const firstPt = inner.replace(/^\s*\(?\s*/, "").split(/[,)]/)[0].trim();
-      const p = firstPt.split(/\s+/);
-      if (p.length < 2) return null;
-      return { coordinates: [parseFloat(p[0]), parseFloat(p[1])], geometryType: "Point" };
-    }
-
     if (/^POINT\s*Z?\s*\(/i.test(trimmed)) {
-      const match = trimmed.match(/POINT\s*Z?\s*\(\s*([\d.\-\s]+?)\s*\)/i);
+      const match = trimmed.match(/POINT\s*Z?\s*\(\s*([\d.\-\seE+]+)\s*\)/i);
       if (!match) return null;
       const parts = match[1].trim().split(/\s+/);
       if (parts.length < 2) return null;
-      return { coordinates: [parseFloat(parts[0]), parseFloat(parts[1])], geometryType: "Point" };
+      const coords: number[] = [parseFloat(parts[0]), parseFloat(parts[1])];
+      if (parts.length >= 3) coords.push(parseFloat(parts[2]));
+      return { coordinates: coords, geometryType: "Point" };
+    }
+
+    if (/^MULTIPOINT\s*Z?\s*\(/i.test(trimmed)) {
+      const points: number[][] = [];
+      const ptRegex = /\(\s*([\d.\-\seE+]+)\s*\)/g;
+      let m;
+      while ((m = ptRegex.exec(trimmed)) !== null) {
+        const parts = m[1].trim().split(/\s+/);
+        if (parts.length >= 2) {
+          const c: number[] = [parseFloat(parts[0]), parseFloat(parts[1])];
+          if (parts.length >= 3) c.push(parseFloat(parts[2]));
+          if (!isNaN(c[0]) && !isNaN(c[1])) points.push(c);
+        }
+      }
+      if (points.length === 0) {
+        const inner = trimmed.replace(/^MULTIPOINT\s*Z?\s*\(\s*/i, "").replace(/\s*\)\s*$/, "");
+        const pairs = inner.split(",");
+        for (const pair of pairs) {
+          const parts = pair.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            const c: number[] = [parseFloat(parts[0]), parseFloat(parts[1])];
+            if (parts.length >= 3) c.push(parseFloat(parts[2]));
+            if (!isNaN(c[0]) && !isNaN(c[1])) points.push(c);
+          }
+        }
+      }
+      if (points.length === 0) return null;
+      if (points.length === 1) return { coordinates: points[0], geometryType: "Point" };
+      return { coordinates: points, geometryType: "MultiPoint" };
+    }
+
+    if (/^LINESTRING\s*Z?\s*\(/i.test(trimmed)) {
+      const match = trimmed.match(/LINESTRING\s*Z?\s*\(\s*([^)]+)\s*\)/i);
+      if (!match) return null;
+      const coords = parseWktCoordPairs(match[1]);
+      if (coords.length < 2) return null;
+      return { coordinates: coords, geometryType: "LineString" };
     }
 
     if (/^MULTILINESTRING\s*Z?\s*\(/i.test(trimmed)) {
@@ -638,32 +706,22 @@ export async function registerRoutes(
       }
       if (allLines.length === 0) return null;
       if (allLines.length === 1) return { coordinates: allLines[0], geometryType: "LineString" };
-      return { coordinates: allLines[0], geometryType: "LineString" };
-    }
-
-    if (/^LINESTRING\s*Z?\s*\(/i.test(trimmed)) {
-      const match = trimmed.match(/LINESTRING\s*Z?\s*\(\s*([^)]+)\s*\)/i);
-      if (!match) return null;
-      const coords = parseWktCoordPairs(match[1]);
-      if (coords.length < 2) return null;
-      return { coordinates: coords, geometryType: "LineString" };
+      return { coordinates: allLines, geometryType: "MultiLineString" };
     }
 
     if (/^MULTIPOLYGON\s*Z?\s*\(/i.test(trimmed)) {
-      const rings: number[][][] = [];
-      const ringRegex = /\(\s*([\d.,\-\s]+?)\s*\)/g;
-      let m;
-      while ((m = ringRegex.exec(trimmed)) !== null) {
-        const ring = parseWktCoordPairs(m[1]);
-        if (ring.length >= 3) rings.push(ring);
-      }
-      if (rings.length === 0) return null;
-      return { coordinates: [rings[0]], geometryType: "Polygon" };
+      const header = trimmed.match(/^MULTIPOLYGON\s*Z?\s*\(/i);
+      if (!header) return null;
+      const body = trimmed.slice(header[0].length - 1);
+      const polygons = parseMultiPolygonBrackets(body);
+      if (polygons.length === 0) return null;
+      if (polygons.length === 1) return { coordinates: polygons[0], geometryType: "Polygon" };
+      return { coordinates: polygons, geometryType: "MultiPolygon" };
     }
 
     if (/^POLYGON\s*Z?\s*\(/i.test(trimmed)) {
       const rings: number[][][] = [];
-      const ringRegex = /\(\s*([\d.,\-\s]+?)\s*\)/g;
+      const ringRegex = /\(\s*([\d.,\-\seE+]+?)\s*\)/g;
       let m;
       while ((m = ringRegex.exec(trimmed)) !== null) {
         const ring = parseWktCoordPairs(m[1]);
@@ -672,6 +730,31 @@ export async function registerRoutes(
       if (rings.length === 0) return null;
       return { coordinates: rings, geometryType: "Polygon" };
     }
+
+    if (/^GEOMETRYCOLLECTION\s*Z?\s*\(/i.test(trimmed)) {
+      const inner = trimmed.replace(/^GEOMETRYCOLLECTION\s*Z?\s*\(\s*/i, "");
+      const body = inner.replace(/\s*\)\s*$/, "");
+      const subWkts: string[] = [];
+      let depth = 0;
+      let start = 0;
+      for (let i = 0; i < body.length; i++) {
+        if (body[i] === '(') depth++;
+        else if (body[i] === ')') depth--;
+        else if (body[i] === ',' && depth === 0) {
+          subWkts.push(body.slice(start, i).trim());
+          start = i + 1;
+        }
+      }
+      const last = body.slice(start).trim();
+      if (last) subWkts.push(last);
+      const subGeoms = subWkts
+        .map(sw => parseWktToGeoJsonCoordinates(sw))
+        .filter((g): g is NonNullable<typeof g> => g !== null);
+      if (subGeoms.length === 0) return null;
+      if (subGeoms.length === 1) return subGeoms[0];
+      return { coordinates: subGeoms, geometryType: "GeometryCollection" as GeoJsonGeometryType };
+    }
+
     return null;
   }
 
@@ -687,8 +770,8 @@ export async function registerRoutes(
     return Array.from(keyMap.entries()).map(([name, type]) => ({ name, type, required: false }));
   }
 
-  function parseZwsXmlToDbFeatures(xml: string): Array<{ coordinates: any; geometryType: "Point" | "LineString" | "Polygon"; properties: Record<string, unknown> }> {
-    const features: Array<{ coordinates: any; geometryType: "Point" | "LineString" | "Polygon"; properties: Record<string, unknown> }> = [];
+  function parseZwsXmlToDbFeatures(xml: string): Array<{ coordinates: any; geometryType: GeoJsonGeometryType; properties: Record<string, unknown> }> {
+    const features: Array<{ coordinates: any; geometryType: GeoJsonGeometryType; properties: Record<string, unknown> }> = [];
     const recordRegex = /<Record>([\s\S]*?)<\/Record>/gi;
     let recordMatch;
     while ((recordMatch = recordRegex.exec(xml)) !== null) {
@@ -715,7 +798,17 @@ export async function registerRoutes(
       }
       if (wktGeometry && wktGeometry.length > 0) {
         const parsed = parseWktToGeoJsonCoordinates(wktGeometry);
-        if (parsed) features.push({ ...parsed, properties });
+        if (parsed) {
+          if (parsed.geometryType === "GeometryCollection" && Array.isArray(parsed.coordinates)) {
+            for (const subGeom of parsed.coordinates) {
+              if (subGeom && subGeom.geometryType && subGeom.coordinates) {
+                features.push({ coordinates: subGeom.coordinates, geometryType: subGeom.geometryType, properties: { ...properties } });
+              }
+            }
+          } else {
+            features.push({ ...parsed, properties });
+          }
+        }
       }
     }
     return features;
@@ -754,18 +847,22 @@ export async function registerRoutes(
       if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
 
       const parsedFeatures = parseZwsXmlToDbFeatures(text);
-      console.log(`[ZWS import-to-db] layerName=${layerName}, parsed=${parsedFeatures.length} features, xml-sample=${text.slice(0, 600)}`);
-      if (parsedFeatures.length > 0) {
-        const f0 = parsedFeatures[0];
-        const c = f0.coordinates;
-        const flat: number[] = [];
-        const flatten = (x: any) => { if (Array.isArray(x)) { if (typeof x[0] === "number") { flat.push(x[0], x[1]); } else { x.forEach(flatten); } } };
-        flatten(c);
-        console.log(`[ZWS coord-check] geomType=${f0.geometryType}, first 4 values=[${flat.slice(0, 4).join(", ")}] — если >50 и похоже на широту (lat), координаты ПЕРЕВЁРНУТЫ`);
+      console.log(`[ZWS import-to-db] layerName=${layerName}, parsed=${parsedFeatures.length} features`);
+
+      const geomTypeCounts = new Map<string, number>();
+      for (const f of parsedFeatures) {
+        geomTypeCounts.set(f.geometryType, (geomTypeCounts.get(f.geometryType) || 0) + 1);
+      }
+      if (geomTypeCounts.size > 0) {
+        const breakdown = Array.from(geomTypeCounts.entries()).map(([t, c]) => `${t}:${c}`).join(", ");
+        console.log(`[ZWS import-to-db] geometry breakdown: ${breakdown}`);
       }
 
-      let finalGeomType: string = geometryType || "Point";
-      if (!geometryType && parsedFeatures.length > 0) finalGeomType = parsedFeatures[0].geometryType;
+      let finalGeomType: string = geometryType || "Polygon";
+      if (parsedFeatures.length > 0) {
+        const dominant = Array.from(geomTypeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+        finalGeomType = dominant[0];
+      }
 
       const newLayer = await storage.createEditableLayer({
         sceneId,
@@ -850,6 +947,17 @@ export async function registerRoutes(
       if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
 
       const parsedFeatures = parseZwsXmlToDbFeatures(text);
+
+      const geomTypeCounts = new Map<string, number>();
+      for (const f of parsedFeatures) {
+        geomTypeCounts.set(f.geometryType, (geomTypeCounts.get(f.geometryType) || 0) + 1);
+      }
+      if (geomTypeCounts.size > 0) {
+        const breakdown = Array.from(geomTypeCounts.entries()).map(([t, c]) => `${t}:${c}`).join(", ");
+        console.log(`[ZWS refresh] geometry breakdown: ${breakdown}`);
+        const dominant = Array.from(geomTypeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+        await db.update(editableLayers).set({ geometryType: dominant[0] }).where(eq(editableLayers.id, editableLayerId));
+      }
 
       await storage.deleteDrawnFeaturesByLayer(editableLayerId);
 

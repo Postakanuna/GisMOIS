@@ -3052,7 +3052,7 @@ export function MapViewer({
             if (!geom) return;
 
             const extent = geom.getExtent();
-            if (feature.geometryType === "Point") {
+            if (feature.geometryType === "Point" || feature.geometryType === "MultiPoint") {
               map.getView().animate({
                 center: [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2],
                 zoom: 18,
@@ -3124,7 +3124,7 @@ export function MapViewer({
           if (!geom) return;
           const extent = geom.getExtent();
           const type = geom.getType();
-          if (type === 'Point') {
+          if (type === 'Point' || type === 'MultiPoint') {
             map.getView().animate({
               center: [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2],
               zoom: 18,

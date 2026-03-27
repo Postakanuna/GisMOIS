@@ -89,9 +89,15 @@ function detectGeometryType(geojson: any): string {
     return "Point";
   }
   
+  const types = new Set<string>();
+  for (const f of geojson.features) {
+    if (f?.geometry?.type) types.add(f.geometry.type);
+  }
+  if (types.size === 1) return types.values().next().value;
   const firstType = geojson.features[0]?.geometry?.type;
-  if (firstType?.includes("Polygon")) return "Polygon";
-  if (firstType?.includes("Line")) return "LineString";
+  if (firstType?.includes("Polygon")) return firstType;
+  if (firstType?.includes("Line")) return firstType;
+  if (firstType?.includes("Point")) return firstType;
   return "Point";
 }
 
