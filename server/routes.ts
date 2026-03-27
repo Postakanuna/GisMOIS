@@ -602,8 +602,24 @@ export async function registerRoutes(
   });
 
   // WKT → GeoJSON coordinates (server-side, for DB import)
+  function parseWktCoordPairs(coordStr: string): number[][] {
+    return coordStr.split(",").map(pt => {
+      const p = pt.trim().split(/\s+/);
+      return [parseFloat(p[0]), parseFloat(p[1])];
+    }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+  }
+
   function parseWktToGeoJsonCoordinates(wkt: string): { coordinates: any; geometryType: "Point" | "LineString" | "Polygon" } | null {
     const trimmed = wkt.trim();
+
+    if (/^MULTIPOINT\s*Z?\s*\(/i.test(trimmed)) {
+      const inner = trimmed.replace(/^MULTIPOINT\s*Z?\s*\(/i, "").replace(/\)\s*$/, "");
+      const firstPt = inner.replace(/^\s*\(?\s*/, "").split(/[,)]/)[0].trim();
+      const p = firstPt.split(/\s+/);
+      if (p.length < 2) return null;
+      return { coordinates: [parseFloat(p[0]), parseFloat(p[1])], geometryType: "Point" };
+    }
+
     if (/^POINT\s*Z?\s*\(/i.test(trimmed)) {
       const match = trimmed.match(/POINT\s*Z?\s*\(\s*([\d.\-\s]+?)\s*\)/i);
       if (!match) return null;
@@ -611,24 +627,46 @@ export async function registerRoutes(
       if (parts.length < 2) return null;
       return { coordinates: [parseFloat(parts[0]), parseFloat(parts[1])], geometryType: "Point" };
     }
+
+    if (/^MULTILINESTRING\s*Z?\s*\(/i.test(trimmed)) {
+      const allLines: number[][][] = [];
+      const lineRegex = /\(\s*([^()]+)\s*\)/g;
+      let m;
+      while ((m = lineRegex.exec(trimmed)) !== null) {
+        const coords = parseWktCoordPairs(m[1]);
+        if (coords.length >= 2) allLines.push(coords);
+      }
+      if (allLines.length === 0) return null;
+      if (allLines.length === 1) return { coordinates: allLines[0], geometryType: "LineString" };
+      return { coordinates: allLines[0], geometryType: "LineString" };
+    }
+
     if (/^LINESTRING\s*Z?\s*\(/i.test(trimmed)) {
-      const match = trimmed.match(/LINESTRING\s*Z?\s*\(\s*([^\)]+)\s*\)/i);
+      const match = trimmed.match(/LINESTRING\s*Z?\s*\(\s*([^)]+)\s*\)/i);
       if (!match) return null;
-      const coords = match[1].split(",").map(pt => {
-        const p = pt.trim().split(/\s+/);
-        return [parseFloat(p[0]), parseFloat(p[1])];
-      }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+      const coords = parseWktCoordPairs(match[1]);
+      if (coords.length < 2) return null;
       return { coordinates: coords, geometryType: "LineString" };
     }
+
+    if (/^MULTIPOLYGON\s*Z?\s*\(/i.test(trimmed)) {
+      const rings: number[][][] = [];
+      const ringRegex = /\(\s*([\d.,\-\s]+?)\s*\)/g;
+      let m;
+      while ((m = ringRegex.exec(trimmed)) !== null) {
+        const ring = parseWktCoordPairs(m[1]);
+        if (ring.length >= 3) rings.push(ring);
+      }
+      if (rings.length === 0) return null;
+      return { coordinates: [rings[0]], geometryType: "Polygon" };
+    }
+
     if (/^POLYGON\s*Z?\s*\(/i.test(trimmed)) {
       const rings: number[][][] = [];
       const ringRegex = /\(\s*([\d.,\-\s]+?)\s*\)/g;
       let m;
       while ((m = ringRegex.exec(trimmed)) !== null) {
-        const ring = m[1].split(",").map(pt => {
-          const p = pt.trim().split(/\s+/);
-          return [parseFloat(p[0]), parseFloat(p[1])];
-        }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+        const ring = parseWktCoordPairs(m[1]);
         if (ring.length >= 3) rings.push(ring);
       }
       if (rings.length === 0) return null;
@@ -693,15 +731,13 @@ export async function registerRoutes(
 
       if (!zwsBaseUrl) return res.status(400).json({ message: "baseUrl is required" });
 
-      const innerXml = `    <LayerIntersectByBox>
+      const innerXml = `    <LayerExecSql>
       <Layer>${xmlEscape(layerName)}</Layer>
+      <Query>SELECT *, Geometry.AsText()</Query>
       <CRS>EPSG:4326</CRS>
-      <BoundingBox CRS="EPSG:4326" minx="-180" miny="-90" maxx="180" maxy="90"/>
-      <Geometry>Yes</Geometry>
-      <Attr>Yes</Attr>
-    </LayerIntersectByBox>`;
+    </LayerExecSql>`;
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerIntersectByBox", xml, 120000, authHeader);
+      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerExecSQL", xml, 120000, authHeader);
 
       if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
 
@@ -769,15 +805,13 @@ export async function registerRoutes(
       if (!zwsLayerName) return res.status(400).json({ message: "Layer has no ZWS configuration" });
       if (!zwsBaseUrl) return res.status(400).json({ message: "No ZWS base URL in layer metadata" });
 
-      const innerXml = `    <LayerIntersectByBox>
+      const innerXml = `    <LayerExecSql>
       <Layer>${xmlEscape(zwsLayerName)}</Layer>
+      <Query>SELECT *, Geometry.AsText()</Query>
       <CRS>EPSG:4326</CRS>
-      <BoundingBox CRS="EPSG:4326" minx="-180" miny="-90" maxx="180" maxy="90"/>
-      <Geometry>Yes</Geometry>
-      <Attr>Yes</Attr>
-    </LayerIntersectByBox>`;
+    </LayerExecSql>`;
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerIntersectByBox", xml, 120000, authHeader);
+      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerExecSQL", xml, 120000, authHeader);
 
       if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
 
