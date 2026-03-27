@@ -954,6 +954,31 @@ function parseZwsResponse(xml: string, viewProjection: string = "EPSG:3857"): Fe
   return features;
 }
 
+const _ZWS_MAX_CONCURRENT = 3;
+let _zwsActive = 0;
+const _zwsQueue: Array<(ok: boolean) => void> = [];
+
+function acquireZwsSlot(signal: AbortSignal): Promise<boolean> {
+  if (_zwsActive < _ZWS_MAX_CONCURRENT) {
+    _zwsActive++;
+    return Promise.resolve(true);
+  }
+  return new Promise<boolean>(resolve => {
+    const cb = (ok: boolean) => resolve(ok);
+    _zwsQueue.push(cb);
+    signal.addEventListener("abort", () => {
+      const i = _zwsQueue.indexOf(cb);
+      if (i >= 0) { _zwsQueue.splice(i, 1); resolve(false); }
+    }, { once: true });
+  });
+}
+
+function releaseZwsSlot() {
+  _zwsActive = Math.max(0, _zwsActive - 1);
+  const next = _zwsQueue.shift();
+  if (next) { _zwsActive++; next(true); }
+}
+
 export function MapViewer({ 
   layers, 
   connection, 
@@ -2548,78 +2573,85 @@ export function MapViewer({
       const extentWgs84 = transformExtent(extent, viewProj, "EPSG:4326");
       const [minx, miny, maxx, maxy] = extentWgs84;
 
-      fetch("/api/zulu/zws/features", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortCtrl.signal,
-        body: JSON.stringify({
-          layer: layerName,
-          bbox: { minx, miny, maxx, maxy, crs: "EPSG:4326" },
-          crs: "EPSG:4326",
-          baseUrl,
-          zwsUsername: zwsLayer.zwsUsername,
-          zwsPassword: zwsLayer.zwsPassword,
-        }),
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (!data?.raw) return;
-          const source = olLayer!.getSource();
-          if (!source) return;
-          source.clear();
+      acquireZwsSlot(abortCtrl.signal).then(acquired => {
+        if (!acquired) return;
+        let slotReleased = false;
+        const releaseOnce = () => { if (!slotReleased) { slotReleased = true; releaseZwsSlot(); } };
+        return fetch("/api/zulu/zws/features", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: abortCtrl.signal,
+          body: JSON.stringify({
+            layer: layerName,
+            bbox: { minx, miny, maxx, maxy, crs: "EPSG:4326" },
+            crs: "EPSG:4326",
+            baseUrl,
+            zwsUsername: zwsLayer.zwsUsername,
+            zwsPassword: zwsLayer.zwsPassword,
+          }),
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            releaseOnce();
+            if (!data?.raw) return;
+            const source = olLayer!.getSource();
+            if (!source) return;
+            source.clear();
 
-          try {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(data.raw, "text/xml");
-            const elements = xmlDoc.querySelectorAll("Element");
-            const features: Feature[] = [];
+            try {
+              const parser = new DOMParser();
+              const xmlDoc = parser.parseFromString(data.raw, "text/xml");
+              const elements = xmlDoc.querySelectorAll("Element");
+              const features: Feature[] = [];
 
-            elements.forEach(el => {
-              const idEl = el.querySelector("ID, Id");
-              const elemId = idEl?.textContent || "";
-              
-              const allAttrs: Record<string, string> = {};
-              el.querySelectorAll("Attr, Attribute").forEach(attr => {
-                const name = attr.getAttribute("Name") || attr.getAttribute("name") || "";
-                const val = attr.textContent || "";
-                if (name) allAttrs[name] = val;
+              elements.forEach(el => {
+                const idEl = el.querySelector("ID, Id");
+                const elemId = idEl?.textContent || "";
+                
+                const allAttrs: Record<string, string> = {};
+                el.querySelectorAll("Attr, Attribute").forEach(attr => {
+                  const name = attr.getAttribute("Name") || attr.getAttribute("name") || "";
+                  const val = attr.textContent || "";
+                  if (name) allAttrs[name] = val;
+                });
+
+                const geometryNode = el.querySelector("Geometry");
+                if (geometryNode) {
+                  const gmlText = geometryNode.innerHTML || geometryNode.textContent || "";
+                  try {
+                    const coordPairs = gmlText.match(/[\d.-]+,[\d.-]+/g);
+                    if (coordPairs && coordPairs.length > 0) {
+                      const coords = coordPairs.map(pair => {
+                        const [lon, lat] = pair.split(",").map(Number);
+                        return transform([lon, lat], "EPSG:4326", viewProj);
+                      });
+                      let geom: Geometry;
+                      if (coords.length === 1) {
+                        geom = new OlPoint(coords[0]);
+                      } else {
+                        geom = new LineString(coords);
+                      }
+                      const feature = new Feature({ geometry: geom, ...allAttrs, featureId: elemId, zwsLayerId: zwsLayer.id });
+                      features.push(feature);
+                    }
+                  } catch {}
+                }
               });
 
-              const geometryNode = el.querySelector("Geometry");
-              if (geometryNode) {
-                const gmlText = geometryNode.innerHTML || geometryNode.textContent || "";
-                try {
-                  const coordPairs = gmlText.match(/[\d.-]+,[\d.-]+/g);
-                  if (coordPairs && coordPairs.length > 0) {
-                    const coords = coordPairs.map(pair => {
-                      const [lon, lat] = pair.split(",").map(Number);
-                      return transform([lon, lat], "EPSG:4326", viewProj);
-                    });
-                    let geom: Geometry;
-                    if (coords.length === 1) {
-                      geom = new OlPoint(coords[0]);
-                    } else {
-                      geom = new LineString(coords);
-                    }
-                    const feature = new Feature({ geometry: geom, ...allAttrs, featureId: elemId, zwsLayerId: zwsLayer.id });
-                    features.push(feature);
-                  }
-                } catch {}
+              if (features.length > 0) {
+                source.addFeatures(features);
               }
-            });
-
-            if (features.length > 0) {
-              source.addFeatures(features);
+            } catch (e) {
+              console.error("Failed to parse ZWS features XML:", e);
             }
-          } catch (e) {
-            console.error("Failed to parse ZWS features XML:", e);
-          }
-        })
-        .catch(err => {
-          if (err.name !== "AbortError") {
-            console.error("ZWS features fetch error:", err);
-          }
-        });
+          })
+          .catch(err => {
+            releaseOnce();
+            if (err.name !== "AbortError") {
+              console.error("ZWS features fetch error:", err);
+            }
+          });
+      });
     });
   }, [zwsEditableLayers, fetchViewport]);
 

@@ -675,6 +675,18 @@ export async function registerRoutes(
     return null;
   }
 
+  function buildSchemaFromProperties(propertiesArr: Array<Record<string, unknown>>): AttributeField[] {
+    const keyMap = new Map<string, "number" | "text">();
+    for (const props of propertiesArr) {
+      for (const [key, value] of Object.entries(props)) {
+        if (keyMap.has(key)) continue;
+        const v = value !== null && value !== undefined ? String(value) : null;
+        keyMap.set(key, (v !== null && v !== "" && !isNaN(Number(v))) ? "number" : "text");
+      }
+    }
+    return Array.from(keyMap.entries()).map(([name, type]) => ({ name, type, required: false }));
+  }
+
   function parseZwsXmlToDbFeatures(xml: string): Array<{ coordinates: any; geometryType: "Point" | "LineString" | "Polygon"; properties: Record<string, unknown> }> {
     const features: Array<{ coordinates: any; geometryType: "Point" | "LineString" | "Polygon"; properties: Record<string, unknown> }> = [];
     const recordRegex = /<Record>([\s\S]*?)<\/Record>/gi;
@@ -769,6 +781,20 @@ export async function registerRoutes(
           })));
         }
         await db.update(editableLayers).set({ featureCount: parsedFeatures.length }).where(eq(editableLayers.id, newLayer.id));
+
+        const schemaFields = buildSchemaFromProperties(parsedFeatures.map(f => f.properties));
+        if (schemaFields.length > 0) {
+          try {
+            const existing = await storage.getLayerSchema(newLayer.id);
+            if (existing) {
+              await storage.updateLayerSchema(newLayer.id, schemaFields);
+            } else {
+              await storage.createLayerSchema({ layerId: newLayer.id, fields: schemaFields });
+            }
+          } catch (schemaErr: any) {
+            console.warn("[ZWS import] Schema creation failed (non-fatal):", schemaErr.message);
+          }
+        }
       }
 
       return res.json({ editableLayerId: newLayer.id, featureCount: parsedFeatures.length, layerName });
@@ -829,6 +855,20 @@ export async function registerRoutes(
             coordinates: f.coordinates,
             properties: f.properties,
           })));
+        }
+
+        const schemaFields = buildSchemaFromProperties(parsedFeatures.map(f => f.properties));
+        if (schemaFields.length > 0) {
+          try {
+            const existing = await storage.getLayerSchema(editableLayerId);
+            if (existing) {
+              await storage.updateLayerSchema(editableLayerId, schemaFields);
+            } else {
+              await storage.createLayerSchema({ layerId: editableLayerId, fields: schemaFields });
+            }
+          } catch (schemaErr: any) {
+            console.warn("[ZWS refresh] Schema update failed (non-fatal):", schemaErr.message);
+          }
         }
       }
       await db.update(editableLayers).set({ featureCount: parsedFeatures.length, updatedAt: new Date() }).where(eq(editableLayers.id, editableLayerId));
@@ -5339,8 +5379,20 @@ ${fieldXml}
       const layerId = parseIntParam(req.params.layerId, res);
       if (layerId === null) return;
       const schema = await storage.getLayerSchema(layerId);
-      if (!schema) {
-        // Return empty fields if no schema defined yet
+      if (!schema || schema.fields.length === 0) {
+        const layer = await storage.getEditableLayer(layerId);
+        if (layer?.source === "zws") {
+          const features = await storage.getDrawnFeatures(layerId);
+          if (features.length > 0) {
+            const schemaFields = buildSchemaFromProperties(features.map(f => (f.properties as Record<string, unknown>) || {}));
+            if (schemaFields.length > 0) {
+              const newSchema = schema
+                ? await storage.updateLayerSchema(layerId, schemaFields)
+                : await storage.createLayerSchema({ layerId, fields: schemaFields });
+              return res.json(newSchema || { layerId, fields: schemaFields });
+            }
+          }
+        }
         return res.json({ layerId, fields: [] });
       }
       return res.json(schema);

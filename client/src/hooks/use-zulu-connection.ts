@@ -289,11 +289,9 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
         });
         const savedConn = await saveRes.json();
 
-        const sessionLayers: EditableLayer[] = [];
-        for (const l of layerList) {
-          const schema = await fetchZwsLayerSchema(config.baseUrl || "", l.name, config.username, config.password);
-          sessionLayers.push(buildZwsEditableLayer(savedConn.id, l.title || l.name, config.baseUrl || "", config.username, config.password, schema));
-        }
+        const sessionLayers: EditableLayer[] = layerList.map(l =>
+          buildZwsEditableLayer(savedConn.id, l.title || l.name, config.baseUrl || "", config.username, config.password)
+        );
 
         const session: ZwsSession = {
           id: savedConn.id,
@@ -430,12 +428,7 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
       for (const saved of data) {
         const sessionLayers: EditableLayer[] = [];
         for (const sl of (saved.selectedLayers || [])) {
-          try {
-            const schema = await fetchZwsLayerSchema(saved.baseUrl, sl.layerName, saved.username || undefined, saved.passwordEncrypted || undefined);
-            sessionLayers.push(buildZwsEditableLayer(saved.id, sl.alias || sl.layerName, saved.baseUrl, saved.username || undefined, saved.passwordEncrypted || undefined, schema));
-          } catch {
-            sessionLayers.push(buildZwsEditableLayer(saved.id, sl.alias || sl.layerName, saved.baseUrl, saved.username || undefined, saved.passwordEncrypted || undefined));
-          }
+          sessionLayers.push(buildZwsEditableLayer(saved.id, sl.alias || sl.layerName, saved.baseUrl, saved.username || undefined, saved.passwordEncrypted || undefined));
         }
         if (sessionLayers.length === 0) continue;
 
@@ -493,11 +486,9 @@ export function useZuluConnection(sceneId?: number | null): UseZuluConnectionRet
     const existingSession = zwsSessions.find(s => s.id === connId);
     if (existingSession) return;
 
-    const sessionLayers: EditableLayer[] = [];
-    for (const sl of (saved.selectedLayers || [])) {
-      const schema = await fetchZwsLayerSchema(saved.baseUrl, sl.layerName, saved.username || undefined, saved.passwordEncrypted || undefined);
-      sessionLayers.push(buildZwsEditableLayer(connId, sl.alias || sl.layerName, saved.baseUrl, saved.username || undefined, saved.passwordEncrypted || undefined, schema));
-    }
+    const sessionLayers: EditableLayer[] = (saved.selectedLayers || []).map(sl =>
+      buildZwsEditableLayer(connId, sl.alias || sl.layerName, saved.baseUrl, saved.username || undefined, saved.passwordEncrypted || undefined)
+    );
 
     const session: ZwsSession = {
       id: connId,

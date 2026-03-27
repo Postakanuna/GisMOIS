@@ -65,9 +65,10 @@ ZWS layers are unified with editable layers. Architecture:
 - **Data model**: `EditableLayer` with `source: "zws"` and fields `zwsLayerName`, `zwsBaseUrl`, `zwsUsername`, `zwsPassword`, `zwsConnectionId`, `attributeFields`
 - **Persistence**: `zws_connections` table stores saved connections with encrypted passwords, `selectedLayers` JSONB
 - **API**: `GET/POST/PUT/DELETE /api/zws-connections`; ZWS write endpoints (`/api/zulu/zws/element`, `/api/zulu/zws/attributes`, `/api/zulu/zws/geometry`, `/api/zulu/zws/element/:id`) require `zwsUsername/zwsPassword`
-- **Hook**: `useZuluConnection` manages `ZwsSession[]` state, builds `EditableLayer`-compatible objects with negative IDs, auto-loads saved connections on init, schema loading via `fetchZwsLayerSchema` (GetLayerBaseInfo)
+- **Hook**: `useZuluConnection` manages `ZwsSession[]` state, builds `EditableLayer`-compatible objects with negative IDs, auto-loads saved connections on init. Schema loading (`fetchZwsLayerSchema`/GetLayerBaseInfo) is **skipped on init** to avoid N×HTTP burst (48 layers → 48 requests). Layers get empty schema on load; schema is derived lazily from features if needed.
 - **Data Manager**: Connections tab shows active sessions (Refresh/Disconnect) and saved connections (Connect/Delete). Layers tab has filter toggle (Все/Редактируемые/ZWS)
-- **Map rendering**: ZWS layers rendered as OpenLayers VectorLayer + VectorSource, viewport-based loading via `/api/zulu/zws/features` (LayerIntersectByBox), styled with `createEditableLayerStyleFunction`
+- **Map rendering**: ZWS layers rendered as OpenLayers VectorLayer + VectorSource, viewport-based loading via `/api/zulu/zws/features` (LayerIntersectByBox), styled with `createEditableLayerStyleFunction`. Concurrency limited to **3 simultaneous** ZWS fetch requests via `acquireZwsSlot`/`releaseZwsSlot` semaphore (module-level in map-viewer.tsx).
+- **ZWS DB import**: `import-to-db` + `refresh-layer` endpoints use `LayerExecSQL`. After import, `buildSchemaFromProperties` auto-creates the layer schema so attribute table shows all columns immediately. Schema endpoint (`GET /api/editable-layers/:id/schema`) also auto-derives schema from existing ZWS features if schema is empty.
 - **Key files**: `shared/schema.ts`, `server/storage.ts`, `server/routes.ts`, `client/src/hooks/use-zulu-connection.ts`, `client/src/components/data-manager.tsx`, `client/src/components/map-viewer.tsx`
 
 ### Advanced Styling
