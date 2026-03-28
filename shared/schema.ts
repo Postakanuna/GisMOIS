@@ -656,6 +656,19 @@ export const appSettings = pgTable("app_settings", {
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
 
+export const userSettings = pgTable("user_settings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  key: varchar("key", { length: 255 }).notNull(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_user_settings_user_key").on(table.userId, table.key),
+]);
+
+export type UserSetting = typeof userSettings.$inferSelect;
+export type InsertUserSetting = typeof userSettings.$inferInsert;
+
 export const geocodeProviderSchema = z.enum(["yandex", "dadata"]);
 export type GeocodeProvider = z.infer<typeof geocodeProviderSchema>;
 

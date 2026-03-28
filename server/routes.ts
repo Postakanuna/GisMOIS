@@ -5603,6 +5603,41 @@ ${fieldXml}
   });
 
   // ============================================
+  // USER SETTINGS API
+  // ============================================
+
+  app.get("/api/user-settings", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const settings = await storage.getUserSettings(req.user!.id);
+      return res.json(settings);
+    } catch (error) {
+      console.error("Error getting user settings:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/user-settings", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const settings = req.body;
+      if (!settings || typeof settings !== "object") {
+        return res.status(400).json({ message: "Body must be an object of key-value pairs" });
+      }
+      const sanitized: Record<string, string> = {};
+      for (const [key, value] of Object.entries(settings)) {
+        if (typeof key === "string" && typeof value === "string") {
+          sanitized[key] = value;
+        }
+      }
+      await storage.setUserSettingsBatch(req.user!.id, sanitized);
+      const updated = await storage.getUserSettings(req.user!.id);
+      return res.json(updated);
+    } catch (error) {
+      console.error("Error updating user settings:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============================================
   // APP SETTINGS API
   // ============================================
 

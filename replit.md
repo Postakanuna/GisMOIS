@@ -51,7 +51,7 @@ Large shapefile uploads (>10MB) use a two-step background processing mechanism:
 
 ### Storage
 
-Data is stored in PostgreSQL, managed by Drizzle ORM, with schemas for users, scenes, datasets, and API keys, validated using Zod.
+Data is stored in PostgreSQL, managed by Drizzle ORM, with schemas for users, scenes, datasets, and API keys, validated using Zod. Per-user settings (e.g., debug overlay toggle) are stored in the `user_settings` table (userId + key/value pairs), exposed via `GET/PUT /api/user-settings` endpoints. The MapViewer and Settings page read/write user settings through this API, with real-time sync via `user-settings-changed` custom DOM events.
 
 ### Geocoding
 

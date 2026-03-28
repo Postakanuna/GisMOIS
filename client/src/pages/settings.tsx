@@ -1,27 +1,39 @@
 import { useState } from "react";
-import { ArrowLeft, Settings as SettingsIcon, Bug, Info } from "lucide-react";
+import { ArrowLeft, Settings as SettingsIcon, Bug, Info, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 type SettingsTab = "general" | "debug";
 
-function useDebugSettings() {
-  const [showLayerOverlay, setShowLayerOverlay] = useState(() => {
-    try { return localStorage.getItem("debug_layer_overlay") === "1"; } catch { return false; }
-  });
-
-  const toggleLayerOverlay = (val: boolean) => {
-    setShowLayerOverlay(val);
-    try { localStorage.setItem("debug_layer_overlay", val ? "1" : "0"); } catch {}
-    window.dispatchEvent(new CustomEvent("debug-settings-changed"));
-  };
-
-  return { showLayerOverlay, toggleLayerOverlay };
-}
-
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
-  const debug = useDebugSettings();
+  const queryClient = useQueryClient();
+
+  const { data: userSettings = {}, isLoading } = useQuery<Record<string, string>>({
+    queryKey: ["/api/user-settings"],
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (settings: Record<string, string>) => {
+      const res = await apiRequest("PUT", "/api/user-settings", settings);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/user-settings"], data);
+      window.dispatchEvent(new CustomEvent("user-settings-changed", { detail: data }));
+    },
+  });
+
+  const showLayerOverlay = userSettings["debug_layer_overlay"] === "1";
+
+  const toggleLayerOverlay = (val: boolean) => {
+    const newSettings = { ...userSettings, debug_layer_overlay: val ? "1" : "0" };
+    queryClient.setQueryData(["/api/user-settings"], newSettings);
+    window.dispatchEvent(new CustomEvent("user-settings-changed", { detail: newSettings }));
+    updateMutation.mutate({ debug_layer_overlay: val ? "1" : "0" });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -80,23 +92,31 @@ export default function Settings() {
                 <p className="text-sm text-muted-foreground">Инструменты диагностики для разработчиков</p>
               </div>
 
-              <div className="rounded-lg border bg-card p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">Диагностика слоёв на карте</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Показывает оверлей с информацией о загруженных слоях, количестве объектов, состоянии загрузки и проекции</p>
-                  </div>
-                  <button
-                    onClick={() => debug.toggleLayerOverlay(!debug.showLayerOverlay)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${debug.showLayerOverlay ? "bg-primary" : "bg-input"}`}
-                    role="switch"
-                    aria-checked={debug.showLayerOverlay}
-                    data-testid="toggle-debug-layer-overlay"
-                  >
-                    <span className={`inline-block h-4 w-4 rounded-full bg-background shadow-sm transition-transform ${debug.showLayerOverlay ? "translate-x-6" : "translate-x-1"}`} />
-                  </button>
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Загрузка настроек...</span>
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-lg border bg-card p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Диагностика слоёв на карте</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Показывает оверлей с информацией о загруженных слоях, количестве объектов, состоянии загрузки и проекции</p>
+                    </div>
+                    <button
+                      onClick={() => toggleLayerOverlay(!showLayerOverlay)}
+                      disabled={updateMutation.isPending}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${showLayerOverlay ? "bg-primary" : "bg-input"} ${updateMutation.isPending ? "opacity-50" : ""}`}
+                      role="switch"
+                      aria-checked={showLayerOverlay}
+                      data-testid="toggle-debug-layer-overlay"
+                    >
+                      <span className={`inline-block h-4 w-4 rounded-full bg-background shadow-sm transition-transform ${showLayerOverlay ? "translate-x-6" : "translate-x-1"}`} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>

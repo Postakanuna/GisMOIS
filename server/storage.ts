@@ -28,7 +28,7 @@ import {
   type ZwsConnection, type InsertZwsConnection,
   editableLayers, drawnFeatures, layerSchemas,
   scenes, sceneMembers, sceneFolders, datasets, datasetFeatures, sceneDatasets, uploads, apiKeys, customIcons, layerFolders,
-  appSettings, bugReports,
+  appSettings, userSettings, bugReports,
   sensorIntegrationConfig, sensorObjectBindings, sensorReadingsCache,
   costUnitRates, reconstructionPrograms, programObjects, zuluFieldLabels, zuluFieldValues, adminLayerGroups, zwsConnections
 } from "@shared/schema";
@@ -144,6 +144,13 @@ export interface IStorage {
   getAppSetting(key: string): Promise<string | undefined>;
   setAppSetting(key: string, value: string): Promise<void>;
   deleteAppSetting(key: string): Promise<void>;
+
+  // User settings methods
+  getUserSettings(userId: string): Promise<Record<string, string>>;
+  getUserSetting(userId: string, key: string): Promise<string | undefined>;
+  setUserSetting(userId: string, key: string, value: string): Promise<void>;
+  setUserSettingsBatch(userId: string, settings: Record<string, string>): Promise<void>;
+  deleteUserSetting(userId: string, key: string): Promise<void>;
 
   // Bug reports methods
   getBugReports(): Promise<BugReport[]>;
@@ -1127,6 +1134,44 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAppSetting(key: string): Promise<void> {
     await db.delete(appSettings).where(eq(appSettings.key, key));
+  }
+
+  async getUserSettings(userId: string): Promise<Record<string, string>> {
+    const rows = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  }
+
+  async getUserSetting(userId: string, key: string): Promise<string | undefined> {
+    const [row] = await db.select().from(userSettings)
+      .where(and(eq(userSettings.userId, userId), eq(userSettings.key, key)));
+    return row?.value;
+  }
+
+  async setUserSetting(userId: string, key: string, value: string): Promise<void> {
+    const existing = await db.select({ id: userSettings.id }).from(userSettings)
+      .where(and(eq(userSettings.userId, userId), eq(userSettings.key, key)));
+    if (existing.length > 0) {
+      await db.update(userSettings)
+        .set({ value, updatedAt: new Date() })
+        .where(eq(userSettings.id, existing[0].id));
+    } else {
+      await db.insert(userSettings).values({ userId, key, value, updatedAt: new Date() });
+    }
+  }
+
+  async setUserSettingsBatch(userId: string, settings: Record<string, string>): Promise<void> {
+    for (const [key, value] of Object.entries(settings)) {
+      await this.setUserSetting(userId, key, value);
+    }
+  }
+
+  async deleteUserSetting(userId: string, key: string): Promise<void> {
+    await db.delete(userSettings)
+      .where(and(eq(userSettings.userId, userId), eq(userSettings.key, key)));
   }
 
   async getBugReports(): Promise<BugReport[]> {
