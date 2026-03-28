@@ -1525,7 +1525,7 @@ export function MapViewer({
     if (fetchKey === lastFetchKeyRef.current) { console.log("[DIAG-BATCH] DEDUP skip, fetchKey=", fetchKey); return; }
     lastFetchKeyRef.current = fetchKey;
 
-    const layerIds = allEditableLayers.map(l => l.id);
+    const layerIds = layerIdsKey.split(",").map(Number).filter(n => !isNaN(n));
     console.log("[DIAG-BATCH] FETCHING viewport-batch for layers=", layerIds, "zoom=", currentZoom);
 
     if (featureCacheRef.current.size > 0) {
@@ -1598,7 +1598,10 @@ export function MapViewer({
         doPrefetch(vp, layerIds, currentZoom, currentFetchId);
       })
       .catch(err => {
-        if (err.name === "AbortError") return;
+        if (err.name === "AbortError") {
+          console.log("[DIAG-BATCH] fetch aborted for fetchId=", currentFetchId);
+          return;
+        }
         console.warn("Viewport fetch failed:", err);
         if (fetchIdRef.current === currentFetchId) {
           setAllLayerFeatures(buildResultFromCache(layerIds));
@@ -1610,7 +1613,7 @@ export function MapViewer({
       controller.abort();
       cancelPrefetch();
     };
-  }, [fetchViewport, layerIdsKey, allEditableLayers, featureVersion, buildResultFromCache, cancelPrefetch, evictCacheIfNeeded]);
+  }, [fetchViewport, layerIdsKey, featureVersion, buildResultFromCache, cancelPrefetch, evictCacheIfNeeded]);
 
   const doPrefetch = useCallback((vp: { minX: number; minY: number; maxX: number; maxY: number }, layerIds: number[], zoom: number, originFetchId: number) => {
     cancelPrefetch();
