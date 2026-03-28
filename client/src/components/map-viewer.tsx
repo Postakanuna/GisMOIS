@@ -2365,12 +2365,16 @@ export function MapViewer({
         
         try {
           if (geojsonData.features.length > 0) {
+            console.error("[DIAG-RENDER] CREATE layer", editableLayerItem.id, "with", geojsonData.features.length, "features, projection=", currentProjectionRef.current);
             const features = geojsonFormat.readFeatures(geojsonData, {
               dataProjection: "EPSG:4326",
               featureProjection: currentProjectionRef.current,
             });
             
             vectorSource.addFeatures(features);
+            console.error("[DIAG-RENDER] Added", features.length, "OL features to source, first extent=", features[0]?.getGeometry()?.getExtent());
+          } else {
+            console.error("[DIAG-RENDER] CREATE layer", editableLayerItem.id, "with EMPTY source (0 features)");
           }
         } catch (e) {
           console.error("Failed to parse layer GeoJSON:", e);
@@ -2418,6 +2422,7 @@ export function MapViewer({
         }
       } else {
         const hasDataForLayer = allLayerFeatures[editableLayerItem.id] !== undefined;
+        console.error("[DIAG-RENDER] UPDATE layer", editableLayerItem.id, "hasData=", hasDataForLayer, "newFeatures=", layerFeatures.length, "visible=", editableLayerItem.visible);
         if (hasDataForLayer) {
           const sourceToUpdate = vectorLayer.getSource() as VectorSource;
           if (sourceToUpdate) {
@@ -2461,6 +2466,7 @@ export function MapViewer({
                   featureProjection: currentProjectionRef.current,
                 });
                 sourceToUpdate.addFeatures(newOlFeatures);
+                console.error("[DIAG-RENDER] UPDATE added", newOlFeatures.length, "new OL features, total now=", sourceToUpdate.getFeatures().length);
               }
               vectorLayer.set("featureCount", layerFeatures.length);
             } catch (e) {
