@@ -4238,6 +4238,22 @@ export function MapViewer({
           </div>
         </div>
       )}
+      {/* DIAG overlay - temporary debug panel */}
+      <div style={{
+        position: "absolute", bottom: 8, left: 8, zIndex: 9999,
+        background: "rgba(0,0,0,0.85)", color: "#0f0", fontSize: 11, fontFamily: "monospace",
+        padding: "6px 10px", borderRadius: 6, pointerEvents: "none", maxWidth: 400,
+      }}>
+        <div>layers: {allEditableLayers.map(l => `${l.id}(v=${l.visible})`).join(", ") || "none"}</div>
+        <div>features: {Object.entries(allLayerFeatures).map(([k, v]) => `${k}:${v.length}`).join(", ") || "none"}</div>
+        <div>fetchViewport: {fetchViewport ? `z${Math.round(fetchViewport.zoom)} [${fetchViewport.minX.toFixed(1)},${fetchViewport.minY.toFixed(1)}]` : "null"}</div>
+        <div>fetching: {String(isFetchingFeatures)}</div>
+        <div>OL layers: {Array.from(allEditableLayersRef.current.entries()).map(([id, vl]) => {
+          const src = vl.getSource();
+          return `${id}:${src ? src.getFeatures().length : "null"}f`;
+        }).join(", ") || "none"}</div>
+        <div>proj: {currentProjectionRef.current}</div>
+      </div>
     </div>
   );
 }
