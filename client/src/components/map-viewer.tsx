@@ -1018,6 +1018,22 @@ export function MapViewer({
   mapActionsRef,
   zwsEditableLayers = [],
 }: MapViewerProps) {
+  const [showDebugOverlay, setShowDebugOverlay] = useState(() => {
+    try { return localStorage.getItem("debug_layer_overlay") === "1"; } catch { return false; }
+  });
+
+  useEffect(() => {
+    const handler = () => {
+      try { setShowDebugOverlay(localStorage.getItem("debug_layer_overlay") === "1"); } catch {}
+    };
+    window.addEventListener("debug-settings-changed", handler);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener("debug-settings-changed", handler);
+      window.removeEventListener("storage", handler);
+    };
+  }, []);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const layersRef = useRef<Record<string, LayerType>>({});
@@ -1503,9 +1519,7 @@ export function MapViewer({
   }, []);
 
   useEffect(() => {
-    console.log("[DIAG-BATCH] useEffect fired: fetchViewport=", !!fetchViewport, "allEditableLayers.length=", allEditableLayers.length, "layerIdsKey=", layerIdsKey);
     if (!fetchViewport || allEditableLayers.length === 0) {
-      console.warn("[DIAG-BATCH] GUARD EXIT: fetchViewport=", !!fetchViewport, "layers=", allEditableLayers.length);
       setAllLayerFeatures({});
       return;
     }
@@ -1522,11 +1536,10 @@ export function MapViewer({
     const vp = fetchViewport;
     const fetchKey = `${layerIdsKey}_${vp.minX.toFixed(VIEWPORT_PRECISION)}_${vp.minY.toFixed(VIEWPORT_PRECISION)}_${vp.maxX.toFixed(VIEWPORT_PRECISION)}_${vp.maxY.toFixed(VIEWPORT_PRECISION)}_${currentGroup}`;
 
-    if (fetchKey === lastFetchKeyRef.current) { console.log("[DIAG-BATCH] DEDUP skip, fetchKey=", fetchKey); return; }
+    if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
 
     const layerIds = layerIdsKey.split(",").map(Number).filter(n => !isNaN(n));
-    console.log("[DIAG-BATCH] FETCHING viewport-batch for layers=", layerIds, "zoom=", currentZoom);
 
     if (featureCacheRef.current.size > 0) {
       setAllLayerFeatures(buildResultFromCache(layerIds));
@@ -1571,7 +1584,6 @@ export function MapViewer({
         return res.json();
       })
       .then(data => {
-        console.log("[DIAG-BATCH] response received, aborted=", controller.signal.aborted, "layerKeys=", data.layers ? Object.keys(data.layers) : "none", "totalFeatures=", data.layers ? Object.values(data.layers).reduce((s: number, l: any) => s + (l.features?.length || 0), 0) : 0);
         if (controller.signal.aborted || fetchIdRef.current !== currentFetchId) return;
 
         if (data.layers) {
@@ -1599,7 +1611,6 @@ export function MapViewer({
       })
       .catch(err => {
         if (err.name === "AbortError") {
-          console.log("[DIAG-BATCH] fetch aborted for fetchId=", currentFetchId);
           return;
         }
         console.warn("Viewport fetch failed:", err);
@@ -2015,8 +2026,7 @@ export function MapViewer({
 
     const updateViewport = () => {
       const size = map.getSize();
-      console.log("[DIAG-VP] updateViewport called, size=", size);
-      if (!size) { console.warn("[DIAG-VP] map.getSize() is falsy, skipping"); return; }
+      if (!size) return;
       const extent = map.getView().calculateExtent(size);
       const extentWGS84 = transformExtent(extent, currentProjectionRef.current, "EPSG:4326");
       const currentZoom = Math.round(map.getView().getZoom() || DEFAULT_ZOOM);
@@ -2053,10 +2063,7 @@ export function MapViewer({
         };
         
         bufferedExtentRef.current = newBufferedExtent;
-        console.log("[DIAG-VP] setFetchViewport zoom=", currentZoom, "extent=", currentExtent.minX.toFixed(2), currentExtent.minY.toFixed(2), currentExtent.maxX.toFixed(2), currentExtent.maxY.toFixed(2));
         setFetchViewport(newBufferedExtent);
-      } else {
-        console.log("[DIAG-VP] needsRefetch=false, skipping setFetchViewport");
       }
     };
 
@@ -2341,7 +2348,6 @@ export function MapViewer({
     });
     
     // Add or update layers
-    console.log("[DIAG-RENDER] rendering editable layers:", allEditableLayers.length, "featureKeys:", Object.keys(allLayerFeatures), "totalFeatures:", Object.values(allLayerFeatures).reduce((s, arr) => s + arr.length, 0));
     allEditableLayers.forEach((editableLayerItem) => {
       let vectorLayer = allEditableLayersRef.current.get(editableLayerItem.id);
       
@@ -2368,16 +2374,12 @@ export function MapViewer({
         
         try {
           if (geojsonData.features.length > 0) {
-            console.error("[DIAG-RENDER] CREATE layer", editableLayerItem.id, "with", geojsonData.features.length, "features, projection=", currentProjectionRef.current);
             const features = geojsonFormat.readFeatures(geojsonData, {
               dataProjection: "EPSG:4326",
               featureProjection: currentProjectionRef.current,
             });
             
             vectorSource.addFeatures(features);
-            console.error("[DIAG-RENDER] Added", features.length, "OL features to source, first extent=", features[0]?.getGeometry()?.getExtent());
-          } else {
-            console.error("[DIAG-RENDER] CREATE layer", editableLayerItem.id, "with EMPTY source (0 features)");
           }
         } catch (e) {
           console.error("Failed to parse layer GeoJSON:", e);
@@ -2425,7 +2427,6 @@ export function MapViewer({
         }
       } else {
         const hasDataForLayer = allLayerFeatures[editableLayerItem.id] !== undefined;
-        console.error("[DIAG-RENDER] UPDATE layer", editableLayerItem.id, "hasData=", hasDataForLayer, "newFeatures=", layerFeatures.length, "visible=", editableLayerItem.visible);
         if (hasDataForLayer) {
           const sourceToUpdate = vectorLayer.getSource() as VectorSource;
           if (sourceToUpdate) {
@@ -2469,7 +2470,6 @@ export function MapViewer({
                   featureProjection: currentProjectionRef.current,
                 });
                 sourceToUpdate.addFeatures(newOlFeatures);
-                console.error("[DIAG-RENDER] UPDATE added", newOlFeatures.length, "new OL features, total now=", sourceToUpdate.getFeatures().length);
               }
               vectorLayer.set("featureCount", layerFeatures.length);
             } catch (e) {
@@ -4241,22 +4241,23 @@ export function MapViewer({
           </div>
         </div>
       )}
-      {/* DIAG overlay - temporary debug panel */}
-      <div style={{
-        position: "absolute", bottom: 8, left: 8, zIndex: 9999,
-        background: "rgba(0,0,0,0.85)", color: "#0f0", fontSize: 11, fontFamily: "monospace",
-        padding: "6px 10px", borderRadius: 6, pointerEvents: "none", maxWidth: 400,
-      }}>
-        <div>layers: {allEditableLayers.map(l => `${l.id}(v=${l.visible})`).join(", ") || "none"}</div>
-        <div>features: {Object.entries(allLayerFeatures).map(([k, v]) => `${k}:${v.length}`).join(", ") || "none"}</div>
-        <div>fetchViewport: {fetchViewport ? `z${Math.round(fetchViewport.zoom)} [${fetchViewport.minX.toFixed(1)},${fetchViewport.minY.toFixed(1)}]` : "null"}</div>
-        <div>fetching: {String(isFetchingFeatures)}</div>
-        <div>OL layers: {Array.from(allEditableLayersRef.current.entries()).map(([id, vl]) => {
-          const src = vl.getSource();
-          return `${id}:${src ? src.getFeatures().length : "null"}f`;
-        }).join(", ") || "none"}</div>
-        <div>proj: {currentProjectionRef.current}</div>
-      </div>
+      {showDebugOverlay && (
+        <div style={{
+          position: "absolute", bottom: 8, left: 8, zIndex: 9999,
+          background: "rgba(0,0,0,0.85)", color: "#0f0", fontSize: 11, fontFamily: "monospace",
+          padding: "6px 10px", borderRadius: 6, pointerEvents: "none", maxWidth: 400,
+        }}>
+          <div>layers: {allEditableLayers.map(l => `${l.id}(v=${l.visible})`).join(", ") || "none"}</div>
+          <div>features: {Object.entries(allLayerFeatures).map(([k, v]) => `${k}:${v.length}`).join(", ") || "none"}</div>
+          <div>fetchViewport: {fetchViewport ? `z${Math.round(fetchViewport.zoom)} [${fetchViewport.minX.toFixed(1)},${fetchViewport.minY.toFixed(1)}]` : "null"}</div>
+          <div>fetching: {String(isFetchingFeatures)}</div>
+          <div>OL layers: {Array.from(allEditableLayersRef.current.entries()).map(([id, vl]) => {
+            const src = vl.getSource();
+            return `${id}:${src ? src.getFeatures().length : "null"}f`;
+          }).join(", ") || "none"}</div>
+          <div>proj: {currentProjectionRef.current}</div>
+        </div>
+      )}
     </div>
   );
 }
