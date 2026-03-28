@@ -5075,8 +5075,10 @@ ${fieldXml}
         if (cached) {
           const clientEtag = req.headers["if-none-match"];
           if (clientEtag === `"${cached.etag}"`) {
+            console.log(`[DIAG-SERVER] viewport-batch CACHE 304: ids=${ids.join(",")}, cacheKey=${cacheKey}`);
             return res.status(304).end();
           }
+          console.log(`[DIAG-SERVER] viewport-batch CACHE HIT: ids=${ids.join(",")}, totalFeatures=${Object.values(cached.data.layers || {}).reduce((s: number, l: any) => s + (l.features?.length || 0), 0)}`);
           res.set("ETag", `"${cached.etag}"`);
           res.set("Cache-Control", "private, max-age=15");
           return res.json(cached.data);
@@ -5093,6 +5095,8 @@ ${fieldXml}
       };
 
       const featuresByLayer = await storage.getDrawnFeaturesByViewport(ids, bbox, featureLimit);
+
+      console.log(`[DIAG-SERVER] viewport-batch: ids=${ids.join(",")}, bbox=[${bbox.minX.toFixed(2)},${bbox.minY.toFixed(2)},${bbox.maxX.toFixed(2)},${bbox.maxY.toFixed(2)}], zoom=${zoomLevel}, featuresByLayer=${Object.entries(featuresByLayer).map(([k,v]) => `${k}:${(v as any[]).length}`).join(",")}`);
 
       const result: Record<number, { features: any[]; total: number; limited: boolean }> = {};
       for (const id of ids) {
