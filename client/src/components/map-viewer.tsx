@@ -1503,7 +1503,9 @@ export function MapViewer({
   }, []);
 
   useEffect(() => {
+    console.log("[DIAG-BATCH] useEffect fired: fetchViewport=", !!fetchViewport, "allEditableLayers.length=", allEditableLayers.length, "layerIdsKey=", layerIdsKey);
     if (!fetchViewport || allEditableLayers.length === 0) {
+      console.warn("[DIAG-BATCH] GUARD EXIT: fetchViewport=", !!fetchViewport, "layers=", allEditableLayers.length);
       setAllLayerFeatures({});
       return;
     }
@@ -1520,10 +1522,11 @@ export function MapViewer({
     const vp = fetchViewport;
     const fetchKey = `${layerIdsKey}_${vp.minX.toFixed(VIEWPORT_PRECISION)}_${vp.minY.toFixed(VIEWPORT_PRECISION)}_${vp.maxX.toFixed(VIEWPORT_PRECISION)}_${vp.maxY.toFixed(VIEWPORT_PRECISION)}_${currentGroup}`;
 
-    if (fetchKey === lastFetchKeyRef.current) return;
+    if (fetchKey === lastFetchKeyRef.current) { console.log("[DIAG-BATCH] DEDUP skip, fetchKey=", fetchKey); return; }
     lastFetchKeyRef.current = fetchKey;
 
     const layerIds = allEditableLayers.map(l => l.id);
+    console.log("[DIAG-BATCH] FETCHING viewport-batch for layers=", layerIds, "zoom=", currentZoom);
 
     if (featureCacheRef.current.size > 0) {
       setAllLayerFeatures(buildResultFromCache(layerIds));
@@ -1568,6 +1571,7 @@ export function MapViewer({
         return res.json();
       })
       .then(data => {
+        console.log("[DIAG-BATCH] response received, aborted=", controller.signal.aborted, "layerKeys=", data.layers ? Object.keys(data.layers) : "none", "totalFeatures=", data.layers ? Object.values(data.layers).reduce((s: number, l: any) => s + (l.features?.length || 0), 0) : 0);
         if (controller.signal.aborted || fetchIdRef.current !== currentFetchId) return;
 
         if (data.layers) {
@@ -2008,7 +2012,8 @@ export function MapViewer({
 
     const updateViewport = () => {
       const size = map.getSize();
-      if (!size) return;
+      console.log("[DIAG-VP] updateViewport called, size=", size);
+      if (!size) { console.warn("[DIAG-VP] map.getSize() is falsy, skipping"); return; }
       const extent = map.getView().calculateExtent(size);
       const extentWGS84 = transformExtent(extent, currentProjectionRef.current, "EPSG:4326");
       const currentZoom = Math.round(map.getView().getZoom() || DEFAULT_ZOOM);
@@ -2045,7 +2050,10 @@ export function MapViewer({
         };
         
         bufferedExtentRef.current = newBufferedExtent;
+        console.log("[DIAG-VP] setFetchViewport zoom=", currentZoom, "extent=", currentExtent.minX.toFixed(2), currentExtent.minY.toFixed(2), currentExtent.maxX.toFixed(2), currentExtent.maxY.toFixed(2));
         setFetchViewport(newBufferedExtent);
+      } else {
+        console.log("[DIAG-VP] needsRefetch=false, skipping setFetchViewport");
       }
     };
 
@@ -2330,6 +2338,7 @@ export function MapViewer({
     });
     
     // Add or update layers
+    console.log("[DIAG-RENDER] rendering editable layers:", allEditableLayers.length, "featureKeys:", Object.keys(allLayerFeatures), "totalFeatures:", Object.values(allLayerFeatures).reduce((s, arr) => s + arr.length, 0));
     allEditableLayers.forEach((editableLayerItem) => {
       let vectorLayer = allEditableLayersRef.current.get(editableLayerItem.id);
       
