@@ -18,7 +18,6 @@ import AdminReferencesPage from "@/pages/admin-references";
 import LoginPage from "@/pages/login";
 import ScenesPage from "@/pages/scenes";
 import ProfilePage from "@/pages/profile";
-import SettingsPage from "@/pages/settings";
 
 function Router() {
   return (
@@ -38,11 +37,6 @@ function Router() {
       <Route path="/gis/profile">
         <ProtectedRoute>
           <ProfilePage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/gis/settings">
-        <ProtectedRoute>
-          <SettingsPage />
         </ProtectedRoute>
       </Route>
       <Route path="/gis/admin/settings">

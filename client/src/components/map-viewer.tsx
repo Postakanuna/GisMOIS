@@ -1018,25 +1018,25 @@ export function MapViewer({
   mapActionsRef,
   zwsEditableLayers = [],
 }: MapViewerProps) {
-  const { data: userSettingsData } = useQuery<Record<string, string>>({
-    queryKey: ["/api/user-settings"],
+  const { data: debugOverlaySetting } = useQuery<{ value: string }>({
+    queryKey: ["/api/settings/debug-overlay"],
     staleTime: 1000 * 60 * 5,
   });
   const [showDebugOverlay, setShowDebugOverlay] = useState(false);
 
   useEffect(() => {
-    setShowDebugOverlay(userSettingsData?.["debug_layer_overlay"] === "1");
-  }, [userSettingsData]);
+    setShowDebugOverlay(debugOverlaySetting?.value === "1");
+  }, [debugOverlaySetting]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail && typeof detail === "object") {
-        setShowDebugOverlay(detail["debug_layer_overlay"] === "1");
+        setShowDebugOverlay(detail.value === "1");
       }
     };
-    window.addEventListener("user-settings-changed", handler);
-    return () => window.removeEventListener("user-settings-changed", handler);
+    window.addEventListener("debug-settings-changed", handler);
+    return () => window.removeEventListener("debug-settings-changed", handler);
   }, []);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);

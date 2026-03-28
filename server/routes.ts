@@ -5603,36 +5603,27 @@ ${fieldXml}
   });
 
   // ============================================
-  // USER SETTINGS API
+  // DEBUG OVERLAY SETTING (admin-only write, any user read)
   // ============================================
 
-  app.get("/api/user-settings", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+  app.get("/api/settings/debug-overlay", isAuthenticated as any, async (_req: AuthRequest, res: Response) => {
     try {
-      const settings = await storage.getUserSettings(req.user!.id);
-      return res.json(settings);
+      const value = await storage.getAppSetting("debug_layer_overlay");
+      return res.json({ value: value || "0" });
     } catch (error) {
-      console.error("Error getting user settings:", error);
+      console.error("Error getting debug overlay setting:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
 
-  app.put("/api/user-settings", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+  app.put("/api/settings/debug-overlay", isAuthenticated, isAdmin as any, async (req: AuthRequest, res: Response) => {
     try {
-      const settings = req.body;
-      if (!settings || typeof settings !== "object") {
-        return res.status(400).json({ message: "Body must be an object of key-value pairs" });
-      }
-      const sanitized: Record<string, string> = {};
-      for (const [key, value] of Object.entries(settings)) {
-        if (typeof key === "string" && typeof value === "string") {
-          sanitized[key] = value;
-        }
-      }
-      await storage.setUserSettingsBatch(req.user!.id, sanitized);
-      const updated = await storage.getUserSettings(req.user!.id);
-      return res.json(updated);
+      const { enabled } = req.body;
+      const value = enabled ? "1" : "0";
+      await storage.setAppSetting("debug_layer_overlay", value);
+      return res.json({ value });
     } catch (error) {
-      console.error("Error updating user settings:", error);
+      console.error("Error updating debug overlay setting:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

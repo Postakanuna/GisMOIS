@@ -39,6 +39,7 @@ import { ApiKeysManager } from "@/components/api-keys-manager";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { BugReportsPanel } from "@/components/bug-reports-panel";
 import { SensorIntegrationPanel } from "@/components/sensor-integration-panel";
+import { Bug } from "lucide-react";
 type AdminAiProvider = {
   id: number;
   name: string;
@@ -155,6 +156,58 @@ function SecretKeyField({ settingKey, label, placeholder, keysData, onSaved }: {
         </div>
       )}
     </div>
+  );
+}
+
+function DebugSettingsTab() {
+  const { data: debugSetting, isLoading } = useQuery<{ value: string }>({
+    queryKey: ["/api/settings/debug-overlay"],
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("PUT", "/api/settings/debug-overlay", { enabled });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/settings/debug-overlay"], data);
+      window.dispatchEvent(new CustomEvent("debug-settings-changed", { detail: data }));
+    },
+  });
+
+  const isEnabled = debugSetting?.value === "1";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bug className="h-5 w-5" />
+          Режим отладки
+        </CardTitle>
+        <CardDescription>Глобальные настройки диагностики системы</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">Загрузка настроек...</span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">Диагностика слоёв на карте</Label>
+              <p className="text-xs text-muted-foreground">Показывает оверлей с информацией о загруженных слоях, количестве объектов, состоянии загрузки и проекции</p>
+            </div>
+            <Switch
+              checked={isEnabled}
+              onCheckedChange={(val) => updateMutation.mutate(val)}
+              disabled={updateMutation.isPending}
+              data-testid="toggle-debug-layer-overlay"
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -466,7 +519,7 @@ export default function AdminUsers() {
       <div className="container mx-auto p-6">
 
       <Tabs defaultValue="users" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-7" data-testid="admin-tabs">
+        <TabsList className="grid w-full grid-cols-8" data-testid="admin-tabs">
           <TabsTrigger value="users" data-testid="tab-users">Пользователи</TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-audit">Журнал действий</TabsTrigger>
           <TabsTrigger value="geocoding" data-testid="tab-geocoding">Геокодирование</TabsTrigger>
@@ -474,6 +527,7 @@ export default function AdminUsers() {
           <TabsTrigger value="connections" data-testid="tab-connections">Внешние подключения</TabsTrigger>
           <TabsTrigger value="sensors" data-testid="tab-sensors">Датчики ТИ</TabsTrigger>
           <TabsTrigger value="bugs" data-testid="tab-bugs">Сведения об ошибках</TabsTrigger>
+          <TabsTrigger value="debug" data-testid="tab-debug">Режим отладки</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -806,6 +860,10 @@ export default function AdminUsers() {
               <BugReportsPanel />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="debug">
+          <DebugSettingsTab />
         </TabsContent>
 
       </Tabs>
