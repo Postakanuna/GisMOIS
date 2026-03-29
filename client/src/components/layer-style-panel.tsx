@@ -1,13 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { getFieldValueLabel } from "@shared/field-labels";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { DraggableModal } from "@/components/ui/draggable-modal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -22,7 +16,6 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Card } from "@/components/ui/card";
 import {
   Trash2,
   Plus,
@@ -32,6 +25,7 @@ import {
   Layers,
   Grid3X3,
   BarChart3,
+  Palette,
 } from "lucide-react";
 import { IconPicker, getCustomIconPreview } from "@/components/icon-picker";
 import { LinePicker } from "@/components/line-picker";
@@ -150,7 +144,7 @@ interface LayerStylePanelProps {
   onOpenChange: (open: boolean) => void;
   layer: {
     id: number;
-    name: string;
+    name?: string;
     geometryType: string;
     color: string;
     pointStyle: string;
@@ -453,18 +447,18 @@ export function LayerStylePanel({
   const heatNetworkLineStyles = getHeatNetworkLineStyles();
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-2xl max-h-[85vh] flex flex-col p-0"
-        data-testid="dialog-layer-style-panel"
-      >
-        <DialogHeader className="px-4 pt-4 pb-2">
-          <DialogTitle data-testid="text-style-panel-title">
-            Стилизация слоя: {layer.name}
-          </DialogTitle>
-        </DialogHeader>
+    <DraggableModal
+      isOpen={open}
+      onClose={() => onOpenChange(false)}
+      title={`Стилизация слоя: ${layer.name || layer.id}`}
+      headerIcon={<Palette className="h-4 w-4" />}
+      defaultWidth={680}
+      defaultHeight={600}
+      resizable={true}
+    >
+      <div className="h-full flex flex-col overflow-hidden" data-no-drag data-testid="dialog-layer-style-panel">
 
-        <div className="flex items-center gap-1 px-4 pb-2 border-b">
+        <div className="flex items-center gap-1 px-4 py-2 border-b shrink-0">
           <Button
             variant={renderer === "single" ? "default" : "outline"}
             size="sm"
@@ -1023,7 +1017,7 @@ export function LayerStylePanel({
           </div>
         </div>
 
-        <DialogFooter className="px-4 py-3 border-t gap-2">
+        <div className="px-4 py-3 border-t flex justify-end gap-2 shrink-0">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
@@ -1034,8 +1028,8 @@ export function LayerStylePanel({
           <Button onClick={handleSave} data-testid="button-style-save">
             Применить
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </DraggableModal>
   );
 }

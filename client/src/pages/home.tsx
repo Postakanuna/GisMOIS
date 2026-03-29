@@ -1230,6 +1230,7 @@ export default function Home() {
                   onOpenChange={(open) => { if (!open) setLayerPanelStyleConfigId(null); }}
                   layer={{
                     id: layer.id,
+                    name: layer.name,
                     color: layer.color,
                     pointStyle: layer.pointStyle,
                     lineStyle: layer.lineStyle,
@@ -1258,6 +1259,7 @@ export default function Home() {
                   onOpenChange={(open) => { if (!open) setZwsStyleConfigId(null); }}
                   layer={{
                     id: layer.id,
+                    name: layer.name,
                     color: layer.color,
                     pointStyle: layer.pointStyle,
                     lineStyle: layer.lineStyle,
