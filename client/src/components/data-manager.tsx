@@ -134,10 +134,10 @@ interface LayerRowCtx {
   handleStartEditing: (layer: EditableLayer) => void;
   setStyleConfigLayerId: (id: number | null) => void;
   onOpenAttributeTable?: (layerId: number, layerName: string) => void;
-  toggleVisibilityMutation: any;
+  handleToggleVisibility: (layerId: number, visible: boolean) => void;
   setGeocodeLayerId: (id: number | null) => void;
   setJoinLayerId: (id: number | null) => void;
-  deleteLayerMutation: any;
+  handleDeleteLayer: (layerId: number) => void;
   toast: any;
   canEdit: boolean;
   getGeometryIcon: (type: string) => string;
@@ -159,10 +159,10 @@ function LayerRowContent({ layer, dragListeners }: { layer: EditableLayer; dragL
     handleKeyDown, handleSaveName, handleStartEditing,
     setStyleConfigLayerId,
     onOpenAttributeTable,
-    toggleVisibilityMutation,
+    handleToggleVisibility,
     setGeocodeLayerId,
     setJoinLayerId,
-    deleteLayerMutation,
+    handleDeleteLayer,
     toast,
     canEdit,
     getGeometryIcon,
@@ -304,7 +304,7 @@ function LayerRowContent({ layer, dragListeners }: { layer: EditableLayer; dragL
           </TooltipContent>
         </Tooltip>
 
-        {onOpenAttributeTable && (
+        {onOpenAttributeTable && layer.id > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -328,7 +328,7 @@ function LayerRowContent({ layer, dragListeners }: { layer: EditableLayer; dragL
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={(e) => { e.stopPropagation(); toggleVisibilityMutation.mutate({ id: layer.id, visible: !layer.visible }); }}
+              onClick={(e) => { e.stopPropagation(); handleToggleVisibility(layer.id, !layer.visible); }}
               data-testid={`button-toggle-visibility-${layer.id}`}
               data-no-drag
             >
@@ -342,63 +342,69 @@ function LayerRowContent({ layer, dragListeners }: { layer: EditableLayer; dragL
           <TooltipContent>{layer.visible ? "Скрыть" : "Показать"}</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => { e.stopPropagation(); setGeocodeLayerId(layer.id); }}
-              data-testid={`button-geocode-layer-${layer.id}`}
-              data-no-drag
-            >
-              <MapPin className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Геокодировать (адресные ориентиры)</TooltipContent>
-        </Tooltip>
+        {layer.id > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => { e.stopPropagation(); setGeocodeLayerId(layer.id); }}
+                data-testid={`button-geocode-layer-${layer.id}`}
+                data-no-drag
+              >
+                <MapPin className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Геокодировать (адресные ориентиры)</TooltipContent>
+          </Tooltip>
+        )}
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => { e.stopPropagation(); setJoinLayerId(layer.id); }}
-              data-testid={`button-join-layer-${layer.id}`}
-              data-no-drag
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Обогатить из XLSX</TooltipContent>
-        </Tooltip>
+        {layer.id > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => { e.stopPropagation(); setJoinLayerId(layer.id); }}
+                data-testid={`button-join-layer-${layer.id}`}
+                data-no-drag
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Обогатить из XLSX</TooltipContent>
+          </Tooltip>
+        )}
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => {
-                e.stopPropagation();
-                const url = `/api/editable-layers/${layer.id}/export/shapefile`;
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `${layer.name}.zip`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                toast({ title: "Экспорт", description: `Слой "${layer.name}" экспортируется в Shapefile...` });
-              }}
-              data-testid={`button-export-layer-${layer.id}`}
-              data-no-drag
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Экспорт в Shapefile</TooltipContent>
-        </Tooltip>
+        {layer.id > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const url = `/api/editable-layers/${layer.id}/export/shapefile`;
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${layer.name}.zip`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  toast({ title: "Экспорт", description: `Слой "${layer.name}" экспортируется в Shapefile...` });
+                }}
+                data-testid={`button-export-layer-${layer.id}`}
+                data-no-drag
+              >
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Экспорт в Shapefile</TooltipContent>
+          </Tooltip>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -406,7 +412,7 @@ function LayerRowContent({ layer, dragListeners }: { layer: EditableLayer; dragL
               variant="ghost"
               size="icon"
               className="h-6 w-6 text-destructive"
-              onClick={(e) => { e.stopPropagation(); deleteLayerMutation.mutate(layer.id); }}
+              onClick={(e) => { e.stopPropagation(); handleDeleteLayer(layer.id); }}
               data-testid={`button-delete-layer-${layer.id}`}
               data-no-drag
             >
@@ -794,7 +800,7 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const { currentSceneId, canEdit } = useScene();
   const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
   const { currentProjection, setProjection, projectionInfo } = useProjection();
-  const { connect, connectZws, connectCustomZws, disconnect, status: zuluStatus, error: zuluError, zwsSessions, savedZwsConnections, loadSavedZwsConnections, connectSavedZws, disconnectZwsSession, refreshZwsSession, deleteZwsConnection, zwsEditableLayers } = useZuluConnectionContext();
+  const { connect, connectZws, connectCustomZws, disconnect, status: zuluStatus, error: zuluError, zwsSessions, savedZwsConnections, loadSavedZwsConnections, connectSavedZws, disconnectZwsSession, refreshZwsSession, deleteZwsConnection, zwsEditableLayers, updateZwsLayerStyle, toggleZwsLayerVisibility } = useZuluConnectionContext();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
@@ -1032,6 +1038,22 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     });
   };
 
+  const handleToggleVisibility = useCallback((layerId: number, visible: boolean) => {
+    if (layerId < 0) {
+      toggleZwsLayerVisibility(layerId);
+    } else {
+      toggleVisibilityMutation.mutate({ id: layerId, visible });
+    }
+  }, [toggleVisibilityMutation, toggleZwsLayerVisibility]);
+
+  const handleDeleteLayer = useCallback((layerId: number) => {
+    if (layerId < 0) {
+      toast({ title: "Удаление сессионных ZWS-слоёв не поддерживается", description: "Отключите ZWS-сессию для удаления" });
+    } else {
+      deleteLayerMutation.mutate(layerId);
+    }
+  }, [deleteLayerMutation, toast]);
+
   const handleStartEditing = (layer: EditableLayer) => {
     setEditingLayerId(layer.id);
     setEditingName(layer.name);
@@ -1039,10 +1061,13 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
 
   const handleSaveName = (layerId: number) => {
     if (editingName.trim()) {
-      updateLayerStyleMutation.mutate({ id: layerId, name: editingName.trim() });
-    } else {
-      setEditingLayerId(null);
+      if (layerId < 0) {
+        updateZwsLayerStyle(layerId, { name: editingName.trim() } as any);
+      } else {
+        updateLayerStyleMutation.mutate({ id: layerId, name: editingName.trim() });
+      }
     }
+    setEditingLayerId(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, layerId: number) => {
@@ -1358,11 +1383,13 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     if (folderIds.length > 0) {
       await reorderFoldersMutation.mutateAsync({ folderIds, displayOrders: folderDisplayOrders });
     }
-    if (movedLayerId !== undefined && sourceFolderId !== targetFolderId) {
+    if (movedLayerId !== undefined && movedLayerId > 0 && sourceFolderId !== targetFolderId) {
       await moveLayerToFolderMutation.mutateAsync({ layerId: movedLayerId, folderId: targetFolderId ?? null });
     }
-    if (layerIds.length > 0) {
-      await reorderLayersMutation.mutateAsync({ layerIds, displayOrders: layerDisplayOrders });
+    const dbLayerIds = layerIds.filter(id => id > 0);
+    const dbLayerOrders = layerIds.reduce<number[]>((acc, id, i) => { if (id > 0) acc.push(layerDisplayOrders[i]); return acc; }, []);
+    if (dbLayerIds.length > 0) {
+      await reorderLayersMutation.mutateAsync({ layerIds: dbLayerIds, displayOrders: dbLayerOrders });
     }
   };
 
@@ -1549,17 +1576,17 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
     handleStartEditing,
     setStyleConfigLayerId,
     onOpenAttributeTable,
-    toggleVisibilityMutation,
+    handleToggleVisibility,
     setGeocodeLayerId,
     setJoinLayerId,
-    deleteLayerMutation,
+    handleDeleteLayer,
     toast,
     canEdit,
     getGeometryIcon,
   }), [
     expandedLayerId, legendLayerId, editingLayerId, editingName,
     canEdit, onOpenAttributeTable,
-    toggleVisibilityMutation, deleteLayerMutation,
+    handleToggleVisibility, handleDeleteLayer,
   ]);
 
   const renderItems = useMemo(() => {
@@ -2151,13 +2178,18 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
       {styleConfigLayerId && (() => {
         const targetLayer = sceneLayers.find(l => l.id === styleConfigLayerId);
         if (!targetLayer) return null;
+        const isInMemoryZws = targetLayer.id < 0;
         return (
           <LayerStylePanel
             open={true}
             onOpenChange={(open) => { if (!open) setStyleConfigLayerId(null); }}
             layer={targetLayer}
             onSave={(updates) => {
-              updateLayerStyleMutation.mutate({ id: targetLayer.id, ...updates });
+              if (isInMemoryZws) {
+                updateZwsLayerStyle(targetLayer.id, updates);
+              } else {
+                updateLayerStyleMutation.mutate({ id: targetLayer.id, ...updates });
+              }
               setStyleConfigLayerId(null);
             }}
           />
