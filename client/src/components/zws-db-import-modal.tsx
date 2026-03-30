@@ -106,7 +106,6 @@ export function ZwsDbImportModal({
     const initialProgress: ImportProgress[] = toImport.map(l => ({ layerName: l.name, status: "pending" }));
     setProgress(initialProgress);
     setImporting(true);
-    let hasErrors = false;
 
     for (let i = 0; i < toImport.length; i++) {
       const layer = toImport[i];
@@ -145,7 +144,6 @@ export function ZwsDbImportModal({
         const data = await res.json();
         setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: "done", featureCount: data.featureCount } : p));
       } catch (err: any) {
-        hasErrors = true;
         setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: "error", error: err.message } : p));
       }
     }
@@ -153,9 +151,6 @@ export function ZwsDbImportModal({
     await queryClient.invalidateQueries({ queryKey: ["/api/scenes", sceneId, "editable-layers"] });
     await queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-batch"] });
     setImporting(false);
-    if (!hasErrors) {
-      onSuccess?.();
-    }
   };
 
   const handleBeforeClose = () => {
