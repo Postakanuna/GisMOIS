@@ -147,6 +147,136 @@ function applySphericalMercatorToCollection(collection: any): any {
   };
 }
 
+export interface NamedParseResult extends ParseResult {
+  name: string;
+}
+
+export async function parseAllShapefilesFromZip(
+  buffer: Buffer,
+  options: { simplifyTolerance?: number } = {},
+  onProgress?: (index: number, total: number, name: string) => void
+): Promise<NamedParseResult[]> {
+  const { simplifyTolerance = 0 } = options;
+
+  const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B;
+  if (!isZip) {
+    const result = await parseShapefileBuffer(buffer, options);
+    const name = 'shapefile';
+    return [{ ...result, name }];
+  }
+
+  const zip = await JSZip.loadAsync(buffer, {
+    decodeFileName: (rawBytes: Uint8Array) => {
+      const decoder = new TextDecoder('ibm866');
+      return decoder.decode(rawBytes);
+    }
+  } as any);
+
+  const shapefileSets = new Map<string, {
+    shp: ArrayBuffer | null;
+    shx: ArrayBuffer | null;
+    dbf: ArrayBuffer | null;
+    prj: string | null;
+    cpg: string | null;
+    fileNames: string[];
+  }>();
+
+  const entries: { path: string; entry: any }[] = [];
+  zip.forEach((path: string, entry: any) => entries.push({ path, entry }));
+
+  for (const { path, entry } of entries) {
+    if (entry.dir) continue;
+    const pathLower = path.toLowerCase();
+    const ext = pathLower.split('.').pop() || '';
+    if (!['shp', 'shx', 'dbf', 'prj', 'cpg'].includes(ext)) continue;
+
+    const pathWithoutExt = path.substring(0, path.lastIndexOf('.'));
+    const fileName = path.split('/').pop() || path;
+
+    if (!shapefileSets.has(pathWithoutExt)) {
+      shapefileSets.set(pathWithoutExt, { shp: null, shx: null, dbf: null, prj: null, cpg: null, fileNames: [] });
+    }
+
+    const set = shapefileSets.get(pathWithoutExt)!;
+    set.fileNames.push(fileName);
+
+    if (ext === 'prj' || ext === 'cpg') {
+      const content = await entry.async('nodebuffer');
+      const text = decodeCP1251(content);
+      if (ext === 'prj') set.prj = text;
+      if (ext === 'cpg') set.cpg = text;
+    } else {
+      const content = await entry.async('arraybuffer');
+      if (ext === 'shp') set.shp = content;
+      if (ext === 'shx') set.shx = content;
+      if (ext === 'dbf') set.dbf = content;
+    }
+  }
+
+  const validSets = Array.from(shapefileSets.entries()).filter(([, s]) => s.shp !== null);
+  if (validSets.length === 0) {
+    throw new Error("No .shp file found in archive");
+  }
+
+  const results: NamedParseResult[] = [];
+  let index = 0;
+
+  for (const [pathWithoutExt, set] of validSets) {
+    const name = pathWithoutExt.split('/').pop() || pathWithoutExt;
+    index++;
+
+    if (onProgress) onProgress(index, validSets.length, name);
+
+    try {
+      const zuluPrj = isZuluSphericalPrj(set.prj);
+      const cpgEncoding = set.cpg?.trim() || 'CP1251';
+      const cpgBuf = new TextEncoder().encode(cpgEncoding);
+
+      const shapefileObj: any = {
+        shp: set.shp,
+        dbf: set.dbf,
+        prj: zuluPrj ? null : set.prj,
+        cpg: cpgBuf.buffer,
+      };
+
+      console.log(`[MultiParse ${index}/${validSets.length}] ${name} (encoding: ${cpgEncoding}${zuluPrj ? ', ZuluGIS' : ''})`);
+
+      let geojson: any = await shp(shapefileObj);
+
+      if (zuluPrj) {
+        const raw = Array.isArray(geojson) ? geojson[0] : geojson;
+        geojson = applySphericalMercatorToCollection(raw);
+      }
+
+      const collection = Array.isArray(geojson) ? geojson[0] : geojson;
+      if (!collection || !collection.features) {
+        console.warn(`[MultiParse] Skipping ${name}: no features found`);
+        continue;
+      }
+
+      const geometryType = detectGeometryType(collection);
+      const crs = extractCRS(collection);
+
+      const features: ParsedFeature[] = collection.features.map((feature: any) => {
+        let coordinates = feature.geometry?.coordinates;
+        if (simplifyTolerance > 0 && geometryType !== 'Point') {
+          coordinates = simplifyCoordinates(coordinates, simplifyTolerance, false);
+        }
+        return {
+          geometry: { type: feature.geometry?.type || geometryType, coordinates },
+          properties: feature.properties || {},
+        };
+      });
+
+      results.push({ features, geometryType, crs, fileList: set.fileNames, name });
+    } catch (err: any) {
+      console.error(`[MultiParse] Error parsing ${name}:`, err.message);
+    }
+  }
+
+  return results;
+}
+
 export async function parseShapefileBuffer(
   buffer: Buffer,
   options: { simplifyTolerance?: number } = {}

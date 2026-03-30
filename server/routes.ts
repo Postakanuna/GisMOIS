@@ -17,7 +17,7 @@ import fs from "fs";
 import { geocodeBatch, reverseGeocodeBatch, type ReverseGeocodeBatchItem } from "./geocoder";
 import path from "path";
 import os from "os";
-import { parseShapefileBuffer, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
+import { parseShapefileBuffer, parseAllShapefilesFromZip, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
 import { transformPropertyKeys } from "@shared/field-labels";
 import { refreshFieldLabelsCache } from "./field-labels-cache";
 import { searchObjectsForRAG, getLayersSummaryForContext, detectAndFetchLayerData, getReconstructionProgramsForContext, invalidateLayersCache } from "./ai-rag";
@@ -6868,6 +6868,13 @@ ${fieldXml}
     }
   });
 
+  const uploadExtraInfo = new Map<number, {
+    currentDatasetName?: string;
+    currentDatasetIndex?: number;
+    totalDatasets?: number;
+    layerIds?: number[];
+  }>();
+
   // Background shapefile processing function
   async function processShapefileInBackground(uploadId: number, filePath: string, originalName: string, sceneId: number | null, color: string) {
     try {
@@ -6878,73 +6885,182 @@ ${fieldXml}
       const validation = validateShapefileBuffer(fileBuffer);
       if (!validation.valid) {
         await storage.updateUpload(uploadId, { status: "failed", error: validation.error || "Невалидный шейпфайл", progress: 0 });
+        uploadExtraInfo.delete(uploadId);
         return;
       }
 
       await storage.updateUpload(uploadId, { progress: 10 });
 
-      const parseResult = await parseShapefileBuffer(fileBuffer);
-      const baseName = originalName.replace(/\.zip$/i, "");
+      const isZip = fileBuffer[0] === 0x50 && fileBuffer[1] === 0x4B;
 
-      await storage.updateUpload(uploadId, { progress: 30, totalFeatures: parseResult.features.length });
+      if (isZip) {
+        // Parse all shapefiles from the ZIP archive
+        let parsedSets: import("./shapefile-parser").NamedParseResult[] = [];
 
-      let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
-      if (parseResult.features.length > 0 && parseResult.features[0].properties) {
-        fieldSchema = Object.keys(parseResult.features[0].properties).map(key => ({
-          name: key,
-          type: typeof parseResult.features[0].properties[key] === 'number' ? 'number' : 'text',
-          required: false
-        }));
-      }
+        uploadExtraInfo.set(uploadId, { currentDatasetName: "Распаковка архива...", currentDatasetIndex: 0, totalDatasets: 0, layerIds: [] });
 
-      const normalizedType = normalizeGeometryType(parseResult.geometryType);
-      const layer = await storage.createEditableLayer({
-        sceneId,
-        name: baseName,
-        geometryType: normalizedType,
-        color: color || "#1976D2",
-        pointStyle: "circle",
-        lineStyle: "solid",
-        visible: true,
-        opacity: 1,
-        source: "import",
-        sourceFileName: originalName,
-        sourceFiles: parseResult.fileList,
-        crs: parseResult.crs,
-      });
+        parsedSets = await parseAllShapefilesFromZip(
+          fileBuffer,
+          {},
+          (index, total, name) => {
+            uploadExtraInfo.set(uploadId, {
+              currentDatasetName: name,
+              currentDatasetIndex: index,
+              totalDatasets: total,
+              layerIds: uploadExtraInfo.get(uploadId)?.layerIds || [],
+            });
+          }
+        );
 
-      if (fieldSchema.length > 0) {
-        await storage.createLayerSchema({
-          layerId: layer.id,
-          fields: fieldSchema as any,
+        if (parsedSets.length === 0) {
+          await storage.updateUpload(uploadId, { status: "failed", error: "Не найдено шейпфайлов в архиве" });
+          uploadExtraInfo.delete(uploadId);
+          return;
+        }
+
+        const totalDatasets = parsedSets.length;
+        const totalFeatures = parsedSets.reduce((sum, s) => sum + s.features.length, 0);
+        await storage.updateUpload(uploadId, { progress: 20, totalFeatures });
+
+        const BATCH_SIZE = 1000;
+        let globalProcessed = 0;
+        let firstLayerId: number | null = null;
+        const layerIds: number[] = [];
+
+        for (let si = 0; si < parsedSets.length; si++) {
+          const parseResult = parsedSets[si];
+          const datasetName = parseResult.name;
+
+          uploadExtraInfo.set(uploadId, {
+            currentDatasetName: datasetName,
+            currentDatasetIndex: si + 1,
+            totalDatasets,
+            layerIds,
+          });
+
+          let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
+          if (parseResult.features.length > 0 && parseResult.features[0].properties) {
+            fieldSchema = Object.keys(parseResult.features[0].properties).map(key => ({
+              name: key,
+              type: typeof parseResult.features[0].properties[key] === 'number' ? 'number' : 'text',
+              required: false,
+            }));
+          }
+
+          const normalizedType = normalizeGeometryType(parseResult.geometryType);
+          const layer = await storage.createEditableLayer({
+            sceneId,
+            name: datasetName,
+            geometryType: normalizedType,
+            color: color || "#1976D2",
+            pointStyle: "circle",
+            lineStyle: "solid",
+            visible: true,
+            opacity: 1,
+            source: "import",
+            sourceFileName: originalName,
+            sourceFiles: parseResult.fileList,
+            crs: parseResult.crs,
+          });
+
+          if (firstLayerId === null) firstLayerId = layer.id;
+          layerIds.push(layer.id);
+
+          if (fieldSchema.length > 0) {
+            await storage.createLayerSchema({ layerId: layer.id, fields: fieldSchema as any });
+          }
+
+          const datasetFeatures = parseResult.features.length;
+          for (let i = 0; i < datasetFeatures; i += BATCH_SIZE) {
+            const batch = parseResult.features.slice(i, i + BATCH_SIZE);
+            const insertFeatures = batch.map((feature) => ({
+              layerId: layer.id,
+              geometryType: feature.geometry?.type || parseResult.geometryType,
+              coordinates: feature.geometry?.coordinates || [],
+              properties: feature.properties || {},
+            }));
+            await storage.createDrawnFeaturesBatch(insertFeatures);
+
+            globalProcessed += batch.length;
+            const progress = Math.round(20 + (globalProcessed / Math.max(totalFeatures, 1)) * 75);
+            await storage.updateUpload(uploadId, { progress, processedFeatures: globalProcessed });
+          }
+        }
+
+        uploadExtraInfo.set(uploadId, { currentDatasetName: undefined, currentDatasetIndex: totalDatasets, totalDatasets, layerIds });
+        await storage.updateUpload(uploadId, {
+          status: "completed",
+          progress: 100,
+          processedFeatures: globalProcessed,
+          layerId: firstLayerId,
         });
+
+        setTimeout(() => uploadExtraInfo.delete(uploadId), 30000);
+
+      } else {
+        // Single .shp file — existing logic
+        const parseResult = await parseShapefileBuffer(fileBuffer);
+        const baseName = originalName.replace(/\.shp$/i, "");
+
+        await storage.updateUpload(uploadId, { progress: 30, totalFeatures: parseResult.features.length });
+
+        let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
+        if (parseResult.features.length > 0 && parseResult.features[0].properties) {
+          fieldSchema = Object.keys(parseResult.features[0].properties).map(key => ({
+            name: key,
+            type: typeof parseResult.features[0].properties[key] === 'number' ? 'number' : 'text',
+            required: false,
+          }));
+        }
+
+        const normalizedType = normalizeGeometryType(parseResult.geometryType);
+        const layer = await storage.createEditableLayer({
+          sceneId,
+          name: baseName,
+          geometryType: normalizedType,
+          color: color || "#1976D2",
+          pointStyle: "circle",
+          lineStyle: "solid",
+          visible: true,
+          opacity: 1,
+          source: "import",
+          sourceFileName: originalName,
+          sourceFiles: parseResult.fileList,
+          crs: parseResult.crs,
+        });
+
+        if (fieldSchema.length > 0) {
+          await storage.createLayerSchema({ layerId: layer.id, fields: fieldSchema as any });
+        }
+
+        await storage.updateUpload(uploadId, { progress: 40, layerId: layer.id });
+
+        const BATCH_SIZE = 1000;
+        const totalFeatures = parseResult.features.length;
+        let processedFeatures = 0;
+
+        for (let i = 0; i < totalFeatures; i += BATCH_SIZE) {
+          const batch = parseResult.features.slice(i, i + BATCH_SIZE);
+          const insertFeatures = batch.map((feature) => ({
+            layerId: layer.id,
+            geometryType: feature.geometry?.type || parseResult.geometryType,
+            coordinates: feature.geometry?.coordinates || [],
+            properties: feature.properties || {},
+          }));
+          await storage.createDrawnFeaturesBatch(insertFeatures);
+
+          processedFeatures += batch.length;
+          const progress = Math.round(40 + (processedFeatures / totalFeatures) * 55);
+          await storage.updateUpload(uploadId, { progress, processedFeatures });
+        }
+
+        await storage.updateUpload(uploadId, { status: "completed", progress: 100, processedFeatures: totalFeatures, layerId: layer.id });
+        uploadExtraInfo.delete(uploadId);
       }
-
-      await storage.updateUpload(uploadId, { progress: 40, layerId: layer.id });
-
-      const BATCH_SIZE = 1000;
-      const totalFeatures = parseResult.features.length;
-      let processedFeatures = 0;
-
-      for (let i = 0; i < totalFeatures; i += BATCH_SIZE) {
-        const batch = parseResult.features.slice(i, i + BATCH_SIZE);
-        const insertFeatures = batch.map((feature) => ({
-          layerId: layer.id,
-          geometryType: feature.geometry?.type || parseResult.geometryType,
-          coordinates: feature.geometry?.coordinates || [],
-          properties: feature.properties || {},
-        }));
-        await storage.createDrawnFeaturesBatch(insertFeatures);
-
-        processedFeatures += batch.length;
-        const progress = Math.round(40 + (processedFeatures / totalFeatures) * 55);
-        await storage.updateUpload(uploadId, { progress, processedFeatures });
-      }
-
-      await storage.updateUpload(uploadId, { status: "completed", progress: 100, processedFeatures: totalFeatures, layerId: layer.id });
     } catch (error: any) {
       console.error(`[Upload ${uploadId}] Background processing error:`, error);
       await storage.updateUpload(uploadId, { status: "failed", error: error?.message || "Ошибка обработки шейпфайла" });
+      uploadExtraInfo.delete(uploadId);
     } finally {
       if (filePath && fs.existsSync(filePath)) {
         try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
@@ -7043,12 +7159,17 @@ ${fieldXml}
             break;
           }
 
+          const extra = uploadExtraInfo.get(uploadId);
           sendEvent({
             status: upload.status,
             progress: upload.progress,
             totalFeatures: upload.totalFeatures,
             processedFeatures: upload.processedFeatures,
             layerId: upload.layerId,
+            layerIds: extra?.layerIds,
+            currentDatasetName: extra?.currentDatasetName,
+            currentDatasetIndex: extra?.currentDatasetIndex,
+            totalDatasets: extra?.totalDatasets,
             error: upload.error,
           });
 

@@ -1101,6 +1101,7 @@ export function DataManager({ onClose, onOpenAttributeTable, onOpenZwsDbImport }
     setUploadProgress("");
 
     try {
+      let totalLayersCreated = 0;
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const fileSize = file.size;
@@ -1144,7 +1145,7 @@ export function DataManager({ onClose, onOpenAttributeTable, onOpenZwsDbImport }
             setUploadProgress(`Обработка ${file.name}...`);
             setUploadPercent(5);
 
-            await new Promise<void>((resolve, reject) => {
+            const uploadResult = await new Promise<{ layerIds?: number[] }>((resolve, reject) => {
               const eventSource = new EventSource(`/api/uploads/${responseData.uploadId}/progress`);
 
               eventSource.onmessage = (event) => {
@@ -1154,22 +1155,31 @@ export function DataManager({ onClose, onOpenAttributeTable, onOpenZwsDbImport }
                     setUploadPercent(data.progress || 0);
 
                     if (data.status === "processing") {
-                      if (data.totalFeatures && data.processedFeatures) {
+                      if (data.totalDatasets && data.totalDatasets > 1 && data.currentDatasetName) {
+                        const idx = data.currentDatasetIndex || 0;
+                        const total = data.totalDatasets;
+                        if (data.totalFeatures && data.processedFeatures) {
+                          setUploadProgress(`[${idx}/${total}] ${data.currentDatasetName} — ${data.processedFeatures} / ${data.totalFeatures} объектов`);
+                        } else {
+                          setUploadProgress(`[${idx}/${total}] Обработка: ${data.currentDatasetName}`);
+                        }
+                      } else if (data.totalFeatures && data.processedFeatures) {
                         setUploadProgress(`Запись в БД: ${data.processedFeatures} / ${data.totalFeatures} объектов`);
                       } else if (data.progress <= 10) {
                         setUploadProgress(`Валидация ${file.name}...`);
-                      } else if (data.progress <= 30) {
-                        setUploadProgress(`Распаковка ${file.name}...`);
+                      } else if (data.progress <= 20) {
+                        setUploadProgress(`Распаковка архива...`);
                       } else {
                         setUploadProgress(`Обработка ${file.name}...`);
                       }
                     }
 
                     if (data.status === "completed") {
-                      setUploadProgress("Обработка завершена");
+                      const layerCount = data.layerIds?.length ?? 1;
+                      setUploadProgress(layerCount > 1 ? `Загружено слоёв: ${layerCount}` : "Обработка завершена");
                       setUploadPercent(100);
                       eventSource.close();
-                      resolve();
+                      resolve({ layerIds: data.layerIds });
                     }
 
                     if (data.status === "failed") {
@@ -1187,8 +1197,10 @@ export function DataManager({ onClose, onOpenAttributeTable, onOpenZwsDbImport }
                 reject(new Error("Потеряно соединение с сервером"));
               };
             });
+            totalLayersCreated += uploadResult.layerIds?.length ?? 1;
           } else {
             setUploadProgress(`Обработка завершена`);
+            totalLayersCreated += 1;
           }
         } else {
           setUploadProgress(`Обработка ${file.name}...`);
@@ -1222,6 +1234,7 @@ export function DataManager({ onClose, onOpenAttributeTable, onOpenZwsDbImport }
               const error = await res.json();
               throw new Error(error.message || "Upload failed");
             }
+            totalLayersCreated++;
           }
         }
       }
@@ -1229,7 +1242,9 @@ export function DataManager({ onClose, onOpenAttributeTable, onOpenZwsDbImport }
       queryClient.invalidateQueries({ queryKey: ["/api/editable-layers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenes", currentSceneId, "editable-layers"] });
       window.dispatchEvent(new Event("viewport-features-invalidate"));
-      toast({ title: "Файл загружен успешно" });
+      toast({
+        title: totalLayersCreated > 1 ? `Загружено слоёв: ${totalLayersCreated}` : "Файл загружен успешно",
+      });
     } catch (error) {
       console.error("Shapefile import error:", error);
       toast({
