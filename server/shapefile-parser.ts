@@ -161,87 +161,88 @@ export async function parseAllShapefilesFromZip(
   const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B;
   if (!isZip) {
     const result = await parseShapefileBuffer(buffer, options);
-    const name = 'shapefile';
-    return [{ ...result, name }];
+    return [{ ...result, name: 'shapefile' }];
   }
 
   const zip = await JSZip.loadAsync(buffer, {
-    decodeFileName: (rawBytes: Uint8Array) => {
-      const decoder = new TextDecoder('ibm866');
-      return decoder.decode(rawBytes);
-    }
+    decodeFileName: (rawBytes: Uint8Array) => new TextDecoder('ibm866').decode(rawBytes)
   } as any);
 
-  const shapefileSets = new Map<string, {
-    shp: ArrayBuffer | null;
-    shx: ArrayBuffer | null;
-    dbf: ArrayBuffer | null;
-    prj: string | null;
-    cpg: string | null;
-    fileNames: string[];
-  }>();
+  // Phase 1: scan ZIP entries — build an index of paths only (no content loaded)
+  // extMap: ext -> zipPath within the archive
+  const setExtMap = new Map<string, Map<string, string>>();  // pathWithoutExt -> (ext -> zipPath)
+  const setFileNames = new Map<string, string[]>();           // pathWithoutExt -> [displayName, ...]
 
-  const entries: { path: string; entry: any }[] = [];
-  zip.forEach((path: string, entry: any) => entries.push({ path, entry }));
-
-  for (const { path, entry } of entries) {
-    if (entry.dir) continue;
-    const pathLower = path.toLowerCase();
-    const ext = pathLower.split('.').pop() || '';
-    if (!['shp', 'shx', 'dbf', 'prj', 'cpg'].includes(ext)) continue;
-
-    const pathWithoutExt = path.substring(0, path.lastIndexOf('.'));
-    const fileName = path.split('/').pop() || path;
-
-    if (!shapefileSets.has(pathWithoutExt)) {
-      shapefileSets.set(pathWithoutExt, { shp: null, shx: null, dbf: null, prj: null, cpg: null, fileNames: [] });
+  zip.forEach((zipPath: string, entry: any) => {
+    if (entry.dir) return;
+    const ext = zipPath.split('.').pop()?.toLowerCase() || '';
+    if (!['shp', 'shx', 'dbf', 'prj', 'cpg'].includes(ext)) return;
+    const pathWithoutExt = zipPath.substring(0, zipPath.lastIndexOf('.'));
+    const fileName = zipPath.split('/').pop() || zipPath;
+    if (!setExtMap.has(pathWithoutExt)) {
+      setExtMap.set(pathWithoutExt, new Map());
+      setFileNames.set(pathWithoutExt, []);
     }
+    setExtMap.get(pathWithoutExt)!.set(ext, zipPath);
+    setFileNames.get(pathWithoutExt)!.push(fileName);
+  });
 
-    const set = shapefileSets.get(pathWithoutExt)!;
-    set.fileNames.push(fileName);
-
-    if (ext === 'prj' || ext === 'cpg') {
-      const content = await entry.async('nodebuffer');
-      const text = decodeCP1251(content);
-      if (ext === 'prj') set.prj = text;
-      if (ext === 'cpg') set.cpg = text;
-    } else {
-      const content = await entry.async('arraybuffer');
-      if (ext === 'shp') set.shp = content;
-      if (ext === 'shx') set.shx = content;
-      if (ext === 'dbf') set.dbf = content;
-    }
-  }
-
-  const validSets = Array.from(shapefileSets.entries()).filter(([, s]) => s.shp !== null);
-  if (validSets.length === 0) {
-    throw new Error("No .shp file found in archive");
-  }
+  const validKeys = Array.from(setExtMap.entries()).filter(([, m]) => m.has('shp'));
+  if (validKeys.length === 0) throw new Error("No .shp file found in archive");
 
   const results: NamedParseResult[] = [];
-  let index = 0;
 
-  for (const [pathWithoutExt, set] of validSets) {
+  // Phase 2: process one shapefile set at a time — load, parse, then release buffers
+  for (let i = 0; i < validKeys.length; i++) {
+    const [pathWithoutExt, extMap] = validKeys[i];
     const name = pathWithoutExt.split('/').pop() || pathWithoutExt;
-    index++;
+    const fileNames = setFileNames.get(pathWithoutExt) || [];
 
-    if (onProgress) onProgress(index, validSets.length, name);
+    if (onProgress) onProgress(i + 1, validKeys.length, name);
 
     try {
-      const zuluPrj = isZuluSphericalPrj(set.prj);
-      const cpgEncoding = set.cpg?.trim() || 'CP1251';
+      // Load only this set's files — previous set's buffers are already GC-eligible
+      let shpBuf: ArrayBuffer | null = null;
+      let dbfBuf: ArrayBuffer | null = null;
+      let prjText: string | null = null;
+      let cpgText: string | null = null;
+
+      const shpEntry = zip.file(extMap.get('shp')!);
+      if (shpEntry) shpBuf = await shpEntry.async('arraybuffer');
+
+      if (extMap.has('dbf')) {
+        const e = zip.file(extMap.get('dbf')!);
+        if (e) dbfBuf = await e.async('arraybuffer');
+      }
+      if (extMap.has('prj')) {
+        const e = zip.file(extMap.get('prj')!);
+        if (e) { const b = await e.async('nodebuffer'); prjText = decodeCP1251(b); }
+      }
+      if (extMap.has('cpg')) {
+        const e = zip.file(extMap.get('cpg')!);
+        if (e) { const b = await e.async('nodebuffer'); cpgText = decodeCP1251(b); }
+      }
+
+      if (!shpBuf) continue;
+
+      const zuluPrj = isZuluSphericalPrj(prjText);
+      const cpgEncoding = cpgText?.trim() || 'CP1251';
       const cpgBuf = new TextEncoder().encode(cpgEncoding);
 
       const shapefileObj: any = {
-        shp: set.shp,
-        dbf: set.dbf,
-        prj: zuluPrj ? null : set.prj,
+        shp: shpBuf,
+        dbf: dbfBuf,
+        prj: zuluPrj ? null : prjText,
         cpg: cpgBuf.buffer,
       };
 
-      console.log(`[MultiParse ${index}/${validSets.length}] ${name} (encoding: ${cpgEncoding}${zuluPrj ? ', ZuluGIS' : ''})`);
+      console.log(`[MultiParse ${i + 1}/${validKeys.length}] ${name} (${cpgEncoding}${zuluPrj ? ', ZuluGIS' : ''})`);
 
       let geojson: any = await shp(shapefileObj);
+
+      // Release raw buffers before building features array
+      shpBuf = null;
+      dbfBuf = null;
 
       if (zuluPrj) {
         const raw = Array.isArray(geojson) ? geojson[0] : geojson;
@@ -249,8 +250,8 @@ export async function parseAllShapefilesFromZip(
       }
 
       const collection = Array.isArray(geojson) ? geojson[0] : geojson;
-      if (!collection || !collection.features) {
-        console.warn(`[MultiParse] Skipping ${name}: no features found`);
+      if (!collection?.features) {
+        console.warn(`[MultiParse] Skipping ${name}: no features`);
         continue;
       }
 
@@ -268,7 +269,7 @@ export async function parseAllShapefilesFromZip(
         };
       });
 
-      results.push({ features, geometryType, crs, fileList: set.fileNames, name });
+      results.push({ features, geometryType, crs, fileList: fileNames, name });
     } catch (err: any) {
       console.error(`[MultiParse] Error parsing ${name}:`, err.message);
     }

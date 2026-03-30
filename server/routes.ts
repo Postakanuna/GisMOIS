@@ -6880,7 +6880,7 @@ ${fieldXml}
     try {
       await storage.updateUpload(uploadId, { status: "processing", progress: 5 });
 
-      const fileBuffer = fs.readFileSync(filePath);
+      const fileBuffer = await fs.promises.readFile(filePath);
 
       const validation = validateShapefileBuffer(fileBuffer);
       if (!validation.valid) {
@@ -7150,40 +7150,51 @@ ${fieldXml}
       }
     };
 
-    const poll = async () => {
-      while (!closed) {
-        try {
-          const upload = await storage.getUpload(uploadId);
-          if (!upload) {
-            sendEvent({ status: "failed", error: "Загрузка не найдена", progress: 0 });
-            break;
-          }
-
-          const extra = uploadExtraInfo.get(uploadId);
-          sendEvent({
-            status: upload.status,
-            progress: upload.progress,
-            totalFeatures: upload.totalFeatures,
-            processedFeatures: upload.processedFeatures,
-            layerId: upload.layerId,
-            layerIds: extra?.layerIds,
-            currentDatasetName: extra?.currentDatasetName,
-            currentDatasetIndex: extra?.currentDatasetIndex,
-            totalDatasets: extra?.totalDatasets,
-            error: upload.error,
-          });
-
-          if (upload.status === "completed" || upload.status === "failed") {
-            break;
-          }
-        } catch (err) {
-          console.error(`[Upload SSE ${uploadId}] Error:`, err);
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+    const sendKeepAlive = () => {
       if (!closed) {
-        res.end();
+        res.write(`: keepalive\n\n`);
+      }
+    };
+
+    // Send keepalive comment every 15 seconds to prevent proxy timeouts
+    const keepAliveInterval = setInterval(sendKeepAlive, 15000);
+
+    const poll = async () => {
+      try {
+        while (!closed) {
+          try {
+            const upload = await storage.getUpload(uploadId);
+            if (!upload) {
+              sendEvent({ status: "failed", error: "Загрузка не найдена", progress: 0 });
+              break;
+            }
+
+            const extra = uploadExtraInfo.get(uploadId);
+            sendEvent({
+              status: upload.status,
+              progress: upload.progress,
+              totalFeatures: upload.totalFeatures,
+              processedFeatures: upload.processedFeatures,
+              layerId: upload.layerId,
+              layerIds: extra?.layerIds,
+              currentDatasetName: extra?.currentDatasetName,
+              currentDatasetIndex: extra?.currentDatasetIndex,
+              totalDatasets: extra?.totalDatasets,
+              error: upload.error,
+            });
+
+            if (upload.status === "completed" || upload.status === "failed") {
+              break;
+            }
+          } catch (err) {
+            console.error(`[Upload SSE ${uploadId}] Error:`, err);
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } finally {
+        clearInterval(keepAliveInterval);
+        if (!closed) res.end();
       }
     };
 
