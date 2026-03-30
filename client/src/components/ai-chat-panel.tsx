@@ -521,7 +521,16 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
         const topInfo = top
           ? `. Наиболее проблемный участок: ${top.beginUch ?? "—"}–${top.endUch ?? "—"}, ${top.accidentCount} аварий`
           : "";
-        const summaryText = `Анализ завершён. Аварий: ${data.totalAccidents}. Привязано: ${data.boundAccidents}${topInfo}.`;
+        const totalConsumers = data.runSimulation
+          ? (data.segments ?? []).reduce((sum: number, s: any) => sum + (s.consumerCount ?? 0), 0)
+          : null;
+        const totalResidents = data.runSimulation
+          ? (data.segments ?? []).reduce((sum: number, s: any) => sum + (s.residentCount ?? 0), 0)
+          : null;
+        const consumerInfo = data.runSimulation && data.consumerLayerName
+          ? `. Потребителей под угрозой: ${totalConsumers}, жителей: ${totalResidents}`
+          : "";
+        const summaryText = `Анализ завершён. Аварий: ${data.totalAccidents}. Привязано: ${data.boundAccidents}${topInfo}${consumerInfo}.`;
 
         const summaryMsg: ChatMessage = {
           id: `ai-${Date.now()}`,

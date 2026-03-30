@@ -9560,6 +9560,7 @@ ${fieldXml}
 
       const networkLayer = sceneLayers.find(l => l.networkType === "segment");
       const accidentLayer = sceneLayers.find(l => l.networkType === "accident");
+      const consumerLayer = sceneLayers.find(l => l.networkType === "consumer");
 
       if (!networkLayer) {
         return res.status(422).json({ error: "Не найден слой с типом «Участок» (networkType=segment). Назначьте тип слою сетей в настройках слоёв." });
@@ -9668,7 +9669,7 @@ ${fieldXml}
         }
       }
 
-      const segments = Array.from(segmentAccidentMap.entries())
+      const baseSegments = Array.from(segmentAccidentMap.entries())
         .map(([, data]) => {
           const props = data.feature.properties;
           return {
@@ -9687,9 +9688,59 @@ ${fieldXml}
               geometry: a.geometry,
               properties: a.properties,
             })),
+            consumerCount: null as number | null,
+            residentCount: null as number | null,
           };
         })
         .sort((a, b) => b.accidentCount - a.accidentCount);
+
+      // Run consumer disconnection simulation if a consumer layer exists in the scene
+      const residentField = "Njil";
+      if (consumerLayer) {
+        try {
+          const { buildSpatialNetworkGraph, simulateSpatialDisconnection } = await import("./network-graph");
+          const accidentGraph = await buildSpatialNetworkGraph(Number(sceneId));
+
+          const consumerFeaturesRaw = await storage.getDrawnFeatures(consumerLayer.id);
+          const consumerFeatures = consumerFeaturesRaw.map(f => ({
+            id: f.id,
+            geometry: { type: f.geometryType, coordinates: f.coordinates },
+            properties: (f.properties || {}) as Record<string, unknown>,
+          }));
+          const consumerPropsMap = new Map<number, Record<string, unknown>>();
+          for (const cf of consumerFeatures) {
+            consumerPropsMap.set(cf.id, cf.properties);
+          }
+
+          for (const seg of baseSegments) {
+            let simResult: Awaited<ReturnType<typeof simulateSpatialDisconnection>> | null = null;
+            try {
+              simResult = await simulateSpatialDisconnection(seg.featureId, networkLayer.id, Number(sceneId), accidentGraph);
+              seg.consumerCount = simResult.stats?.totalConsumers ?? simResult.affectedConsumers?.length ?? 0;
+            } catch (simErr) {
+              console.warn(`[ai-accident-analysis] simulation failed for featureId=${seg.featureId}:`, (simErr as Error).message);
+              seg.consumerCount = 0;
+            }
+
+            if (simResult && consumerFeatures.length > 0) {
+              let resTotal = 0;
+              for (const consumer of simResult.affectedConsumers) {
+                const props = consumerPropsMap.get(consumer.featureId);
+                if (props) {
+                  const val = props[residentField];
+                  const num = typeof val === "number" ? val : Number(val);
+                  if (!isNaN(num)) resTotal += num;
+                }
+              }
+              seg.residentCount = resTotal;
+            } else if (simResult) {
+              seg.residentCount = simResult.stats?.totalResidents ?? 0;
+            }
+          }
+        } catch (simBuildErr) {
+          console.warn("[ai-accident-analysis] simulation skipped:", (simBuildErr as Error).message);
+        }
+      }
 
       return res.json({
         networkLayerName: networkLayer.name,
@@ -9697,8 +9748,11 @@ ${fieldXml}
         totalAccidents: accidentFeatures.length,
         boundAccidents: boundCount,
         unboundAccidents: unboundCount,
-        segmentsWithAccidents: segments.length,
-        segments,
+        segmentsWithAccidents: baseSegments.length,
+        segments: baseSegments,
+        consumerLayerName: consumerLayer?.name ?? null,
+        residentField: consumerLayer ? residentField : null,
+        runSimulation: !!consumerLayer,
       });
     } catch (error: any) {
       console.error("AI accident analysis error:", error);
