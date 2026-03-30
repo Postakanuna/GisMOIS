@@ -8,6 +8,18 @@ import { startSensorPolling } from "./sensor-sync";
 import { refreshFieldLabelsCache } from "./field-labels-cache";
 import { seedFieldLabelsIfEmpty } from "./seed-field-labels";
 
+// Вариант А: глобальный перехват непойманных ошибок.
+// Без этого ошибка DB-соединения (TLS-сокет, разрыв во время блокировки event loop)
+// поднимается как unhandled 'error' event и убивает процесс.
+// С обработчиком — логируем, процесс продолжает работу, pg-пул реконнектится сам.
+process.on("uncaughtException", (err) => {
+  console.error("[UncaughtException] Process kept alive:", err.message, err.stack);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[UnhandledRejection] Process kept alive:", reason);
+});
+
 const app = express();
 const httpServer = createServer(app);
 
