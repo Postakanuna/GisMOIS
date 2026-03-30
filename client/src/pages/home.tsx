@@ -30,7 +30,8 @@ import { ModalManagerProvider } from "@/contexts/modal-manager-context";
 import { DrawingToolbar } from "@/components/drawing-toolbar";
 import { AttributeTable } from "@/components/attribute-table";
 import { DraggableModal } from "@/components/ui/draggable-modal";
-import { DataManager } from "@/components/data-manager";
+import { DataManager, type ZwsDbImportConfig } from "@/components/data-manager";
+import { ZwsDbImportModal } from "@/components/zws-db-import-modal";
 import { LayerAttributeTableWrapper } from "@/components/layer-attribute-table-wrapper";
 import { TraceRouteDialog } from "@/components/trace-route-dialog";
 import { NetworkSimulationDialog, type SimulationResult } from "@/components/network-simulation-dialog";
@@ -244,6 +245,8 @@ export default function Home() {
   const [zwsLayerFeatures, setZwsLayerFeatures] = useState<Record<string, { layerName: string; rows: Array<Record<string, unknown>> }>>({});
   const [showZwsAttributeTable, setShowZwsAttributeTable] = useState<{ layerId: string; layerName: string } | null>(null);
   const [showDataManager, setShowDataManager] = useState(false);
+  const [showZwsDbImport, setShowZwsDbImport] = useState(false);
+  const [zwsDbImportConfig, setZwsDbImportConfig] = useState<ZwsDbImportConfig | null>(null);
   const [showGeoAnalysis, setShowGeoAnalysis] = useState(false);
   const selectionActionsRef = useRef<{
     clearSelection: () => void;
@@ -1221,6 +1224,23 @@ export default function Home() {
                   const nt = drawing.editableLayers.find(l => l.id === layerId)?.networkType;
                   setImportedLayerTable({ layerId, layerName, networkType: nt });
                 }}
+                onOpenZwsDbImport={(config) => {
+                  setZwsDbImportConfig(config);
+                  setShowZwsDbImport(true);
+                }}
+              />
+            )}
+
+            {/* ZWS DB Import Modal — rendered at home level so it persists independently of DataManager */}
+            {zwsDbImportConfig && (
+              <ZwsDbImportModal
+                open={showZwsDbImport}
+                onClose={() => { setShowZwsDbImport(false); setZwsDbImportConfig(null); }}
+                baseUrl={zwsDbImportConfig.baseUrl}
+                username={zwsDbImportConfig.username}
+                password={zwsDbImportConfig.password}
+                zwsConnectionId={zwsDbImportConfig.zwsConnectionId}
+                sceneId={currentSceneId}
               />
             )}
 

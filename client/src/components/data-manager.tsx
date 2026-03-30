@@ -47,7 +47,6 @@ import {
 import { useBaseLayers, type BaseLayerType } from "@/contexts/base-layers-context";
 import { useProjection } from "@/contexts/projection-context";
 import { ConnectionForm } from "@/components/connection-form";
-import { ZwsDbImportModal } from "@/components/zws-db-import-modal";
 import { useZuluConnectionContext } from "@/contexts/zulu-connection-context";
 import { type ProjectionType } from "@/lib/projections";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -113,9 +112,17 @@ type FlatItem =
   | { type: "folder"; folderId: number; displayOrder: number; layers: number[] }
   | { type: "layer"; layerId: number; displayOrder: number };
 
+export interface ZwsDbImportConfig {
+  baseUrl: string;
+  username?: string;
+  password?: string;
+  zwsConnectionId: number | null;
+}
+
 interface DataManagerProps {
   onClose: () => void;
   onOpenAttributeTable?: (layerId: number, layerName: string) => void;
+  onOpenZwsDbImport?: (config: ZwsDbImportConfig) => void;
 }
 
 const MIN_WIDTH = 500;
@@ -795,7 +802,7 @@ function SortableFolderRow({
   );
 }
 
-export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps) {
+export function DataManager({ onClose, onOpenAttributeTable, onOpenZwsDbImport }: DataManagerProps) {
   const { toast } = useToast();
   const { currentSceneId, canEdit } = useScene();
   const { baseLayers, activeBaseLayer, setActiveBaseLayer } = useBaseLayers();
@@ -819,8 +826,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
   const [legendLayerId, setLegendLayerId] = useState<number | null>(null);
   const [geocodeLayerId, setGeocodeLayerId] = useState<number | null>(null);
   const [joinLayerId, setJoinLayerId] = useState<number | null>(null);
-  const [showZwsDbImport, setShowZwsDbImport] = useState(false);
-  const [zwsDbImportConfig, setZwsDbImportConfig] = useState<{ baseUrl: string; username?: string; password?: string; zwsConnectionId: number | null } | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [editingFolderId, setEditingFolderId] = useState<number | null>(null);
@@ -1986,11 +1991,9 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
                             sceneId: currentSceneId || null,
                           });
                           const savedConn = await res.json();
-                          setZwsDbImportConfig({ ...config, zwsConnectionId: savedConn.id });
-                          setShowZwsDbImport(true);
+                          onOpenZwsDbImport?.({ ...config, zwsConnectionId: savedConn.id });
                         } catch {
-                          setZwsDbImportConfig({ ...config, zwsConnectionId: null });
-                          setShowZwsDbImport(true);
+                          onOpenZwsDbImport?.({ ...config, zwsConnectionId: null });
                         }
                       }}
                     />
@@ -2209,21 +2212,6 @@ export function DataManager({ onClose, onOpenAttributeTable }: DataManagerProps)
         />
       )}
 
-      {zwsDbImportConfig && (
-        <ZwsDbImportModal
-          open={showZwsDbImport}
-          onClose={() => { setShowZwsDbImport(false); setZwsDbImportConfig(null); }}
-          baseUrl={zwsDbImportConfig.baseUrl}
-          username={zwsDbImportConfig.username}
-          password={zwsDbImportConfig.password}
-          zwsConnectionId={zwsDbImportConfig.zwsConnectionId}
-          sceneId={currentSceneId}
-          onSuccess={() => {
-            setShowZwsDbImport(false);
-            setZwsDbImportConfig(null);
-          }}
-        />
-      )}
     </DraggableModal>
   );
 }
