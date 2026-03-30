@@ -1113,6 +1113,7 @@ export function MapViewer({
   const drawingModeRef = useRef<DrawingMode>(drawingMode || null);
   const editModeRef = useRef(editMode);
   const onZwsFeatureClickRef = useRef(onZwsFeatureClick);
+  const onZwsLayerFeaturesLoadedRef = useRef(onZwsLayerFeaturesLoaded);
   const onFeatureCreatedRef = useRef(onFeatureCreated);
   const onFeatureUpdatedRef = useRef(onFeatureUpdated);
   const activeEditableLayerRef = useRef(activeEditableLayer);
@@ -1168,6 +1169,10 @@ export function MapViewer({
   useEffect(() => {
     onZwsFeatureClickRef.current = onZwsFeatureClick;
   }, [onZwsFeatureClick]);
+
+  useEffect(() => {
+    onZwsLayerFeaturesLoadedRef.current = onZwsLayerFeaturesLoaded;
+  }, [onZwsLayerFeaturesLoaded]);
 
   useEffect(() => {
     onFeatureCreatedRef.current = onFeatureCreated;
@@ -3519,13 +3524,13 @@ export function MapViewer({
                     
                     vectorSource.addFeatures(features);
 
-                    if (onZwsLayerFeaturesLoaded) {
+                    if (onZwsLayerFeaturesLoadedRef.current) {
                       const rows = features.map(f => {
                         const props: Record<string, unknown> = {};
                         f.getKeys().forEach(k => { if (k !== "geometry") props[k] = f.get(k); });
                         return props;
                       });
-                      onZwsLayerFeaturesLoaded(layerConfig.id, layerConfig.name, rows);
+                      onZwsLayerFeaturesLoadedRef.current(layerConfig.id, layerConfig.name, rows);
                     }
                     
                     if (onLayerLoadSuccess) {
@@ -3573,7 +3578,7 @@ export function MapViewer({
         delete layersRef.current[id];
       }
     });
-  }, [layers, connection, onFiltersDiscovered, onZwsLayerFeaturesLoaded]);
+  }, [layers, connection, onFiltersDiscovered]);
 
   useEffect(() => {
     if (!ticketsLayerRef.current || !tickets) return;

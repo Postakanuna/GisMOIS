@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, type ReactNode } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -649,6 +649,36 @@ export default function Home() {
     drawing.undo();
   }, [drawing.drawingMode, drawing]);
 
+  const handleZwsFeatureClick = useCallback((feature: FeatureInfo | null) => {
+    setZwsSelectedFeature(feature);
+  }, []);
+
+  const handleZwsLayerFeaturesLoaded = useCallback((layerId: string, layerName: string, rows: Array<Record<string, unknown>>) => {
+    setZwsLayerFeatures(prev => ({ ...prev, [layerId]: { layerName, rows } }));
+  }, []);
+
+  const handleToggleTicketMode = useCallback(() => {
+    zuluConnection.setTicketMode(!zuluConnection.ticketMode);
+  }, [zuluConnection.setTicketMode, zuluConnection.ticketMode]);
+
+  const allEditableLayers = useMemo(
+    () => [...drawing.editableLayers, ...zuluConnection.zwsEditableLayers],
+    [drawing.editableLayers, zuluConnection.zwsEditableLayers]
+  );
+
+  const snapLayers = useMemo(() => [
+    ...drawing.editableLayers.map(l => ({
+      id: l.id,
+      name: l.name,
+      visible: l.visible ?? true,
+    })),
+    ...zuluConnection.layers.filter(l => l.visible).map(l => ({
+      id: parseInt(l.id) || 0,
+      name: l.name || l.id,
+      visible: l.visible,
+    })),
+  ], [drawing.editableLayers, zuluConnection.layers]);
+
   // Auto-close attribute table modal only when the layer disappears or has no features
   // (NOT when editMode changes — table stays open in read-only mode)
   useEffect(() => {
@@ -966,18 +996,7 @@ export default function Home() {
                 snapSettings={drawing.snapSettings}
                 onUpdateSnapSettings={drawing.updateSnapSettings}
                 onToggleSnap={drawing.toggleSnap}
-                snapLayers={[
-                  ...drawing.editableLayers.map(l => ({
-                    id: l.id,
-                    name: l.name,
-                    visible: l.visible ?? true,
-                  })),
-                  ...zuluConnection.layers.filter(l => l.visible).map(l => ({
-                    id: parseInt(l.id) || 0,
-                    name: l.name || l.id,
-                    visible: l.visible,
-                  })),
-                ]}
+                snapLayers={snapLayers}
               />
             )}
 
@@ -989,17 +1008,13 @@ export default function Home() {
               onFiltersDiscovered={zuluConnection.setLayerFilters}
               onLayerLoadError={zuluConnection.handleLayerLoadError}
               onLayerLoadSuccess={zuluConnection.handleLayerLoadSuccess}
-              onZwsFeatureClick={(feature) => {
-                setZwsSelectedFeature(feature);
-              }}
-              onZwsLayerFeaturesLoaded={(layerId, layerName, rows) => {
-                setZwsLayerFeatures(prev => ({ ...prev, [layerId]: { layerName, rows } }));
-              }}
+              onZwsFeatureClick={handleZwsFeatureClick}
+              onZwsLayerFeaturesLoaded={handleZwsLayerFeaturesLoaded}
               tickets={zuluConnection.tickets}
               ticketMode={zuluConnection.ticketMode}
-              onToggleTicketMode={() => zuluConnection.setTicketMode(!zuluConnection.ticketMode)}
+              onToggleTicketMode={handleToggleTicketMode}
               onCreateTicket={zuluConnection.createTicket}
-              allEditableLayers={[...drawing.editableLayers, ...zuluConnection.zwsEditableLayers]}
+              allEditableLayers={allEditableLayers}
               onSelectedFeaturesChange={handleSelectedFeaturesChange}
               onShowFeatureInfo={handleShowFeatureInfo}
               editMode={editMode}
