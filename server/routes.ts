@@ -373,6 +373,15 @@ function parseZwsRetVal(xml: string): number {
   return m ? parseInt(m[1], 10) : -999;
 }
 
+function parseZwsErrorString(xml: string): string | null {
+  const m = xml.match(/<ErrorString>([^<]+)<\/ErrorString>/);
+  return m ? m[1].trim() : null;
+}
+
+function normalizeZwsBaseUrl(url: string): string {
+  return url.replace(/([^:])\/\/+/g, "$1/").replace(/\/+$/, "");
+}
+
 function zwsGuessGeometryType(layerType?: string | number): "Point" | "LineString" | "Polygon" {
   const t = String(layerType || "").toLowerCase();
   if (t.includes("line") || t.includes("polyline") || t === "1") return "LineString";
@@ -842,9 +851,26 @@ export async function registerRoutes(
       <CRS>EPSG:4326</CRS>
     </LayerExecSql>`;
       const xml = zwsXmlWrap(innerXml);
-      const { text, ok } = await zwsPost(zwsBaseUrl, "LayerExecSQL", xml, 120000, authHeader);
+      const { text, ok, status: zwsStatus } = await zwsPost(zwsBaseUrl, "LayerExecSQL", xml, 120000, authHeader);
 
-      if (!ok) return res.status(502).json({ message: "ZWS query failed", details: text.slice(0, 500) });
+      if (!ok) {
+        if (zwsStatus === 401) {
+          return res.status(401).json({ message: "Требуется авторизация для доступа к слою. Укажите логин и пароль в настройках ZWS-подключения." });
+        }
+        if (zwsStatus === 403) {
+          return res.status(403).json({ message: "Доступ к слою запрещён. Обратитесь к администратору ZWS-сервера." });
+        }
+        if (zwsStatus === 404) {
+          return res.status(404).json({ message: "Слой не найден на ZWS-сервере." });
+        }
+        return res.status(502).json({ message: "ZWS-сервер вернул ошибку.", details: text.slice(0, 500) });
+      }
+
+      const retVal = parseZwsRetVal(text);
+      if (retVal < 0) {
+        const errorStr = parseZwsErrorString(text) || `RetVal=${retVal}`;
+        return res.status(422).json({ message: `Слой недоступен: ${errorStr}` });
+      }
 
       const parsedFeatures = parseZwsXmlToDbFeatures(text);
       console.log(`[ZWS import-to-db] layerName=${layerName}, parsed=${parsedFeatures.length} features`);
@@ -1338,10 +1364,11 @@ ${fieldXml}
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
-      const { displayName, baseUrl, username, passwordEncrypted, selectedLayers, sceneId } = req.body;
-      if (!displayName || !baseUrl) {
+      const { displayName, baseUrl: rawBaseUrl, username, passwordEncrypted, selectedLayers, sceneId } = req.body;
+      if (!displayName || !rawBaseUrl) {
         return res.status(400).json({ message: "displayName and baseUrl are required" });
       }
+      const baseUrl = normalizeZwsBaseUrl(rawBaseUrl);
       const conn = await storage.createZwsConnection({
         userId,
         sceneId: sceneId ? parseInt(sceneId) : null,
@@ -1366,7 +1393,9 @@ ${fieldXml}
       if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
       const existing = (await storage.getZwsConnections(userId)).find(c => c.id === id);
       if (!existing) return res.status(404).json({ message: "Connection not found" });
-      const conn = await storage.updateZwsConnection(id, req.body);
+      const updateData = { ...req.body };
+      if (updateData.baseUrl) updateData.baseUrl = normalizeZwsBaseUrl(updateData.baseUrl);
+      const conn = await storage.updateZwsConnection(id, updateData);
       if (!conn) return res.status(404).json({ message: "Connection not found" });
       return res.json(conn);
     } catch (error) {

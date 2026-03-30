@@ -127,7 +127,19 @@ export function ZwsDbImportModal({
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.message || "Ошибка импорта");
+          if (res.status === 401) {
+            throw new Error("Требуется авторизация — укажите логин и пароль в настройках подключения");
+          } else if (res.status === 403) {
+            throw new Error("Доступ к слою запрещён");
+          } else if (res.status === 404) {
+            throw new Error("Слой не найден на сервере");
+          } else if (res.status === 422) {
+            throw new Error(err.message || "Слой недоступен");
+          } else if (res.status === 504) {
+            throw new Error("Превышено время ожидания ответа ZWS-сервера");
+          } else {
+            throw new Error(err.message || "Ошибка импорта");
+          }
         }
         const data = await res.json();
         setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: "done", featureCount: data.featureCount } : p));
@@ -245,20 +257,26 @@ export function ZwsDbImportModal({
               <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
                 <div className="p-1.5 space-y-0.5">
                   {progress.map((p, i) => (
-                    <div key={i} className="flex items-center gap-2 px-2 py-1.5 text-sm rounded">
-                      {p.status === "pending" && <Square className="h-4 w-4 text-muted-foreground shrink-0" />}
-                      {p.status === "loading" && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
-                      {p.status === "done" && <CheckSquare className="h-4 w-4 text-green-500 shrink-0" />}
-                      {p.status === "error" && <AlertCircle className="h-4 w-4 text-destructive shrink-0" />}
-                      <span className={`flex-1 truncate ${p.status === "error" ? "text-destructive" : ""}`}>
-                        {p.layerName}
-                      </span>
-                      {p.status === "done" && p.featureCount !== undefined && (
-                        <span className="text-xs text-muted-foreground shrink-0">{p.featureCount} объектов</span>
-                      )}
-                      {p.status === "error" && (
-                        <span className="text-xs text-destructive shrink-0 max-w-[120px] truncate">{p.error}</span>
-                      )}
+                    <div key={i} className="flex items-start gap-2 px-2 py-1.5 text-sm rounded">
+                      <div className="shrink-0 mt-0.5">
+                        {p.status === "pending" && <Square className="h-4 w-4 text-muted-foreground" />}
+                        {p.status === "loading" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                        {p.status === "done" && <CheckSquare className="h-4 w-4 text-green-500" />}
+                        {p.status === "error" && <AlertCircle className="h-4 w-4 text-destructive" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`truncate ${p.status === "error" ? "text-destructive" : ""}`}>
+                            {p.layerName}
+                          </span>
+                          {p.status === "done" && p.featureCount !== undefined && (
+                            <span className="text-xs text-muted-foreground shrink-0">{p.featureCount} объектов</span>
+                          )}
+                        </div>
+                        {p.status === "error" && p.error && (
+                          <p className="text-xs text-destructive mt-0.5 leading-tight">{p.error}</p>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
