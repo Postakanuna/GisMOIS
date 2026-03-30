@@ -154,14 +154,17 @@ export interface NamedParseResult extends ParseResult {
 export async function parseAllShapefilesFromZip(
   buffer: Buffer,
   options: { simplifyTolerance?: number } = {},
-  onProgress?: (index: number, total: number, name: string) => void
+  onProgress?: (index: number, total: number, name: string) => void,
+  onDataset?: (result: NamedParseResult) => Promise<void>
 ): Promise<NamedParseResult[]> {
   const { simplifyTolerance = 0 } = options;
 
   const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B;
   if (!isZip) {
     const result = await parseShapefileBuffer(buffer, options);
-    return [{ ...result, name: 'shapefile' }];
+    const named = { ...result, name: 'shapefile' };
+    if (onDataset) { await onDataset(named); return []; }
+    return [named];
   }
 
   const zip = await JSZip.loadAsync(buffer, {
@@ -169,9 +172,8 @@ export async function parseAllShapefilesFromZip(
   } as any);
 
   // Phase 1: scan ZIP entries — build an index of paths only (no content loaded)
-  // extMap: ext -> zipPath within the archive
-  const setExtMap = new Map<string, Map<string, string>>();  // pathWithoutExt -> (ext -> zipPath)
-  const setFileNames = new Map<string, string[]>();           // pathWithoutExt -> [displayName, ...]
+  const setExtMap = new Map<string, Map<string, string>>();
+  const setFileNames = new Map<string, string[]>();
 
   zip.forEach((zipPath: string, entry: any) => {
     if (entry.dir) return;
@@ -190,6 +192,7 @@ export async function parseAllShapefilesFromZip(
   const validKeys = Array.from(setExtMap.entries()).filter(([, m]) => m.has('shp'));
   if (validKeys.length === 0) throw new Error("No .shp file found in archive");
 
+  // When onDataset callback provided: stream one dataset at a time — never accumulate all in memory
   const results: NamedParseResult[] = [];
 
   // Phase 2: process one shapefile set at a time — load, parse, then release buffers
@@ -201,7 +204,6 @@ export async function parseAllShapefilesFromZip(
     if (onProgress) onProgress(i + 1, validKeys.length, name);
 
     try {
-      // Load only this set's files — previous set's buffers are already GC-eligible
       let shpBuf: ArrayBuffer | null = null;
       let dbfBuf: ArrayBuffer | null = null;
       let prjText: string | null = null;
@@ -240,7 +242,7 @@ export async function parseAllShapefilesFromZip(
 
       let geojson: any = await shp(shapefileObj);
 
-      // Release raw buffers before building features array
+      // Release raw buffers immediately — GC can reclaim before features are built
       shpBuf = null;
       dbfBuf = null;
 
@@ -269,7 +271,17 @@ export async function parseAllShapefilesFromZip(
         };
       });
 
-      results.push({ features, geometryType, crs, fileList: fileNames, name });
+      // Release the full GeoJSON collection — features array is all we need now
+      (geojson as any) = null;
+
+      const parsed: NamedParseResult = { features, geometryType, crs, fileList: fileNames, name };
+
+      if (onDataset) {
+        // Streaming mode: hand off to caller immediately, don't keep in memory
+        await onDataset(parsed);
+      } else {
+        results.push(parsed);
+      }
     } catch (err: any) {
       console.error(`[MultiParse] Error parsing ${name}:`, err.message);
     }

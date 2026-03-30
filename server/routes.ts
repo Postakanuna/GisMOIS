@@ -6922,100 +6922,87 @@ ${fieldXml}
       const isZip = fileBuffer[0] === 0x50 && fileBuffer[1] === 0x4B;
 
       if (isZip) {
-        // Parse all shapefiles from the ZIP archive
-        let parsedSets: import("./shapefile-parser").NamedParseResult[] = [];
-
         uploadExtraInfo.set(uploadId, { currentDatasetName: "Распаковка архива...", currentDatasetIndex: 0, totalDatasets: 0, layerIds: [] });
-
-        parsedSets = await parseAllShapefilesFromZip(
-          fileBuffer,
-          {},
-          (index, total, name) => {
-            uploadExtraInfo.set(uploadId, {
-              currentDatasetName: name,
-              currentDatasetIndex: index,
-              totalDatasets: total,
-              layerIds: uploadExtraInfo.get(uploadId)?.layerIds || [],
-            });
-          }
-        );
-
-        if (parsedSets.length === 0) {
-          await storage.updateUpload(uploadId, { status: "failed", error: "Не найдено шейпфайлов в архиве" });
-          uploadExtraInfo.delete(uploadId);
-          return;
-        }
-
-        const totalDatasets = parsedSets.length;
-        const totalFeatures = parsedSets.reduce((sum, s) => sum + s.features.length, 0);
-        await storage.updateUpload(uploadId, { progress: 20, totalFeatures });
 
         const BATCH_SIZE = 1000;
         let globalProcessed = 0;
         let firstLayerId: number | null = null;
         const layerIds: number[] = [];
+        let datasetsFound = 0;
 
-        for (let si = 0; si < parsedSets.length; si++) {
-          const parseResult = parsedSets[si];
-          const datasetName = parseResult.name;
+        // Streaming: each dataset is parsed, written to DB, then released from memory
+        await parseAllShapefilesFromZip(
+          fileBuffer,
+          {},
+          (index, total, name) => {
+            datasetsFound = total;
+            uploadExtraInfo.set(uploadId, {
+              currentDatasetName: name,
+              currentDatasetIndex: index,
+              totalDatasets: total,
+              layerIds,
+            });
+          },
+          async (parseResult) => {
+            const datasetName = parseResult.name;
 
-          uploadExtraInfo.set(uploadId, {
-            currentDatasetName: datasetName,
-            currentDatasetIndex: si + 1,
-            totalDatasets,
-            layerIds,
-          });
+            let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
+            if (parseResult.features.length > 0 && parseResult.features[0].properties) {
+              fieldSchema = Object.keys(parseResult.features[0].properties).map(key => ({
+                name: key,
+                type: typeof parseResult.features[0].properties[key] === 'number' ? 'number' : 'text',
+                required: false,
+              }));
+            }
 
-          let fieldSchema: Array<{ name: string; type: string; required: boolean }> = [];
-          if (parseResult.features.length > 0 && parseResult.features[0].properties) {
-            fieldSchema = Object.keys(parseResult.features[0].properties).map(key => ({
-              name: key,
-              type: typeof parseResult.features[0].properties[key] === 'number' ? 'number' : 'text',
-              required: false,
-            }));
+            const normalizedType = normalizeGeometryType(parseResult.geometryType);
+            const layer = await storage.createEditableLayer({
+              sceneId,
+              name: datasetName,
+              geometryType: normalizedType,
+              color: color || "#1976D2",
+              pointStyle: "circle",
+              lineStyle: "solid",
+              visible: true,
+              opacity: 1,
+              source: "import",
+              sourceFileName: originalName,
+              sourceFiles: parseResult.fileList,
+              crs: parseResult.crs,
+            });
+
+            if (firstLayerId === null) firstLayerId = layer.id;
+            layerIds.push(layer.id);
+
+            if (fieldSchema.length > 0) {
+              await storage.createLayerSchema({ layerId: layer.id, fields: fieldSchema as any });
+            }
+
+            const datasetFeatures = parseResult.features.length;
+            for (let i = 0; i < datasetFeatures; i += BATCH_SIZE) {
+              const batch = parseResult.features.slice(i, i + BATCH_SIZE);
+              const insertFeatures = batch.map((feature) => ({
+                layerId: layer.id,
+                geometryType: feature.geometry?.type || parseResult.geometryType,
+                coordinates: feature.geometry?.coordinates || [],
+                properties: feature.properties || {},
+              }));
+              await storage.createDrawnFeaturesBatch(insertFeatures);
+
+              globalProcessed += batch.length;
+              const progress = Math.round(20 + Math.min((globalProcessed / Math.max(globalProcessed + 1, 1)) * 75, 74));
+              await storage.updateUpload(uploadId, { progress, processedFeatures: globalProcessed });
+            }
           }
+        );
 
-          const normalizedType = normalizeGeometryType(parseResult.geometryType);
-          const layer = await storage.createEditableLayer({
-            sceneId,
-            name: datasetName,
-            geometryType: normalizedType,
-            color: color || "#1976D2",
-            pointStyle: "circle",
-            lineStyle: "solid",
-            visible: true,
-            opacity: 1,
-            source: "import",
-            sourceFileName: originalName,
-            sourceFiles: parseResult.fileList,
-            crs: parseResult.crs,
-          });
-
-          if (firstLayerId === null) firstLayerId = layer.id;
-          layerIds.push(layer.id);
-
-          if (fieldSchema.length > 0) {
-            await storage.createLayerSchema({ layerId: layer.id, fields: fieldSchema as any });
-          }
-
-          const datasetFeatures = parseResult.features.length;
-          for (let i = 0; i < datasetFeatures; i += BATCH_SIZE) {
-            const batch = parseResult.features.slice(i, i + BATCH_SIZE);
-            const insertFeatures = batch.map((feature) => ({
-              layerId: layer.id,
-              geometryType: feature.geometry?.type || parseResult.geometryType,
-              coordinates: feature.geometry?.coordinates || [],
-              properties: feature.properties || {},
-            }));
-            await storage.createDrawnFeaturesBatch(insertFeatures);
-
-            globalProcessed += batch.length;
-            const progress = Math.round(20 + (globalProcessed / Math.max(totalFeatures, 1)) * 75);
-            await storage.updateUpload(uploadId, { progress, processedFeatures: globalProcessed });
-          }
+        if (layerIds.length === 0) {
+          await storage.updateUpload(uploadId, { status: "failed", error: "Не найдено шейпфайлов в архиве" });
+          uploadExtraInfo.delete(uploadId);
+          return;
         }
 
-        uploadExtraInfo.set(uploadId, { currentDatasetName: undefined, currentDatasetIndex: totalDatasets, totalDatasets, layerIds });
+        uploadExtraInfo.set(uploadId, { currentDatasetName: undefined, currentDatasetIndex: datasetsFound, totalDatasets: datasetsFound, layerIds });
         await storage.updateUpload(uploadId, {
           status: "completed",
           progress: 100,
