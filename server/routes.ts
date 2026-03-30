@@ -177,6 +177,56 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+const chunkBaseDir = path.join(os.tmpdir(), "gis-chunks");
+if (!fs.existsSync(chunkBaseDir)) {
+  fs.mkdirSync(chunkBaseDir, { recursive: true });
+}
+
+// sessionId → { totalChunks, receivedChunks, dir, originalName, sceneId, color }
+const chunkSessions = new Map<string, {
+  totalChunks: number;
+  receivedChunks: Set<number>;
+  dir: string;
+  originalName: string;
+  sceneId: number | null;
+  color: string;
+}>();
+
+// Clean up stale chunk sessions older than 2 hours
+setInterval(() => {
+  for (const [sessionId, session] of chunkSessions.entries()) {
+    if (fs.existsSync(session.dir)) {
+      try {
+        const stat = fs.statSync(session.dir);
+        if (Date.now() - stat.mtimeMs > 2 * 60 * 60 * 1000) {
+          fs.rmSync(session.dir, { recursive: true, force: true });
+          chunkSessions.delete(sessionId);
+        }
+      } catch { /* ignore */ }
+    } else {
+      chunkSessions.delete(sessionId);
+    }
+  }
+}, 30 * 60_000);
+
+const chunkStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const sessionId = (req.body?.sessionId || req.query?.sessionId || "unknown") as string;
+    const dir = path.join(chunkBaseDir, sessionId);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const chunkIndex = req.body?.chunkIndex ?? req.query?.chunkIndex ?? "0";
+    cb(null, `chunk_${chunkIndex}`);
+  },
+});
+
+const chunkUpload = multer({
+  storage: chunkStorage,
+  limits: { fileSize: 6 * 1024 * 1024 }, // 6MB per chunk
+});
+
 const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
@@ -7097,6 +7147,112 @@ ${fieldXml}
       }
       const errorMessage = error?.message || "Failed to process shapefile";
       return res.status(500).json({ message: errorMessage });
+    }
+  });
+
+  // Chunked upload — receive one chunk
+  app.post("/api/datasets/upload-chunk", isAuthenticated as any, (req: AuthRequest, res: Response, next: any) => {
+    req.setTimeout(2 * 60 * 1000);
+    next();
+  }, chunkUpload.single("chunk"), async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+
+      const { sessionId, chunkIndex, totalChunks, originalName, sceneId, color } = req.body;
+      if (!sessionId || chunkIndex === undefined || !totalChunks || !originalName) {
+        return res.status(400).json({ message: "Missing chunk metadata" });
+      }
+
+      const idx = parseInt(chunkIndex);
+      const total = parseInt(totalChunks);
+      const chunkDir = path.join(chunkBaseDir, sessionId);
+
+      if (!chunkSessions.has(sessionId)) {
+        chunkSessions.set(sessionId, {
+          totalChunks: total,
+          receivedChunks: new Set(),
+          dir: chunkDir,
+          originalName,
+          sceneId: sceneId ? parseInt(sceneId) : null,
+          color: color || "#1976D2",
+        });
+      }
+
+      const session = chunkSessions.get(sessionId)!;
+      session.receivedChunks.add(idx);
+
+      return res.json({ received: true, chunk: idx, total, done: session.receivedChunks.size === total });
+    } catch (error: any) {
+      console.error("Chunk upload error:", error);
+      return res.status(500).json({ message: error?.message || "Chunk upload failed" });
+    }
+  });
+
+  // Chunked upload — finalize: assemble chunks → start background processing
+  app.post("/api/datasets/finalize-upload", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    const { sessionId } = req.body;
+    const chunkDir = path.join(chunkBaseDir, sessionId);
+    let finalPath: string | null = null;
+
+    try {
+      const user = await getUserFromSession(req);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+
+      const session = chunkSessions.get(sessionId);
+      if (!session) return res.status(404).json({ message: "Upload session not found" });
+
+      if (!checkUploadRateLimit(user.id)) {
+        return res.status(429).json({ message: "Слишком много загрузок. Подождите минуту и попробуйте снова." });
+      }
+
+      // Assemble chunks into a single file
+      finalPath = path.join(uploadDir, `${Date.now()}-${session.originalName}`);
+      const writeStream = fs.createWriteStream(finalPath);
+
+      for (let i = 0; i < session.totalChunks; i++) {
+        const chunkPath = path.join(chunkDir, `chunk_${i}`);
+        if (!fs.existsSync(chunkPath)) {
+          writeStream.destroy();
+          return res.status(400).json({ message: `Missing chunk ${i}` });
+        }
+        const chunkBuf = await fs.promises.readFile(chunkPath);
+        writeStream.write(chunkBuf);
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        writeStream.end();
+        writeStream.on("finish", resolve);
+        writeStream.on("error", reject);
+      });
+
+      // Clean up chunk dir
+      try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      chunkSessions.delete(sessionId);
+
+      const fileSize = (await fs.promises.stat(finalPath)).size;
+      if (fileSize > LARGE_FILE_THRESHOLD && user.role !== "admin") {
+        try { fs.unlinkSync(finalPath); } catch { /* ignore */ }
+        return res.status(403).json({ message: `Файлы размером более 100 МБ доступны только администраторам.` });
+      }
+
+      const uploadRecord = await storage.createUpload({
+        filename: path.basename(finalPath),
+        originalFilename: session.originalName,
+        createdBy: user.id,
+        sceneId: session.sceneId,
+        color: session.color,
+      });
+
+      processShapefileInBackground(uploadRecord.id, finalPath, session.originalName, session.sceneId, session.color);
+
+      return res.status(202).json({ uploadId: uploadRecord.id, message: "Файл принят в обработку" });
+    } catch (error: any) {
+      console.error("Finalize upload error:", error);
+      if (finalPath && fs.existsSync(finalPath)) {
+        try { fs.unlinkSync(finalPath); } catch { /* ignore */ }
+      }
+      return res.status(500).json({ message: error?.message || "Failed to finalize upload" });
     }
   });
 

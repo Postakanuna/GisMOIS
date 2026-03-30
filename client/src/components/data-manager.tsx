@@ -1111,34 +1111,66 @@ export function DataManager({ onClose, onOpenAttributeTable, onOpenZwsDbImport }
           setUploadProgress(`Загрузка ${file.name} (${fileSizeMB} МБ) на сервер...`);
           setUploadPercent(0);
 
-          const formData = new FormData();
-          formData.append("file", file);
-          if (currentSceneId) {
-            formData.append("sceneId", currentSceneId.toString());
+          const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk
+          const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+          const sessionId = crypto.randomUUID();
+
+          for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+            const start = chunkIdx * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, fileSize);
+            const chunkBlob = file.slice(start, end);
+
+            const pct = Math.round((chunkIdx / totalChunks) * 70);
+            setUploadPercent(pct);
+            setUploadProgress(`Загрузка ${file.name} (${fileSizeMB} МБ) — часть ${chunkIdx + 1}/${totalChunks}...`);
+
+            const chunkForm = new FormData();
+            chunkForm.append("sessionId", sessionId);
+            chunkForm.append("chunkIndex", chunkIdx.toString());
+            chunkForm.append("totalChunks", totalChunks.toString());
+            chunkForm.append("originalName", file.name);
+            if (currentSceneId) chunkForm.append("sceneId", currentSceneId.toString());
+            chunkForm.append("chunk", chunkBlob, file.name);
+
+            const chunkRes = await fetch("/api/datasets/upload-chunk", {
+              method: "POST",
+              body: chunkForm,
+              credentials: "include",
+            });
+
+            if (!chunkRes.ok) {
+              let errorMessage = "Ошибка при передаче части файла";
+              try { const e = await chunkRes.json(); errorMessage = e.message || errorMessage; } catch { /* ignore */ }
+              throw new Error(errorMessage);
+            }
           }
 
-          const res = await fetch("/api/datasets/upload", {
+          setUploadPercent(75);
+          setUploadProgress(`Сборка файла на сервере...`);
+
+          const finalRes = await fetch("/api/datasets/finalize-upload", {
             method: "POST",
-            body: formData,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId }),
             credentials: "include",
           });
 
-          if (!res.ok) {
-            let errorMessage = "Ошибка загрузки на сервер";
+          if (!finalRes.ok) {
+            let errorMessage = "Ошибка финализации загрузки";
             try {
-              const error = await res.json();
+              const error = await finalRes.json();
               errorMessage = error.message || errorMessage;
             } catch {
-              errorMessage = `Ошибка сервера: ${res.status} ${res.statusText}`;
+              errorMessage = `Ошибка сервера: ${finalRes.status} ${finalRes.statusText}`;
             }
             throw new Error(errorMessage);
           }
 
           let responseData: { uploadId?: number } = {};
           try {
-            responseData = await res.json();
+            responseData = await finalRes.json();
           } catch {
-            console.warn("Could not parse upload response as JSON");
+            console.warn("Could not parse finalize response as JSON");
           }
 
           if (responseData.uploadId) {
