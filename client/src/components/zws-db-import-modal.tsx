@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, Database, CheckSquare, Square, CheckCheck, X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,25 +21,21 @@ interface ImportProgress {
 }
 
 interface ZwsDbImportModalProps {
-  open: boolean;
   onClose: () => void;
   baseUrl: string;
   username?: string;
   password?: string;
   zwsConnectionId: number | null;
   sceneId: number | null;
-  onSuccess?: () => void;
 }
 
 export function ZwsDbImportModal({
-  open,
   onClose,
   baseUrl,
   username,
   password,
   zwsConnectionId,
   sceneId,
-  onSuccess,
 }: ZwsDbImportModalProps) {
   const [layers, setLayers] = useState<ZwsLayerInfo[]>([]);
   const [selectedLayers, setSelectedLayers] = useState<Set<string>>(new Set());
@@ -48,48 +44,39 @@ export function ZwsDbImportModal({
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState<ImportProgress[]>([]);
 
-  const fetchLayers = useCallback(async () => {
+  useEffect(() => {
     if (!baseUrl) return;
     setFetchingLayers(true);
     setFetchError(null);
-    try {
-      const res = await fetch("/api/zulu/zws/custom/layers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl, username, password }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Не удалось получить список слоёв");
-      }
-      const data = await res.json();
-      const layerList: ZwsLayerInfo[] = (data.layers || []).map((l: any) => ({
-        name: l.name,
-        title: l.title || l.name,
-        geometryType: l.geometryType,
-      }));
-      setLayers(layerList);
-      setSelectedLayers(new Set(layerList.map(l => l.name)));
-    } catch (err: any) {
-      setFetchError(err.message || "Ошибка загрузки слоёв");
-    } finally {
-      setFetchingLayers(false);
-    }
-  }, [baseUrl, username, password]);
-
-  useEffect(() => {
-    if (open) {
-      setLayers([]);
-      setSelectedLayers(new Set());
-      setFetchError(null);
-      setProgress([]);
-      setImporting(false);
-      fetchLayers();
-    }
-  }, [open, fetchLayers]);
+    fetch("/api/zulu/zws/custom/layers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ baseUrl, username, password }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || "Не удалось получить список слоёв");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        const layerList: ZwsLayerInfo[] = (data.layers || []).map((l: any) => ({
+          name: l.name,
+          title: l.title || l.name,
+          geometryType: l.geometryType,
+        }));
+        setLayers(layerList);
+        setSelectedLayers(new Set(layerList.map((l) => l.name)));
+      })
+      .catch((err: any) => {
+        setFetchError(err.message || "Ошибка загрузки слоёв");
+      })
+      .finally(() => setFetchingLayers(false));
+  }, []);
 
   const toggleLayer = (name: string) => {
-    setSelectedLayers(prev => {
+    setSelectedLayers((prev) => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
@@ -97,19 +84,24 @@ export function ZwsDbImportModal({
     });
   };
 
-  const selectAll = () => setSelectedLayers(new Set(layers.map(l => l.name)));
+  const selectAll = () => setSelectedLayers(new Set(layers.map((l) => l.name)));
   const deselectAll = () => setSelectedLayers(new Set());
 
   const handleImport = async () => {
     if (!sceneId || selectedLayers.size === 0) return;
-    const toImport = layers.filter(l => selectedLayers.has(l.name));
-    const initialProgress: ImportProgress[] = toImport.map(l => ({ layerName: l.name, status: "pending" }));
+    const toImport = layers.filter((l) => selectedLayers.has(l.name));
+    const initialProgress: ImportProgress[] = toImport.map((l) => ({
+      layerName: l.name,
+      status: "pending",
+    }));
     setProgress(initialProgress);
     setImporting(true);
 
     for (let i = 0; i < toImport.length; i++) {
       const layer = toImport[i];
-      setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: "loading" } : p));
+      setProgress((prev) =>
+        prev.map((p, idx) => (idx === i ? { ...p, status: "loading" } : p))
+      );
       try {
         const res = await fetch("/api/zulu/zws/import-to-db", {
           method: "POST",
@@ -128,7 +120,9 @@ export function ZwsDbImportModal({
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           if (res.status === 401) {
-            throw new Error("Требуется авторизация — укажите логин и пароль в настройках подключения");
+            throw new Error(
+              "Требуется авторизация — укажите логин и пароль в настройках подключения"
+            );
           } else if (res.status === 403) {
             throw new Error("Доступ к слою запрещён");
           } else if (res.status === 404) {
@@ -142,29 +136,45 @@ export function ZwsDbImportModal({
           }
         }
         const data = await res.json();
-        setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: "done", featureCount: data.featureCount } : p));
+        setProgress((prev) =>
+          prev.map((p, idx) =>
+            idx === i ? { ...p, status: "done", featureCount: data.featureCount } : p
+          )
+        );
       } catch (err: any) {
-        setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: "error", error: err.message } : p));
+        setProgress((prev) =>
+          prev.map((p, idx) =>
+            idx === i ? { ...p, status: "error", error: err.message } : p
+          )
+        );
       }
     }
 
-    await queryClient.invalidateQueries({ queryKey: ["/api/scenes", sceneId, "editable-layers"] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/editable-layers/viewport-batch"] });
+    await queryClient.invalidateQueries({
+      queryKey: ["/api/scenes", sceneId, "editable-layers"],
+    });
+    await queryClient.invalidateQueries({
+      queryKey: ["/api/editable-layers/viewport-batch"],
+    });
     setImporting(false);
   };
 
+  const allDone =
+    progress.length > 0 &&
+    progress.every((p) => p.status === "done" || p.status === "error");
+
   const handleBeforeClose = () => {
-    if (importing && !allDone) return true;
+    if (importing) return true;
   };
 
-  const doneCount = progress.filter(p => p.status === "done").length;
+  const doneCount = progress.filter((p) => p.status === "done").length;
   const totalCount = progress.length;
-  const progressPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
-  const allDone = progress.length > 0 && progress.every(p => p.status === "done" || p.status === "error");
+  const progressPercent =
+    totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
   return (
     <DraggableModal
-      isOpen={open}
+      isOpen={true}
       onClose={onClose}
       onBeforeClose={handleBeforeClose}
       title="Загрузка ZWS-слоёв в базу данных"
@@ -176,7 +186,6 @@ export function ZwsDbImportModal({
       resizable
     >
       <div className="flex flex-col h-full">
-        {/* Main scrollable content */}
         <div className="flex-1 min-h-0 flex flex-col p-3 gap-3">
 
           {fetchingLayers && (
@@ -193,7 +202,6 @@ export function ZwsDbImportModal({
             </div>
           )}
 
-          {/* Layer selection */}
           {!fetchingLayers && !fetchError && layers.length > 0 && !importing && (
             <>
               <div className="flex items-center justify-between shrink-0">
@@ -201,43 +209,53 @@ export function ZwsDbImportModal({
                   Выбрано: {selectedLayers.size} из {layers.length}
                 </span>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={selectAll} data-testid="button-select-all-zws">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={selectAll}
+                    data-testid="button-select-all-zws"
+                  >
                     <CheckCheck className="h-3 w-3 mr-1" />
                     Все
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={deselectAll} data-testid="button-deselect-all-zws">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={deselectAll}
+                    data-testid="button-deselect-all-zws"
+                  >
                     <X className="h-3 w-3 mr-1" />
                     Снять
                   </Button>
                 </div>
               </div>
 
-              {/* Layer list - fills remaining height, scrolls itself */}
               <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
                 <div className="p-1.5 space-y-0.5">
-                  {layers.map(layer => (
+                  {layers.map((layer) => (
                     <div
                       key={layer.name}
-                      className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-muted cursor-pointer"
+                      className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer"
                       onClick={() => toggleLayer(layer.name)}
                       data-testid={`zws-layer-item-${layer.name}`}
                     >
                       <Checkbox
                         checked={selectedLayers.has(layer.name)}
                         onCheckedChange={() => toggleLayer(layer.name)}
-                        data-testid={`checkbox-zws-layer-${layer.name}`}
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`zws-layer-checkbox-${layer.name}`}
                       />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{layer.title}</p>
-                        {layer.title !== layer.name && (
-                          <p className="text-xs text-muted-foreground truncate">{layer.name}</p>
-                        )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-medium truncate">
+                          {layer.title}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {layer.name}
+                          {layer.geometryType && ` · ${layer.geometryType}`}
+                        </span>
                       </div>
-                      {layer.geometryType && (
-                        <Badge variant="outline" className="text-xs shrink-0">
-                          {layer.geometryType}
-                        </Badge>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -245,52 +263,63 @@ export function ZwsDbImportModal({
             </>
           )}
 
-          {/* Import progress */}
-          {importing && (
-            <div className="flex-1 min-h-0 flex flex-col gap-3">
-              <div className="flex items-center justify-between text-sm shrink-0">
-                <span className="text-muted-foreground">Загрузка слоёв в БД...</span>
-                <span className="font-medium">{doneCount} / {totalCount}</span>
+          {progress.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between shrink-0">
+                <span className="text-sm font-medium">
+                  {allDone ? "Импорт завершён" : "Импорт слоёв..."}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {doneCount}/{totalCount}
+                </span>
               </div>
-              <Progress value={progressPercent} className="h-2 shrink-0" />
-              <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
-                <div className="p-1.5 space-y-0.5">
-                  {progress.map((p, i) => (
-                    <div key={i} className="flex items-start gap-2 px-2 py-1.5 text-sm rounded">
-                      <div className="shrink-0 mt-0.5">
-                        {p.status === "pending" && <Square className="h-4 w-4 text-muted-foreground" />}
-                        {p.status === "loading" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-                        {p.status === "done" && <CheckSquare className="h-4 w-4 text-green-500" />}
-                        {p.status === "error" && <AlertCircle className="h-4 w-4 text-destructive" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`truncate ${p.status === "error" ? "text-destructive" : ""}`}>
-                            {p.layerName}
-                          </span>
-                          {p.status === "done" && p.featureCount !== undefined && (
-                            <span className="text-xs text-muted-foreground shrink-0">{p.featureCount} объектов</span>
-                          )}
-                        </div>
-                        {p.status === "error" && p.error && (
-                          <p className="text-xs text-destructive mt-0.5 leading-tight">{p.error}</p>
-                        )}
-                      </div>
+              {!allDone && (
+                <Progress value={progressPercent} className="h-1.5" />
+              )}
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-1 max-h-64">
+                {progress.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="flex flex-col gap-0.5 px-2 py-1.5 rounded-md bg-muted/30 border"
+                  >
+                    <div className="flex items-center gap-2">
+                      {item.status === "pending" && (
+                        <Square className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      )}
+                      {item.status === "loading" && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+                      )}
+                      {item.status === "done" && (
+                        <CheckSquare className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                      )}
+                      {item.status === "error" && (
+                        <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                      )}
+                      <span className="text-sm truncate">{item.layerName}</span>
+                      {item.status === "done" && item.featureCount !== undefined && (
+                        <Badge variant="secondary" className="ml-auto text-xs shrink-0">
+                          {item.featureCount} объектов
+                        </Badge>
+                      )}
                     </div>
-                  ))}
-                </div>
+                    {item.status === "error" && item.error && (
+                      <p className="text-xs text-destructive pl-5 leading-snug">
+                        {item.error}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer buttons */}
         <div className="flex items-center justify-end gap-2 p-3 border-t shrink-0">
           <Button
             variant="outline"
             size="sm"
             onClick={onClose}
-            disabled={importing && !allDone}
+            disabled={importing}
             data-testid="button-cancel-zws-import"
           >
             {allDone ? "Закрыть" : "Отмена"}

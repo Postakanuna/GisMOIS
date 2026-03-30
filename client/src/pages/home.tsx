@@ -245,7 +245,6 @@ export default function Home() {
   const [zwsLayerFeatures, setZwsLayerFeatures] = useState<Record<string, { layerName: string; rows: Array<Record<string, unknown>> }>>({});
   const [showZwsAttributeTable, setShowZwsAttributeTable] = useState<{ layerId: string; layerName: string } | null>(null);
   const [showDataManager, setShowDataManager] = useState(false);
-  const [showZwsDbImport, setShowZwsDbImport] = useState(false);
   const [zwsDbImportConfig, setZwsDbImportConfig] = useState<ZwsDbImportConfig | null>(null);
   const [showGeoAnalysis, setShowGeoAnalysis] = useState(false);
   const selectionActionsRef = useRef<{
@@ -1224,18 +1223,14 @@ export default function Home() {
                   const nt = drawing.editableLayers.find(l => l.id === layerId)?.networkType;
                   setImportedLayerTable({ layerId, layerName, networkType: nt });
                 }}
-                onOpenZwsDbImport={(config) => {
-                  setZwsDbImportConfig(config);
-                  setShowZwsDbImport(true);
-                }}
+                onOpenZwsDbImport={setZwsDbImportConfig}
               />
             )}
 
-            {/* ZWS DB Import Modal — rendered at home level so it persists independently of DataManager */}
+            {/* ZWS DB Import Modal — at home level, independent of DataManager lifecycle */}
             {zwsDbImportConfig && (
               <ZwsDbImportModal
-                open={showZwsDbImport}
-                onClose={() => { setShowZwsDbImport(false); setZwsDbImportConfig(null); }}
+                onClose={() => setZwsDbImportConfig(null)}
                 baseUrl={zwsDbImportConfig.baseUrl}
                 username={zwsDbImportConfig.username}
                 password={zwsDbImportConfig.password}
