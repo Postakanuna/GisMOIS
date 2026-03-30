@@ -124,27 +124,27 @@ function sphericalMercatorInverse(x: number, y: number): [number, number] {
   return [lon, lat];
 }
 
-function transformCoordsSphericalMercator(coordinates: any): any {
-  if (!coordinates || !Array.isArray(coordinates)) return coordinates;
+function transformCoordsInPlace(coordinates: any): void {
+  if (!coordinates || !Array.isArray(coordinates)) return;
   if (typeof coordinates[0] === 'number') {
     const [lon, lat] = sphericalMercatorInverse(coordinates[0], coordinates[1]);
-    return coordinates.length > 2 ? [lon, lat, coordinates[2]] : [lon, lat];
+    coordinates[0] = lon;
+    coordinates[1] = lat;
+    return;
   }
-  return coordinates.map((c: any) => transformCoordsSphericalMercator(c));
+  for (let i = 0; i < coordinates.length; i++) {
+    transformCoordsInPlace(coordinates[i]);
+  }
 }
 
 function applySphericalMercatorToCollection(collection: any): any {
   if (!collection || !collection.features) return collection;
-  return {
-    ...collection,
-    features: collection.features.map((feature: any) => ({
-      ...feature,
-      geometry: feature.geometry ? {
-        ...feature.geometry,
-        coordinates: transformCoordsSphericalMercator(feature.geometry.coordinates)
-      } : feature.geometry
-    }))
-  };
+  for (const feature of collection.features) {
+    if (feature.geometry?.coordinates) {
+      transformCoordsInPlace(feature.geometry.coordinates);
+    }
+  }
+  return collection;
 }
 
 export interface NamedParseResult extends ParseResult {

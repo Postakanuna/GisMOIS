@@ -18,7 +18,7 @@ PORT = "5000"
 
 [deployment]
 deploymentTarget = "vm"
-run = ["node", "./dist/index.cjs"]
+run = ["node", "--max-old-space-size=4096", "./dist/index.cjs"]
 build = ["npm", "run", "build"]
 
 [workflows]
