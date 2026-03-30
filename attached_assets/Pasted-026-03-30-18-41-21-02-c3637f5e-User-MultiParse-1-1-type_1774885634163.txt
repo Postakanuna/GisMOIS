@@ -1,0 +1,100 @@
+026-03-30 18:41:21.02
+c3637f5e
+User
+[MultiParse 1/1] сети тс обшие_type_Участки (1251, ZuluGIS)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at Readable.push (node:internal/streams/readable:392:5)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at a_._handleErrorEvent (/home/runner/workspace/dist/index.cjs:71:8593)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at LP.parseErrorMessage (/home/runner/workspace/dist/index.cjs:70:110162)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at TLSWrap.onStreamRead (node:internal/stream_base_commons:191:23) {
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at LP.handlePacket (/home/runner/workspace/dist/index.cjs:70:106794)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at LP.parse (/home/runner/workspace/dist/index.cjs:70:105426)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+throw er; // Unhandled 'error' event
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at TLSWrap.onStreamRead (node:internal/stream_base_commons:191:23)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at a_.emit (node:events:524:28)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+node:events:502
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at LP.parse (/home/runner/workspace/dist/index.cjs:70:105461)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at TLSSocket.<anonymous> (/home/runner/workspace/dist/index.cjs:70:110857)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at addChunk (node:internal/streams/readable:561:12)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+Emitted 'error' event on instance at:
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at DP.emit (node:events:524:28)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at a_.r (/home/runner/workspace/dist/index.cjs:71:13590)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+[... lines matching original stack trace ...]
+2026-03-30 18:45:07.55
+c3637f5e
+User
+^
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at TLSSocket.emit (node:events:524:28)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at TLSSocket.<anonymous> (/home/runner/workspace/dist/index.cjs:70:110857)
+2026-03-30 18:45:07.55
+c3637f5e
+User
+at /home/runner/workspace/dist/index.cjs:70:113522
+2026-03-30 18:45:18.43
+c3637f5e
+User
+3:45:13 PM [seed] Field labels already seeded (429 rows), skipping
+2026-03-30 18:45:20.47
+c3637f5e
+User
+3:45:20 PM [init] Field labels cache loaded 
