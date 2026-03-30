@@ -20,7 +20,7 @@ import os from "os";
 import { parseShapefileBuffer, parseAllShapefilesFromZip, simplifyFeatureGeometry, getSimplifyTolerance, samplePointFeatures } from "./shapefile-parser";
 import { transformPropertyKeys } from "@shared/field-labels";
 import { refreshFieldLabelsCache } from "./field-labels-cache";
-import { searchObjectsForRAG, getLayersSummaryForContext, detectAndFetchLayerData, getReconstructionProgramsForContext, invalidateLayersCache } from "./ai-rag";
+import { searchObjectsForRAG, getLayersSummaryForContext, detectAndFetchLayerData, getReconstructionProgramsForContext, getUnitRatesForContext, invalidateLayersCache } from "./ai-rag";
 import { logAction } from "./audit";
 import crypto from "crypto";
 
@@ -9275,18 +9275,21 @@ ${fieldXml}
       let layersSummary = "";
       let layerDataContext = "";
       let programsContext = "";
+      let unitRatesContext = "";
       try {
         const parsedSceneId = sceneId ? parseInt(sceneId) : null;
-        const [ragResult, layersResult, layerDataResult, programsResult] = await Promise.all([
+        const [ragResult, layersResult, layerDataResult, programsResult, unitRatesResult] = await Promise.all([
           searchObjectsForRAG(lastUserMessage, parsedSceneId),
           getLayersSummaryForContext(parsedSceneId),
           detectAndFetchLayerData(lastUserMessage, parsedSceneId),
           getReconstructionProgramsForContext(parsedSceneId),
+          getUnitRatesForContext(),
         ]);
         ragContext = ragResult;
         layersSummary = layersResult;
         layerDataContext = layerDataResult;
         programsContext = programsResult;
+        unitRatesContext = unitRatesResult;
       } catch (e) {
         console.error("[RAG] Error during search:", e);
       }
@@ -9413,7 +9416,35 @@ ${fieldXml}
 
 НЕ добавляй маркер [ACTION:RECONSTRUCTION_PROGRAM] если пользователь ещё не подтвердил параметры.
 
-ВАЖНО: Если ниже приведены данные из базы или данные слоя — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${programsContext}${layerDataContext}${ragContext}`,
+СПРАВОЧНИКИ СИСТЕМЫ:
+В системе существуют два встроенных справочника. Ты обязан знать об их существовании и использовать их при соответствующих запросах.
+
+1. СПРАВОЧНИК «УДЕЛЬНАЯ СТОИМОСТЬ СТРОИТЕЛЬСТВА»:
+Содержит расценки для расчёта стоимости строительства и замены объектов тепловой сети:
+- Трубы (трубопроводы): цена за погонный метр, с разбивкой по диаметру (мм), типу прокладки (подземная/надземная) и типу работ (кап.ремонт/реконструкция).
+- ЦТП / ИТП: цена за МВт установленной мощности.
+- Источники теплоснабжения: цена за МВт.
+
+Если пользователь спрашивает о стоимости прокладки, замены, строительства труб или оборудования — действуй строго по шагам:
+Шаг 1. Определи, какие параметры уже указал пользователь (диаметр, тип прокладки, тип работ, длина/мощность).
+Шаг 2. Уточни недостающие параметры — только те, которых не хватает:
+  - Тип работ: капитальный ремонт или реконструкция?
+  - Тип прокладки (для труб): подземная или надземная?
+  - Диаметр трубы (если не указан или приблизительный): уточни в мм.
+  - Длина (для труб): сколько погонных метров?
+Шаг 3. Когда все параметры известны — найди соответствующую расценку из справочника (данные приведены ниже в разделе ДАННЫЕ СПРАВОЧНИКА) и рассчитай итоговую стоимость.
+Шаг 4. Приведи расчёт: расценка × длина (или мощность) = итог. Укажи базовый год расценки.
+Если для указанного диаметра расценка отсутствует — выбери ближайшую большую и предупреди об этом.
+Если справочник пуст (данных нет) — сообщи, что справочник не заполнен, и предложи администратору добавить расценки в разделе "Справочники".
+
+2. СПРАВОЧНИК «РАСШИФРОВКА АТРИБУТОВ ZULU»:
+Содержит расшифровку технических атрибутов и кодовых значений из программного комплекса Zulu. Например:
+- ZType — тип объекта сети
+- ZMode — режим работы (1 = тепловая сеть ТС, 2 = ГВС и т.д.)
+- Другие технические поля объектов
+Если пользователь спрашивает о значении кодов, атрибутов или технических полей — ты можешь пояснить их смысл, опираясь на данные из переведённых атрибутов в контексте ниже.
+
+ВАЖНО: Если ниже приведены данные из базы или данные слоя — используй их для ответа. Ссылайся на конкретные значения параметров. Если данных нет — отвечай на основе общих знаний, но предупреди, что это общая информация, а не данные из системы.${layersSummary}${programsContext}${layerDataContext}${ragContext}${unitRatesContext}`,
       };
 
       const apiMessages = [systemMessage, ...messages.map((m: any) => ({

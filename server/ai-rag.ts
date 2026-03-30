@@ -546,6 +546,55 @@ export async function getReconstructionProgramsForContext(sceneId?: number | nul
 }
 
 /**
+ * Возвращает содержимое справочника удельных стоимостей строительства для промпта.
+ */
+export async function getUnitRatesForContext(): Promise<string> {
+  try {
+    const rows = await db.execute(sql`
+      SELECT object_type, laying_type, diameter_mm, work_type, price_per_unit, unit, base_year, notes
+      FROM cost_unit_rates
+      ORDER BY object_type, work_type, laying_type NULLS LAST, diameter_mm NULLS LAST
+    `);
+    const rates = (rows as any).rows || [];
+    if (rates.length === 0) return "";
+
+    const OBJECT_TYPE_LABELS: Record<string, string> = {
+      pipe: "Труба (трубопровод)",
+      ctp: "ЦТП / ИТП",
+      source: "Источник теплоснабжения",
+    };
+    const LAYING_TYPE_LABELS: Record<string, string> = {
+      underground: "подземная прокладка",
+      above: "надземная прокладка",
+    };
+    const WORK_TYPE_LABELS: Record<string, string> = {
+      overhaul: "кап.ремонт",
+      reconstruction: "реконструкция",
+    };
+    const UNIT_LABELS: Record<string, string> = {
+      rub_per_m: "руб/м",
+      rub_per_mw: "руб/МВт",
+    };
+
+    let ctx = "\n\nСПРАВОЧНИК «УДЕЛЬНАЯ СТОИМОСТЬ СТРОИТЕЛЬСТВА» (расценки для расчёта стоимости работ на тепловых сетях):\n";
+    for (const r of rates) {
+      const objLabel = OBJECT_TYPE_LABELS[r.object_type] ?? r.object_type;
+      const workLabel = WORK_TYPE_LABELS[r.work_type] ?? r.work_type;
+      const layingLabel = r.laying_type ? `, ${LAYING_TYPE_LABELS[r.laying_type] ?? r.laying_type}` : "";
+      const diamLabel = r.diameter_mm ? `, Ø${r.diameter_mm} мм` : "";
+      const price = parseFloat(r.price_per_unit).toLocaleString("ru-RU");
+      const unitLabel = UNIT_LABELS[r.unit] ?? r.unit;
+      const notes = r.notes ? ` (${r.notes})` : "";
+      ctx += `- ${objLabel}${diamLabel}${layingLabel}, ${workLabel}: ${price} ${unitLabel}, базовый год: ${r.base_year}${notes}\n`;
+    }
+    return ctx;
+  } catch (e) {
+    console.error("[RAG] unit rates context error:", e);
+    return "";
+  }
+}
+
+/**
  * Определяет, является ли сообщение запросом на получение данных конкретного слоя,
  * и возвращает его данные для контекста.
  */
