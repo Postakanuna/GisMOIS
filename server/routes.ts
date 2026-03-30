@@ -78,32 +78,10 @@ function validateShapefileBuffer(buffer: Buffer): { valid: boolean; error?: stri
     return { valid: false, error: "Файл не является ZIP-архивом или SHP-файлом" };
   }
 
-  if (isZip) {
-    let hasShp = false;
-    let offset = 0;
-    while (offset < buffer.length - 30) {
-      if (buffer[offset] === 0x50 && buffer[offset + 1] === 0x4B &&
-          buffer[offset + 2] === 0x03 && buffer[offset + 3] === 0x04) {
-        const fnLen = buffer.readUInt16LE(offset + 26);
-        const extraLen = buffer.readUInt16LE(offset + 28);
-        if (offset + 30 + fnLen <= buffer.length) {
-          const fileName = buffer.toString("utf8", offset + 30, offset + 30 + fnLen).toLowerCase();
-          if (fileName.endsWith(".shp")) {
-            hasShp = true;
-            break;
-          }
-        }
-        const compressedSize = buffer.readUInt32LE(offset + 18);
-        offset += 30 + fnLen + extraLen + compressedSize;
-      } else {
-        break;
-      }
-    }
-    if (!hasShp) {
-      return { valid: false, error: "ZIP-архив не содержит SHP-файлов. Загрузите архив с шейпфайлом (.shp, .dbf, .shx)" };
-    }
-  }
-
+  // For ZIP files: trust the parser (JSZip) to validate contents.
+  // Manual local-header scanning fails on ZIPs with Data Descriptors
+  // (where compressedSize=0 in local headers — the actual size is stored after data).
+  // If no .shp is found, parseAllShapefilesFromZip will throw a descriptive error.
   return { valid: true };
 }
 
