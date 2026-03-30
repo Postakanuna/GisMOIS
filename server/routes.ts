@@ -10568,7 +10568,8 @@ ${fieldXml}
     try {
       const id = parseIntParam(req.params.id, res);
       if (id === null) return;
-      const updated = await storage.updateCostUnitRate(id, req.body);
+      const { id: _id, createdAt: _createdAt, ...data } = req.body;
+      const updated = await storage.updateCostUnitRate(id, data);
       if (!updated) return res.status(404).json({ message: "Удельник не найден" });
       res.json(updated);
     } catch (err: any) {
