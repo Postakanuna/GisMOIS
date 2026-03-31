@@ -70,10 +70,11 @@ export function SensorIntegrationPanel() {
 
   const testConnectionMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", "/api/admin/sensor-integration/test", {
+      const res = await apiRequest("POST", "/api/admin/sensor-integration/test", {
         apiUrl: effectiveConfig.apiUrl ?? config?.apiUrl,
         apiToken: effectiveConfig.apiToken ?? config?.apiToken,
       });
+      return res.json();
     },
     onSuccess: (res: any) => {
       if (res.success) {
@@ -89,7 +90,8 @@ export function SensorIntegrationPanel() {
 
   const syncNowMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", "/api/admin/sensor-integration/sync", {});
+      const res = await apiRequest("POST", "/api/admin/sensor-integration/sync", {});
+      return res.json();
     },
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/sensor-integration/config"] });
