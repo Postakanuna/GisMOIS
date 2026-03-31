@@ -60,7 +60,7 @@ function buildFetchOptions(apiToken: string): RequestInit {
   const noSslAgent = new Agent({ connect: { rejectUnauthorized: false } });
   return {
     headers: {
-      "X-API-TOKEN": apiToken,
+      "HTTP-X-API-TOKEN": apiToken,
     },
     signal: AbortSignal.timeout(30000),
     // @ts-ignore — undici dispatcher is supported in Node.js 18+ native fetch
