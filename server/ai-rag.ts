@@ -3,6 +3,8 @@ import { sql } from "drizzle-orm";
 import { getFieldLabelPlain } from "@shared/field-labels";
 
 interface FoundObject {
+  featureId: number;
+  layerId: number;
   layerName: string;
   objectName: string;
   address: string;
@@ -188,7 +190,7 @@ async function searchByTerm(term: string, results: FoundObject[], limit: number,
   try {
     const sceneFilter = sceneId ? sql`AND el.scene_id = ${sceneId}` : sql``;
     const rows = await db.execute(sql`
-      SELECT df.properties, df.geometry_type, el.name as layer_name, el.network_type
+      SELECT df.id as feature_id, df.properties, df.geometry_type, el.id as layer_id, el.name as layer_name, el.network_type
       FROM drawn_features df
       JOIN editable_layers el ON df.layer_id = el.id
       WHERE (
@@ -223,6 +225,8 @@ async function searchByTerm(term: string, results: FoundObject[], limit: number,
       );
       if (!isDuplicate) {
         results.push({
+          featureId: Number(row.feature_id),
+          layerId: Number(row.layer_id),
           layerName: row.layer_name,
           objectName: name,
           address: addr,
@@ -260,7 +264,7 @@ export async function searchObjectsForRAG(userMessage: string, sceneId?: number 
       if (results.length >= 5) break;
       try {
         const rows = await db.execute(sql`
-          SELECT df.properties, df.geometry_type, el.name as layer_name, el.network_type
+          SELECT df.id as feature_id, df.properties, df.geometry_type, el.id as layer_id, el.name as layer_name, el.network_type
           FROM drawn_features df
           JOIN editable_layers el ON df.layer_id = el.id
           WHERE (el.name ILIKE ${'%' + layerType + '%'} OR el.network_type = ${layerType.toLowerCase()})
@@ -273,6 +277,8 @@ export async function searchObjectsForRAG(userMessage: string, sceneId?: number 
           if (results.length >= 5) break;
           const props = typeof row.properties === "string" ? JSON.parse(row.properties) : row.properties;
           results.push({
+            featureId: Number(row.feature_id),
+            layerId: Number(row.layer_id),
             layerName: row.layer_name,
             objectName: props.Name || "",
             address: props.Adres || "",
@@ -299,7 +305,7 @@ export async function searchObjectsForRAG(userMessage: string, sceneId?: number 
     const layerInfo = networkLabel
       ? `слой: ${obj.layerName}, тип сети: ${networkLabel}`
       : `слой: ${obj.layerName}`;
-    context += `\nОбъект ${i + 1}: "${obj.objectName || "без имени"}" (${layerInfo}, тип геометрии: ${obj.geometryType})\n`;
+    context += `\nОбъект ${i + 1}: "${obj.objectName || "без имени"}" (ID объекта: ${obj.featureId}, ID слоя: ${obj.layerId}, ${layerInfo}, тип геометрии: ${obj.geometryType})\n`;
     if (obj.address) {
       context += `  Адрес: ${obj.address}\n`;
     }

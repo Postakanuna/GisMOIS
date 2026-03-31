@@ -401,6 +401,16 @@ export default function Home() {
     setSidebarView(v => v === "ai-chat" ? "layers" : "ai-chat");
   }, []);
 
+  const handleNavigateToFeature = useCallback(async (featureId: number, layerId: number) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`);
+      if (!response.ok) return;
+      const feature = await response.json();
+      mapActionsRef.current?.zoomToFeature(feature);
+    } catch {
+    }
+  }, []);
+
   const toggleEditMode = useCallback(() => {
     if (editMode) {
       // Exiting edit mode: flush session trash to server, then reset
@@ -775,7 +785,7 @@ export default function Home() {
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                     onToggleAiChat={handleToggleAiChat}
                     aiChatActive={sidebarView === "ai-chat"}
-                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} providers={aiProviders} selectedProvider={selectedAiProvider} onProviderChange={setSelectedAiProvider} isDisabled={aiIsDisabled} providersLoaded={aiProvidersLoaded} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} onReconstructionProgramCreated={(programId) => { setAiReconstructionProgramId(programId); setShowReconstructionProgram(true); }} />}
+                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} providers={aiProviders} selectedProvider={selectedAiProvider} onProviderChange={setSelectedAiProvider} isDisabled={aiIsDisabled} providersLoaded={aiProvidersLoaded} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} onReconstructionProgramCreated={(programId) => { setAiReconstructionProgramId(programId); setShowReconstructionProgram(true); }} onNavigateToFeature={handleNavigateToFeature} />}
                     aiHeaderActions={aiHeaderActions}
                     onOpenDataManager={() => setShowDataManager(true)}
                     connectionStatus={zuluConnection.status}
@@ -857,7 +867,7 @@ export default function Home() {
                     onOpenGeocodeDialog={(layerId) => setLayerPanelGeocodeId(layerId)}
                     onToggleAiChat={handleToggleAiChat}
                     aiChatActive={sidebarView === "ai-chat"}
-                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} providers={aiProviders} selectedProvider={selectedAiProvider} onProviderChange={setSelectedAiProvider} isDisabled={aiIsDisabled} providersLoaded={aiProvidersLoaded} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} onReconstructionProgramCreated={(programId) => { setAiReconstructionProgramId(programId); setShowReconstructionProgram(true); }} />}
+                    aiChatContent={<AiChatPanel messages={aiChatMessages} onMessagesChange={setAiChatMessages} sceneId={currentSceneId} providers={aiProviders} selectedProvider={selectedAiProvider} onProviderChange={setSelectedAiProvider} isDisabled={aiIsDisabled} providersLoaded={aiProvidersLoaded} onComplaintAnalysisResult={(result) => { setAiComplaintNoTopoResult(result); setShowComplaintDialog(true); }} onSimulationResult={(result, featureInfo) => { setSimulationFeatureInfo({ featureId: featureInfo.featureId, layerId: featureInfo.layerId, name: featureInfo.name, featureType: featureInfo.featureType }); setAiSimulationResult(result); setShowSimulationDialog(true); }} onAccidentAnalysisResult={(result) => { setAiAccidentResult(result); setShowAccidentDialog(true); }} onReconstructionProgramCreated={(programId) => { setAiReconstructionProgramId(programId); setShowReconstructionProgram(true); }} onNavigateToFeature={handleNavigateToFeature} />}
                     aiHeaderActions={aiHeaderActions}
                     onOpenDataManager={() => setShowDataManager(true)}
                     connectionStatus={zuluConnection.status}

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, User, Play, BarChart3, Loader2, Zap, Search, Paperclip, X, ClipboardList } from "lucide-react";
+import { Send, Bot, User, Play, BarChart3, Loader2, Zap, Search, Paperclip, X, ClipboardList, Crosshair } from "lucide-react";
 
 export interface ChatAction {
   type:
@@ -13,7 +13,8 @@ export interface ChatAction {
     | "start_accident_analysis"
     | "show_accident_result"
     | "start_reconstruction_program"
-    | "open_reconstruction_program";
+    | "open_reconstruction_program"
+    | "navigate_to_feature";
   label: string;
   payload?: any;
   done?: boolean;
@@ -59,14 +60,16 @@ interface AiChatPanelProps {
   onComplaintAnalysisResult?: (result: any) => void;
   onSimulationResult?: (result: any, featureInfo: { featureId: number; layerId: number; name: string; featureType: string }) => void;
   onAccidentAnalysisResult?: (result: any) => void;
+  onNavigateToFeature?: (featureId: number, layerId: number) => void;
 }
 
 const ACTION_MARKER_REGEX = /\[ACTION:COMPLAINT_ANALYSIS:(\d+):([^:\]]+):([^\]]*)\]/;
 const SIMULATION_SEARCH_REGEX = /\[ACTION:SIMULATION_SEARCH:([^:\]]+):([^\]]*)\]/;
 const ACCIDENT_ANALYSIS_REGEX = /\[ACTION:ACCIDENT_ANALYSIS:([^:\]]*):([^\]]*)\]/;
 const RECONSTRUCTION_PROGRAM_REGEX = /\[ACTION:RECONSTRUCTION_PROGRAM:(\d+):([^:]+):(\d+):(\d+):(\d*):([^\]]*)\]/;
+const NAVIGATE_TO_REGEX = /\[ACTION:NAVIGATE_TO:(\d+):(\d+)\]/;
 
-export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, providers, selectedProvider, onProviderChange, isDisabled, providersLoaded, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult, onReconstructionProgramCreated }: AiChatPanelProps & { onReconstructionProgramCreated?: (programId: number) => void }) {
+export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, providers, selectedProvider, onProviderChange, isDisabled, providersLoaded, onComplaintAnalysisResult, onSimulationResult, onAccidentAnalysisResult, onReconstructionProgramCreated, onNavigateToFeature }: AiChatPanelProps & { onReconstructionProgramCreated?: (programId: number) => void }) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -156,6 +159,10 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
       const simulationMatch = aiContent.match(SIMULATION_SEARCH_REGEX);
       const accidentMatch = aiContent.match(ACCIDENT_ANALYSIS_REGEX);
       const reconstructionMatch = aiContent.match(RECONSTRUCTION_PROGRAM_REGEX);
+      const navigateMatch = aiContent.match(NAVIGATE_TO_REGEX);
+      if (navigateMatch) {
+        aiContent = aiContent.replace(NAVIGATE_TO_REGEX, "").trim();
+      }
 
       const newMessages = [...updatedMessages];
 
@@ -347,6 +354,23 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
           timestamp: new Date(),
         };
         newMessages.push(aiMsg);
+
+        if (navigateMatch) {
+          const navFeatureId = parseInt(navigateMatch[1]);
+          const navLayerId = parseInt(navigateMatch[2]);
+          const navActionMsg: ChatMessage = {
+            id: `action-${Date.now() + 1}`,
+            role: "assistant",
+            content: "",
+            timestamp: new Date(),
+            action: {
+              type: "navigate_to_feature",
+              label: "Перейти к объекту",
+              payload: { featureId: navFeatureId, layerId: navLayerId },
+            },
+          };
+          newMessages.push(navActionMsg);
+        }
       }
 
       onMessagesChange(newMessages);
@@ -633,6 +657,10 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
       if (onReconstructionProgramCreated && msg.action.payload?.programId) {
         onReconstructionProgramCreated(msg.action.payload.programId);
       }
+    } else if (msg.action.type === "navigate_to_feature") {
+      if (onNavigateToFeature && msg.action.payload) {
+        onNavigateToFeature(msg.action.payload.featureId, msg.action.payload.layerId);
+      }
     }
   };
 
@@ -653,6 +681,7 @@ export function AiChatPanel({ onBack, messages, onMessagesChange, sceneId, provi
       case "show_accident_result": return <BarChart3 className="h-3.5 w-3.5" />;
       case "start_reconstruction_program": return isAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardList className="h-3.5 w-3.5" />;
       case "open_reconstruction_program": return <ClipboardList className="h-3.5 w-3.5" />;
+      case "navigate_to_feature": return <Crosshair className="h-3.5 w-3.5" />;
       default: return null;
     }
   };
