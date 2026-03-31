@@ -9516,21 +9516,35 @@ ${fieldXml}
       const layerIds: number[] = layers.map((l: any) => Number(l.id));
       const layerMap = new Map<number, string>(layers.map((l: any) => [Number(l.id), l.name]));
 
-      const likePattern = `%${q}%`;
-      const features = await db
-        .select({ id: drawnFeatures.id, layer_id: drawnFeatures.layerId, properties: drawnFeatures.properties })
-        .from(drawnFeatures)
-        .where(and(
-          inArray(drawnFeatures.layerId, layerIds),
-          sql`${drawnFeatures.properties}::text ILIKE ${likePattern}`
-        ))
-        .orderBy(
-          sql`CASE WHEN lower(${drawnFeatures.properties}->>'Name') = lower(${q}) THEN 0 WHEN lower(${drawnFeatures.properties}->>'Name') LIKE lower(${q + '%'}) THEN 1 ELSE 2 END`,
-          drawnFeatures.id
-        )
-        .limit(10);
+      const p1 = `%${q}%`;
+      const p2 = `%${q.replace(/-/g, ' ')}%`;
+      const p3 = `%${q.replace(/-(\d)/g, ' №$1')}%`;
+      const p4 = `%${q.replace(/[-\s№]+/g, '%')}%`;
 
-      const NAME_KEYS = ["name", "Наименование", "наименование", "название", "Название", "Имя", "имя", "Name"];
+      const featuresRows = await db.execute(sql`
+        SELECT df.id, df.layer_id, df.properties
+        FROM drawn_features df
+        WHERE df.layer_id = ANY(${layerIds}::int[])
+          AND (
+            df.properties::text ILIKE ${p1}
+            OR df.properties::text ILIKE ${p2}
+            OR df.properties::text ILIKE ${p3}
+            OR df.properties::text ILIKE ${p4}
+          )
+        ORDER BY
+          CASE
+            WHEN lower(df.properties->>'Name') = lower(${q}) THEN 0
+            WHEN lower(df.properties->>'Name') ILIKE lower(${q.replace(/-/g, ' ')}) THEN 1
+            WHEN lower(df.properties->>'Name') ILIKE lower(${q.replace(/-(\d)/g, ' №$1')}) THEN 2
+            WHEN lower(df.properties->>'Name') ILIKE lower(${q + '%'}) THEN 3
+            ELSE 4
+          END,
+          df.id
+        LIMIT 10
+      `);
+      const features = (featuresRows as any).rows || [];
+
+      const NAME_KEYS = ["Name", "name", "Наименование", "наименование", "название", "Название", "Имя", "имя"];
       const ADDR_KEYS = ["Адрес", "адрес", "address", "Address", "addr", "Adres", "adres", "место", "Место"];
 
       const result = features.map((f: any) => {
@@ -9546,12 +9560,13 @@ ${fieldXml}
         return {
           featureId: f.id,
           layerId: f.layer_id,
-          layerName: layerMap.get(f.layer_id) || "",
+          layerName: layerMap.get(Number(f.layer_id)) || "",
           featureName,
           featureAddress,
         };
       });
 
+      res.setHeader("Cache-Control", "no-store");
       return res.json(result);
     } catch (error: any) {
       console.error("AI search-features error:", error);
