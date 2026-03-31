@@ -9492,16 +9492,25 @@ ${fieldXml}
       const sceneIdNum = Number(sceneId);
       const nt = networkType && String(networkType) !== "_any_" ? String(networkType) : null;
 
-      const layersRows = nt
+      let layersRows = nt
         ? await db.execute(sql`
             SELECT id, name, network_type FROM editable_layers
-            WHERE scene_id = ${sceneIdNum} AND feature_count > 0 AND network_type = ${nt}
+            WHERE scene_id = ${sceneIdNum} AND network_type = ${nt}
           `)
         : await db.execute(sql`
             SELECT id, name, network_type FROM editable_layers
-            WHERE scene_id = ${sceneIdNum} AND feature_count > 0
+            WHERE scene_id = ${sceneIdNum}
           `);
-      const layers = (layersRows as any).rows || [];
+      let layers = (layersRows as any).rows || [];
+
+      if (layers.length === 0 && nt) {
+        layersRows = await db.execute(sql`
+          SELECT id, name, network_type FROM editable_layers
+          WHERE scene_id = ${sceneIdNum}
+        `);
+        layers = (layersRows as any).rows || [];
+      }
+
       if (layers.length === 0) return res.json([]);
 
       const layerIds: number[] = layers.map((l: any) => Number(l.id));
