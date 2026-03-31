@@ -9519,7 +9519,6 @@ ${fieldXml}
       const p1 = `%${q}%`;
       const p2 = `%${q.replace(/-/g, ' ')}%`;
       const p3 = `%${q.replace(/-(\d)/g, ' №$1')}%`;
-      const p4 = `%${q.replace(/[-\s№]+/g, '%')}%`;
 
       const featuresRows = await db.execute(sql`
         SELECT df.id, df.layer_id, df.properties
@@ -9529,7 +9528,6 @@ ${fieldXml}
             df.properties::text ILIKE ${p1}
             OR df.properties::text ILIKE ${p2}
             OR df.properties::text ILIKE ${p3}
-            OR df.properties::text ILIKE ${p4}
           )
         ORDER BY
           CASE
@@ -9540,31 +9538,49 @@ ${fieldXml}
             ELSE 4
           END,
           df.id
-        LIMIT 10
+        LIMIT 30
       `);
-      const features = (featuresRows as any).rows || [];
+      const rawFeatures = (featuresRows as any).rows || [];
 
       const NAME_KEYS = ["Name", "name", "Наименование", "наименование", "название", "Название", "Имя", "имя"];
       const ADDR_KEYS = ["Адрес", "адрес", "address", "Address", "addr", "Adres", "adres", "место", "Место"];
 
-      const result = features.map((f: any) => {
-        const props = typeof f.properties === "string" ? JSON.parse(f.properties) : (f.properties || {});
-        let featureName = "";
-        for (const k of NAME_KEYS) { if (props[k]) { featureName = String(props[k]); break; } }
-        if (!featureName) {
-          const keys = Object.keys(props);
-          featureName = keys.length > 0 ? String(props[keys[0]]) : `Объект #${f.id}`;
-        }
-        let featureAddress = "";
-        for (const k of ADDR_KEYS) { if (props[k]) { featureAddress = String(props[k]); break; } }
-        return {
-          featureId: f.id,
-          layerId: f.layer_id,
-          layerName: layerMap.get(Number(f.layer_id)) || "",
-          featureName,
-          featureAddress,
-        };
-      });
+      const normalizeName = (s: string) =>
+        s.toLowerCase().replace(/[№#]/g, '').replace(/[-\s]+/g, ' ').trim();
+
+      const normQ = normalizeName(q);
+      const qHasDigits = /\d/.test(q);
+
+      const nameMatchesQuery = (featureName: string): boolean => {
+        if (!qHasDigits) return true;
+        const normName = normalizeName(featureName);
+        const idx = normName.indexOf(normQ);
+        if (idx < 0) return false;
+        const after = normName.slice(idx + normQ.length);
+        return after === '' || /^[^0-9]/.test(after);
+      };
+
+      const result = rawFeatures
+        .map((f: any) => {
+          const props = typeof f.properties === "string" ? JSON.parse(f.properties) : (f.properties || {});
+          let featureName = "";
+          for (const k of NAME_KEYS) { if (props[k]) { featureName = String(props[k]); break; } }
+          if (!featureName) {
+            const keys = Object.keys(props);
+            featureName = keys.length > 0 ? String(props[keys[0]]) : `Объект #${f.id}`;
+          }
+          let featureAddress = "";
+          for (const k of ADDR_KEYS) { if (props[k]) { featureAddress = String(props[k]); break; } }
+          return {
+            featureId: f.id,
+            layerId: f.layer_id,
+            layerName: layerMap.get(Number(f.layer_id)) || "",
+            featureName,
+            featureAddress,
+          };
+        })
+        .filter((item: any) => nameMatchesQuery(item.featureName))
+        .slice(0, 10);
 
       res.setHeader("Cache-Control", "no-store");
       return res.json(result);
