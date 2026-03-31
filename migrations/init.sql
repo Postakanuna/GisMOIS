@@ -1,12 +1,12 @@
 -- =====================================================
 -- ГИС МО "Инженерные сети" — Полная схема базы данных
--- Версия: 1.1.0
--- Дата обновления: 2026-03-08
+-- Версия: 1.2.0
+-- Дата обновления: 2026-03-31
 --
--- Этот файл содержит ВСЕ таблицы приложения (28 шт.).
+-- Этот файл содержит ВСЕ таблицы приложения (33 шт.).
 -- Безопасен для повторного применения (IF NOT EXISTS).
--- При добавлении новых таблиц/столбцов в schema.ts —
--- ОБЯЗАТЕЛЬНО обновляйте этот файл.
+-- При добавлении новых таблиц/столбцов в schema.ts или
+-- shared/models/ — ОБЯЗАТЕЛЬНО обновляйте этот файл.
 --
 -- Применение на сервере:
 --   psql -U postgres -d gis_mo -f migrations/init.sql
@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS "users" (
   "is_active" varchar(5) DEFAULT 'true' NOT NULL,
   "created_at" timestamp DEFAULT now(),
   "updated_at" timestamp DEFAULT now(),
-  CONSTRAINT "users_username_unique" UNIQUE("username")
+  CONSTRAINT "users_username_unique" UNIQUE("username"),
+  CONSTRAINT "users_email_unique" UNIQUE("email")
 );
 
 -- 3. Папки сцен
@@ -71,7 +72,15 @@ CREATE TABLE IF NOT EXISTS "scene_members" (
   "added_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 6. Папки слоёв
+-- 6. Административные группы слоёв
+CREATE TABLE IF NOT EXISTS "admin_layer_groups" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "name" text NOT NULL,
+  "display_order" integer DEFAULT 0 NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+
+-- 7. Папки слоёв
 CREATE TABLE IF NOT EXISTS "layer_folders" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "scene_id" integer NOT NULL,
@@ -81,11 +90,12 @@ CREATE TABLE IF NOT EXISTS "layer_folders" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 7. Редактируемые слои
+-- 8. Редактируемые слои
 CREATE TABLE IF NOT EXISTS "editable_layers" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "scene_id" integer,
   "folder_id" integer,
+  "admin_group_id" integer,
   "name" text NOT NULL,
   "geometry_type" text NOT NULL,
   "color" text DEFAULT '#1976D2' NOT NULL,
@@ -106,7 +116,7 @@ CREATE TABLE IF NOT EXISTS "editable_layers" (
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 8. Объекты (геометрии) слоёв
+-- 9. Объекты (геометрии) слоёв
 CREATE TABLE IF NOT EXISTS "drawn_features" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "layer_id" integer NOT NULL,
@@ -124,7 +134,7 @@ CREATE TABLE IF NOT EXISTS "drawn_features" (
 CREATE INDEX IF NOT EXISTS "drawn_features_layer_id_idx" ON "drawn_features" USING btree ("layer_id");
 CREATE INDEX IF NOT EXISTS "drawn_features_bbox_idx" ON "drawn_features" USING btree ("layer_id", "bbox_min_x", "bbox_min_y", "bbox_max_x", "bbox_max_y");
 
--- 9. История изменений объектов
+-- 10. История изменений объектов
 CREATE TABLE IF NOT EXISTS "feature_history" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "feature_id" integer NOT NULL,
@@ -137,7 +147,7 @@ CREATE TABLE IF NOT EXISTS "feature_history" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 10. Схемы атрибутов слоёв
+-- 11. Схемы атрибутов слоёв
 CREATE TABLE IF NOT EXISTS "layer_schemas" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "layer_id" integer NOT NULL,
@@ -147,7 +157,7 @@ CREATE TABLE IF NOT EXISTS "layer_schemas" (
   CONSTRAINT "layer_schemas_layer_id_unique" UNIQUE("layer_id")
 );
 
--- 11. Каталог датасетов (загруженные шейпфайлы)
+-- 12. Каталог датасетов (загруженные шейпфайлы)
 CREATE TABLE IF NOT EXISTS "datasets" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "name" text NOT NULL,
@@ -160,7 +170,7 @@ CREATE TABLE IF NOT EXISTS "datasets" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 12. Объекты датасетов
+-- 13. Объекты датасетов
 CREATE TABLE IF NOT EXISTS "dataset_features" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "dataset_id" integer NOT NULL,
@@ -170,7 +180,7 @@ CREATE TABLE IF NOT EXISTS "dataset_features" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 13. Привязка датасетов к сценам
+-- 14. Привязка датасетов к сценам
 CREATE TABLE IF NOT EXISTS "scene_datasets" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "scene_id" integer NOT NULL,
@@ -185,7 +195,7 @@ CREATE TABLE IF NOT EXISTS "scene_datasets" (
   "added_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 14. Загрузки (статус фоновой обработки шейпфайлов)
+-- 15. Загрузки (статус фоновой обработки шейпфайлов)
 -- Статусы: pending → processing → completed | failed
 -- Фоновая обработка: файл принимается мгновенно (202),
 -- парсинг и запись в БД идут асинхронно с обновлением прогресса.
@@ -207,7 +217,7 @@ CREATE TABLE IF NOT EXISTS "uploads" (
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 15. Пользовательские иконки (SVG)
+-- 16. Пользовательские иконки (SVG)
 CREATE TABLE IF NOT EXISTS "custom_icons" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "name" text NOT NULL,
@@ -217,27 +227,27 @@ CREATE TABLE IF NOT EXISTS "custom_icons" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 16. API-ключи для внешних интеграций
+-- 17. API-ключи для внешних интеграций
 CREATE TABLE IF NOT EXISTS "api_keys" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  "user_id" varchar NOT NULL,
-  "name" text NOT NULL,
-  "token_hash" varchar(255) NOT NULL,
-  "scene_id" integer,
+  "user_id" varchar NOT NULL REFERENCES "users"("id"),
+  "name" varchar NOT NULL,
+  "token_hash" varchar NOT NULL,
+  "scene_id" integer REFERENCES "scenes"("id"),
   "permissions" text[] DEFAULT ARRAY['create_point'],
   "is_active" integer DEFAULT 1,
   "last_used_at" timestamp,
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 17. Настройки приложения (key-value)
+-- 18. Настройки приложения (key-value)
 CREATE TABLE IF NOT EXISTS "app_settings" (
   "key" varchar(255) PRIMARY KEY NOT NULL,
   "value" text NOT NULL,
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 18. Журнал аудита
+-- 19. Журнал аудита
 CREATE TABLE IF NOT EXISTS "audit_log" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "user_id" varchar,
@@ -253,7 +263,7 @@ CREATE INDEX IF NOT EXISTS "audit_log_user_id_idx" ON "audit_log" USING btree ("
 CREATE INDEX IF NOT EXISTS "audit_log_created_at_idx" ON "audit_log" USING btree ("created_at");
 CREATE INDEX IF NOT EXISTS "audit_log_action_idx" ON "audit_log" USING btree ("action");
 
--- 19. Отчёты об ошибках
+-- 20. Отчёты об ошибках
 CREATE TABLE IF NOT EXISTS "bug_reports" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "user_id" varchar NOT NULL,
@@ -267,23 +277,23 @@ CREATE INDEX IF NOT EXISTS "bug_reports_user_id_idx" ON "bug_reports" USING btre
 CREATE INDEX IF NOT EXISTS "bug_reports_status_idx" ON "bug_reports" USING btree ("status");
 CREATE INDEX IF NOT EXISTS "bug_reports_created_at_idx" ON "bug_reports" USING btree ("created_at");
 
--- 20. Диалоги AI-ассистента
+-- 21. Диалоги AI-ассистента
 CREATE TABLE IF NOT EXISTS "conversations" (
   "id" serial PRIMARY KEY,
   "title" text NOT NULL,
   "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 21. Сообщения AI-ассистента
+-- 22. Сообщения AI-ассистента
 CREATE TABLE IF NOT EXISTS "messages" (
   "id" serial PRIMARY KEY,
-  "conversation_id" integer NOT NULL REFERENCES "conversations" ("id") ON DELETE CASCADE,
+  "conversation_id" integer NOT NULL REFERENCES "conversations"("id") ON DELETE CASCADE,
   "role" text NOT NULL,
   "content" text NOT NULL,
   "created_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 22. AI-провайдеры (настройки подключения к моделям)
+-- 23. AI-провайдеры (настройки подключения к моделям)
 CREATE TABLE IF NOT EXISTS "ai_providers" (
   "id" serial PRIMARY KEY,
   "name" text NOT NULL,
@@ -296,7 +306,7 @@ CREATE TABLE IF NOT EXISTS "ai_providers" (
   "updated_at" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 23. Конфигурация интеграции с датчиками ТИ
+-- 24. Конфигурация интеграции с датчиками ТИ
 CREATE TABLE IF NOT EXISTS "sensor_integration_config" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "api_url" text NOT NULL DEFAULT 'https://mvitu.arki.mosreg.ru/api/edds/bot/koteln_last_sensors_state/index.php',
@@ -307,7 +317,7 @@ CREATE TABLE IF NOT EXISTS "sensor_integration_config" (
   "last_sync_at" timestamp
 );
 
--- 24. Привязки объектов карты к датчикам ТИ
+-- 25. Привязки объектов карты к датчикам ТИ
 -- id_cds_koteln — идентификатор котельной во внешней системе МВИТУ
 CREATE TABLE IF NOT EXISTS "sensor_object_bindings" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
@@ -320,7 +330,7 @@ CREATE TABLE IF NOT EXISTS "sensor_object_bindings" (
 );
 CREATE INDEX IF NOT EXISTS "sensor_object_bindings_layer_id_idx" ON "sensor_object_bindings" USING btree ("layer_id");
 
--- 25. Кэш показаний датчиков
+-- 26. Кэш показаний датчиков
 -- Данные из внешнего API МВИТУ: параметры котельных (температуры, давления, МКД, заявки)
 CREATE TABLE IF NOT EXISTS "sensor_readings_cache" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
@@ -346,7 +356,7 @@ CREATE TABLE IF NOT EXISTS "sensor_readings_cache" (
 );
 CREATE INDEX IF NOT EXISTS "sensor_readings_cache_id_cds_koteln_idx" ON "sensor_readings_cache" USING btree ("id_cds_koteln");
 
--- 26. Программы реконструкции инженерных сетей
+-- 27. Программы реконструкции инженерных сетей
 CREATE TABLE IF NOT EXISTS "reconstruction_programs" (
   "id" serial PRIMARY KEY,
   "scene_id" integer NOT NULL,
@@ -363,7 +373,7 @@ CREATE TABLE IF NOT EXISTS "reconstruction_programs" (
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 27. Объекты программы реконструкции (участки/узлы, включённые в программу)
+-- 28. Объекты программы реконструкции (участки/узлы, включённые в программу)
 CREATE TABLE IF NOT EXISTS "program_objects" (
   "id" serial PRIMARY KEY,
   "program_id" integer NOT NULL,
@@ -384,11 +394,12 @@ CREATE TABLE IF NOT EXISTS "program_objects" (
   "accidents_per_m" numeric,
   "resident_count" integer,
   "consumer_count" integer,
+  "criticality_score" numeric,
   "geometry" jsonb,
   "sort_order" integer NOT NULL DEFAULT 0
 );
 
--- 28. Справочник удельных стоимостей работ
+-- 29. Справочник удельных стоимостей работ
 CREATE TABLE IF NOT EXISTS "cost_unit_rates" (
   "id" serial PRIMARY KEY,
   "object_type" text NOT NULL,
@@ -402,7 +413,7 @@ CREATE TABLE IF NOT EXISTS "cost_unit_rates" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
--- 29. Справочник атрибутов SHP-файлов Zulu
+-- 30. Справочник атрибутов SHP-файлов Zulu
 CREATE TABLE IF NOT EXISTS "zulu_field_labels" (
   "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   "field_name" text NOT NULL UNIQUE,
@@ -412,8 +423,45 @@ CREATE TABLE IF NOT EXISTS "zulu_field_labels" (
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
+-- 31. Справочник значений атрибутов SHP-файлов Zulu
+CREATE TABLE IF NOT EXISTS "zulu_field_values" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "field_name" text NOT NULL,
+  "field_value" text NOT NULL,
+  "label" text NOT NULL,
+  "category" text,
+  "network_type" text,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
+-- 32. Подключения к серверам Zulu Web Service
+CREATE TABLE IF NOT EXISTS "zws_connections" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "user_id" varchar NOT NULL,
+  "display_name" text NOT NULL,
+  "base_url" text NOT NULL,
+  "zws_username" text,
+  "password_encrypted" text,
+  "selected_layers" jsonb DEFAULT '[]'::jsonb NOT NULL,
+  "layer_styles" jsonb DEFAULT '{}'::jsonb,
+  "scene_id" integer,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+
+-- 33. Пользовательские настройки (key-value на пользователя)
+CREATE TABLE IF NOT EXISTS "user_settings" (
+  "id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  "user_id" varchar(255) NOT NULL,
+  "key" varchar(255) NOT NULL,
+  "value" text NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_user_settings_user_key" ON "user_settings" USING btree ("user_id", "key");
+
 -- =====================================================
--- Конец схемы. Итого: 29 таблиц.
+-- Конец схемы. Итого: 33 таблицы.
 -- При добавлении новых таблиц в shared/schema.ts или
 -- shared/models/ — ОБЯЗАТЕЛЬНО добавляйте их сюда.
 -- =====================================================
