@@ -152,7 +152,7 @@ interface MapViewerProps {
     snapRadius: number;
     snapLayerIds: number[];
   };
-  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void; zoomToZwsOlFeature: (layerId: number, featureId: string) => void } | null>;
+  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void; zoomToZwsOlFeature: (layerId: number, featureId: string) => void; highlightFeature: (featureId: number, layerId: number) => void } | null>;
   zwsEditableLayers?: EditableLayer[];
 }
 
@@ -3161,6 +3161,16 @@ export function MapViewer({
           } else {
             map.getView().fit(extent, { padding: [80, 80, 80, 80], maxZoom: 19, duration: 500 });
           }
+        },
+        highlightFeature: (featureId: number, layerId: number) => {
+          const layer = allEditableLayersRef.current.get(layerId);
+          if (!layer) return;
+          const source = layer.getSource();
+          if (!source) return;
+          const features = source.getFeatures();
+          const target = features.find(f => f.get("featureId") === featureId);
+          if (!target) return;
+          setSelectedMapFeatures([{ layerId, featureIndex: 0, feature: target }]);
         },
       };
     }

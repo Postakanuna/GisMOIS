@@ -253,7 +253,7 @@ export default function Home() {
     deleteFeatures: (ids: number[]) => void;
   } | null>(null);
   const drawActionsRef = useRef<{ removeLastPoint: () => boolean; abortDrawing: () => void } | null>(null);
-  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void; zoomToZwsOlFeature: (layerId: number, featureId: string) => void } | null>(null);
+  const mapActionsRef = useRef<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void; zoomToZwsOlFeature: (layerId: number, featureId: string) => void; highlightFeature: (featureId: number, layerId: number) => void } | null>(null);
   const drawing = useDrawing({ drawActionsRef });
   const attributeTableCloseRef = useRef<{ tryClose: () => boolean } | null>(null);
   const [activeSceneDataset, setActiveSceneDataset] = useState<SceneDataset | null>(null);
@@ -407,6 +407,9 @@ export default function Home() {
       if (!response.ok) return;
       const feature = await response.json();
       mapActionsRef.current?.zoomToFeature(feature);
+      setTimeout(() => {
+        mapActionsRef.current?.highlightFeature(featureId, layerId);
+      }, 800);
     } catch {
     }
   }, []);
