@@ -11,7 +11,7 @@ import { isApiAuthenticated, generateApiToken, hashApiToken, type ApiAuthenticat
 import { externalCreatePointSchema, apiKeys, geocodeProviderSchema, auditLog, type GeocodeProvider, bugReportStatusEnum } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { eq, and, sql, inArray, desc, gte, lte, count } from "drizzle-orm";
+import { eq, and, or, sql, inArray, desc, gte, lte, count } from "drizzle-orm";
 import multer from "multer";
 import fs from "fs";
 import { geocodeBatch, reverseGeocodeBatch, type ReverseGeocodeBatchItem } from "./geocoder";
@@ -9520,27 +9520,28 @@ ${fieldXml}
       const p2 = `%${q.replace(/-/g, ' ')}%`;
       const p3 = `%${q.replace(/-(\d)/g, ' №$1')}%`;
 
-      const featuresRows = await db.execute(sql`
-        SELECT df.id, df.layer_id, df.properties
-        FROM drawn_features df
-        WHERE df.layer_id = ANY(${layerIds}::int[])
-          AND (
-            df.properties::text ILIKE ${p1}
-            OR df.properties::text ILIKE ${p2}
-            OR df.properties::text ILIKE ${p3}
+      const rawFeatures = await db
+        .select({ id: drawnFeatures.id, layer_id: drawnFeatures.layerId, properties: drawnFeatures.properties })
+        .from(drawnFeatures)
+        .where(and(
+          inArray(drawnFeatures.layerId, layerIds),
+          or(
+            sql`${drawnFeatures.properties}::text ILIKE ${p1}`,
+            sql`${drawnFeatures.properties}::text ILIKE ${p2}`,
+            sql`${drawnFeatures.properties}::text ILIKE ${p3}`
           )
-        ORDER BY
-          CASE
-            WHEN lower(df.properties->>'Name') = lower(${q}) THEN 0
-            WHEN lower(df.properties->>'Name') ILIKE lower(${q.replace(/-/g, ' ')}) THEN 1
-            WHEN lower(df.properties->>'Name') ILIKE lower(${q.replace(/-(\d)/g, ' №$1')}) THEN 2
-            WHEN lower(df.properties->>'Name') ILIKE lower(${q + '%'}) THEN 3
+        ))
+        .orderBy(
+          sql`CASE
+            WHEN lower(${drawnFeatures.properties}->>'Name') = lower(${q}) THEN 0
+            WHEN lower(${drawnFeatures.properties}->>'Name') ILIKE lower(${q.replace(/-/g, ' ')}) THEN 1
+            WHEN lower(${drawnFeatures.properties}->>'Name') ILIKE lower(${q.replace(/-(\d)/g, ' №$1')}) THEN 2
+            WHEN lower(${drawnFeatures.properties}->>'Name') ILIKE lower(${q + '%'}) THEN 3
             ELSE 4
-          END,
-          df.id
-        LIMIT 30
-      `);
-      const rawFeatures = (featuresRows as any).rows || [];
+          END`,
+          drawnFeatures.id
+        )
+        .limit(30);
 
       const NAME_KEYS = ["Name", "name", "Наименование", "наименование", "название", "Название", "Имя", "имя"];
       const ADDR_KEYS = ["Адрес", "адрес", "address", "Address", "addr", "Adres", "adres", "место", "Место"];
