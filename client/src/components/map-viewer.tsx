@@ -152,7 +152,7 @@ interface MapViewerProps {
     snapRadius: number;
     snapLayerIds: number[];
   };
-  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void; zoomToZwsOlFeature: (layerId: number, featureId: string) => void; highlightFeature: (featureId: number, layerId: number) => void } | null>;
+  mapActionsRef?: React.MutableRefObject<{ zoomToFeature: (feature: DrawnFeature) => void; zoomToCoordinates: (lat: number, lon: number, zoom?: number) => void; panToFeatureIfOutsideViewport: (feature: DrawnFeature) => void; zoomToZwsOlFeature: (layerId: number, featureId: string) => void; highlightFeature: (featureId: number, layerId: number) => void; selectFeature: (feature: DrawnFeature, layerId: number) => void } | null>;
   zwsEditableLayers?: EditableLayer[];
 }
 
@@ -3171,6 +3171,27 @@ export function MapViewer({
           const target = features.find(f => f.get("featureId") === featureId);
           if (!target) return;
           setSelectedMapFeatures([{ layerId, featureIndex: 0, feature: target }]);
+        },
+        selectFeature: (drawnFeature: DrawnFeature, layerId: number) => {
+          const map = mapRef.current;
+          if (!map) return;
+          const geojsonFormat = new GeoJSON();
+          const geojsonObj = {
+            type: "Feature" as const,
+            geometry: { type: drawnFeature.geometryType, coordinates: drawnFeature.coordinates },
+            properties: drawnFeature.properties || {},
+          };
+          try {
+            const olFeature = geojsonFormat.readFeature(geojsonObj, {
+              dataProjection: "EPSG:4326",
+              featureProjection: map.getView().getProjection(),
+            });
+            olFeature.set("featureId", drawnFeature.id);
+            olFeature.set("_sourceLayerId", layerId);
+            setSelectedMapFeatures([{ layerId, featureIndex: 0, feature: olFeature }]);
+          } catch (e) {
+            console.error("[SELECT FEATURE] Error:", e);
+          }
         },
       };
     }
