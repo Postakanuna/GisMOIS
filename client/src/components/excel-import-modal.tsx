@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +56,11 @@ interface ExcelImportModalProps {
 export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImportModalProps) {
   const { toast } = useToast();
   const { currentSceneId } = useScene();
+
+  const { data: geocodeProviderData } = useQuery<{ provider: string }>({
+    queryKey: ["/api/settings/geocode-provider"],
+  });
+  const geocodeProviderLabel = geocodeProviderData?.provider === "dadata" ? "DaData" : "Яндекс Геокодер";
   
   const [layerName, setLayerName] = useState(
     parseResult.fileName.replace(/\.(xlsx?|xls)$/i, "")
@@ -265,7 +270,7 @@ export function ExcelImportModal({ parseResult, onClose, onSuccess }: ExcelImpor
           <div className="flex items-center gap-2 p-3 bg-purple-500/10 border border-purple-500/30 rounded-md">
             <Search className="h-4 w-4 text-purple-500" />
             <span className="text-sm">
-              Адреса будут геокодированы через Яндекс Геокодер. Для {parseResult.totalRows} строк это может занять до {Math.ceil(parseResult.totalRows / 40)} сек.
+              Адреса будут геокодированы через {geocodeProviderLabel}. Для {parseResult.totalRows} строк это может занять до {Math.ceil(parseResult.totalRows / 40)} сек.
             </span>
           </div>
         ) : null}
