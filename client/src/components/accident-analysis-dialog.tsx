@@ -161,6 +161,8 @@ export function AccidentAnalysisDialog({
   const [saveLayerId, setSaveLayerId] = useState<number | null>(null);
   const [showSavePopover, setShowSavePopover] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreatingLayer, setIsCreatingLayer] = useState(false);
+  const [extraLayers, setExtraLayers] = useState<EditableLayer[]>([]);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
@@ -466,8 +468,42 @@ export function AccidentAnalysisDialog({
     }
   };
 
-  const polygonLayers = editableLayers.filter(l => l.geometryType?.toLowerCase().includes("polygon"));
-  const saveTargetLayers = polygonLayers.length > 0 ? polygonLayers : editableLayers;
+  const handleCreateNewLayer = async () => {
+    setIsCreatingLayer(true);
+    try {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const dateStr = `${pad(now.getDate())}.${pad(now.getMonth() + 1)}.${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      const layerName = `Результаты анализа аварийности (${dateStr})`;
+      const res = await fetch("/api/editable-layers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: layerName, geometryType: "Polygon", sceneId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `Ошибка ${res.status}`);
+      const newLayer: EditableLayer = { id: data.id, name: data.name, geometryType: data.geometryType };
+      setExtraLayers(prev => [...prev, newLayer]);
+      setSaveLayerId(data.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/scenes", sceneId, "editable-layers"] });
+      toast({ title: "Слой создан", description: layerName });
+    } catch (e: any) {
+      toast({ title: "Ошибка", description: e.message || "Не удалось создать слой", variant: "destructive" });
+    } finally {
+      setIsCreatingLayer(false);
+    }
+  };
+
+  const dedup = (layers: EditableLayer[]) => {
+    const seen = new Set<number>();
+    return layers.filter(l => { if (seen.has(l.id)) return false; seen.add(l.id); return true; });
+  };
+  const polygonLayers = dedup([
+    ...editableLayers.filter(l => l.geometryType?.toLowerCase().includes("polygon")),
+    ...extraLayers,
+  ]);
+  const saveTargetLayers = polygonLayers.length > 0 ? polygonLayers : dedup([...editableLayers, ...extraLayers]);
   const canRun = networkLayerId !== null && accidentLayerId !== null;
 
   if (!open) return null;
@@ -893,7 +929,7 @@ export function AccidentAnalysisDialog({
                     </TooltipTrigger>
                     <TooltipContent side="bottom">Сохранить результаты в слой</TooltipContent>
                     </Tooltip>
-                    <PopoverContent className="w-64 p-3" align="end">
+                    <PopoverContent className="w-72 p-3" align="end">
                       <div className="space-y-2">
                         <p className="text-xs font-medium">Сохранить буферизованные полигоны (±{maxDistance} м)</p>
                         <Select value={saveLayerId ? String(saveLayerId) : ""} onValueChange={v => setSaveLayerId(Number(v))}>
@@ -904,6 +940,16 @@ export function AccidentAnalysisDialog({
                             {saveTargetLayers.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
                           </SelectContent>
                         </Select>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full h-7 text-xs border border-dashed"
+                          disabled={isCreatingLayer || isSaving}
+                          onClick={handleCreateNewLayer}
+                          data-testid="button-create-new-layer"
+                        >
+                          {isCreatingLayer ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Создание...</> : <><Plus className="h-3 w-3 mr-1" />Создать новый слой</>}
+                        </Button>
                         <Button
                           size="sm"
                           className="w-full h-7 text-xs"
