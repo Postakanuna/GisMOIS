@@ -42,8 +42,8 @@ export function SpatialJoinDialog({ open, onOpenChange, editableLayers }: Spatia
   const [baseLayerId, setBaseLayerId] = useState<string>("");
   const [enrichLayerId, setEnrichLayerId] = useState<string>("");
   const [sumField, setSumField] = useState<string>("AccidentCount");
-  const [sitesFieldName, setSitesFieldName] = useState<string>("accident_sites_count");
-  const [sumFieldName, setSumFieldName] = useState<string>("accident_total");
+  const [sitesFieldName, setSitesFieldName] = useState<string>("acc_sites");
+  const [sumFieldName, setSumFieldName] = useState<string>("acc_total");
   const [result, setResult] = useState<SpatialJoinResult | null>(null);
 
   const polygonLayers = editableLayers.filter(l =>
@@ -56,8 +56,8 @@ export function SpatialJoinDialog({ open, onOpenChange, editableLayers }: Spatia
         baseLayerId: Number(baseLayerId),
         enrichLayerId: Number(enrichLayerId),
         sumField: sumField.trim() || undefined,
-        sitesFieldName: sitesFieldName.trim() || "accident_sites_count",
-        sumFieldName: sumFieldName.trim() || "accident_total",
+        sitesFieldName: sitesFieldName.trim() || "acc_sites",
+        sumFieldName: sumFieldName.trim() || "acc_total",
       });
       return res as SpatialJoinResult;
     },
@@ -150,25 +150,32 @@ export function SpatialJoinDialog({ open, onOpenChange, editableLayers }: Spatia
         </div>
 
         {/* Output field names */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label>Поле: кол-во участков</Label>
-            <Input
-              data-testid="input-sites-field-name"
-              placeholder="accident_sites_count"
-              value={sitesFieldName}
-              onChange={e => setSitesFieldName(e.target.value)}
-            />
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Поле: кол-во участков</Label>
+              <Input
+                data-testid="input-sites-field-name"
+                placeholder="acc_sites"
+                value={sitesFieldName}
+                maxLength={10}
+                onChange={e => setSitesFieldName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Поле: сумма аварий</Label>
+              <Input
+                data-testid="input-sum-field-name"
+                placeholder="acc_total"
+                value={sumFieldName}
+                maxLength={10}
+                onChange={e => setSumFieldName(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Поле: сумма аварий</Label>
-            <Input
-              data-testid="input-sum-field-name"
-              placeholder="accident_total"
-              value={sumFieldName}
-              onChange={e => setSumFieldName(e.target.value)}
-            />
-          </div>
+          <p className="text-xs text-muted-foreground">
+            Имена полей ограничены 10 символами для совместимости с форматом SHP.
+          </p>
         </div>
 
         {/* Result panel */}

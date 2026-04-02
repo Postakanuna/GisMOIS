@@ -11616,7 +11616,7 @@ ${fieldXml}
       console.log(`[spatial-join] enrich index built: ${enrichIndex.length} valid polygons, ${enrichSkipped} skipped`);
 
       // Process base features with bbox pre-filtering
-      const batchUpdates: { id: number; properties: Record<string, unknown> }[] = [];
+      const batchUpdates: { id: number; sitesCount: number; accidentSum: number }[] = [];
       let processed = 0;
       let totalSitesFound = 0;
       let bboxFiltered = 0;
@@ -11666,14 +11666,10 @@ ${fieldXml}
           }
         }
 
-        const existingProps = ((bf as any).properties as Record<string, unknown>) || {};
         batchUpdates.push({
-          id: (bf as any).id,
-          properties: {
-            ...existingProps,
-            [sitesFieldName]: sitesCount,
-            [sumFieldName]: accidentSum,
-          },
+          id: Number((bf as any).id),
+          sitesCount,
+          accidentSum,
         });
         totalSitesFound += sitesCount;
         processed++;
@@ -11681,8 +11677,26 @@ ${fieldXml}
 
       console.log(`[spatial-join] done: ${processed} districts processed, bbox filtered ${bboxFiltered} checks, full intersection checks ${fullChecks}`);
 
-      // Update features in batch
-      await storage.updateDrawnFeaturesBatch(batchUpdates);
+      // Update features using raw SQL JSONB merge operator (most reliable approach)
+      // Uses PostgreSQL || operator to merge only the new fields into existing properties
+      let actuallyUpdated = 0;
+      for (const update of batchUpdates) {
+        try {
+          const newFieldsJson = JSON.stringify({
+            [sitesFieldName]: update.sitesCount,
+            [sumFieldName]: update.accidentSum,
+          });
+          const result = await db.execute(
+            sql`UPDATE drawn_features SET properties = properties || ${newFieldsJson}::jsonb, updated_at = NOW(), version = version + 1 WHERE id = ${update.id}`
+          );
+          const rowCount = (result as any).rowCount ?? (result as any).count ?? 1;
+          actuallyUpdated += Number(rowCount);
+        } catch (updateErr: any) {
+          console.error(`[spatial-join] failed to update feature id=${update.id}:`, updateErr.message);
+        }
+      }
+
+      console.log(`[spatial-join] DB updated: ${actuallyUpdated} rows actually written`);
 
       // Update layer schema to include new fields
       const existingSchema = await storage.getLayerSchema(baseLayerIdN);
@@ -11702,7 +11716,7 @@ ${fieldXml}
       return res.json({
         success: true,
         processedDistricts: processed,
-        updatedDistricts: batchUpdates.length,
+        updatedDistricts: actuallyUpdated,
         totalSitesFound,
         sitesFieldName,
         sumFieldName,
