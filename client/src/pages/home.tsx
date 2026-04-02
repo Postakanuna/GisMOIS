@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } fro
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap, Wrench, Trash2, Search, Crosshair } from "lucide-react";
+import { Map, Menu, Layers, ArrowLeft, Pencil, FolderOpen, AlertTriangle, ShieldCheck, BarChart3, Zap, Wrench, Trash2, Search, Crosshair, GitMerge } from "lucide-react";
 import { UserButton } from "@/components/user-button";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,6 +40,7 @@ import { ComplaintAnalysisDialog, type ComplaintAnalysisResult } from "@/compone
 import { ReconstructionProgramDialog, type SegmentImportData } from "@/components/reconstruction-program-dialog";
 import { AccidentAnalysisDialog, type AccidentSegmentResult, type AccidentAnalysisResult } from "@/components/accident-analysis-dialog";
 import { TopologyValidationDialog } from "@/components/topology-validation-dialog";
+import { SpatialJoinDialog } from "@/components/spatial-join-dialog";
 import { GeoAnalysisModal } from "@/components/geo-analysis-modal";
 import { FeatureInfoModal } from "@/components/feature-info-modal";
 import { SensorTelemetryBlock } from "@/components/sensor-telemetry-block";
@@ -283,6 +284,7 @@ export default function Home() {
   const [complaintResult, setComplaintResult] = useState<ComplaintAnalysisResult | null>(null);
   const [showAccidentDialog, setShowAccidentDialog] = useState(false);
   const [aiAccidentResult, setAiAccidentResult] = useState<AccidentAnalysisResult | null>(null);
+  const [showSpatialJoinDialog, setShowSpatialJoinDialog] = useState(false);
   const [aiComplaintNoTopoResult, setAiComplaintNoTopoResult] = useState<any>(null);
   const [aiSimulationResult, setAiSimulationResult] = useState<SimulationResult | null>(null);
   const [showTopologyDialog, setShowTopologyDialog] = useState(false);
@@ -937,6 +939,19 @@ export default function Home() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    variant={showSpatialJoinDialog ? "default" : "ghost"}
+                    size="icon"
+                    onClick={() => setShowSpatialJoinDialog(prev => !prev)}
+                    data-testid="button-open-spatial-join"
+                  >
+                    <GitMerge className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Пространственное объединение</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
                     variant={showTopologyDialog ? "default" : "ghost"}
                     size="icon"
                     onClick={() => setShowTopologyDialog(prev => !prev)}
@@ -1577,6 +1592,13 @@ export default function Home() {
                   points: accidentPoints,
                 });
               }}
+            />
+
+            {/* Spatial Join Dialog */}
+            <SpatialJoinDialog
+              open={showSpatialJoinDialog}
+              onOpenChange={setShowSpatialJoinDialog}
+              editableLayers={drawing.editableLayers}
             />
 
             {/* Network Simulation Dialog */}

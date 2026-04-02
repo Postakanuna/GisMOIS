@@ -11463,6 +11463,137 @@ ${fieldXml}
     }
   });
 
+  // ─── Spatial Join: aggregate polygon-in-polygon ──────────────────────────────
+  app.post("/api/analytics/spatial-join", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+    try {
+      const {
+        baseLayerId,       // layer whose features will be updated (city districts)
+        enrichLayerId,     // layer with accident polygons
+        sumField,          // field in enrichLayer to sum (e.g. "AccidentCount")
+        sitesFieldName = "accident_sites_count",  // output field: count of accident polygons
+        sumFieldName = "accident_total",           // output field: sum of accidentCount values
+      } = req.body;
+
+      if (!baseLayerId || !enrichLayerId) {
+        return res.status(400).json({ message: "baseLayerId и enrichLayerId обязательны" });
+      }
+
+      const baseLayer = await storage.getEditableLayer(Number(baseLayerId));
+      if (!baseLayer) return res.status(404).json({ message: "Базовый слой не найден" });
+
+      const enrichLayer = await storage.getEditableLayer(Number(enrichLayerId));
+      if (!enrichLayer) return res.status(404).json({ message: "Слой аварийности не найден" });
+
+      // Load all features
+      const baseFeatures = await storage.getDrawnFeatures(Number(baseLayerId));
+      const enrichFeatures = await storage.getDrawnFeatures(Number(enrichLayerId));
+
+      if (baseFeatures.length === 0) {
+        return res.status(400).json({ message: "Базовый слой не содержит объектов" });
+      }
+      if (enrichFeatures.length === 0) {
+        return res.status(400).json({ message: "Слой аварийности не содержит объектов" });
+      }
+
+      // Pre-build turf features for enrichLayer
+      const enrichTurfFeatures: Array<{ turfFeature: turf.Feature<turf.Polygon | turf.MultiPolygon>; sumValue: number }> = [];
+      for (const ef of enrichFeatures) {
+        let coords = ef.coordinates;
+        if (typeof coords === "string") { try { coords = JSON.parse(coords); } catch { continue; } }
+        const geomType = (ef.geometryType || "").toLowerCase();
+        if (!geomType.includes("polygon")) continue;
+        try {
+          const turfFeature = turf.feature({
+            type: ef.geometryType as "Polygon" | "MultiPolygon",
+            coordinates: coords,
+          }) as turf.Feature<turf.Polygon | turf.MultiPolygon>;
+          const props = (ef.properties as Record<string, unknown>) || {};
+          const rawVal = sumField ? props[sumField] : undefined;
+          const sumValue = rawVal !== undefined && rawVal !== null ? Number(rawVal) || 0 : 0;
+          enrichTurfFeatures.push({ turfFeature, sumValue });
+        } catch {
+          // skip invalid geometries
+        }
+      }
+
+      // For each base feature, find intersecting enrich features
+      const batchUpdates: { id: number; properties: Record<string, unknown> }[] = [];
+      let processed = 0;
+      let totalSitesFound = 0;
+
+      for (const bf of baseFeatures) {
+        let coords = bf.coordinates;
+        if (typeof coords === "string") { try { coords = JSON.parse(coords); } catch { processed++; continue; } }
+        const geomType = (bf.geometryType || "").toLowerCase();
+        if (!geomType.includes("polygon")) { processed++; continue; }
+
+        let baseTurfFeature: turf.Feature<turf.Polygon | turf.MultiPolygon>;
+        try {
+          baseTurfFeature = turf.feature({
+            type: bf.geometryType as "Polygon" | "MultiPolygon",
+            coordinates: coords,
+          }) as turf.Feature<turf.Polygon | turf.MultiPolygon>;
+        } catch { processed++; continue; }
+
+        let sitesCount = 0;
+        let accidentSum = 0;
+
+        for (const { turfFeature, sumValue } of enrichTurfFeatures) {
+          try {
+            if (turf.booleanIntersects(baseTurfFeature, turfFeature)) {
+              sitesCount++;
+              accidentSum += sumValue;
+            }
+          } catch {
+            // skip on geometry errors
+          }
+        }
+
+        const existingProps = (bf.properties as Record<string, unknown>) || {};
+        batchUpdates.push({
+          id: bf.id,
+          properties: {
+            ...existingProps,
+            [sitesFieldName]: sitesCount,
+            [sumFieldName]: accidentSum,
+          },
+        });
+        totalSitesFound += sitesCount;
+        processed++;
+      }
+
+      // Update features in batch
+      await storage.updateDrawnFeaturesBatch(batchUpdates);
+
+      // Update layer schema to include new fields
+      const existingSchema = await storage.getLayerSchema(Number(baseLayerId));
+      const existingFields: AttributeField[] = Array.isArray(existingSchema?.fields) ? (existingSchema!.fields as AttributeField[]) : [];
+
+      const newFields: AttributeField[] = [];
+      if (!existingFields.find(f => f.name === sitesFieldName)) {
+        newFields.push({ name: sitesFieldName, type: "number", required: false });
+      }
+      if (!existingFields.find(f => f.name === sumFieldName)) {
+        newFields.push({ name: sumFieldName, type: "number", required: false });
+      }
+      if (newFields.length > 0) {
+        await storage.updateLayerSchema(Number(baseLayerId), [...existingFields, ...newFields]);
+      }
+
+      return res.json({
+        success: true,
+        processedDistricts: processed,
+        updatedDistricts: batchUpdates.length,
+        totalSitesFound,
+        sitesFieldName,
+        sumFieldName,
+      });
+    } catch (err: any) {
+      console.error("[spatial-join] error:", err);
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
 
