@@ -27,6 +27,41 @@ import crypto from "crypto";
 const VIEWPORT_CACHE_MAX = 200;
 const VIEWPORT_CACHE_TTL_MS = 30_000;
 
+interface BboxEntry { index: number; minX: number; minY: number; maxX: number; maxY: number; }
+
+function buildLinesBboxIndex(features: Array<{ geometry?: any }>): BboxEntry[] {
+  const index: BboxEntry[] = [];
+  for (let i = 0; i < features.length; i++) {
+    const f = features[i];
+    if (!f.geometry) continue;
+    const geomType = f.geometry.type;
+    if (geomType !== "LineString" && geomType !== "MultiLineString") continue;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const allCoords: number[][] = geomType === "LineString"
+      ? f.geometry.coordinates
+      : (f.geometry.coordinates as number[][][]).reduce((acc: number[][], seg: number[][]) => acc.concat(seg), []);
+    for (const c of allCoords) {
+      if (c[0] < minX) minX = c[0];
+      if (c[1] < minY) minY = c[1];
+      if (c[0] > maxX) maxX = c[0];
+      if (c[1] > maxY) maxY = c[1];
+    }
+    if (minX !== Infinity) index.push({ index: i, minX, minY, maxX, maxY });
+  }
+  return index;
+}
+
+function getLineCandidates(bboxIndex: BboxEntry[], lon: number, lat: number, maxDistanceMeters: number): number[] {
+  const degMargin = (maxDistanceMeters * 1.5) / 111320;
+  const sMinX = lon - degMargin, sMaxX = lon + degMargin;
+  const sMinY = lat - degMargin, sMaxY = lat + degMargin;
+  const result: number[] = [];
+  for (const e of bboxIndex) {
+    if (e.maxX >= sMinX && e.minX <= sMaxX && e.maxY >= sMinY && e.minY <= sMaxY) result.push(e.index);
+  }
+  return result;
+}
+
 function parseIntParam(value: string | undefined, res: Response): number | null {
   const n = parseInt(value ?? "", 10);
   if (isNaN(n)) {
@@ -3248,16 +3283,21 @@ ${fieldXml}
       const pipelineAccidentCounts: Map<number, number> = new Map();
       let unmatchedCount = 0;
 
+      const pipelineBboxIndex = buildLinesBboxIndex(pipelineFeatures);
+
       for (const accidentFeature of accidentFeatures) {
         if (!accidentFeature.geometry || accidentFeature.geometry.type !== "Point") {
           continue;
         }
 
-        const accidentPoint = turf.point(accidentFeature.geometry.coordinates);
+        const accidentCoords = accidentFeature.geometry.coordinates as number[];
+        const accidentPoint = turf.point(accidentCoords);
         let nearestPipelineIndex = -1;
         let nearestDistance = Infinity;
 
-        for (let i = 0; i < pipelineFeatures.length; i++) {
+        const candidates = getLineCandidates(pipelineBboxIndex, accidentCoords[0], accidentCoords[1], maxDistanceMeters);
+
+        for (const i of candidates) {
           const pipelineFeature = pipelineFeatures[i];
           if (!pipelineFeature.geometry) continue;
 
@@ -3476,6 +3516,8 @@ ${fieldXml}
       let boundCount = 0;
       let unboundCount = 0;
 
+      const networkBboxIndex = buildLinesBboxIndex(networkFeatures);
+
       for (const accidentFeature of accidentFeatures) {
         if (!accidentFeature.geometry) {
           unboundCount++;
@@ -3494,7 +3536,9 @@ ${fieldXml}
         let nearestNetworkIndex = -1;
         let nearestDistance = Infinity;
 
-        for (let i = 0; i < networkFeatures.length; i++) {
+        const candidates = getLineCandidates(networkBboxIndex, accidentCoords[0], accidentCoords[1], maxDistanceMeters);
+
+        for (const i of candidates) {
           const netFeature = networkFeatures[i];
           if (!netFeature.geometry) continue;
 
@@ -3737,6 +3781,8 @@ ${fieldXml}
       let boundCount = 0;
       let unboundCount = 0;
 
+      const networkBboxIndexStream = buildLinesBboxIndex(networkFeatures);
+
       for (const accidentFeature of accidentFeatures) {
         if (!accidentFeature.geometry || accidentFeature.geometry.type !== "Point") {
           unboundCount++;
@@ -3747,7 +3793,9 @@ ${fieldXml}
         let nearestNetworkIndex = -1;
         let nearestDistance = Infinity;
 
-        for (let i = 0; i < networkFeatures.length; i++) {
+        const candidates = getLineCandidates(networkBboxIndexStream, accidentCoords[0], accidentCoords[1], maxDistanceMeters);
+
+        for (const i of candidates) {
           const netFeature = networkFeatures[i];
           if (!netFeature.geometry) continue;
           const geomType = netFeature.geometry.type;
@@ -9698,17 +9746,22 @@ ${fieldXml}
       let boundCount = 0;
       let unboundCount = 0;
 
+      const networkBboxIndexAI = buildLinesBboxIndex(networkFeatures);
+
       for (const accidentFeature of accidentFeatures) {
         if (!accidentFeature.geometry || accidentFeature.geometry.type !== "Point") {
           unboundCount++;
           continue;
         }
 
-        const accidentPoint = turf.point(accidentFeature.geometry.coordinates as number[]);
+        const accidentCoords = accidentFeature.geometry.coordinates as number[];
+        const accidentPoint = turf.point(accidentCoords);
         let nearestNetworkIndex = -1;
         let nearestDistance = Infinity;
 
-        for (let i = 0; i < networkFeatures.length; i++) {
+        const candidates = getLineCandidates(networkBboxIndexAI, accidentCoords[0], accidentCoords[1], maxDistanceMeters);
+
+        for (const i of candidates) {
           const netFeature = networkFeatures[i];
           if (!netFeature.geometry) continue;
           const geomType = netFeature.geometry.type;
