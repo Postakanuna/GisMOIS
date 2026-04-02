@@ -3782,50 +3782,61 @@ ${fieldXml}
       let unboundCount = 0;
 
       const networkBboxIndexStream = buildLinesBboxIndex(networkFeatures);
+      const totalAccidentsStream = accidentFeatures.length;
+      const bindingProgressStep = Math.max(1, Math.floor(totalAccidentsStream / 20));
+      sendEvent("binding_start", { total: totalAccidentsStream });
 
+      let bindingProcessed = 0;
       for (const accidentFeature of accidentFeatures) {
-        if (!accidentFeature.geometry || accidentFeature.geometry.type !== "Point") {
-          unboundCount++;
-          continue;
-        }
-        const accidentCoords = accidentFeature.geometry.coordinates as number[];
-        const accidentPoint = turf.point(accidentCoords);
-        let nearestNetworkIndex = -1;
-        let nearestDistance = Infinity;
+        bindingProcessed++;
 
-        const candidates = getLineCandidates(networkBboxIndexStream, accidentCoords[0], accidentCoords[1], maxDistanceMeters);
+        if (accidentFeature.geometry && accidentFeature.geometry.type === "Point") {
+          const accidentCoords = accidentFeature.geometry.coordinates as number[];
+          const accidentPoint = turf.point(accidentCoords);
+          let nearestNetworkIndex = -1;
+          let nearestDistance = Infinity;
 
-        for (const i of candidates) {
-          const netFeature = networkFeatures[i];
-          if (!netFeature.geometry) continue;
-          const geomType = netFeature.geometry.type;
-          if (geomType !== "LineString" && geomType !== "MultiLineString") continue;
-          try {
-            let minDist = Infinity;
-            if (geomType === "LineString") {
-              const np = turf.nearestPointOnLine(turf.lineString(netFeature.geometry.coordinates as number[][]), accidentPoint);
-              if (np.properties.dist !== undefined) minDist = np.properties.dist;
-            } else {
-              for (const lineCoords of netFeature.geometry.coordinates as number[][][]) {
-                if (lineCoords.length < 2) continue;
-                const np = turf.nearestPointOnLine(turf.lineString(lineCoords), accidentPoint);
-                if (np.properties.dist !== undefined && np.properties.dist < minDist) minDist = np.properties.dist;
+          const candidates = getLineCandidates(networkBboxIndexStream, accidentCoords[0], accidentCoords[1], maxDistanceMeters);
+
+          for (const i of candidates) {
+            const netFeature = networkFeatures[i];
+            if (!netFeature.geometry) continue;
+            const geomType = netFeature.geometry.type;
+            if (geomType !== "LineString" && geomType !== "MultiLineString") continue;
+            try {
+              let minDist = Infinity;
+              if (geomType === "LineString") {
+                const np = turf.nearestPointOnLine(turf.lineString(netFeature.geometry.coordinates as number[][]), accidentPoint);
+                if (np.properties.dist !== undefined) minDist = np.properties.dist;
+              } else {
+                for (const lineCoords of netFeature.geometry.coordinates as number[][][]) {
+                  if (lineCoords.length < 2) continue;
+                  const np = turf.nearestPointOnLine(turf.lineString(lineCoords), accidentPoint);
+                  if (np.properties.dist !== undefined && np.properties.dist < minDist) minDist = np.properties.dist;
+                }
               }
-            }
-            if (minDist < nearestDistance) { nearestDistance = minDist; nearestNetworkIndex = i; }
-          } catch { continue; }
-        }
-
-        const distMeters = nearestDistance * 1000;
-        if (nearestNetworkIndex >= 0 && distMeters <= maxDistanceMeters) {
-          const netFeature = networkFeatures[nearestNetworkIndex];
-          if (!segmentAccidentMap.has(nearestNetworkIndex)) {
-            segmentAccidentMap.set(nearestNetworkIndex, { feature: netFeature, accidents: [] });
+              if (minDist < nearestDistance) { nearestDistance = minDist; nearestNetworkIndex = i; }
+            } catch { continue; }
           }
-          segmentAccidentMap.get(nearestNetworkIndex)!.accidents.push(accidentFeature);
-          boundCount++;
+
+          const distMeters = nearestDistance * 1000;
+          if (nearestNetworkIndex >= 0 && distMeters <= maxDistanceMeters) {
+            const netFeature = networkFeatures[nearestNetworkIndex];
+            if (!segmentAccidentMap.has(nearestNetworkIndex)) {
+              segmentAccidentMap.set(nearestNetworkIndex, { feature: netFeature, accidents: [] });
+            }
+            segmentAccidentMap.get(nearestNetworkIndex)!.accidents.push(accidentFeature);
+            boundCount++;
+          } else {
+            unboundCount++;
+          }
         } else {
           unboundCount++;
+        }
+
+        if (bindingProcessed % bindingProgressStep === 0 || bindingProcessed === totalAccidentsStream) {
+          await new Promise(resolve => setImmediate(resolve));
+          sendEvent("binding_progress", { processed: bindingProcessed, bound: boundCount, total: totalAccidentsStream });
         }
       }
 

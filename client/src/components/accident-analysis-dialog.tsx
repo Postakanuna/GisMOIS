@@ -87,6 +87,7 @@ interface AttributeFilter {
 
 interface AnalysisProgress {
   stage: "binding" | "graph_building" | "graph_ready" | "simulating" | "done";
+  bindingProcessed?: number;
   boundAccidents?: number;
   unboundAccidents?: number;
   totalAccidents?: number;
@@ -305,10 +306,27 @@ export function AccidentAnalysisDialog({
           try {
             const event = JSON.parse(line.slice(6));
 
-            if (event.type === "binding") {
+            if (event.type === "binding_start") {
+              setProgress(prev => ({
+                ...(prev ?? { partialSegments: [] }),
+                stage: "binding",
+                totalAccidents: event.total,
+                bindingProcessed: 0,
+                boundAccidents: 0,
+              }));
+            } else if (event.type === "binding_progress") {
+              setProgress(prev => ({
+                ...(prev ?? { partialSegments: [] }),
+                stage: "binding",
+                bindingProcessed: event.processed,
+                boundAccidents: event.bound,
+                totalAccidents: event.total,
+              }));
+            } else if (event.type === "binding") {
               setProgress(prev => ({
                 ...(prev ?? { partialSegments: [] }),
                 stage: runSimulation ? "graph_building" : "done",
+                bindingProcessed: event.totalAccidents,
                 boundAccidents: event.boundAccidents,
                 unboundAccidents: event.unboundAccidents,
                 totalAccidents: event.totalAccidents,
@@ -806,17 +824,24 @@ export function AccidentAnalysisDialog({
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
                 )}
                 <span className="text-muted-foreground">Привязка аварий</span>
-                {progress.boundAccidents !== undefined && (
-                  <span className="ml-auto font-medium text-foreground">
-                    {progress.boundAccidents} / {progress.totalAccidents}
+                {progress.totalAccidents !== undefined && (
+                  <span className="ml-auto font-medium text-foreground tabular-nums">
+                    {progress.stage === "binding"
+                      ? <>{progress.bindingProcessed ?? 0} / {progress.totalAccidents}</>
+                      : <>{progress.boundAccidents} / {progress.totalAccidents}</>
+                    }
                   </span>
                 )}
               </div>
-              {progress.boundAccidents !== undefined && progress.totalAccidents !== undefined && progress.totalAccidents > 0 && (
+              {progress.totalAccidents !== undefined && progress.totalAccidents > 0 && (
                 <div className="h-1 rounded-full bg-muted overflow-hidden ml-5">
                   <div
                     className="h-full rounded-full bg-green-500 transition-all duration-300"
-                    style={{ width: `${Math.round((progress.boundAccidents / progress.totalAccidents) * 100)}%` }}
+                    style={{
+                      width: `${Math.round(
+                        ((progress.stage === "binding" ? (progress.bindingProcessed ?? 0) : (progress.boundAccidents ?? 0)) / progress.totalAccidents) * 100
+                      )}%`
+                    }}
                   />
                 </div>
               )}
