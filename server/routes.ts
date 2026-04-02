@@ -5384,10 +5384,27 @@ ${fieldXml}
       const layerId = parseIntParam(req.params.layerId, res);
       if (layerId === null) return;
       const features = await storage.getDrawnFeatures(layerId);
-      return res.json(features);
+
+      // Stream JSON array to avoid RangeError: Invalid string length for large polygon layers
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.write("[");
+      for (let i = 0; i < features.length; i++) {
+        try {
+          res.write(JSON.stringify(features[i]));
+        } catch {
+          // If a single feature is too large, write a stub with properties only
+          const stub = { id: features[i].id, layerId: features[i].layerId, geometryType: features[i].geometryType, coordinates: [], properties: features[i].properties, version: features[i].version, createdAt: features[i].createdAt, updatedAt: features[i].updatedAt };
+          res.write(JSON.stringify(stub));
+        }
+        if (i < features.length - 1) res.write(",");
+      }
+      res.write("]");
+      return res.end();
     } catch (error) {
       console.error("Error fetching drawn features:", error);
-      return res.status(500).json({ message: "Internal server error" });
+      if (!res.headersSent) {
+        return res.status(500).json({ message: "Internal server error" });
+      }
     }
   });
 
@@ -11464,94 +11481,194 @@ ${fieldXml}
   });
 
   // ─── Spatial Join: aggregate polygon-in-polygon ──────────────────────────────
-  app.post("/api/analytics/spatial-join", isAuthenticated as any, async (req: AuthRequest, res: Response) => {
+  app.post("/api/analytics/spatial-join", isAuthenticated as any, (req: AuthRequest, res: Response, next: any) => {
+    req.setTimeout(30 * 60 * 1000); // 30 min timeout for large datasets
+    res.setTimeout(30 * 60 * 1000);
+    next();
+  }, async (req: AuthRequest, res: Response) => {
     try {
       const {
-        baseLayerId,       // layer whose features will be updated (city districts)
-        enrichLayerId,     // layer with accident polygons
-        sumField,          // field in enrichLayer to sum (e.g. "AccidentCount")
-        sitesFieldName = "accident_sites_count",  // output field: count of accident polygons
-        sumFieldName = "accident_total",           // output field: sum of accidentCount values
+        baseLayerId,
+        enrichLayerId,
+        sumField,
+        sitesFieldName = "accident_sites_count",
+        sumFieldName = "accident_total",
       } = req.body;
 
       if (!baseLayerId || !enrichLayerId) {
         return res.status(400).json({ message: "baseLayerId и enrichLayerId обязательны" });
       }
 
-      const baseLayer = await storage.getEditableLayer(Number(baseLayerId));
+      const baseLayerIdN = Number(baseLayerId);
+      const enrichLayerIdN = Number(enrichLayerId);
+
+      const baseLayer = await storage.getEditableLayer(baseLayerIdN);
       if (!baseLayer) return res.status(404).json({ message: "Базовый слой не найден" });
 
-      const enrichLayer = await storage.getEditableLayer(Number(enrichLayerId));
+      const enrichLayer = await storage.getEditableLayer(enrichLayerIdN);
       if (!enrichLayer) return res.status(404).json({ message: "Слой аварийности не найден" });
 
-      // Load all features
-      const baseFeatures = await storage.getDrawnFeatures(Number(baseLayerId));
-      const enrichFeatures = await storage.getDrawnFeatures(Number(enrichLayerId));
+      // Use raw SQL to fetch features WITH bbox columns (not available via toDrawnFeature)
+      type RawFeatureRow = {
+        id: number;
+        geometry_type: string;
+        coordinates: unknown;
+        properties: unknown;
+        bbox_min_x: number | null;
+        bbox_min_y: number | null;
+        bbox_max_x: number | null;
+        bbox_max_y: number | null;
+      };
 
-      if (baseFeatures.length === 0) {
+      const baseRows = await db.execute(
+        sql`SELECT id, geometry_type, coordinates, properties, bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y FROM drawn_features WHERE layer_id = ${baseLayerIdN}`
+      ) as unknown as { rows: RawFeatureRow[] };
+
+      const enrichRows = await db.execute(
+        sql`SELECT id, geometry_type, coordinates, properties, bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y FROM drawn_features WHERE layer_id = ${enrichLayerIdN}`
+      ) as unknown as { rows: RawFeatureRow[] };
+
+      const baseFeaturesArr: RawFeatureRow[] = (baseRows as any).rows || [];
+      const enrichFeaturesArr: RawFeatureRow[] = (enrichRows as any).rows || [];
+
+      console.log(`[spatial-join] base=${baseFeaturesArr.length} features, enrich=${enrichFeaturesArr.length} features`);
+
+      if (baseFeaturesArr.length === 0) {
         return res.status(400).json({ message: "Базовый слой не содержит объектов" });
       }
-      if (enrichFeatures.length === 0) {
+      if (enrichFeaturesArr.length === 0) {
         return res.status(400).json({ message: "Слой аварийности не содержит объектов" });
       }
 
-      // Pre-build turf features for enrichLayer
-      const enrichTurfFeatures: Array<{ turfFeature: turf.Feature<turf.Polygon | turf.MultiPolygon>; sumValue: number }> = [];
-      for (const ef of enrichFeatures) {
-        let coords = ef.coordinates;
-        if (typeof coords === "string") { try { coords = JSON.parse(coords); } catch { continue; } }
-        const geomType = (ef.geometryType || "").toLowerCase();
+      // Helper: compute bbox from raw coordinates
+      function computeSimpleBbox(coords: unknown): { minX: number; minY: number; maxX: number; maxY: number } | null {
+        const pts: number[][] = [];
+        function extract(c: unknown): void {
+          if (!Array.isArray(c)) return;
+          if (c.length >= 2 && typeof c[0] === "number") { pts.push(c as number[]); return; }
+          c.forEach(extract);
+        }
+        extract(coords);
+        if (pts.length === 0) return null;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const [x, y] of pts) {
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+        return { minX, minY, maxX, maxY };
+      }
+
+      // Helper: simple bbox overlap check (fast pre-filter)
+      function bboxOverlaps(
+        a: { minX: number; minY: number; maxX: number; maxY: number },
+        b: { minX: number; minY: number; maxX: number; maxY: number }
+      ): boolean {
+        return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY;
+      }
+
+      // Helper: parse coords from DB row (drizzle JSONB returns object, but may be string)
+      function parseCoords(raw: unknown): unknown | null {
+        if (raw === null || raw === undefined) return null;
+        if (typeof raw === "string") { try { return JSON.parse(raw); } catch { return null; } }
+        return raw;
+      }
+
+      // Pre-build enrich index: { bbox, turfFeature, sumValue }
+      type EnrichEntry = {
+        bbox: { minX: number; minY: number; maxX: number; maxY: number };
+        turfFeature: turf.Feature<turf.Polygon | turf.MultiPolygon>;
+        sumValue: number;
+      };
+
+      const enrichIndex: EnrichEntry[] = [];
+      let enrichSkipped = 0;
+
+      for (const ef of enrichFeaturesArr) {
+        const geomType = ((ef as any).geometry_type || "").toLowerCase();
         if (!geomType.includes("polygon")) continue;
+
+        const coords = parseCoords((ef as any).coordinates);
+        if (!coords) continue;
+
+        // Use stored bbox if available, otherwise compute
+        let bbox: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+        const bminX = (ef as any).bbox_min_x, bminY = (ef as any).bbox_min_y;
+        const bmaxX = (ef as any).bbox_max_x, bmaxY = (ef as any).bbox_max_y;
+        if (bminX != null && bminY != null && bmaxX != null && bmaxY != null) {
+          bbox = { minX: bminX, minY: bminY, maxX: bmaxX, maxY: bmaxY };
+        } else {
+          bbox = computeSimpleBbox(coords);
+        }
+        if (!bbox) continue;
+
         try {
-          const turfFeature = turf.feature({
-            type: ef.geometryType as "Polygon" | "MultiPolygon",
-            coordinates: coords,
-          }) as turf.Feature<turf.Polygon | turf.MultiPolygon>;
-          const props = (ef.properties as Record<string, unknown>) || {};
+          const geomTypeNorm = (ef as any).geometry_type as "Polygon" | "MultiPolygon";
+          const turfFeature = turf.feature({ type: geomTypeNorm, coordinates: coords as any }) as turf.Feature<turf.Polygon | turf.MultiPolygon>;
+          const props = ((ef as any).properties as Record<string, unknown>) || {};
           const rawVal = sumField ? props[sumField] : undefined;
           const sumValue = rawVal !== undefined && rawVal !== null ? Number(rawVal) || 0 : 0;
-          enrichTurfFeatures.push({ turfFeature, sumValue });
+          enrichIndex.push({ bbox, turfFeature, sumValue });
         } catch {
-          // skip invalid geometries
+          enrichSkipped++;
         }
       }
 
-      // For each base feature, find intersecting enrich features
+      console.log(`[spatial-join] enrich index built: ${enrichIndex.length} valid polygons, ${enrichSkipped} skipped`);
+
+      // Process base features with bbox pre-filtering
       const batchUpdates: { id: number; properties: Record<string, unknown> }[] = [];
       let processed = 0;
       let totalSitesFound = 0;
+      let bboxFiltered = 0;
+      let fullChecks = 0;
 
-      for (const bf of baseFeatures) {
-        let coords = bf.coordinates;
-        if (typeof coords === "string") { try { coords = JSON.parse(coords); } catch { processed++; continue; } }
-        const geomType = (bf.geometryType || "").toLowerCase();
+      for (const bf of baseFeaturesArr) {
+        const geomType = ((bf as any).geometry_type || "").toLowerCase();
         if (!geomType.includes("polygon")) { processed++; continue; }
+
+        const coords = parseCoords((bf as any).coordinates);
+        if (!coords) { processed++; continue; }
+
+        // Use stored bbox if available
+        let baseBbox: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+        const bminX = (bf as any).bbox_min_x, bminY = (bf as any).bbox_min_y;
+        const bmaxX = (bf as any).bbox_max_x, bmaxY = (bf as any).bbox_max_y;
+        if (bminX != null && bminY != null && bmaxX != null && bmaxY != null) {
+          baseBbox = { minX: bminX, minY: bminY, maxX: bmaxX, maxY: bmaxY };
+        } else {
+          baseBbox = computeSimpleBbox(coords);
+        }
+        if (!baseBbox) { processed++; continue; }
 
         let baseTurfFeature: turf.Feature<turf.Polygon | turf.MultiPolygon>;
         try {
-          baseTurfFeature = turf.feature({
-            type: bf.geometryType as "Polygon" | "MultiPolygon",
-            coordinates: coords,
-          }) as turf.Feature<turf.Polygon | turf.MultiPolygon>;
+          const geomTypeNorm = (bf as any).geometry_type as "Polygon" | "MultiPolygon";
+          baseTurfFeature = turf.feature({ type: geomTypeNorm, coordinates: coords as any }) as turf.Feature<turf.Polygon | turf.MultiPolygon>;
         } catch { processed++; continue; }
 
         let sitesCount = 0;
         let accidentSum = 0;
 
-        for (const { turfFeature, sumValue } of enrichTurfFeatures) {
+        // STEP 1: bbox pre-filter (O(1) arithmetic, very fast)
+        const candidates = enrichIndex.filter(e => bboxOverlaps(baseBbox!, e.bbox));
+        bboxFiltered += (enrichIndex.length - candidates.length);
+        fullChecks += candidates.length;
+
+        // STEP 2: full intersection only on bbox-passing candidates
+        for (const { turfFeature, sumValue } of candidates) {
           try {
             if (turf.booleanIntersects(baseTurfFeature, turfFeature)) {
               sitesCount++;
               accidentSum += sumValue;
             }
           } catch {
-            // skip on geometry errors
+            // skip bad geometries
           }
         }
 
-        const existingProps = (bf.properties as Record<string, unknown>) || {};
+        const existingProps = ((bf as any).properties as Record<string, unknown>) || {};
         batchUpdates.push({
-          id: bf.id,
+          id: (bf as any).id,
           properties: {
             ...existingProps,
             [sitesFieldName]: sitesCount,
@@ -11562,11 +11679,13 @@ ${fieldXml}
         processed++;
       }
 
+      console.log(`[spatial-join] done: ${processed} districts processed, bbox filtered ${bboxFiltered} checks, full intersection checks ${fullChecks}`);
+
       // Update features in batch
       await storage.updateDrawnFeaturesBatch(batchUpdates);
 
       // Update layer schema to include new fields
-      const existingSchema = await storage.getLayerSchema(Number(baseLayerId));
+      const existingSchema = await storage.getLayerSchema(baseLayerIdN);
       const existingFields: AttributeField[] = Array.isArray(existingSchema?.fields) ? (existingSchema!.fields as AttributeField[]) : [];
 
       const newFields: AttributeField[] = [];
@@ -11577,7 +11696,7 @@ ${fieldXml}
         newFields.push({ name: sumFieldName, type: "number", required: false });
       }
       if (newFields.length > 0) {
-        await storage.updateLayerSchema(Number(baseLayerId), [...existingFields, ...newFields]);
+        await storage.updateLayerSchema(baseLayerIdN, [...existingFields, ...newFields]);
       }
 
       return res.json({
