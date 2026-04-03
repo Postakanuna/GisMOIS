@@ -1,0 +1,1223 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K9:22:10 AM [seed] Field labels already seeded (429 rows), skipping
+[Bbox Backfill] Backfilling 1 features...
+[Migration] zws_connections table columns OK
+9:22:10 AM [init] Field labels cache loaded from DB
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+[Migration] uploads table columns OK
+9:22:12 AM [express] serving on port 5000
+9:22:12 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+9:22:18 AM [express] GET /api/zws-connections 401 in 1ms
+9:22:28 AM [express] GET /api/zws-connections 200 in 20ms
+9:22:28 AM [express] GET /api/scenes/18 304 in 23ms
+9:23:11 AM [express] GET /api/auth/me 304 in 35ms
+9:23:11 AM [express] GET /api/field-values 304 in 12ms
+9:23:11 AM [express] GET /api/scene-folders 304 in 27ms
+9:23:11 AM [express] GET /api/field-labels 304 in 113ms
+9:23:11 AM [express] GET /api/scenes 304 in 117ms
+9:27:11 AM [express] GET /api/scenes/18/folders 304 in 110ms
+9:27:11 AM [express] GET /api/settings/debug-overlay 304 in 122ms
+9:27:11 AM [express] GET /api/scenes/18/editable-layers 304 in 115ms
+9:27:11 AM [express] GET /api/scenes/18/datasets 304 in 126ms
+9:27:11 AM [express] GET /api/ai/providers 304 in 121ms
+9:27:11 AM [express] GET /api/scenes/18/extent 304 in 127ms
+9:27:11 AM [express] GET /api/editable-layers/viewport-batch 200 in 90ms
+9:27:12 AM [express] GET /api/editable-layers/viewport-batch 200 in 263ms
+9:27:15 AM [express] GET /api/editable-layers/viewport-batch 200 in 214ms
+9:27:17 AM [express] DELETE /api/zws-connections/89 200 in 10ms
+9:27:19 AM [express] DELETE /api/zws-connections/90 200 in 9ms
+9:27:20 AM [express] DELETE /api/zws-connections/91 200 in 8ms
+9:27:30 AM [express] POST /api/zws-connections 201 in 26ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws/, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+9:27:32 AM [express] POST /api/zulu/zws/custom/layers 200 in 1115ms
+9:27:40 AM [express] POST /api/zulu/zws/import-to-db 401 in 1789ms
+9:27:41 AM [express] GET /api/scenes/18/editable-layers 304 in 8ms
+9:27:50 AM [express] POST /api/zws-connections 201 in 8ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws/, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+9:27:51 AM [express] POST /api/zulu/zws/custom/layers 200 in 909ms
+9:27:57 AM [express] POST /api/zulu/zws/import-to-db 401 in 515ms
+9:27:58 AM [express] GET /api/scenes/18/editable-layers 304 in 7ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m9:29:31 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/zws-db-import-modal.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m9:29:38 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/zws-db-import-modal.tsx[22m [33m(x2)[39m
+9:41:26 AM [express] POST /api/zws-connections 201 in 44ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws/, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+9:41:27 AM [express] POST /api/zulu/zws/custom/layers 200 in 1077ms
+9:41:32 AM [express] POST /api/zulu/zws/import-to-db 401 in 504ms
+9:41:32 AM [express] GET /api/scenes/18/editable-layers 304 in 9ms
+9:41:45 AM [express] GET /api/auth/me 304 in 19ms
+9:41:45 AM [express] GET /api/zws-connections 200 in 24ms
+9:41:45 AM [express] GET /api/scenes/18 304 in 17ms
+9:41:45 AM [express] GET /api/field-values 304 in 27ms
+9:41:45 AM [express] GET /api/scenes/18/datasets 304 in 29ms
+9:41:45 AM [express] GET /api/settings/debug-overlay 304 in 21ms
+9:41:45 AM [express] GET /api/field-labels 304 in 59ms
+9:41:45 AM [express] GET /api/scenes/18/folders 304 in 64ms
+9:41:45 AM [express] GET /api/scenes/18/extent 304 in 75ms
+9:41:45 AM [express] GET /api/scenes/18/editable-layers 304 in 8ms
+9:41:45 AM [express] GET /api/ai/providers 304 in 10ms
+9:41:45 AM [express] GET /api/editable-layers/viewport-batch 200 in 114ms
+9:41:46 AM [express] GET /api/editable-layers/viewport-batch 304 in 359ms
+9:41:47 AM [express] GET /api/editable-layers/viewport-batch 304 in 302ms
+9:53:26 AM [express] POST /api/zws-connections 201 in 252ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+9:53:28 AM [express] POST /api/zulu/zws/custom/layers 200 in 1919ms
+9:53:35 AM [express] POST /api/zulu/zws/import-to-db 401 in 506ms
+9:53:35 AM [express] GET /api/scenes/18/editable-layers 304 in 8ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m9:56:51 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/zws-db-import-modal.tsx[22m [33m(x3)[39m
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+9:56:55 AM [express] POST /api/zulu/zws/custom/layers 200 in 2086ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m9:56:58 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/zws-db-import-modal.tsx[22m [33m(x4)[39m
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+9:57:01 AM [express] POST /api/zulu/zws/custom/layers 200 in 922ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m9:57:14 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/zws-db-import-modal.tsx[22m [33m(x5)[39m
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+9:57:16 AM [express] POST /api/zulu/zws/custom/layers 200 in 903ms
+10:02:19 AM [express] POST /api/zulu/zws/import-to-db 401 in 687ms
+10:02:20 AM [express] POST /api/zulu/zws/import-to-db 401 in 1204ms
+10:02:21 AM [express] GET /api/scenes/18/editable-layers 304 in 8ms
+10:02:33 AM [express] GET /api/auth/me 304 in 16ms
+10:02:33 AM [express] GET /api/zws-connections 200 in 18ms
+10:02:33 AM [express] GET /api/scenes/18 304 in 6ms
+10:02:33 AM [express] GET /api/scenes/18/folders 304 in 10ms
+10:02:33 AM [express] GET /api/field-values 304 in 12ms
+10:02:33 AM [express] GET /api/scenes/18/datasets 304 in 7ms
+10:02:33 AM [express] GET /api/settings/debug-overlay 304 in 10ms
+10:02:33 AM [express] GET /api/field-labels 304 in 24ms
+10:02:33 AM [express] GET /api/scenes/18/extent 304 in 14ms
+10:02:33 AM [express] GET /api/ai/providers 304 in 6ms
+10:02:33 AM [express] GET /api/scenes/18/editable-layers 304 in 9ms
+10:02:34 AM [express] GET /api/editable-layers/viewport-batch 200 in 87ms
+10:02:34 AM [express] GET /api/editable-layers/viewport-batch 304 in 246ms
+10:02:35 AM [express] GET /api/editable-layers/viewport-batch 304 in 196ms
+10:02:53 AM [express] POST /api/zws-connections 201 in 27ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws/, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+10:02:54 AM [express] POST /api/zulu/zws/custom/layers 200 in 1057ms
+10:02:58 AM [express] POST /api/zulu/zws/import-to-db 401 in 173ms
+10:02:59 AM [express] POST /api/zulu/zws/import-to-db 401 in 1207ms
+10:02:59 AM [express] GET /api/scenes/18/editable-layers 304 in 7ms
+10:06:39 AM [express] POST /api/zws-connections 201 in 53ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws/, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+10:06:40 AM [express] POST /api/zulu/zws/custom/layers 200 in 955ms
+10:06:44 AM [express] POST /api/zulu/zws/import-to-db 422 in 183ms
+[ZWS import-to-db] layerName=openlayers:teploset, parsed=254 features
+[ZWS import-to-db] geometry breakdown: LineString:69, Point:69, Polygon:116
+10:06:51 AM [express] POST /api/zulu/zws/import-to-db 200 in 7097ms
+10:06:51 AM [express] GET /api/scenes/18/editable-layers 200 in 7ms
+10:06:52 AM [express] GET /api/editable-layers/viewport-batch 200 in 382ms
+10:06:58 AM [express] GET /api/editable-layers/viewport-batch 200 in 374ms
+10:07:00 AM [express] GET /api/editable-layers/404/schema 200 in 7ms
+10:07:00 AM [express] GET /api/editable-layers/404/features 200 in 162ms
+10:07:03 AM [express] GET /api/editable-layers/viewport-batch 200 in 359ms
+10:07:03 AM [express] GET /api/editable-layers/viewport-batch 200 in 372ms
+10:07:03 AM [express] GET /api/editable-layers/viewport-batch 200 in 350ms
+10:07:05 AM [express] GET /api/editable-layers/viewport-batch 200 in 266ms
+10:07:10 AM [express] GET /api/editable-layers/viewport-batch 200 in 334ms
+10:07:11 AM [express] GET /api/custom-icons 304 in 7ms
+10:07:29 AM [express] GET /api/editable-layers/viewport-batch 200 in 355ms
+10:07:29 AM [express] GET /api/editable-layers/viewport-batch 200 in 189ms
+10:07:34 AM [express] GET /api/editable-layers/viewport-batch 200 in 252ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:10:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:10:58 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:11:03 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x3)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:11:14 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x4)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:11:21 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x5)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:11:41 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x6)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:11:48 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/home.tsx, /src/index.css[22m
+10:11:49 AM [express] GET /api/ai/providers 304 in 19ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:11:54 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/home.tsx, /src/index.css[22m [33m(x2)[39m
+10:11:55 AM [express] GET /api/auth/me 304 in 13ms
+10:11:55 AM [express] GET /api/settings/debug-overlay 304 in 24ms
+10:11:55 AM [express] GET /api/scenes/18/extent 200 in 10ms
+10:11:55 AM [express] GET /api/ai/providers 304 in 7ms
+10:11:56 AM [express] GET /api/editable-layers/viewport-batch 200 in 74ms
+10:11:57 AM [express] GET /api/editable-layers/viewport-batch 304 in 336ms
+10:11:58 AM [express] GET /api/editable-layers/viewport-batch 304 in 363ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:12:10 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/home.tsx, /src/index.css[22m [33m(x3)[39m
+10:12:12 AM [express] GET /api/ai/providers 304 in 17ms
+10:12:12 AM [express] GET /api/scenes/18/extent 304 in 21ms
+10:12:12 AM [express] GET /api/editable-layers/viewport-batch 200 in 21ms
+10:12:13 AM [express] GET /api/editable-layers/viewport-batch 304 in 4ms
+10:12:14 AM [express] GET /api/editable-layers/viewport-batch 304 in 6ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:12:23 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/home.tsx, /src/index.css[22m [33m(x4)[39m
+10:12:28 AM [express] GET /api/ai/providers 304 in 19ms
+10:12:28 AM [express] GET /api/scenes/18/extent 304 in 20ms
+10:12:28 AM [express] GET /api/editable-layers/viewport-batch 200 in 75ms
+10:12:29 AM [express] GET /api/editable-layers/viewport-batch 304 in 347ms
+10:12:30 AM [express] GET /api/editable-layers/viewport-batch 304 in 366ms
+10:13:16 AM [express] POST /api/zws-connections 201 in 27ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws/, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+10:13:17 AM [express] POST /api/zulu/zws/custom/layers 200 in 1080ms
+10:13:21 AM [express] POST /api/zulu/zws/import-to-db 401 in 175ms
+10:13:21 AM [express] GET /api/scenes/18/editable-layers 304 in 8ms
+10:16:22 AM [express] POST /api/zws-connections 201 in 45ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+10:16:24 AM [express] POST /api/zulu/zws/custom/layers 200 in 1937ms
+10:16:39 AM [express] POST /api/zulu/zws/import-to-db 401 in 523ms
+10:16:39 AM [express] GET /api/scenes/18/editable-layers 304 in 7ms
+10:16:46 AM [express] GET /api/editable-layers/401/schema 304 in 7ms
+10:16:47 AM [express] GET /api/editable-layers/401/features 304 in 289ms
+10:16:47 AM [express] PATCH /api/editable-layers/401 200 in 8ms
+10:16:47 AM [express] GET /api/scenes/18/editable-layers 200 in 7ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:16:59 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/zws-db-import-modal.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:17:07 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/home.tsx, /src/index.css[22m
+10:17:09 AM [express] GET /api/settings/debug-overlay 304 in 18ms
+10:17:09 AM [express] GET /api/auth/me 304 in 20ms
+10:17:09 AM [express] GET /api/scenes/18/extent 304 in 19ms
+10:17:09 AM [express] GET /api/ai/providers 304 in 6ms
+10:17:09 AM [express] GET /api/editable-layers/viewport-batch 200 in 70ms
+10:17:10 AM [express] GET /api/editable-layers/viewport-batch 304 in 373ms
+10:17:11 AM [express] GET /api/editable-layers/viewport-batch 304 in 373ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:17:15 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/home.tsx, /src/index.css[22m [33m(x2)[39m
+10:17:17 AM [express] GET /api/ai/providers 304 in 9ms

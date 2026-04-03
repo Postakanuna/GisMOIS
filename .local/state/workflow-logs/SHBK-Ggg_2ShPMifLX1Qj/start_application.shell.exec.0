@@ -1,0 +1,410 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K[Migration] zws_connections table columns OK
+[Migration] uploads table columns OK
+7:56:55 AM [seed] Field labels already seeded (429 rows), skipping
+7:56:56 AM [init] Field labels cache loaded from DB
+[Bbox Backfill] Backfilling 1 features...
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+7:56:56 AM [express] serving on port 5000
+7:56:56 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+8:02:29 AM [express] GET /api/zws-connections 304 in 23ms
+8:02:29 AM [express] GET /api/scenes/18 304 in 16ms
+8:13:54 AM [express] GET /api/zws-connections 304 in 16ms
+8:13:54 AM [express] GET /api/scenes/18 304 in 9ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:15:42 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:16:02 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:16:15 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x3)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:17:03 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x4)[39m
+8:17:06 AM [express] GET /api/auth/me 304 in 17ms
+8:17:06 AM [express] GET /api/field-labels 304 in 26ms
+8:17:06 AM [express] GET /api/field-values 304 in 25ms
+8:17:06 AM [express] GET /api/scene-folders 304 in 53ms
+8:17:06 AM [express] GET /api/scenes 304 in 95ms
+8:17:09 AM [express] GET /api/settings/debug-overlay 200 in 92ms
+8:17:10 AM [express] GET /api/ai/providers 304 in 114ms
+8:17:10 AM [express] GET /api/scenes/18/folders 304 in 133ms
+8:17:10 AM [express] GET /api/scenes/18/editable-layers 304 in 121ms
+8:17:10 AM [express] GET /api/scenes/18/datasets 304 in 140ms
+8:17:10 AM [express] GET /api/scenes/18/extent 304 in 253ms
+8:17:10 AM [express] GET /api/editable-layers/viewport-batch 200 in 385ms
+8:17:11 AM [express] GET /api/editable-layers/viewport-batch 304 in 388ms
+8:17:12 AM [express] GET /api/editable-layers/viewport-batch 304 in 210ms
+8:17:13 AM [express] GET /api/custom-icons 304 in 9ms
+8:17:13 AM [express] GET /api/editable-layers/401/schema 304 in 13ms
+8:17:13 AM [express] GET /api/editable-layers/401/features 304 in 311ms
+8:17:13 AM [express] GET /api/editable-layers/401/attributes 304 in 314ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:17:21 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x5)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:17:26 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x6)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:17:29 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x7)[39m
+8:17:52 AM [express] PATCH /api/editable-layers/401 200 in 27ms
+8:17:52 AM [express] GET /api/scenes/18/editable-layers 200 in 10ms
+8:17:55 AM [express] PATCH /api/editable-layers/401 200 in 8ms
+8:17:55 AM [express] GET /api/scenes/18/editable-layers 200 in 6ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:17:58 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x8)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:18:05 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x9)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:18:13 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x10)[39m

@@ -1,0 +1,49 @@
+[1G[0K⠙[1G[0K
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K⠙[1G[0K12:51:27 PM [seed] Field labels already seeded (429 rows), skipping
+12:51:27 PM [init] Field labels cache loaded from DB
+[Migration] uploads table columns OK
+[Bbox Backfill] Backfilling 1 features...
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+12:51:29 PM [express] serving on port 5000
+12:51:29 PM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+12:51:51 PM [express] GET /api/scenes/5 401 in 4ms
+12:54:41 PM [express] GET /api/auth/me 401 in 1ms
+12:55:11 PM [express] POST /api/auth/login 401 in 236ms
+12:55:17 PM [express] POST /api/auth/login 200 in 271ms
+12:55:17 PM [express] GET /api/field-labels 304 in 23ms
+12:55:17 PM [express] GET /api/field-values 304 in 29ms
+12:55:17 PM [express] GET /api/scene-folders 304 in 32ms
+12:55:17 PM [express] GET /api/scenes 304 in 70ms
+1:01:05 PM [express] GET /api/auth/me 200 in 185ms
+1:01:05 PM [express] GET /api/scenes/5/folders 304 in 195ms
+1:01:05 PM [express] GET /api/scenes/5/datasets 304 in 200ms
+1:01:05 PM [express] GET /api/scenes/5/editable-layers 304 in 199ms
+1:01:05 PM [express] GET /api/ai/providers 304 in 200ms
+1:01:06 PM [express] GET /api/scenes/5/extent 304 in 887ms
+1:01:06 PM [express] GET /api/editable-layers/viewport-batch 200 in 825ms
+1:01:08 PM [express] GET /api/editable-layers/viewport-batch 200 in 776ms
+1:01:14 PM [express] GET /api/editable-layers/viewport-batch 200 in 517ms
+1:01:24 PM [express] GET /api/editable-layers/viewport-batch 200 in 584ms
+1:02:21 PM [express] GET /api/editable-layers/viewport-batch 200 in 647ms
+1:02:22 PM [express] GET /api/editable-layers/viewport-batch 200 in 543ms
+1:02:23 PM [express] GET /api/editable-layers/viewport-batch 200 in 487ms
+1:02:24 PM [express] GET /api/editable-layers/viewport-batch 200 in 486ms
+1:02:27 PM [express] GET /api/editable-layers/viewport-batch 200 in 596ms
+1:02:30 PM [express] GET /api/editable-layers/viewport-batch 200 in 198ms
+1:02:33 PM [express] GET /api/editable-layers/viewport-batch 200 in 488ms
+1:02:38 PM [express] GET /api/editable-layers/viewport-batch 200 in 136ms
+1:02:42 PM [express] GET /api/editable-layers/viewport-batch 200 in 58ms
+1:02:56 PM [express] POST /api/editable-layers/clear-viewport-cache 200 in 19ms
+1:02:56 PM [express] GET /api/editable-layers/viewport-batch 200 in 69ms
+1:03:02 PM [express] GET /api/editable-layers/viewport-batch 200 in 122ms
+1:03:04 PM [express] GET /api/editable-layers/viewport-batch 200 in 83ms
+1:03:05 PM [express] GET /api/editable-layers/viewport-batch 200 in 24ms
+1:03:07 PM [express] GET /api/editable-layers/viewport-batch 200 in 13ms
+1:03:09 PM [express] GET /api/editable-layers/viewport-batch 200 in 10ms

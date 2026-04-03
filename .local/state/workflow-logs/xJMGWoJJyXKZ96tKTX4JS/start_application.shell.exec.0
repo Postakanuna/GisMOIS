@@ -1,0 +1,252 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K8:03:16 AM [seed] Field labels already seeded (429 rows), skipping
+8:03:16 AM [init] Field labels cache loaded from DB
+[Migration] zws_connections table columns OK
+[Bbox Backfill] Backfilling 1 features...
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+[Migration] uploads table columns OK
+8:03:17 AM [express] serving on port 5000
+[Audit] Cleanup completed, removed old entries
+8:03:17 AM [sensor-sync] Sensor polling not started: disabled or not configured
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+8:03:23 AM [express] GET /api/zws-connections 401 in 2ms
+8:03:28 AM [express] GET /api/zws-connections 304 in 23ms
+8:03:28 AM [express] GET /api/scenes/18 304 in 9ms
+8:06:42 AM [express] GET /api/auth/me 304 in 45ms
+8:06:43 AM [express] GET /api/field-labels 304 in 16ms
+8:06:43 AM [express] GET /api/scenes 304 in 172ms
+8:06:43 AM [express] GET /api/field-values 304 in 176ms
+8:06:43 AM [express] GET /api/scene-folders 304 in 178ms
+8:06:45 AM [express] GET /api/scenes/18/datasets 304 in 107ms
+8:06:45 AM [express] GET /api/scenes/18/folders 304 in 177ms
+8:06:45 AM [express] GET /api/settings/debug-overlay 304 in 184ms
+8:06:45 AM [express] GET /api/ai/providers 304 in 158ms
+8:06:46 AM [express] GET /api/scenes/18/editable-layers 304 in 416ms
+8:06:46 AM [express] GET /api/scenes/18/extent 304 in 524ms
+8:06:46 AM [express] GET /api/editable-layers/viewport-batch 200 in 376ms
+8:06:47 AM [express] GET /api/editable-layers/viewport-batch 200 in 416ms
+8:06:50 AM [express] GET /api/editable-layers/401/schema 304 in 143ms
+8:06:50 AM [express] PATCH /api/editable-layers/401 200 in 12ms
+8:06:50 AM [express] GET /api/editable-layers/401/features 304 in 388ms
+8:06:50 AM [express] GET /api/scenes/18/editable-layers 200 in 10ms
+8:06:51 AM [express] GET /api/editable-layers/viewport-batch 200 in 206ms
+8:06:52 AM [express] GET /api/editable-layers/viewport-batch 200 in 184ms
+8:06:52 AM [express] GET /api/editable-layers/viewport-batch 200 in 144ms
+8:06:53 AM [express] GET /api/editable-layers/viewport-batch 200 in 134ms
+8:06:54 AM [express] GET /api/editable-layers/viewport-batch 200 in 76ms
+8:06:55 AM [express] GET /api/editable-layers/viewport-batch 200 in 66ms
+8:06:57 AM [express] GET /api/editable-layers/viewport-batch 200 in 61ms
+8:07:00 AM [express] GET /api/editable-layers/viewport-batch 200 in 106ms
+8:07:01 AM [express] GET /api/editable-layers/viewport-batch 200 in 77ms
+8:07:02 AM [express] GET /api/editable-layers/viewport-batch 200 in 78ms
+8:07:04 AM [express] GET /api/editable-layers/viewport-batch 200 in 94ms
+8:07:07 AM [express] GET /api/editable-layers/viewport-batch 200 in 128ms
+8:07:15 AM [express] GET /api/editable-layers/viewport-batch 200 in 107ms
+8:07:17 AM [express] GET /api/editable-layers/viewport-batch 200 in 207ms
+8:36:08 AM [express] GET /api/editable-layers/viewport-batch 200 in 385ms
+8:36:09 AM [express] GET /api/editable-layers/viewport-batch 200 in 207ms
+8:36:09 AM [express] GET /api/editable-layers/viewport-batch 200 in 74ms
+8:36:14 AM [express] GET /api/editable-layers/viewport-batch 200 in 86ms
+8:36:16 AM [express] GET /api/custom-icons 304 in 73ms
+8:36:19 AM [express] PATCH /api/editable-layers/401 200 in 10ms
+8:36:19 AM [express] GET /api/scenes/18/editable-layers 200 in 8ms
+8:36:26 AM [express] PATCH /api/editable-layers/401 200 in 9ms
+8:36:27 AM [express] GET /api/scenes/18/editable-layers 200 in 8ms
+8:36:27 AM [express] GET /api/editable-layers/viewport-batch 304 in 14ms
+8:36:28 AM [express] GET /api/editable-layers/viewport-batch 304 in 6ms
+8:36:29 AM [express] GET /api/editable-layers/viewport-batch 200 in 91ms
+8:36:31 AM [express] GET /api/editable-layers/viewport-batch 200 in 100ms
+8:36:33 AM [express] GET /api/editable-layers/viewport-batch 200 in 122ms
+8:36:36 AM [express] GET /api/editable-layers/viewport-batch 200 in 254ms
+8:48:54 AM [express] GET /api/editable-layers/viewport-batch 200 in 300ms
+8:48:57 AM [express] GET /api/editable-layers/viewport-batch 200 in 194ms
+8:52:57 AM [express] POST /api/zws-connections 201 in 543ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+8:53:00 AM [express] POST /api/zulu/zws/custom/layers 200 in 2617ms
+[ZWS import-to-db] layerName=world:doma, parsed=0 features
+8:53:05 AM [express] POST /api/zulu/zws/import-to-db 200 in 537ms
+8:53:06 AM [express] GET /api/scenes/18/editable-layers 200 in 8ms
+8:53:06 AM [express] GET /api/editable-layers/viewport-batch 200 in 174ms
+8:53:09 AM [express] GET /api/editable-layers/viewport-batch 200 in 239ms
+8:53:13 AM [express] GET /api/editable-layers/403/features 200 in 6ms
+8:53:13 AM [express] GET /api/editable-layers/403/schema 200 in 6ms
+8:53:26 AM [express] PATCH /api/editable-layers/401 200 in 26ms
+8:53:26 AM [express] GET /api/scenes/18/editable-layers 200 in 10ms
+8:53:36 AM [express] GET /api/editable-layers/viewport-batch 200 in 172ms
+8:53:39 AM [express] GET /api/editable-layers/viewport-batch 200 in 219ms
+8:53:57 AM [express] POST /api/zws-connections 201 in 28ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws/, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+8:53:58 AM [express] POST /api/zulu/zws/custom/layers 200 in 1102ms
+8:54:04 AM [express] POST /api/zulu/zws/import-to-db 502 in 508ms
+8:54:06 AM [express] POST /api/zulu/zws/import-to-db 502 in 1186ms
+8:54:07 AM [express] GET /api/scenes/18/editable-layers 304 in 8ms
+8:54:11 AM [express] POST /api/zws-connections 201 in 9ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws/, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+8:54:13 AM [express] POST /api/zulu/zws/custom/layers 200 in 900ms
+8:54:18 AM [express] POST /api/zulu/zws/import-to-db 502 in 504ms
+8:54:19 AM [express] POST /api/zulu/zws/import-to-db 502 in 184ms
+8:54:19 AM [express] GET /api/scenes/18/editable-layers 304 in 6ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m9:21:33 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/zws-db-import-modal.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m9:21:51 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/zws-db-import-modal.tsx[22m [33m(x2)[39m

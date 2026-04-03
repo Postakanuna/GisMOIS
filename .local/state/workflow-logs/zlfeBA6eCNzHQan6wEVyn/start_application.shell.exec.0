@@ -1,0 +1,310 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K6:35:52 AM [init] Field labels cache loaded from DB
+[Bbox Backfill] Backfilling 1 features...
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+[Migration] uploads table columns OK
+6:35:52 AM [express] serving on port 5000
+6:35:52 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+6:36:02 AM [express] GET /api/scenes/5 304 in 11ms
+6:36:37 AM [express] GET /api/auth/me 304 in 28ms
+6:36:37 AM [express] GET /api/field-labels 304 in 18ms
+6:36:37 AM [express] GET /api/scene-folders 304 in 37ms
+6:36:37 AM [express] GET /api/scenes 304 in 53ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:40:37 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/scenes.tsx, /src/index.css[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:40:47 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/scenes.tsx, /src/index.css[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:40:55 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/scenes.tsx, /src/index.css[22m [33m(x3)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:41:04 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/scenes.tsx, /src/index.css[22m [33m(x4)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:41:24 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/scenes.tsx, /src/index.css[22m [33m(x5)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:41:34 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/scenes.tsx, /src/index.css[22m [33m(x6)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:41:41 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/scenes.tsx, /src/index.css[22m [33m(x7)[39m
+6:41:43 AM [express] GET /api/auth/me 304 in 16ms
+6:42:46 AM [express] GET /api/scenes/10/folders 200 in 27ms
+6:42:46 AM [express] GET /api/scenes/10/datasets 200 in 31ms
+6:42:46 AM [express] GET /api/scenes/10/editable-layers 200 in 165ms
+6:42:47 AM [express] GET /api/scenes/10/extent 200 in 371ms
+6:42:47 AM [express] GET /api/ai/providers 304 in 9ms
+6:42:47 AM [express] GET /api/scenes/10 200 in 11ms
+6:42:47 AM [express] GET /api/editable-layers/viewport-batch 200 in 22ms
+6:42:48 AM [express] GET /api/editable-layers/viewport-batch 200 in 11ms
+6:42:48 AM [express] GET /api/editable-layers/viewport-batch 200 in 10ms
+6:42:51 AM [express] GET /api/scenes/4/folders 304 in 7ms
+6:42:51 AM [express] GET /api/scenes/4/editable-layers 304 in 10ms
+6:42:51 AM [express] GET /api/scenes/4 304 in 12ms
+6:42:51 AM [express] GET /api/scenes/4/extent 304 in 16ms
+6:42:51 AM [express] GET /api/scenes/4/datasets 304 in 26ms
+6:42:51 AM [express] GET /api/ai/providers 304 in 24ms
+6:42:51 AM [express] GET /api/editable-layers/viewport-batch 200 in 7ms
+6:42:52 AM [express] GET /api/editable-layers/viewport-batch 200 in 8ms
+6:42:53 AM [express] GET /api/editable-layers/viewport-batch 200 in 7ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:44:41 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/home.tsx, /src/index.css[22m
+6:44:43 AM [express] GET /api/ai/providers 304 in 16ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:44:48 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/home.tsx, /src/index.css[22m [33m(x2)[39m
+6:44:51 AM [express] GET /api/ai/providers 304 in 7ms
+6:44:54 AM [express] GET /api/scenes/12/folders 200 in 7ms
+6:44:54 AM [express] GET /api/scenes/12/datasets 200 in 16ms
+6:44:55 AM [express] GET /api/ai/providers 304 in 7ms
+6:44:55 AM [express] GET /api/scenes/12/extent 200 in 10ms
+6:44:55 AM [express] GET /api/scenes/12 200 in 8ms
+6:44:55 AM [express] GET /api/scenes/12/editable-layers 200 in 19ms
+6:44:58 AM [express] GET /api/scenes/6 200 in 16ms
+6:44:58 AM [express] GET /api/ai/providers 304 in 17ms
+6:44:58 AM [express] GET /api/scenes/6/editable-layers 200 in 10ms
+6:44:58 AM [express] GET /api/scenes/6/datasets 200 in 25ms
+6:44:58 AM [express] GET /api/scenes/6/folders 200 in 27ms
+6:44:58 AM [express] GET /api/scenes/6/extent 200 in 27ms
+6:44:58 AM [express] GET /api/editable-layers/viewport-batch 200 in 8ms
+6:44:59 AM [express] GET /api/editable-layers/viewport-batch 200 in 7ms
+6:45:01 AM [express] GET /api/scenes/4/extent 304 in 10ms
+6:45:01 AM [express] GET /api/ai/providers 304 in 12ms
+6:45:01 AM [express] GET /api/editable-layers/viewport-batch 304 in 11ms
+6:45:02 AM [express] GET /api/editable-layers/viewport-batch 200 in 10ms
+6:45:02 AM [express] GET /api/editable-layers/viewport-batch 200 in 9ms
+6:45:03 AM [express] GET /api/editable-layers/viewport-batch 200 in 7ms
+6:45:28 AM [express] GET /api/reconstruction-programs 304 in 25ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m6:46:22 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/layer-panel.tsx[22m
+6:46:35 AM [express] GET /api/scenes/16/datasets 304 in 185ms
+6:46:35 AM [express] GET /api/scenes/16/folders 304 in 320ms
+6:46:35 AM [express] GET /api/ai/providers 304 in 318ms
+6:46:36 AM [express] GET /api/scenes/16/editable-layers 304 in 135ms
+6:46:36 AM [express] GET /api/scenes/16 304 in 7ms
+6:46:36 AM [express] GET /api/editable-layers/viewport-batch 304 in 87ms
+6:46:37 AM [express] GET /api/scenes/16/extent 304 in 1683ms
+6:46:37 AM [express] GET /api/editable-layers/viewport-batch 200 in 453ms
+6:46:39 AM [express] GET /api/editable-layers/viewport-batch 304 in 404ms

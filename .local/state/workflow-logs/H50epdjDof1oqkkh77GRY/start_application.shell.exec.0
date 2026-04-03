@@ -1,0 +1,16 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K1:14:10 PM [seed] Field labels already seeded (429 rows), skipping
+[Bbox Backfill] Backfilling 1 features...
+[Migration] uploads table columns OK
+1:14:10 PM [init] Field labels cache loaded from DB
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+1:14:11 PM [express] serving on port 5000
+[Audit] Cleanup completed, removed old entries
+1:14:11 PM [sensor-sync] Sensor polling not started: disabled or not configured
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+1:14:22 PM [express] GET /api/scenes/5 304 in 76ms

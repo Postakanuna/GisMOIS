@@ -1,0 +1,42 @@
+[1G[0K⠙[1G[0K
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K⠙[1G[0K[Migration] zws_connections table columns OK
+4:13:18 AM [seed] Field labels already seeded (429 rows), skipping
+[Migration] uploads table columns OK
+4:13:18 AM [init] Field labels cache loaded from DB
+[Bbox Backfill] Backfilling 1 features...
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+4:13:19 AM [express] serving on port 5000
+4:13:19 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+4:13:56 AM [express] GET /api/zws-connections 304 in 20ms
+4:13:56 AM [express] GET /api/scenes/18 304 in 12ms
+4:14:06 AM [express] GET /api/auth/me 304 in 23ms
+4:14:06 AM [express] GET /api/field-labels 304 in 16ms
+4:14:06 AM [express] GET /api/scene-folders 304 in 45ms
+4:14:06 AM [express] GET /api/field-values 304 in 54ms
+4:14:07 AM [express] GET /api/scenes 304 in 88ms
+4:14:09 AM [express] GET /api/scenes/18/datasets 304 in 91ms
+4:14:09 AM [express] GET /api/settings/debug-overlay 304 in 90ms
+4:14:09 AM [express] GET /api/scenes/18/folders 304 in 95ms
+4:14:09 AM [express] GET /api/ai/providers 304 in 61ms
+4:14:09 AM [express] GET /api/scenes/18/editable-layers 304 in 64ms
+4:14:09 AM [express] GET /api/scenes/18/extent 304 in 134ms
+4:14:10 AM [express] GET /api/editable-layers/viewport-batch 200 in 213ms
+4:14:11 AM [express] GET /api/editable-layers/viewport-batch 304 in 301ms
+4:14:12 AM [express] GET /api/editable-layers/viewport-batch 304 in 214ms
+4:14:14 AM [express] GET /api/custom-icons 304 in 13ms
+4:14:14 AM [express] GET /api/editable-layers/401/schema 304 in 15ms
+4:14:15 AM [express] GET /api/editable-layers/401/attributes 304 in 313ms
+4:14:15 AM [express] GET /api/editable-layers/401/features 304 in 316ms
+4:14:40 AM [express] PATCH /api/editable-layers/401 200 in 31ms
+4:14:41 AM [express] GET /api/scenes/18/editable-layers 200 in 9ms
+4:14:51 AM [express] PATCH /api/editable-layers/401 200 in 12ms
+4:14:51 AM [express] GET /api/scenes/18/editable-layers 200 in 9ms
+4:14:52 AM [express] GET /api/editable-layers/viewport-batch 304 in 340ms
+4:14:54 AM [express] GET /api/editable-layers/viewport-batch 304 in 201ms

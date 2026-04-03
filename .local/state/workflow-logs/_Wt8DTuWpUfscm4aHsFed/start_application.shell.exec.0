@@ -1,0 +1,29 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K2:53:43 PM [seed] Field labels already seeded (429 rows), skipping
+[Bbox Backfill] Backfilling 1 features...
+2:53:43 PM [init] Field labels cache loaded from DB
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+[Migration] uploads table columns OK
+2:53:44 PM [express] serving on port 5000
+2:53:44 PM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+2:53:57 PM [express] GET /api/scenes/5 304 in 18ms
+2:58:07 PM [express] GET /api/auth/me 304 in 50ms
+2:58:07 PM [express] GET /api/field-labels 304 in 21ms
+2:58:07 PM [express] GET /api/field-values 304 in 9ms
+2:58:07 PM [express] GET /api/scenes 304 in 53ms
+2:58:08 PM [express] GET /api/scene-folders 304 in 12ms
+2:58:09 PM [express] GET /api/scenes/10/datasets 200 in 14ms
+2:58:09 PM [express] GET /api/scenes/10/folders 200 in 22ms
+2:58:09 PM [express] GET /api/scenes/10/extent 200 in 228ms
+2:58:09 PM [express] GET /api/scenes/10/editable-layers 200 in 36ms
+2:58:09 PM [express] GET /api/scenes/10 200 in 18ms
+2:58:09 PM [express] GET /api/ai/providers 304 in 10ms
+2:58:10 PM [express] GET /api/editable-layers/viewport-batch 200 in 66ms
+2:58:12 PM [express] GET /api/editable-layers/viewport-batch 200 in 10ms

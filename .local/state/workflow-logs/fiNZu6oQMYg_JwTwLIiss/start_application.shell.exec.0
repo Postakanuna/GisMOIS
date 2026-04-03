@@ -1,0 +1,242 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K8:20:31 AM [seed] Field labels already seeded (429 rows), skipping
+[Bbox Backfill] Backfilling 1 features...
+8:20:31 AM [init] Field labels cache loaded from DB
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+[Migration] zws_connections table columns OK
+[Migration] uploads table columns OK
+8:20:31 AM [express] serving on port 5000
+8:20:31 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+8:20:44 AM [express] GET /api/zws-connections 304 in 16ms
+8:20:44 AM [express] GET /api/scenes/18 304 in 9ms
+8:20:53 AM [express] GET /api/zws-connections 401 in 2ms
+8:21:03 AM [express] GET /api/auth/me 304 in 27ms
+8:21:03 AM [express] GET /api/field-labels 304 in 16ms
+8:21:03 AM [express] GET /api/field-values 304 in 25ms
+8:21:03 AM [express] GET /api/scene-folders 304 in 22ms
+8:21:03 AM [express] GET /api/scenes 304 in 105ms
+8:21:05 AM [express] GET /api/scenes/18/datasets 304 in 11ms
+8:21:05 AM [express] GET /api/settings/debug-overlay 304 in 12ms
+8:21:05 AM [express] GET /api/scenes/18/folders 304 in 12ms
+8:21:05 AM [express] GET /api/scenes/18/extent 304 in 11ms
+8:21:05 AM [express] GET /api/ai/providers 304 in 7ms
+8:21:05 AM [express] GET /api/scenes/18/editable-layers 304 in 9ms
+8:21:05 AM [express] GET /api/editable-layers/viewport-batch 200 in 95ms
+8:21:06 AM [express] GET /api/editable-layers/viewport-batch 304 in 231ms
+8:21:07 AM [express] GET /api/editable-layers/viewport-batch 304 in 402ms
+8:21:09 AM [express] GET /api/editable-layers/401/schema 304 in 8ms
+8:21:09 AM [express] GET /api/custom-icons 304 in 8ms
+8:21:09 AM [express] GET /api/editable-layers/401/attributes 304 in 320ms
+8:21:09 AM [express] GET /api/editable-layers/401/features 304 in 319ms
+8:23:10 AM [express] POST /api/editable-layers 201 in 259ms
+8:23:11 AM [express] GET /api/scenes/18/editable-layers 200 in 9ms
+8:23:11 AM [express] GET /api/editable-layers/402/features 200 in 6ms
+8:23:11 AM [express] GET /api/editable-layers/402/schema 200 in 15ms
+8:23:11 AM [express] GET /api/editable-layers/viewport-batch 200 in 266ms
+8:23:14 AM [express] GET /api/editable-layers/402/attributes 200 in 6ms
+8:23:14 AM [express] GET /api/editable-layers/viewport-batch 200 in 213ms
+8:23:23 AM [express] PATCH /api/editable-layers/402 200 in 14ms
+8:23:24 AM [express] GET /api/scenes/18/editable-layers 200 in 8ms
+8:23:24 AM [express] GET /api/editable-layers/viewport-batch 304 in 5ms
+8:23:29 AM [express] POST /api/editable-layers/402/features 201 in 138ms
+8:23:29 AM [express] GET /api/scenes/18/editable-layers 200 in 9ms
+8:23:29 AM [express] GET /api/editable-layers/402/features 200 in 17ms
+8:23:30 AM [express] GET /api/editable-layers/viewport-batch 200 in 255ms
+8:27:41 AM [express] GET /api/zws-connections 304 in 17ms
+8:27:42 AM [express] GET /api/scenes/18 304 in 9ms
+8:36:31 AM [express] GET /api/auth/me 304 in 40ms
+8:36:32 AM [express] GET /api/field-labels 304 in 12ms
+8:36:32 AM [express] GET /api/field-values 304 in 20ms
+8:36:32 AM [express] GET /api/scene-folders 304 in 25ms
+8:36:32 AM [express] GET /api/scenes 304 in 31ms
+8:36:35 AM [express] GET /api/scenes/18/datasets 304 in 10ms
+8:36:35 AM [express] GET /api/scenes/18/folders 304 in 13ms
+8:36:35 AM [express] GET /api/scenes/18/extent 200 in 8ms
+8:36:35 AM [express] GET /api/settings/debug-overlay 304 in 20ms
+8:36:35 AM [express] GET /api/scenes/18/editable-layers 304 in 9ms
+8:36:35 AM [express] GET /api/ai/providers 304 in 8ms
+8:36:35 AM [express] GET /api/editable-layers/viewport-batch 200 in 103ms
+8:36:36 AM [express] GET /api/editable-layers/viewport-batch 200 in 232ms
+8:36:37 AM [express] GET /api/editable-layers/401/schema 304 in 7ms
+8:36:37 AM [express] GET /api/custom-icons 304 in 7ms
+8:36:38 AM [express] GET /api/editable-layers/401/attributes 304 in 318ms
+8:36:38 AM [express] GET /api/editable-layers/401/features 304 in 320ms
+8:36:39 AM [express] GET /api/editable-layers/viewport-batch 200 in 200ms
+8:36:48 AM [express] GET /api/editable-layers/402/schema 304 in 8ms
+8:36:48 AM [express] GET /api/editable-layers/402/features 304 in 18ms
+8:36:48 AM [express] GET /api/editable-layers/402/attributes 304 in 17ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:38:11 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ui/dialog.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:38:21 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ui/dialog.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:38:25 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/ui/tooltip.tsx, /src/index.css[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:38:40 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ui/popover.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:38:43 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ui/select.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:38:47 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ui/dropdown-menu.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:38:58 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ui/dropdown-menu.tsx[22m [33m(x2)[39m

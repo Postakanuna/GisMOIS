@@ -1,0 +1,488 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K10:07:44 AM [seed] Field labels already seeded (429 rows), skipping
+[Bbox Backfill] Backfilling 1 features...
+10:07:44 AM [init] Field labels cache loaded from DB
+[Migration] uploads table columns OK
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+10:07:45 AM [express] serving on port 5000
+10:07:45 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+10:07:57 AM [express] GET /api/scenes/16 304 in 16ms
+10:07:59 AM [express] GET /api/auth/me 304 in 6ms
+10:07:59 AM [express] GET /api/field-labels 304 in 12ms
+10:07:59 AM [express] GET /api/field-values 200 in 32ms
+10:07:59 AM [express] GET /api/scene-folders 304 in 33ms
+10:07:59 AM [express] GET /api/scenes 304 in 40ms
+10:08:02 AM [express] GET /api/unit-rates 304 in 7ms
+10:08:03 AM [express] GET /api/field-labels 304 in 13ms
+10:08:04 AM [express] GET /api/field-values 304 in 5ms
+10:08:55 AM [express] POST /api/field-values 201 in 26ms
+10:08:55 AM [express] GET /api/field-values 200 in 7ms
+10:09:14 AM [express] DELETE /api/field-values/1 200 in 25ms
+10:09:14 AM [express] GET /api/field-values 200 in 6ms
+10:09:25 AM [express] GET /api/field-labels 304 in 23ms
+10:09:25 AM [express] GET /api/field-values 304 in 5ms
+10:09:27 AM [express] GET /api/scenes/5/datasets 304 in 11ms
+10:09:27 AM [express] GET /api/scenes/5/folders 304 in 20ms
+10:09:27 AM [express] GET /api/scenes/5/editable-layers 304 in 136ms
+10:09:27 AM [express] GET /api/ai/providers 304 in 133ms
+10:09:27 AM [express] GET /api/scenes/5 304 in 144ms
+10:09:28 AM [express] GET /api/scenes/5/extent 304 in 588ms
+10:09:28 AM [express] GET /api/editable-layers/viewport-batch 200 in 483ms
+10:09:29 AM [express] GET /api/editable-layers/viewport-batch 200 in 581ms
+10:09:34 AM [express] GET /api/custom-icons 304 in 128ms
+10:09:34 AM [express] GET /api/editable-layers/245/attributes 200 in 282ms
+10:09:34 AM [express] GET /api/editable-layers/245/schema 200 in 253ms
+10:09:35 AM [express] GET /api/editable-layers/245/features 200 in 684ms
+10:09:36 AM [express] GET /api/editable-layers/viewport-batch 200 in 478ms
+10:10:30 AM [express] POST /api/field-values 201 in 29ms
+10:10:31 AM [express] GET /api/field-values 200 in 7ms
+10:10:35 AM [express] GET /api/scenes/5/extent 304 in 12ms
+10:10:35 AM [express] GET /api/ai/providers 304 in 16ms
+10:10:35 AM [express] GET /api/editable-layers/viewport-batch 200 in 329ms
+10:10:36 AM [express] GET /api/editable-layers/viewport-batch 200 in 466ms
+10:10:43 AM [express] GET /api/editable-layers/viewport-batch 200 in 511ms
+10:10:53 AM [express] GET /api/editable-layers/viewport-batch 200 in 559ms
+10:10:55 AM [express] GET /api/editable-layers/viewport-batch 200 in 812ms
+10:10:58 AM [express] GET /api/editable-layers/viewport-batch 200 in 587ms
+10:11:05 AM [express] GET /api/editable-layers/viewport-batch 200 in 689ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:21:44 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/connection-form.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:22:06 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/field-labels-loader.tsx, /src/components/attribute-table.tsx, /src/components/feature-info-modal.tsx, /src/components/feature-info.tsx[22m
+10:22:08 AM [express] GET /api/field-values 304 in 21ms
+10:22:08 AM [express] GET /api/field-labels 304 in 41ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:22:30 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/connection-form.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:23:02 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/feature-info.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:23:09 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/feature-info-modal.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:23:16 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/feature-info-modal.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:23:22 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/map-viewer.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:23:43 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/map-viewer.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:23:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/map-viewer.tsx[22m [33m(x3)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:23:58 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/map-viewer.tsx[22m [33m(x4)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:24:07 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/field-labels-loader.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:25:45 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/field-labels-admin-table.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:26:02 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/admin-references.tsx, /src/index.css[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:26:36 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/field-labels-admin-table.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:26:44 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/field-labels-admin-table.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:26:55 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/field-labels-admin-table.tsx[22m [33m(x3)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:27:16 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/field-values-admin-table.tsx[22m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m10:27:17 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/field-labels-admin-table.tsx[22m

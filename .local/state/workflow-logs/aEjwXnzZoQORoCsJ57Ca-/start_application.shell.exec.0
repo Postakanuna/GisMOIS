@@ -1,0 +1,62 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K10:17:45 AM [seed] Field labels already seeded (429 rows), skipping
+[Bbox Backfill] Backfilling 1 features...
+10:17:45 AM [init] Field labels cache loaded from DB
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+[Migration] zws_connections table columns OK
+[Migration] uploads table columns OK
+10:17:46 AM [express] serving on port 5000
+10:17:46 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+10:17:52 AM [express] GET /api/zws-connections 401 in 2ms
+10:17:55 AM [express] GET /api/zws-connections 401 in 0ms
+10:17:56 AM [express] GET /api/zws-connections 200 in 20ms
+10:17:56 AM [express] GET /api/scenes/18 304 in 11ms
+10:41:13 AM [express] GET /api/auth/me 304 in 232ms
+10:41:13 AM [express] GET /api/field-labels 304 in 16ms
+10:41:13 AM [express] GET /api/field-values 304 in 7ms
+10:41:14 AM [express] GET /api/scenes 304 in 32ms
+10:41:14 AM [express] GET /api/scene-folders 304 in 7ms
+10:41:16 AM [express] GET /api/scenes/18/folders 304 in 9ms
+10:41:16 AM [express] GET /api/settings/debug-overlay 304 in 18ms
+10:41:16 AM [express] GET /api/scenes/18/extent 304 in 10ms
+10:41:16 AM [express] GET /api/scenes/18/datasets 304 in 19ms
+10:41:16 AM [express] GET /api/ai/providers 304 in 9ms
+10:41:16 AM [express] GET /api/scenes/18/editable-layers 304 in 13ms
+10:41:17 AM [express] GET /api/editable-layers/viewport-batch 200 in 99ms
+10:41:18 AM [express] GET /api/editable-layers/viewport-batch 304 in 399ms
+10:41:19 AM [express] GET /api/editable-layers/viewport-batch 304 in 348ms
+10:41:30 AM [express] POST /api/zws-connections 201 in 140ms
+[ZWS custom/layers] baseUrl=https://zs.zulugis.ru//zws, count=48, xml-sample=<?xml version="1.0" encoding="UTF-8"?><zwsResponse><GetLayerList><Layer>
+<Name>world:world</Name>
+<Title>world</Title></Layer>
+<Layer>
+<Name>world:doma</Name>
+<Title>Здания и сооружения</Title></Layer>
+<Layer>
+<Name>openlayers:teploset</Name>
+<Title>teplo</Title></Layer>
+<Layer>
+<Name>mo:vo</Name>
+<Title>Водоотведение</Title></Layer>
+<Layer>
+<Name>mo:vp</Name>
+<Title>Водопроводная сеть</Title></Layer>
+<Layer>
+<Name>mo:region</Name>
+<Title>Районы МО</Title></Layer>
+<Layer>
+<Name>mobile:tracking</Name>
+<Title>mobile</Title></Layer>
+<Layer>
+<Name>aaa:avarii12345</Name>
+<Title>avarii</Title></Laye
+10:41:31 AM [express] POST /api/zulu/zws/custom/layers 200 in 1085ms
+10:41:36 AM [express] POST /api/zulu/zws/import-to-db 401 in 1187ms
+10:41:36 AM [express] GET /api/scenes/18/editable-layers 304 in 9ms

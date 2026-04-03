@@ -1,0 +1,7 @@
+[1G[0K⠙[1G[0K
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K⠙[1G[0K[Migration] zws_connections table columns OK
+7:58:45 PM [seed] Field labels already seeded (429 rows), skipping
+7:58:45 PM [init] Field labels cache loaded from DB

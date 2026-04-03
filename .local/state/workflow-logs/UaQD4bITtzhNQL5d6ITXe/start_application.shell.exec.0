@@ -1,0 +1,111 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K8:18:23 AM [seed] Field labels already seeded (429 rows), skipping
+[Migration] zws_connections table columns OK
+8:18:23 AM [init] Field labels cache loaded from DB
+[Migration] uploads table columns OK
+[Bbox Backfill] Backfilling 1 features...
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+8:18:23 AM [express] serving on port 5000
+[Audit] Cleanup completed, removed old entries
+8:18:23 AM [sensor-sync] Sensor polling not started: disabled or not configured
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+8:18:30 AM [express] GET /api/zws-connections 401 in 5ms
+8:18:35 AM [express] GET /api/zws-connections 304 in 18ms
+8:18:35 AM [express] GET /api/scenes/18 304 in 10ms
+8:18:38 AM [express] GET /api/auth/me 304 in 6ms
+8:18:38 AM [express] GET /api/field-labels 304 in 14ms
+8:18:38 AM [express] GET /api/scene-folders 304 in 28ms
+8:18:38 AM [express] GET /api/field-values 304 in 32ms
+8:18:38 AM [express] GET /api/scenes 304 in 46ms
+8:18:40 AM [express] GET /api/settings/debug-overlay 304 in 7ms
+8:18:40 AM [express] GET /api/scenes/18/folders 304 in 6ms
+8:18:40 AM [express] GET /api/scenes/18/datasets 304 in 12ms
+8:18:40 AM [express] GET /api/scenes/18/extent 304 in 12ms
+8:18:40 AM [express] GET /api/ai/providers 304 in 15ms
+8:18:40 AM [express] GET /api/scenes/18/editable-layers 304 in 14ms
+8:18:40 AM [express] GET /api/editable-layers/viewport-batch 200 in 88ms
+8:18:41 AM [express] GET /api/editable-layers/viewport-batch 304 in 216ms
+8:18:42 AM [express] GET /api/editable-layers/viewport-batch 304 in 196ms
+8:18:44 AM [express] GET /api/editable-layers/401/schema 304 in 9ms
+8:18:44 AM [express] GET /api/custom-icons 304 in 9ms
+8:18:44 AM [express] GET /api/editable-layers/401/attributes 304 in 346ms
+8:18:44 AM [express] GET /api/editable-layers/401/features 304 in 346ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:19:54 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m
+8:20:07 AM [express] PATCH /api/editable-layers/401 200 in 29ms
+8:20:07 AM [express] GET /api/scenes/18/editable-layers 200 in 7ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:20:12 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x2)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:20:25 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/data-manager.tsx[22m [33m(x3)[39m

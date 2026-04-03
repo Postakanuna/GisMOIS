@@ -1,0 +1,16 @@
+[1G[0K⠙[1G[0K⠹[1G[0K
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K⠹[1G[0K[Migration] zws_connections table columns OK
+6:55:12 AM [seed] Field labels already seeded (429 rows), skipping
+6:55:12 AM [init] Field labels cache loaded from DB
+[Migration] uploads table columns OK
+[Bbox Backfill] Backfilling 1 features...
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+6:55:14 AM [express] serving on port 5000
+6:55:14 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.

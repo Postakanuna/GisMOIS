@@ -1,0 +1,48 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K7:02:44 AM [seed] Field labels already seeded (429 rows), skipping
+[Bbox Backfill] Backfilling 1 features...
+7:02:44 AM [init] Field labels cache loaded from DB
+[Bbox Backfill] 1/1 features processed
+[Bbox Backfill] Complete
+[Migration] uploads table columns OK
+7:02:44 AM [express] serving on port 5000
+7:02:44 AM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+7:03:02 AM [express] GET /api/scenes/16 304 in 22ms
+7:28:11 AM [express] GET /api/auth/me 304 in 42ms
+7:28:11 AM [express] GET /api/field-labels 304 in 17ms
+7:28:11 AM [express] GET /api/scenes 304 in 32ms
+7:28:12 AM [express] GET /api/scene-folders 304 in 7ms
+7:28:18 AM [express] GET /api/admin/layer-matrix 200 in 24ms
+7:28:33 AM [express] GET /api/custom-icons 304 in 106ms
+7:28:33 AM [express] GET /api/editable-layers/300/schema 200 in 109ms
+7:28:33 AM [express] GET /api/editable-layers/300/attributes 200 in 112ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J[2m8:08:41 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/ui/popover.tsx[22m

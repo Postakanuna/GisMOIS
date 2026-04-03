@@ -1,0 +1,14 @@
+[1G[0K⠙[1G[0K
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K⠙[1G[0K2:50:38 PM [seed] Field labels already seeded (429 rows), skipping
+2:50:38 PM [init] Field labels cache loaded from DB
+[Migration] zws_connections table columns OK
+[Migration] uploads table columns OK
+[Bbox Backfill] Backfilling 2 features...
+[Bbox Backfill] 2/2 features processed
+[Bbox Backfill] Complete
+2:50:40 PM [express] serving on port 5000
+2:50:40 PM [sensor-sync] Sensor polling not started: disabled or not configured
+[Audit] Cleanup completed, removed old entries
